@@ -1,0 +1,33 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "name": "SOLA Unified Icon Tokens",
+  "version": "1.0.0",
+  "source_of_truth": "SOLA Owner App (Lucide React Icons)",
+  "icons": {
+    "library": "lucide-react",
+    "style": "Outlined / Line Art",
+    "stroke_width": {
+      "default": "2px",
+      "bold": "2.5px",
+      "subtle": "1.5px"
+    },
+    "sizes": {
+      "xs": "12px",
+      "sm": "14px",
+      "md": "16px",
+      "lg": "20px",
+      "xl": "24px",
+      "2xl": "32px"
+    },
+    "usage_mapping": {
+      "button_small_icon": "14px",
+      "button_medium_icon": "16px",
+      "button_large_icon": "20px",
+      "status_badge_icon": "14px",
+      "input_prefix_icon": "16px",
+      "navigation_item_icon": "16px",
+      "card_header_icon": "20px",
+      "modal_close_icon": "20px"
+    }
+  }
+}

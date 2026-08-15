@@ -1,0 +1,123 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "name": "SOLA Unified Color Tokens",
+  "version": "1.0.0",
+  "source_of_truth": "SOLA Owner App (Forensic Extraction)",
+  "color": {
+    "brand": {
+      "primary_blue": {
+        "value": "#0059FF",
+        "type": "color",
+        "description": "SOLA Signature Primary Blue. Main CTA button, active navigation, primary highlights.",
+        "hover": "#0046CC",
+        "soft": "rgba(0, 89, 255, 0.10)",
+        "ring": "rgba(0, 89, 255, 0.20)",
+        "shadow": "rgba(0, 89, 255, 0.20)"
+      },
+      "secondary_gold": {
+        "value": "#FFD700",
+        "type": "color",
+        "description": "SOLA Coastal Gold / Sola Yellow. Accent badges, secondary CTAs, priority highlights.",
+        "hover": "#E6C200",
+        "soft": "rgba(255, 215, 0, 0.15)",
+        "shadow": "rgba(255, 215, 0, 0.20)"
+      }
+    },
+    "background": {
+      "main": {
+        "value": "#F5F7FA",
+        "type": "color",
+        "description": "Main application background shade."
+      },
+      "surface": {
+        "value": "#FFFFFF",
+        "type": "color",
+        "description": "Primary card, modal, and container background."
+      },
+      "surface_elevated": {
+        "value": "#F8FAFC",
+        "type": "color",
+        "description": "Secondary inset surface background."
+      },
+      "dark_header": {
+        "value": "rgba(15, 23, 42, 0.95)",
+        "type": "color",
+        "description": "Dark glassmorphic app bar and master portal header."
+      },
+      "glass_panel": {
+        "value": "rgba(255, 255, 255, 0.85)",
+        "type": "color",
+        "description": "Light glassmorphic card panel with backdrop blur."
+      }
+    },
+    "text": {
+      "primary": {
+        "value": "#0F172A",
+        "type": "color",
+        "description": "Primary headings and high-contrast text."
+      },
+      "secondary": {
+        "value": "#475569",
+        "type": "color",
+        "description": "Body text and label descriptions."
+      },
+      "muted": {
+        "value": "#64748B",
+        "type": "color",
+        "description": "Secondary metadata, captions, and placeholders."
+      },
+      "inverse": {
+        "value": "#FFFFFF",
+        "type": "color",
+        "description": "Text rendered over dark backgrounds or primary buttons."
+      }
+    },
+    "border": {
+      "main": {
+        "value": "#E2E8F0",
+        "type": "color",
+        "description": "Standard border for cards, inputs, and dividers."
+      },
+      "subtle": {
+        "value": "#F1F5F9",
+        "type": "color",
+        "description": "Subtle internal card separator."
+      },
+      "focus": {
+        "value": "#0059FF",
+        "type": "color",
+        "description": "Input and button active focus ring border."
+      }
+    },
+    "semantic": {
+      "success": {
+        "solid": "#059669",
+        "text": "#065F46",
+        "background": "#ECFDF5",
+        "border": "#A7F3D0",
+        "description": "Confirmed status, completed transactions, verified state."
+      },
+      "warning": {
+        "solid": "#D97706",
+        "text": "#78350F",
+        "background": "#FFFBEB",
+        "border": "#FDE68A",
+        "description": "Pending approval, SLA deadline warnings, draft state."
+      },
+      "danger": {
+        "solid": "#E11D48",
+        "text": "#881337",
+        "background": "#FFF1F2",
+        "border": "#FECDD3",
+        "description": "Rejections, frozen financial holds ($H$), dispute alerts."
+      },
+      "info": {
+        "solid": "#0059FF",
+        "text": "#1E40AF",
+        "background": "#EFF6FF",
+        "border": "#BFDBFE",
+        "description": "Messaging threads, payout execution, general info."
+      }
+    }
+  }
+}

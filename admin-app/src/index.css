@@ -1,0 +1,142 @@
+/* ============================================================================
+ * SOLA VACATION RENTALS — UNIFIED DESIGN SYSTEM (ADMIN PORTAL ADAPTATION)
+ * Extracted Verbatim from SOLA Owner App Design Language
+ * ============================================================================ */
+
+:root {
+  /* Core Brand Tokens */
+  --sola-primary-blue: #0059FF;
+  --sola-primary-blue-hover: #0046CC;
+  --sola-primary-blue-soft: rgba(0, 89, 255, 0.1);
+  
+  --sola-secondary-yellow: #FFD700;
+  --sola-secondary-yellow-soft: rgba(255, 215, 0, 0.15);
+
+  /* Backgrounds & Surfaces */
+  --sola-bg-main: #F5F7FA;
+  --sola-bg-surface: #FFFFFF;
+  --sola-bg-surface-elevated: #F8FAFC;
+  --sola-bg-dark-header: rgba(15, 23, 42, 0.95);
+  
+  /* Text & Typography Colors */
+  --sola-text-primary: #0F172A;
+  --sola-text-secondary: #475569;
+  --sola-text-muted: #64748B;
+  --sola-text-inverse: #FFFFFF;
+
+  /* Borders & Dividers */
+  --sola-border-main: #E2E8F0;
+  --sola-border-subtle: #F1F5F9;
+
+  /* Semantic Status Colors */
+  --sola-success-bg: #ECFDF5;
+  --sola-success-text: #065F46;
+  --sola-success-border: #A7F3D0;
+  --sola-success-solid: #059669;
+
+  --sola-warning-bg: #FFFBEB;
+  --sola-warning-text: #78350F;
+  --sola-warning-border: #FDE68A;
+  --sola-warning-solid: #D97706;
+
+  --sola-danger-bg: #FFF1F2;
+  --sola-danger-text: #881337;
+  --sola-danger-border: #FECDD3;
+  --sola-danger-solid: #E11D48;
+
+  --sola-info-bg: #EFF6FF;
+  --sola-info-text: #1E40AF;
+  --sola-info-border: #BFDBFE;
+  --sola-info-solid: #0059FF;
+}
+
+body {
+  font-family: 'Cairo', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  direction: rtl;
+  text-align: right;
+  background-color: var(--sola-bg-main);
+  color: var(--sola-text-primary);
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Custom Scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Glassmorphism Effects (Matching Owner App) */
+.glass-panel {
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.4);
+}
+
+.glass-dark {
+  background: rgba(15, 23, 42, 0.95);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* Cards & Elevation */
+.sola-card {
+  background: #ffffff;
+  border: 1px solid var(--sola-border-main);
+  border-radius: 16px;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05), 0 1px 2px -1px rgba(0, 0, 0, 0.05);
+  transition: all 0.2s ease-in-out;
+}
+
+.sola-card-hover:hover {
+  border-color: #cbd5e1;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.07), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
+}
+
+/* Primary Button Styling (Matching Owner App Primary Blue) */
+.sola-btn-primary {
+  background-color: var(--sola-primary-blue);
+  color: #ffffff;
+  border-radius: 12px;
+  font-weight: 700;
+  transition: all 0.15s ease-in-out;
+}
+.sola-btn-primary:hover {
+  background-color: var(--sola-primary-blue-hover);
+}
+.sola-btn-primary:active {
+  transform: scale(0.98);
+}
+
+/* Animations */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Skeleton Loading */
+@keyframes skeletonPulse {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 0.3; }
+}
+
+.skeleton-box {
+  background-color: #e2e8f0;
+  border-radius: 8px;
+  animation: skeletonPulse 1.5s infinite ease-in-out;
+}

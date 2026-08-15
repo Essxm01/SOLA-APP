@@ -1,0 +1,24 @@
+{
+  "name": "sola-backend",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "npx tsx server/src/index.ts",
+    "start": "npx tsx server/src/index.ts",
+    "test": "npx tsx server/src/tests/runTests.ts",
+    "check": "npx tsc --noEmit"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.112.3",
+    "@types/jsonwebtoken": "^9.0.10",
+    "@types/pg": "^8.21.0",
+    "jsonwebtoken": "^9.0.3",
+    "pg": "^8.23.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.3",
+    "tsx": "^4.20.0",
+    "typescript": "~6.0.2"
+  }
+}

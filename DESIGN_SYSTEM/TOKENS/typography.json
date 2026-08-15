@@ -1,0 +1,79 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "name": "SOLA Unified Typography Tokens",
+  "version": "1.0.0",
+  "source_of_truth": "SOLA Owner App (Forensic Extraction)",
+  "typography": {
+    "font_family": {
+      "primary": "'Cairo', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+      "monospace": "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace"
+    },
+    "direction": "rtl",
+    "language": "ar",
+    "scale": {
+      "display": {
+        "font_size": "24px",
+        "line_height": "32px",
+        "font_weight": "900",
+        "letter_spacing": "-0.02em",
+        "usage": "Page titles, hero banners"
+      },
+      "h1": {
+        "font_size": "20px",
+        "line_height": "28px",
+        "font_weight": "800",
+        "letter_spacing": "-0.01em",
+        "usage": "Section headers, major modal titles"
+      },
+      "h2": {
+        "font_size": "18px",
+        "line_height": "26px",
+        "font_weight": "700",
+        "letter_spacing": "0",
+        "usage": "Card titles, subsection headers"
+      },
+      "h3": {
+        "font_size": "16px",
+        "line_height": "24px",
+        "font_weight": "700",
+        "letter_spacing": "0",
+        "usage": "Item titles, form group labels"
+      },
+      "body_large": {
+        "font_size": "16px",
+        "line_height": "24px",
+        "font_weight": "500",
+        "letter_spacing": "0",
+        "usage": "Lead body paragraphs"
+      },
+      "body_medium": {
+        "font_size": "14px",
+        "line_height": "20px",
+        "font_weight": "600",
+        "letter_spacing": "0",
+        "usage": "Standard inputs, table rows, button labels"
+      },
+      "body_small": {
+        "font_size": "12px",
+        "line_height": "18px",
+        "font_weight": "600",
+        "letter_spacing": "0",
+        "usage": "Helper text, status badges, secondary details"
+      },
+      "caption": {
+        "font_size": "11px",
+        "line_height": "16px",
+        "font_weight": "700",
+        "letter_spacing": "0",
+        "usage": "Timestamps, SLA badges, metadata"
+      },
+      "code_mono": {
+        "font_size": "13px",
+        "line_height": "18px",
+        "font_weight": "700",
+        "font_family": "monospace",
+        "usage": "IDs, dispute numbers (DSP-2026-001), financial amounts (EGP), IBANs"
+      }
+    }
+  }
+}

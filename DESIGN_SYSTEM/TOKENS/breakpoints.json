@@ -1,0 +1,19 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "name": "SOLA Unified Breakpoints Tokens",
+  "version": "1.0.0",
+  "source_of_truth": "SOLA Ecosystem Responsive Architecture",
+  "breakpoints": {
+    "xs": "320px",
+    "sm": "640px",
+    "md": "768px",
+    "lg": "1024px",
+    "xl": "1280px",
+    "2xl": "1440px",
+    "application_targets": {
+      "owner_app": "Mobile Viewport (max-width 410px simulated) / Responsive Web",
+      "renter_app": "Mobile Viewport (max-width 410px) / iOS & Android",
+      "admin_portal": "Desktop Viewport (min-width 1024px, optimized for 1440px)"
+    }
+  }
+}

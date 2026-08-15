@@ -1,0 +1,29 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "name": "SOLA Unified Shadow Tokens",
+  "version": "1.0.0",
+  "source_of_truth": "SOLA Owner App (Forensic Extraction)",
+  "shadows": {
+    "none": "none",
+    "xs": "0 1px 2px 0 rgba(0, 0, 0, 0.05)",
+    "sm": "0 1px 3px 0 rgba(0, 0, 0, 0.05), 0 1px 2px -1px rgba(0, 0, 0, 0.05)",
+    "md": "0 4px 6px -1px rgba(0, 0, 0, 0.07), 0 2px 4px -2px rgba(0, 0, 0, 0.05)",
+    "lg": "0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.05)",
+    "xl": "0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.05)",
+    "2xl": "0 25px 50px -12px rgba(0, 0, 0, 0.25)",
+    "brand_blue": "0 4px 14px 0 rgba(0, 89, 255, 0.25)",
+    "brand_yellow": "0 4px 14px 0 rgba(255, 215, 0, 0.25)",
+    "brand_danger": "0 4px 14px 0 rgba(225, 29, 72, 0.25)",
+    "mobile_shell": "0 25px 60px -15px rgba(0, 89, 255, 0.30)",
+    "elevation_mapping": {
+      "card_standard": "sm",
+      "card_hover": "md",
+      "button_primary": "brand_blue",
+      "button_secondary": "brand_yellow",
+      "button_danger": "brand_danger",
+      "modal_overlay": "2xl",
+      "bottom_sheet": "2xl",
+      "header_dark_glass": "lg"
+    }
+  }
+}

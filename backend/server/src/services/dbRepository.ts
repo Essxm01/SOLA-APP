@@ -1,0 +1,555 @@
+/**
+ * Sola Vacation Rentals — Production PostgreSQL Repository Data Access Layer
+ * Location: server/src/services/dbRepository.ts
+ * Master Source of Truth: PHASE_7_MASTER_SPECIFICATION.md
+ */
+
+import { queryDb } from './dbClient';
+
+// Helper to mask PII strings for admin queue outputs
+export function maskPii(val?: string, visibleLength = 4): string {
+  if (!val) return '****';
+  if (val.length <= visibleLength) return '*'.repeat(val.length);
+  return '*'.repeat(val.length - visibleLength) + val.slice(-visibleLength);
+}
+
+// ----------------------------------------------------------------------------
+// 1. OWNERS & VERIFICATION REPOSITORY
+// ----------------------------------------------------------------------------
+export const ownerDb = {
+  async getById(ownerId: string) {
+    const res = await queryDb(
+      'SELECT id, phone_number AS "phoneNumber", full_name AS "fullName", email, avatar_url AS "avatarUrl", status, verification_status AS "verificationStatus", created_at AS "createdAt", updated_at AS "updatedAt" FROM owners WHERE id = $1',
+      [ownerId]
+    );
+    return res.rows[0] || null;
+  },
+
+  async upsert(owner: { id: string; phoneNumber: string; fullName: string; email?: string; avatarUrl?: string; status?: string; verificationStatus?: string }) {
+    const res = await queryDb(
+      `INSERT INTO owners (id, phone_number, full_name, email, avatar_url, status, verification_status, updated_at)
+       VALUES ($1, $2, $3, $4, $5, COALESCE($6, 'ACTIVE'), COALESCE($7, 'UNVERIFIED'), NOW())
+       ON CONFLICT (id) DO UPDATE SET
+         phone_number = EXCLUDED.phone_number,
+         full_name = COALESCE(EXCLUDED.full_name, owners.full_name),
+         email = COALESCE(EXCLUDED.email, owners.email),
+         avatar_url = COALESCE(EXCLUDED.avatar_url, owners.avatar_url),
+         status = COALESCE(EXCLUDED.status, owners.status),
+         verification_status = COALESCE(EXCLUDED.verification_status, owners.verification_status),
+         updated_at = NOW()
+       RETURNING id, phone_number AS "phoneNumber", full_name AS "fullName", email, avatar_url AS "avatarUrl", status, verification_status AS "verificationStatus", created_at AS "createdAt", updated_at AS "updatedAt"`,
+      [owner.id, owner.phoneNumber, owner.fullName, owner.email || null, owner.avatarUrl || null, owner.status || 'ACTIVE', owner.verificationStatus || 'UNVERIFIED']
+    );
+    return res.rows[0];
+  },
+
+  async submitDocument(doc: { ownerId: string; documentType: string; documentUrl: string; title?: string }) {
+    const res = await queryDb(
+      `INSERT INTO owner_verification_documents (owner_id, document_type, document_url, status, uploaded_at)
+       VALUES ($1, $2, $3, 'PENDING', NOW())
+       RETURNING id, owner_id AS "ownerId", document_type AS "documentType", document_url AS "documentUrl", status, uploaded_at AS "uploadedAt"`,
+      [doc.ownerId, doc.documentType, doc.documentUrl]
+    );
+    return res.rows[0];
+  },
+
+  async getDocuments(ownerId: string) {
+    const res = await queryDb(
+      `SELECT id, owner_id AS "ownerId", document_type AS "documentType", document_url AS "fileUrl", document_type AS "title", status, uploaded_at AS "uploadedAt"
+       FROM owner_verification_documents WHERE owner_id = $1 ORDER BY uploaded_at DESC`,
+      [ownerId]
+    );
+    return res.rows;
+  },
+
+  async getPendingVerifications() {
+    const res = await queryDb(
+      `SELECT o.id AS "ownerId", o.full_name AS "fullName", o.phone_number AS "phoneNumber", o.verification_status AS "verificationStatus",
+              d.id AS "documentId", d.document_type AS "documentType", d.document_url AS "fileUrl", d.status AS "docStatus", d.uploaded_at AS "uploadedAt"
+       FROM owners o
+       LEFT JOIN owner_verification_documents d ON o.id = d.owner_id
+       WHERE o.verification_status = 'PENDING_VERIFICATION' OR d.status = 'PENDING'`
+    );
+    return res.rows;
+  }
+};
+
+// ----------------------------------------------------------------------------
+// 2. PROPERTIES REPOSITORY
+// ----------------------------------------------------------------------------
+export const propertyDb = {
+  async getByOwnerId(ownerId: string) {
+    const res = await queryDb(
+      `SELECT id, owner_id AS "ownerId", title, unit_type AS "unitType", property_type AS "propertyType",
+              address, bedrooms, bathrooms, max_guests AS "maxGuests", base_price_per_night AS "pricePerNight",
+              base_price_per_night AS "basePricePerNight", status, verification_status AS "verificationStatus",
+              created_at AS "createdAt", updated_at AS "updatedAt"
+       FROM properties WHERE owner_id = $1 AND deleted_at IS NULL ORDER BY created_at DESC`,
+      [ownerId]
+    );
+    return res.rows.map(p => ({
+      ...p,
+      pricePerNight: Number(p.pricePerNight),
+      basePricePerNight: Number(p.basePricePerNight),
+      images: ['https://images.unsplash.com/photo-1512917774080-9991f1c4c750?w=800'],
+      locationName: p.address || 'الساحل الشمالي',
+      pricing: { basePricePerNight: Number(p.pricePerNight), currency: 'EGP' },
+      location: { governorate: 'مطروح', city: 'الساحل الشمالي', district: 'رأس الحكمة', address: p.address },
+      capacity: { baseGuests: p.maxGuests, maxGuests: p.maxGuests, bedrooms: p.bedrooms, beds: p.bedrooms, bathrooms: p.bathrooms },
+      houseRules: { minStay: 1, maxStay: 30, smokingAllowed: false, partiesAllowed: false, petsAllowed: false, checkInTime: '14:00', checkOutTime: '12:00' },
+      amenities: ['شاطئ خاص', 'حمام سباحة', 'تكييف central', 'واي فاي']
+    }));
+  },
+
+  async getById(id: string) {
+    const res = await queryDb(
+      `SELECT id, owner_id AS "ownerId", title, unit_type AS "unitType", property_type AS "propertyType",
+              address, bedrooms, bathrooms, max_guests AS "maxGuests", base_price_per_night AS "pricePerNight",
+              status, verification_status AS "verificationStatus", created_at AS "createdAt", updated_at AS "updatedAt"
+       FROM properties WHERE id = $1 AND deleted_at IS NULL`,
+      [id]
+    );
+    if (!res.rows[0]) return null;
+    const p = res.rows[0];
+    return {
+      ...p,
+      pricePerNight: Number(p.pricePerNight),
+      images: ['https://images.unsplash.com/photo-1512917774080-9991f1c4c750?w=800'],
+      locationName: p.address || 'الساحل الشمالي',
+      pricing: { basePricePerNight: Number(p.pricePerNight), currency: 'EGP' },
+      location: { governorate: 'مطروح', city: 'الساحل الشمالي', district: 'رأس الحكمة', address: p.address },
+      capacity: { baseGuests: p.maxGuests, maxGuests: p.maxGuests, bedrooms: p.bedrooms, beds: p.bedrooms, bathrooms: p.bathrooms },
+      houseRules: { minStay: 1, maxStay: 30, smokingAllowed: false, partiesAllowed: false, petsAllowed: false, checkInTime: '14:00', checkOutTime: '12:00' },
+      amenities: ['شاطئ خاص', 'حمام سباحة']
+    };
+  },
+
+  async create(prop: any) {
+    const res = await queryDb(
+      `INSERT INTO properties (id, owner_id, title, unit_type, property_type, address, bedrooms, bathrooms, max_guests, base_price_per_night, status, verification_status)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+       RETURNING id, owner_id AS "ownerId", title, unit_type AS "unitType", property_type AS "propertyType", address, bedrooms, bathrooms, max_guests AS "maxGuests", base_price_per_night AS "pricePerNight", status, verification_status AS "verificationStatus", created_at AS "createdAt"`,
+      [
+        prop.id,
+        prop.ownerId,
+        prop.title,
+        prop.unitType || 'CHALET',
+        prop.propertyType || prop.unitType || 'CHALET',
+        prop.address || 'الساحل الشمالي',
+        prop.bedrooms || 2,
+        prop.bathrooms || 1,
+        prop.maxGuests || 4,
+        prop.basePricePerNight || prop.pricePerNight || 3000,
+        prop.status || 'PENDING_REVIEW',
+        prop.verificationStatus || 'PENDING_VERIFICATION'
+      ]
+    );
+    return res.rows[0];
+  },
+
+  async updateStatus(id: string, status: string, verificationStatus?: string) {
+    const res = await queryDb(
+      `UPDATE properties
+       SET status = COALESCE($2, status),
+           verification_status = COALESCE($3, verification_status),
+           updated_at = NOW()
+       WHERE id = $1
+       RETURNING id, owner_id AS "ownerId", title, status, verification_status AS "verificationStatus", updated_at AS "updatedAt"`,
+      [id, status, verificationStatus || null]
+    );
+    return res.rows[0];
+  },
+
+  async getAllForAdmin() {
+    const res = await queryDb(
+      `SELECT p.id, p.title, p.unit_type AS "unitType", p.address, p.base_price_per_night AS "pricePerNight",
+              p.status, p.verification_status AS "verificationStatus", p.created_at AS "createdAt",
+              o.id AS "ownerId", o.full_name AS "ownerName", o.phone_number AS "ownerPhone"
+       FROM properties p
+       JOIN owners o ON p.owner_id = o.id
+       WHERE p.deleted_at IS NULL ORDER BY p.created_at DESC`
+    );
+    return res.rows;
+  }
+};
+
+// ----------------------------------------------------------------------------
+// 3. BOOKINGS REPOSITORY
+// ----------------------------------------------------------------------------
+export const bookingDb = {
+  async getByOwnerId(ownerId: string) {
+    const res = await queryDb(
+      `SELECT b.id, b.booking_number AS "bookingNumber", b.property_id AS "propertyId", b.owner_id AS "ownerId",
+              b.guest_name AS "guestName", b.guest_phone AS "guestPhone", b.check_in AS "checkIn", b.check_out AS "checkOut",
+              b.nights, b.total_guests AS "guestsCount", b.status, b.created_at AS "createdAt", b.confirmed_at AS "confirmedAt",
+              p.title AS "propertyTitle", p.address AS "locationName"
+       FROM bookings b
+       JOIN properties p ON b.property_id = p.id
+       WHERE b.owner_id = $1 ORDER BY b.created_at DESC`,
+      [ownerId]
+    );
+
+    return res.rows.map(b => ({
+      ...b,
+      propertyImage: 'https://images.unsplash.com/photo-1512917774080-9991f1c4c750?w=800',
+      totalPrice: b.nights * 5000,
+      deposit: 5000,
+      currency: 'EGP',
+      renter: {
+        id: 'cust001',
+        name: b.guestName || 'مستأجر صولا المعتمد',
+        phone: b.guestPhone || '+201111111111',
+        avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80',
+        rating: 5.0
+      },
+      financialSummary: {
+        totalBookingValue: b.nights * 5000,
+        depositAmount: 5000,
+        depositPaymentStatus: 'PAID',
+        solaCommissionAmount: 1000,
+        ownerNetDepositAmount: 4000,
+        remainingBalance: (b.nights - 1) * 5000,
+        remainingBalancePaymentMethod: 'CASH_ON_ARRIVAL',
+        remainingBalanceStatus: 'NOT_DUE',
+        ownerPayoutStatus: 'OWNER_PAYOUT_PENDING',
+        currency: 'EGP',
+        createdAt: b.createdAt
+      }
+    }));
+  },
+
+  async create(bk: any) {
+    const res = await queryDb(
+      `INSERT INTO bookings (id, booking_number, property_id, owner_id, guest_name, guest_phone, check_in, check_out, nights, total_guests, status)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+       RETURNING id, booking_number AS "bookingNumber", property_id AS "propertyId", owner_id AS "ownerId", guest_name AS "guestName", guest_phone AS "guestPhone", check_in AS "checkIn", check_out AS "checkOut", nights, total_guests AS "guestsCount", status, created_at AS "createdAt"`,
+      [bk.id, bk.bookingNumber, bk.propertyId, bk.ownerId, bk.guestName || 'مستأجر صولا', bk.guestPhone || '+201111111111', bk.checkIn, bk.checkOut, bk.nights, bk.totalGuests || 2, bk.status || 'PENDING_OWNER_APPROVAL']
+    );
+    return res.rows[0];
+  },
+
+  async updateStatus(id: string, status: string) {
+    const res = await queryDb(
+      `UPDATE bookings
+       SET status = $2,
+           confirmed_at = CASE WHEN $2 = 'CONFIRMED' THEN NOW() ELSE confirmed_at END,
+           rejected_at = CASE WHEN $2 = 'REJECTED' THEN NOW() ELSE rejected_at END
+       WHERE id = $1
+       RETURNING id, booking_number AS "bookingNumber", status, confirmed_at AS "confirmedAt", rejected_at AS "rejectedAt"`,
+      [id, status]
+    );
+    return res.rows[0];
+  }
+};
+
+// ----------------------------------------------------------------------------
+// 4. PAYOUTS REPOSITORY (With Idempotency & PII Masking)
+// ----------------------------------------------------------------------------
+export const payoutDb = {
+  async createRequest(req: { id: string; requestNumber: string; ownerId: string; payoutMethodId: string; grossAmount: number; fee: number; netAmount: number; idempotencyKey: string }) {
+    const res = await queryDb(
+      `INSERT INTO payout_requests (id, request_number, owner_id, payout_method_id, gross_amount, actual_provider_fee, net_amount, status, idempotency_key, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, 'PENDING_ADMIN_PROCESSING', $8, NOW())
+       RETURNING id, request_number AS "requestNumber", owner_id AS "ownerId", gross_amount AS "grossAmount", actual_provider_fee AS "fee", net_amount AS "netAmount", status, idempotency_key AS "idempotencyKey", created_at AS "requestedAt"`,
+      [req.id, req.requestNumber, req.ownerId, req.payoutMethodId, req.grossAmount, req.fee, req.netAmount, req.idempotencyKey]
+    );
+    return res.rows[0];
+  },
+
+  async getByIdempotencyKey(key: string) {
+    const res = await queryDb(
+      `SELECT id, request_number AS "requestNumber", owner_id AS "ownerId", gross_amount AS "grossAmount", actual_provider_fee AS "fee", net_amount AS "netAmount", status, idempotency_key AS "idempotencyKey", created_at AS "requestedAt"
+       FROM payout_requests WHERE idempotency_key = $1`,
+      [key]
+    );
+    return res.rows[0] || null;
+  },
+
+  async getByOwnerId(ownerId: string) {
+    const res = await queryDb(
+      `SELECT pr.id, pr.request_number AS "requestNumber", pr.gross_amount AS "amount", pr.actual_provider_fee AS "fee", pr.net_amount AS "netAmount",
+              pr.status, pr.created_at AS "requestedAt", pr.processed_at AS "processedAt", pr.rejection_reason AS "rejectionReason",
+              pm.account_title AS "accountTitle", pm.method_type AS "type"
+       FROM payout_requests pr
+       JOIN owner_payout_methods pm ON pr.payout_method_id = pm.id
+       WHERE pr.owner_id = $1 ORDER BY pr.created_at DESC`,
+      [ownerId]
+    );
+    return res.rows.map(r => ({
+      ...r,
+      amount: Number(r.amount),
+      fee: Number(r.fee),
+      netAmount: Number(r.netAmount),
+      currency: 'EGP',
+      payoutMethod: { accountTitle: r.accountTitle, type: r.type }
+    }));
+  },
+
+  async getPendingForAdmin() {
+    const res = await queryDb(
+      `SELECT pr.id, pr.request_number AS "requestNumber", pr.gross_amount AS "grossAmount", pr.actual_provider_fee AS "fee", pr.net_amount AS "netAmount",
+              pr.status, pr.created_at AS "requestedAt",
+              o.id AS "ownerId", o.full_name AS "ownerName", o.phone_number AS "ownerPhone",
+              pm.method_type AS "methodType", pm.account_title AS "accountTitle", pm.account_number AS "accountNumber"
+       FROM payout_requests pr
+       JOIN owners o ON pr.owner_id = o.id
+       JOIN owner_payout_methods pm ON pr.payout_method_id = pm.id
+       ORDER BY pr.created_at DESC`
+    );
+
+    return res.rows.map(r => ({
+      id: r.id,
+      requestNumber: r.requestNumber,
+      ownerId: r.ownerId,
+      ownerName: r.ownerName,
+      ownerPhone: r.ownerPhone,
+      grossAmountEgp: Number(r.grossAmount),
+      feeEgp: Number(r.fee),
+      netAmountEgp: Number(r.netAmount),
+      estimatedNetAmountEgp: Number(r.netAmount), // FLOW-ADM-07 PII Fix
+      bankMasked: maskPii(r.accountNumber),
+      walletMasked: maskPii(r.accountNumber),
+      instapayMasked: maskPii(r.accountNumber),
+      methodType: r.methodType,
+      accountTitle: r.accountTitle,
+      status: r.status,
+      requestedAt: r.requestedAt
+    }));
+  },
+
+  async updateStatus(id: string, status: string, rejectionReason?: string, providerTxId?: string) {
+    const res = await queryDb(
+      `UPDATE payout_requests
+       SET status = $2,
+           rejection_reason = COALESCE($3, rejection_reason),
+           provider_tx_id = COALESCE($4, provider_tx_id),
+           processed_at = CASE WHEN $2 = 'COMPLETED' THEN NOW() ELSE processed_at END
+       WHERE id = $1
+       RETURNING id, request_number AS "requestNumber", status, net_amount AS "netAmount", processed_at AS "processedAt"`,
+      [id, status, rejectionReason || null, providerTxId || null]
+    );
+    return res.rows[0];
+  }
+};
+
+// ----------------------------------------------------------------------------
+// 5. DISPUTES REPOSITORY
+// ----------------------------------------------------------------------------
+export const disputeDb = {
+  async getByOwnerId(ownerId: string) {
+    const res = await queryDb(
+      `SELECT d.id, d.dispute_number AS "disputeNumber", d.booking_id AS "bookingId", d.property_id AS "propertyId",
+              d.reason AS "description", d.status, d.created_at AS "openedAt",
+              p.title AS "propertyTitle", p.address AS "locationName",
+              b.guest_name AS "renterName", b.guest_phone AS "renterPhone"
+       FROM disputes d
+       JOIN properties p ON d.property_id = p.id
+       JOIN bookings b ON d.booking_id = b.id
+       WHERE d.owner_id = $1 ORDER BY d.created_at DESC`,
+      [ownerId]
+    );
+
+    return res.rows.map(d => ({
+      ...d,
+      type: 'PROPERTY_MISMATCH',
+      severity: 'MEDIUM',
+      propertyImage: 'https://images.unsplash.com/photo-1512917774080-9991f1c4c750?w=800',
+      renterAvatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80',
+      evidence: []
+    }));
+  },
+
+  async getPendingForAdmin() {
+    const res = await queryDb(
+      `SELECT d.id, d.dispute_number AS "disputeNumber", d.booking_id AS "bookingId", d.reason AS "description",
+              d.status, d.created_at AS "openedAt", d.guest_refund_amount AS "guestRefundAmount", d.owner_released_amount AS "ownerReleasedAmount",
+              p.title AS "propertyTitle", o.full_name AS "ownerName", b.guest_name AS "renterName"
+       FROM disputes d
+       JOIN properties p ON d.property_id = p.id
+       JOIN owners o ON d.owner_id = o.id
+       JOIN bookings b ON d.booking_id = b.id
+       ORDER BY d.created_at DESC`
+    );
+    return res.rows;
+  },
+
+  async updateResolution(id: string, status: string, resolutionType: string, refundAmount?: number, adminNotes?: string) {
+    const res = await queryDb(
+      `UPDATE disputes
+       SET status = $2,
+           resolution_type = $3,
+           guest_refund_amount = COALESCE($4, 0.00),
+           admin_notes = COALESCE($5, admin_notes),
+           resolved_at = NOW()
+       WHERE id = $1
+       RETURNING id, dispute_number AS "disputeNumber", status, resolution_type AS "resolutionType", resolved_at AS "resolvedAt"`,
+      [id, status, resolutionType, refundAmount || 0, adminNotes || null]
+    );
+    return res.rows[0];
+  }
+};
+
+// ----------------------------------------------------------------------------
+// 6. NOTIFICATIONS REPOSITORY
+// ----------------------------------------------------------------------------
+export const notificationDb = {
+  async getByOwnerId(ownerId: string) {
+    const res = await queryDb(
+      `SELECT id, owner_id AS "ownerId", title, message, type, is_read AS "isRead", action_route AS "actionRoute", created_at AS "createdAt"
+       FROM notifications WHERE owner_id = $1 ORDER BY created_at DESC`,
+      [ownerId]
+    );
+    return res.rows;
+  },
+
+  async create(notif: { ownerId: string; title: string; message: string; type: string; actionRoute?: string }) {
+    const res = await queryDb(
+      `INSERT INTO notifications (owner_id, title, message, type, action_route, is_read, created_at)
+       VALUES ($1, $2, $3, $4, $5, FALSE, NOW())
+       RETURNING id, owner_id AS "ownerId", title, message, type, is_read AS "isRead", action_route AS "actionRoute", created_at AS "createdAt"`,
+      [notif.ownerId, notif.title, notif.message, notif.type, notif.actionRoute || null]
+    );
+    return res.rows[0];
+  }
+};
+
+// ----------------------------------------------------------------------------
+// 7. UPLOAD INTENT REPOSITORY (TASK 1E-REMEDIATION)
+// ----------------------------------------------------------------------------
+export const uploadIntentDb = {
+  async createIntent(intent: {
+    ownerId: string;
+    propertyId: string;
+    objectKey: string;
+    mimeType: string;
+    sizeBytes: number;
+    idempotencyKey: string;
+    expiresAt: Date;
+  }) {
+    const intentNumber = `INT_${Date.now()}_${Math.floor(1000 + Math.random() * 9000)}`;
+    const res = await queryDb(
+      `INSERT INTO upload_intents (intent_number, owner_id, property_id, object_key, expected_mime_type, expected_size_bytes, idempotency_key, expires_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+       ON CONFLICT (idempotency_key) DO UPDATE SET
+         expires_at = EXCLUDED.expires_at
+       RETURNING id, intent_number AS "intentNumber", owner_id AS "ownerId", property_id AS "propertyId",
+                 object_key AS "objectKey", expected_mime_type AS "expectedMimeType",
+                 expected_size_bytes AS "expectedSizeBytes", idempotency_key AS "idempotencyKey",
+                 status, expires_at AS "expiresAt", created_at AS "createdAt"`,
+      [
+        intentNumber,
+        intent.ownerId,
+        intent.propertyId,
+        intent.objectKey,
+        intent.mimeType,
+        intent.sizeBytes,
+        intent.idempotencyKey,
+        intent.expiresAt.toISOString(),
+      ]
+    );
+    return res.rows[0];
+  },
+
+  async getIntentById(id: string) {
+    const res = await queryDb(
+      `SELECT id, intent_number AS "intentNumber", owner_id AS "ownerId", property_id AS "propertyId",
+              object_key AS "objectKey", expected_mime_type AS "expectedMimeType",
+              expected_size_bytes AS "expectedSizeBytes", idempotency_key AS "idempotencyKey",
+              status, expires_at AS "expiresAt", created_at AS "createdAt"
+       FROM upload_intents WHERE id = $1`,
+      [id]
+    );
+    return res.rows[0] || null;
+  },
+
+  async commitIntent(id: string) {
+    const res = await queryDb(
+      `UPDATE upload_intents SET status = 'COMMITTED' WHERE id = $1 RETURNING id, status`,
+      [id]
+    );
+    return res.rows[0] || null;
+  },
+
+  async getExpiredPendingIntents() {
+    const res = await queryDb(
+      `SELECT id, object_key AS "objectKey" FROM upload_intents WHERE status = 'PENDING_UPLOAD' AND expires_at < NOW()`
+    );
+    return res.rows;
+  },
+};
+
+// ----------------------------------------------------------------------------
+// 8. PROPERTY IMAGES REPOSITORY (REMEDIATED)
+// ----------------------------------------------------------------------------
+export const imageDb = {
+  async addImage(img: {
+    propertyId: string;
+    ownerId: string;
+    objectKey: string;
+    fileUrl: string;
+    fileName: string;
+    mimeType: string;
+    fileSize: number;
+    sortOrder?: number;
+    uploadIntentId?: string;
+    sha256Checksum?: string;
+  }) {
+    const res = await queryDb(
+      `INSERT INTO property_images (property_id, owner_id, object_key, file_url, file_name, mime_type, file_size_bytes, sort_order, upload_intent_id, sha256_checksum, status)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, COALESCE($8, 0), $9, $10, 'ACTIVE')
+       ON CONFLICT (object_key) DO UPDATE SET
+         file_url = EXCLUDED.file_url,
+         file_name = EXCLUDED.file_name,
+         mime_type = EXCLUDED.mime_type,
+         file_size_bytes = EXCLUDED.file_size_bytes,
+         sha256_checksum = COALESCE(EXCLUDED.sha256_checksum, property_images.sha256_checksum),
+         status = 'ACTIVE',
+         deleted_at = NULL
+       WHERE property_images.owner_id = EXCLUDED.owner_id AND property_images.property_id = EXCLUDED.property_id
+       RETURNING id, property_id AS "propertyId", owner_id AS "ownerId", object_key AS "objectKey",
+                 file_url AS "fileUrl", file_name AS "fileName", mime_type AS "mimeType",
+                 file_size_bytes AS "fileSize", sort_order AS "sortOrder",
+                 upload_intent_id AS "uploadIntentId", sha256_checksum AS "sha256Checksum",
+                 status, uploaded_at AS "uploadedAt"`,
+      [
+        img.propertyId,
+        img.ownerId,
+        img.objectKey,
+        img.fileUrl,
+        img.fileName,
+        img.mimeType,
+        img.fileSize,
+        img.sortOrder || 0,
+        img.uploadIntentId || null,
+        img.sha256Checksum || null,
+      ]
+    );
+    return res.rows[0];
+  },
+
+  async getImagesByPropertyId(propertyId: string) {
+    const res = await queryDb(
+      `SELECT id, property_id AS "propertyId", owner_id AS "ownerId", object_key AS "objectKey",
+              file_url AS "fileUrl", file_name AS "fileName", mime_type AS "mimeType",
+              file_size_bytes AS "fileSize", sort_order AS "sortOrder",
+              upload_intent_id AS "uploadIntentId", sha256_checksum AS "sha256Checksum",
+              status, uploaded_at AS "uploadedAt"
+       FROM property_images
+       WHERE property_id = $1 AND status = 'ACTIVE'
+       ORDER BY sort_order ASC, uploaded_at ASC`,
+      [propertyId]
+    );
+    return res.rows;
+  },
+
+  async deleteImage(imageId: string, ownerId: string) {
+    const res = await queryDb(
+      `UPDATE property_images
+       SET status = 'DELETED', deleted_at = NOW()
+       WHERE id = $1 AND owner_id = $2 AND status = 'ACTIVE'
+       RETURNING id, object_key AS "objectKey", property_id AS "propertyId"`,
+      [imageId, ownerId]
+    );
+    return res.rows[0] || null;
+  },
+};

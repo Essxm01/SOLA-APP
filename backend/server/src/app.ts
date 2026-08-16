@@ -754,7 +754,10 @@ export class ExpressServerApp {
             basePricePerNight: bodyPayload?.pricePerNight || bodyPayload?.basePricePerNight || 3000,
             status: 'PENDING_REVIEW',
             verificationStatus: 'PENDING_VERIFICATION',
-          }).catch(() => null) || {
+          }).catch((err) => {
+            console.error('❌ [propertyDb.create DB ERROR]:', err);
+            return null;
+          }) || {
             id: propId,
             ownerId,
             title: bodyPayload?.title || 'شاليه جديد',

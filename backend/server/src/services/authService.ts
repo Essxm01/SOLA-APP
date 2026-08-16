@@ -6,6 +6,7 @@
 
 import { MockSmsProvider, type ISmsProvider } from './smsProvider.js';
 import { signAccessToken, signRefreshToken } from './jwtService.js';
+import { ownerDb } from './dbRepository.js';
 import type { AuthSessionTokens, UserRole } from '../types/server.js';
 
 export interface UserSessionRecord {

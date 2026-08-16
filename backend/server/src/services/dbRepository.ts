@@ -173,10 +173,10 @@ export const propertyDb = {
               p.base_price_per_night AS "pricePerNight",
               p.status, p.verification_status AS "verificationStatus",
               p.created_at AS "createdAt", p.updated_at AS "updatedAt",
-              o.id AS "ownerId", o.full_name AS "ownerName", o.phone_number AS "ownerPhone",
-              o.verification_status AS "ownerVerificationStatus"
+              COALESCE(o.id, p.owner_id) AS "ownerId", COALESCE(o.full_name, 'مالك صولا') AS "ownerName", COALESCE(o.phone_number, '') AS "ownerPhone",
+              COALESCE(o.verification_status, 'UNVERIFIED') AS "ownerVerificationStatus"
        FROM properties p
-       JOIN owners o ON p.owner_id = o.id
+       LEFT JOIN owners o ON p.owner_id = o.id
        ${whereClause} ORDER BY p.created_at DESC`,
       params
     );
@@ -193,10 +193,10 @@ export const propertyDb = {
               p.base_price_per_night AS "pricePerNight",
               p.status, p.verification_status AS "verificationStatus",
               p.created_at AS "createdAt", p.updated_at AS "updatedAt",
-              o.id AS "ownerId", o.full_name AS "ownerName", o.phone_number AS "ownerPhone",
-              o.verification_status AS "ownerVerificationStatus"
+              COALESCE(o.id, p.owner_id) AS "ownerId", COALESCE(o.full_name, 'مالك صولا') AS "ownerName", COALESCE(o.phone_number, '') AS "ownerPhone",
+              COALESCE(o.verification_status, 'UNVERIFIED') AS "ownerVerificationStatus"
        FROM properties p
-       JOIN owners o ON p.owner_id = o.id
+       LEFT JOIN owners o ON p.owner_id = o.id
        WHERE p.deleted_at IS NULL AND (p.status = 'PENDING_REVIEW' OR p.status = 'REJECTED')
        ORDER BY CASE WHEN p.status = 'PENDING_REVIEW' THEN 0 ELSE 1 END, p.created_at ASC`
     );
@@ -213,11 +213,11 @@ export const propertyDb = {
               p.base_price_per_night AS "pricePerNight",
               p.status, p.verification_status AS "verificationStatus",
               p.created_at AS "createdAt", p.updated_at AS "updatedAt",
-              o.full_name AS "ownerName", o.phone_number AS "ownerPhone", o.email AS "ownerEmail",
-              o.verification_status AS "ownerVerificationStatus", o.status AS "ownerStatus",
+              COALESCE(o.full_name, 'مالك صولا') AS "ownerName", COALESCE(o.phone_number, '') AS "ownerPhone", o.email AS "ownerEmail",
+              COALESCE(o.verification_status, 'UNVERIFIED') AS "ownerVerificationStatus", COALESCE(o.status, 'ACTIVE') AS "ownerStatus",
               o.created_at AS "ownerCreatedAt"
        FROM properties p
-       JOIN owners o ON p.owner_id = o.id
+       LEFT JOIN owners o ON p.owner_id = o.id
        WHERE p.id = $1 AND p.deleted_at IS NULL`,
       [id]
     );

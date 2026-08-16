@@ -152,19 +152,28 @@ export class AuthService {
     const ownerId = `owner_${cleanPhone}`;
     
     // Fetch or Create real Owner Record in PostgreSQL DB store
-    let owner = dbOwnersStore.get(ownerId);
+    let owner = await ownerDb.getById(ownerId).catch(() => null);
+    if (!owner) {
+      owner = await ownerDb.upsert({
+        id: ownerId,
+        phoneNumber: phone,
+        fullName: 'مالك صولا المعين',
+        status: 'ACTIVE',
+        verificationStatus: 'UNVERIFIED',
+      }).catch(() => null);
+    }
     if (!owner) {
       owner = {
         id: ownerId,
         phoneNumber: phone,
-        fullName: '',
+        fullName: 'مالك صولا المعين',
         status: 'ACTIVE',
         verificationStatus: 'UNVERIFIED',
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };
-      dbOwnersStore.set(ownerId, owner);
     }
+    dbOwnersStore.set(ownerId, owner);
 
     const accessToken = signAccessToken({ sub: ownerId, role: 'ROLE_OWNER', phone });
     const refreshToken = signRefreshToken({ sub: ownerId, role: 'ROLE_OWNER' });

@@ -732,6 +732,15 @@ export class ExpressServerApp {
         // --- E. Property Domain Endpoints (PostgreSQL Driven) ---
         if (path === '/api/v1/owner/properties' && method === 'POST') {
           const propId = `prop_${Date.now()}`;
+          // Ensure owner record exists in PostgreSQL DB before inserting property
+          await ownerDb.upsert({
+            id: ownerId,
+            phoneNumber: formatOwnerPhone(ownerId),
+            fullName: 'مالك صولا',
+            status: 'ACTIVE',
+            verificationStatus: 'UNVERIFIED',
+          }).catch(() => null);
+
           const newProperty = await propertyDb.create({
             id: propId,
             ownerId,

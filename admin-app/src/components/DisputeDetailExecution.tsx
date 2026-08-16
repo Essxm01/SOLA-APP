@@ -2,12 +2,12 @@ import { useState, useEffect } from 'react';
 import {
   Scale,
   AlertTriangle,
-  Clock,
   RefreshCw,
   ArrowRight,
   FileText,
-  Building,
-  User
+  User,
+  ShieldCheck,
+  Lock
 } from 'lucide-react';
 import { Card } from './ui/Card';
 import { Button } from './ui/Button';
@@ -66,7 +66,7 @@ export function DisputeDetailExecution({ disputeId, onBack }: DisputeDetailExecu
     setIsResolvingLoading(true);
     try {
       if (adminNotesText.trim().length < 20) {
-        throw new Error('ملاحظات الإدارة adminNotes إجبارية وتتطلب 20 حرفاً على الأقل بعد الـ Trim');
+        throw new Error('ملاحظات القرار الإداري إجبارية وتتطلب 20 حرفاً على الأقل لتوثيق الحسم');
       }
 
       const token = localStorage.getItem('sola_admin_access_token') || 'admin_token_valid';
@@ -90,7 +90,7 @@ export function DisputeDetailExecution({ disputeId, onBack }: DisputeDetailExecu
       }
 
       setShowResolveModal(false);
-      setActionSuccess(`تم اعتماد قرار الحسم الإداري (${resolutionType}) بنجاح وتسجيل قيد الـ Ledger الذري`);
+      setActionSuccess(`تم اعتماد قرار الحسم الإداري بنجاح وتسجيل التسوية المالية.`);
       fetchDetail();
     } catch (err: any) {
       setError(err.message);
@@ -120,216 +120,224 @@ export function DisputeDetailExecution({ disputeId, onBack }: DisputeDetailExecu
 
   if (loading) {
     return (
-      <Card className="p-12 text-center space-y-4">
-        <SkeletonBox className="h-8 w-48 mx-auto" />
-        <SkeletonBox className="h-32 w-full" />
-        <p className="text-xs font-bold text-slate-500">جارِ تحميل مركز حسم النزاع والأدلة الجنائية المرفقة...</p>
-      </Card>
+      <div className="space-y-6">
+        <SkeletonBox className="h-20 w-full rounded-3xl" />
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <SkeletonBox className="h-64 md:col-span-2 rounded-2xl" />
+          <SkeletonBox className="h-64 rounded-2xl" />
+        </div>
+      </div>
     );
   }
 
-  if (!detail) return null;
-
-  const isResolved = detail.status === 'RESOLVED';
-  const isResolving = detail.status === 'RESOLVING_PENDING_GATEWAY';
-  const frozenHoldEgp = detail.frozenHoldEgp || 5000;
-  const ownerReleasedSoFarEgp = detail.ownerReleasedAmountEgp || 0;
-  const remainingHeldEgp = frozenHoldEgp - ownerReleasedSoFarEgp;
+  if (!detail) {
+    return (
+      <div className="space-y-6">
+        <Button variant="ghost" onClick={onBack} icon={<ArrowRight className="w-4 h-4" />}>
+          العودة لقائمة النزاعات
+        </Button>
+        <AlertBanner type="error" message={error || 'تفاصيل النزاع غير موجودة'} />
+      </div>
+    );
+  }
 
   return (
-    <div className="space-y-6 animate-fade-in pb-12 dir-rtl" dir="rtl">
+    <div className="space-y-6 animate-fade-in dir-rtl" dir="rtl">
       
-      {/* Top Breadcrumb Header */}
-      <div className="flex items-center justify-between bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
-        <div className="flex items-center gap-3">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={onBack}
-            icon={<ArrowRight className="w-3.5 h-3.5" />}
-          >
-            العودة لقائمة النزاعات
-          </Button>
-          <span className="text-slate-300 text-sm">/</span>
-          <div className="flex items-center gap-2">
-            <Scale className="w-4 h-4 text-[#0059FF]" />
-            <h2 className="font-extrabold text-sm text-slate-900">مركز حسم النزاع: {detail.disputeNumber}</h2>
+      {/* Top Banner Header with Back Navigation */}
+      <Card className="p-6 bg-white border border-slate-200 shadow-sm rounded-3xl">
+        <div className="flex flex-col md:flex-row justify-between md:items-center gap-4">
+          <div className="flex items-center gap-4">
+            <button
+              onClick={onBack}
+              className="p-2.5 rounded-2xl bg-slate-100 hover:bg-blue-50 text-slate-700 hover:text-[#0059FF] transition-all border border-slate-200 cursor-pointer"
+              title="العودة للقائمة"
+            >
+              <ArrowRight className="w-5 h-5" />
+            </button>
+            <div>
+              <div className="flex items-center gap-2 mb-1">
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-extrabold bg-blue-50 text-[#0059FF] border border-blue-200">
+                  <Scale className="w-3.5 h-3.5 text-[#0059FF]" />
+                  <span>تفاصيل النزاع</span>
+                </span>
+                <StatusBadge status={detail.status} />
+              </div>
+              <h1 className="text-2xl font-black text-slate-900 tracking-tight">نزاع رقم: {detail.disputeNumber}</h1>
+              <p className="text-xs text-slate-500 font-semibold mt-0.5">
+                حجز رقم: <span className="font-mono text-slate-800">{detail.bookingId}</span>
+              </p>
+            </div>
+          </div>
+
+          {/* Header Action Buttons */}
+          <div className="flex items-center gap-3 self-start md:self-auto">
+            {detail.status !== 'RESOLVED' && (
+              <Button
+                variant="primary"
+                onClick={() => setShowResolveModal(true)}
+                icon={<ShieldCheck className="w-4 h-4" />}
+              >
+                اصدار القرار والحسم
+              </Button>
+            )}
+
+            {detail.status === 'RESOLVING_PENDING_GATEWAY' && (
+              <Button
+                variant="secondary"
+                onClick={handleReconcile}
+                icon={<RefreshCw className="w-4 h-4" />}
+              >
+                استعلام البنك
+              </Button>
+            )}
           </div>
         </div>
+      </Card>
 
-        <span className="text-xs font-extrabold px-3 py-1 rounded-full bg-blue-50 text-[#0059FF] border border-blue-200">
-          FLOW-ADM-09 Locked Saga
-        </span>
-      </div>
-
-      {/* Success Alert */}
+      {/* Action Success Alert */}
       {actionSuccess && (
         <AlertBanner type="success" message={actionSuccess} onClose={() => setActionSuccess(null)} />
       )}
 
-      {/* Error Alert */}
-      {error && (
-        <AlertBanner type="error" message={error} onClose={() => setError(null)} />
-      )}
+      {/* Main Details Workspace Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        
+        {/* Left Column (2 Cols): Dispute Summary & Evidence */}
+        <div className="lg:col-span-2 space-y-6">
+          
+          {/* Dispute Reason & Case Details Card */}
+          <Card className="bg-white border border-slate-200 shadow-xs rounded-2xl p-6 space-y-4">
+            <h2 className="text-base font-black text-slate-900 border-b border-slate-100 pb-3 flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 text-amber-500" />
+              <span>تفاصيل موضوع النزاع وملاحظات الأطراف</span>
+            </h2>
 
-      {/* Dispute Header & Financial Summary Card */}
-      <Card className="p-6 bg-white">
-        <div className="flex flex-col lg:flex-row justify-between lg:items-center border-b border-slate-100 pb-5 mb-6 gap-4">
-          <div>
-            <div className="flex items-center gap-3 mb-1">
-              <h1 className="text-2xl font-black text-slate-900 font-mono">{detail.disputeNumber}</h1>
-              <StatusBadge status={detail.status} />
-            </div>
-            <p className="text-xs font-semibold text-slate-500">حجز: <strong className="font-mono text-slate-800">#{detail.bookingId}</strong> — {detail.property?.title}</p>
-          </div>
-
-          {/* Financial Summary Badges */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-            <div className="bg-rose-50 border border-rose-200 p-3 rounded-xl text-right">
-              <div className="text-[10px] font-bold text-rose-700">المبلغ المحجوز الإجمالي ($H$)</div>
-              <div className="text-base font-black text-rose-900 font-mono">{frozenHoldEgp.toLocaleString()} ج.م</div>
-            </div>
-
-            <div className="bg-emerald-50 border border-emerald-200 p-3 rounded-xl text-right">
-              <div className="text-[10px] font-bold text-emerald-700">المحرر للمالك حتى الآن</div>
-              <div className="text-base font-black text-emerald-900 font-mono">{ownerReleasedSoFarEgp.toLocaleString()} ج.م</div>
-            </div>
-
-            <div className="bg-blue-50 border border-blue-200 p-3 rounded-xl text-right col-span-2 sm:col-span-1">
-              <div className="text-[10px] font-bold text-[#0059FF]">المتبقي بالحظر (H_remaining)</div>
-              <div className="text-base font-black text-[#0059FF] font-mono">{remainingHeldEgp.toLocaleString()} ج.م</div>
-            </div>
-          </div>
-        </div>
-
-        {/* Dispute Overview Details Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-xs mb-6">
-          <div className="space-y-3 bg-slate-50/80 p-4 rounded-xl border border-slate-200">
-            <div className="flex items-center justify-between border-b border-slate-200/80 pb-2">
-              <span className="text-slate-500 font-bold flex items-center gap-1.5"><User className="w-3.5 h-3.5 text-slate-400" /> المستأجر المشتكي:</span>
-              <strong className="text-slate-900">{detail.renter?.fullName}</strong>
-            </div>
-            <div className="flex items-center justify-between border-b border-slate-200/80 pb-2">
-              <span className="text-slate-500 font-bold flex items-center gap-1.5"><Building className="w-3.5 h-3.5 text-slate-400" /> المالك المشكو في حقه:</span>
-              <strong className="text-slate-900">{detail.owner?.fullName} ({detail.owner?.verificationStatus})</strong>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-slate-500 font-bold flex items-center gap-1.5"><Clock className="w-3.5 h-3.5 text-amber-600" /> Admin SLA Deadline:</span>
-              <strong className="text-amber-900">{new Date(detail.adminSlaDeadlineAt).toLocaleString('ar-EG')}</strong>
-            </div>
-          </div>
-
-          <div className="bg-amber-50/60 p-4 rounded-xl border border-amber-200/80 space-y-2">
-            <div className="font-extrabold text-amber-900 flex items-center gap-1.5">
-              <AlertTriangle className="w-4 h-4 text-amber-700" />
-              <span>سبب النزاع المدون:</span>
-            </div>
-            <p className="text-slate-800 font-semibold text-xs leading-relaxed">{detail.reason}</p>
-          </div>
-        </div>
-
-        {/* Evidence Timeline (Append-Only) */}
-        <div className="space-y-3 pt-2">
-          <div className="flex items-center justify-between">
-            <h3 className="font-extrabold text-slate-900 text-sm flex items-center gap-2">
-              <FileText className="w-4 h-4 text-[#0059FF]" />
-              <span>مخطط الأدلة المرفقة (Append-Only Evidence Timeline):</span>
-            </h3>
-            <span className="text-[11px] font-bold text-slate-400">محمية ضد التعديل أو الحذف بـ DB Trigger</span>
-          </div>
-
-          <div className="space-y-3">
-            {detail.evidenceList.map((ev: any) => (
-              <div key={ev.id} className="p-4 bg-slate-50 border border-slate-200 rounded-xl text-xs space-y-1">
-                <div className="flex justify-between items-center font-bold">
-                  <span className={`px-2 py-0.5 rounded text-[10px] ${
-                    ev.submittedByRole === 'RENTER' ? 'bg-blue-100 text-blue-900' :
-                    ev.submittedByRole === 'OWNER' ? 'bg-amber-100 text-amber-900' : 'bg-slate-900 text-white'
-                  }`}>
-                    {ev.submittedByRole === 'RENTER' ? 'المستأجر' : ev.submittedByRole === 'OWNER' ? 'المالك' : 'الإدارة'} ({ev.evidenceType})
-                  </span>
-                  <span className="text-slate-400 font-mono">{new Date(ev.submittedAt).toLocaleString('ar-EG')}</span>
-                </div>
-                <p className="text-slate-900 font-semibold text-xs pt-1">{ev.content}</p>
+            <div className="space-y-3">
+              <div className="p-4 bg-amber-50/50 border border-amber-200 rounded-xl space-y-1">
+                <span className="text-[11px] font-bold text-amber-800 block">سبب فتح النزاع:</span>
+                <strong className="text-sm font-extrabold text-slate-900">{detail.reason || 'مخالفة شروط الحجز أو حالة العين'}</strong>
               </div>
-            ))}
-          </div>
+
+              <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
+                <span className="text-[11px] font-bold text-slate-500 block">الشرح المدون من مقدم الطلب:</span>
+                <p className="text-xs text-slate-700 leading-relaxed font-semibold">
+                  {detail.description || 'لا يوجد شرح تفصيلي مدون.'}
+                </p>
+              </div>
+            </div>
+          </Card>
+
+          {/* Evidence Documents Card */}
+          <Card className="bg-white border border-slate-200 shadow-xs rounded-2xl p-6 space-y-4">
+            <h2 className="text-base font-black text-slate-900 border-b border-slate-100 pb-3 flex items-center gap-2">
+              <FileText className="w-4 h-4 text-[#0059FF]" />
+              <span>الأدلة والمرفقات المقدمة ({detail.evidenceUrls?.length || 0})</span>
+            </h2>
+
+            {(!detail.evidenceUrls || detail.evidenceUrls.length === 0) ? (
+              <div className="p-6 text-center bg-slate-50 rounded-xl border border-slate-200 text-slate-500 text-xs font-semibold">
+                لم يتم تقديم صور أو أدلة مستندية بعد.
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                {detail.evidenceUrls.map((url: string, idx: number) => (
+                  <div key={idx} className="rounded-xl overflow-hidden border border-slate-200 bg-slate-100 aspect-video relative">
+                    <img src={url} alt={`دليل ${idx + 1}`} className="w-full h-full object-cover" />
+                  </div>
+                ))}
+              </div>
+            )}
+          </Card>
+
         </div>
 
-      </Card>
+        {/* Right Column (1 Col): Financial Hold & Case Parties */}
+        <div className="space-y-6">
+          
+          {/* Financial Hold Card */}
+          <Card className="bg-white border border-slate-200 shadow-xs rounded-2xl p-6 space-y-4">
+            <h2 className="text-base font-black text-slate-900 border-b border-slate-100 pb-3 flex items-center gap-2">
+              <Lock className="w-4 h-4 text-rose-600" />
+              <span>التحفظ المالي (Frozen Balance)</span>
+            </h2>
 
-      {/* Executive Action Control Panel */}
-      <Card className="p-6 bg-white">
-        <h3 className="text-base font-black text-slate-900 mb-4 flex items-center gap-2">
-          <Scale className="w-5 h-5 text-[#0059FF]" />
-          <span>لوحة البت الإداري والمطابقة (Executive Resolution Controls)</span>
-        </h3>
+            <div className="p-4 bg-rose-50 border border-rose-200 rounded-xl space-y-2 text-center">
+              <span className="text-xs font-extrabold text-rose-800 block">المبلغ التحفظي المحجوز</span>
+              <strong className="text-3xl font-black text-rose-600">
+                {(detail.frozenHoldEgp || detail.ownerNetDepositFrozen || 0).toLocaleString()} <span className="text-xs font-normal text-slate-500">ج.م</span>
+              </strong>
+              <p className="text-[10px] text-rose-700 font-semibold">مبلغ متحفظ عليه لحين حسم القرار الإداري</p>
+            </div>
+          </Card>
 
-        <div className="flex flex-wrap gap-4">
-          <Button
-            variant="primary"
-            size="md"
-            disabled={isResolved || isResolving}
-            onClick={() => setShowResolveModal(true)}
-            icon={<Scale className="w-4 h-4" />}
-          >
-            البت الإداري النهائي (Resolve Dispute)
-          </Button>
+          {/* Parties Info Card */}
+          <Card className="bg-white border border-slate-200 shadow-xs rounded-2xl p-6 space-y-4">
+            <h2 className="text-base font-black text-slate-900 border-b border-slate-100 pb-3 flex items-center gap-2">
+              <User className="w-4 h-4 text-[#0059FF]" />
+              <span>أطراف قضية النزاع</span>
+            </h2>
 
-          <Button
-            variant="outline"
-            size="md"
-            onClick={handleReconcile}
-            icon={<RefreshCw className="w-4 h-4 text-sky-600" />}
-            className="!bg-slate-900 !text-white !border-slate-800 hover:!bg-slate-800"
-          >
-            استعلام مطابقة الاسترداد البنكي (Reconcile Gateway)
-          </Button>
+            <div className="space-y-3 text-xs">
+              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-1">
+                <span className="text-slate-500 font-bold block">المالك:</span>
+                <strong className="text-slate-900 font-extrabold">{detail.owner?.fullName || 'مالك بدون اسم'}</strong>
+                <div className="text-[10px] text-slate-400 font-mono">{detail.ownerId}</div>
+              </div>
+
+              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-1">
+                <span className="text-slate-500 font-bold block">المستأجر:</span>
+                <strong className="text-slate-900 font-extrabold">{detail.renter?.fullName || 'مستأجر بدون اسم'}</strong>
+                <div className="text-[10px] text-slate-400 font-mono">{detail.customerId}</div>
+              </div>
+            </div>
+          </Card>
+
         </div>
-      </Card>
 
-      {/* Resolve Confirmation Modal */}
+      </div>
+
+      {/* Resolution Decision Modal */}
       <Modal
         isOpen={showResolveModal}
         onClose={() => setShowResolveModal(false)}
-        title="تأكيد قرار الحسم الإداري بالنزاع"
-        primaryActionLabel="تأكيد البت والتسوية"
+        title="إصدار القرار الإداري وحسم النزاع"
+        primaryActionLabel="اعتماد وتسوية القرار"
         onPrimaryAction={handleResolve}
         isPrimaryLoading={isResolvingLoading}
       >
-        <div className="space-y-4 text-xs">
-          <div>
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <label className="block font-extrabold text-slate-900">نوع القرار والتسوية المالية:</label>
             <Select
-              label="نوع القرار الموحد (Unified Resolution Taxonomy):"
               value={resolutionType}
               onChange={(e: any) => setResolutionType(e.target.value)}
             >
-              <option value="RELEASE_TO_OWNER">RELEASE_TO_OWNER — تحرير 100% للمالك ({remainingHeldEgp.toLocaleString()} ج.م)</option>
-              <option value="REFUND_GUEST">REFUND_GUEST — استرداد 100% للضيف ({remainingHeldEgp.toLocaleString()} ج.م)</option>
-              <option value="SPLIT">SPLIT — تقسيم مبلغ الحظر المتبقي بين المالك والضيف</option>
+              <option value="RELEASE_TO_OWNER">تحرير المبلغ كاملاً لصالح المالك (Release to Owner)</option>
+              <option value="REFUND_GUEST">استرداد المبلغ كاملاً لصالح المستأجر (Full Refund to Guest)</option>
+              <option value="SPLIT">قسمة وتسوية مالية مخصصة (Custom Split)</option>
             </Select>
           </div>
 
           {resolutionType === 'SPLIT' && (
-            <div className="bg-blue-50/60 p-3.5 rounded-xl border border-blue-200">
+            <div className="space-y-1.5 animate-fade-in">
+              <label className="block font-bold text-slate-800">مبلغ الاسترداد للمستأجر (ج.م):</label>
               <Input
                 type="number"
-                label="مبلغ استرداد الضيف (EGP):"
                 value={refundAmountInput}
                 onChange={(e) => setRefundAmountInput(e.target.value)}
-                helperText={`يجب أن ينحصر المبلغ بين 0 والمبلغ المحجوز المتبقي الحقيقي (${remainingHeldEgp.toLocaleString()} ج.م).`}
+                placeholder="أدخل المبلغ بالجنيه المصري..."
               />
             </div>
           )}
 
-          <div>
-            <label className="block font-bold text-slate-700 mb-1.5">ملاحظات الإدارة adminNotes (20 حرفاً على الأقل بعد الـ Trim):</label>
+          <div className="space-y-1.5">
+            <label className="block font-bold text-slate-800">ملاحظات القرار الإداري (إجباري - 20 حرفاً):</label>
             <textarea
-              rows={3}
               value={adminNotesText}
               onChange={(e) => setAdminNotesText(e.target.value)}
-              className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:border-[#0059FF]"
-              placeholder="أدخل الملاحظات والأسباب الإدارية الموجبة لهذا القرار..."
+              placeholder="اكتب أسباب وحيثيات القرار الإداري لتسجيلها بسجل المراجعة..."
+              className="w-full p-3 bg-white border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-blue-200 focus:border-[#0059FF] outline-none h-24"
             />
           </div>
         </div>

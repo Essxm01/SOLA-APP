@@ -45,20 +45,20 @@ export function AdminLogin({ onLoginSuccess }: AdminLoginProps) {
   };
 
   return (
-    <div className="min-h-screen bg-[#F5F7FA] flex items-center justify-center p-4 dir-rtl" dir="rtl">
+    <div className="min-h-screen bg-[#F8FAFC] flex items-center justify-center p-4 dir-rtl" dir="rtl">
       <div className="max-w-md w-full space-y-6 animate-fade-in">
         
         {/* Header Logo */}
         <div className="text-center space-y-2">
-          <div className="w-16 h-16 rounded-3xl bg-gradient-to-tr from-[#0059FF] via-blue-600 to-sky-400 flex items-center justify-center font-black text-white text-3xl shadow-xl mx-auto border border-white/20">
+          <div className="w-16 h-16 rounded-3xl bg-[#0059FF] flex items-center justify-center font-black text-[#FFD700] text-3xl shadow-xl mx-auto border border-blue-400/20">
             S
           </div>
           <h1 className="text-2xl font-black text-slate-900 tracking-tight">SOLA VACATION RENTALS</h1>
-          <p className="text-xs text-slate-500 font-semibold">بوابة دخول الإدارة والتشغيل</p>
+          <p className="text-xs text-slate-500 font-semibold">بوابة تسجيل دخول الإدارة والتشغيل</p>
         </div>
 
         {/* Login Card */}
-        <Card className="p-6 bg-white shadow-xl">
+        <Card className="p-8 bg-white border border-slate-200 shadow-sm rounded-3xl">
           <form onSubmit={handleSubmit} className="space-y-4">
             
             {error && (
@@ -99,7 +99,7 @@ export function AdminLogin({ onLoginSuccess }: AdminLoginProps) {
             </div>
 
             <div className="text-center text-[11px] text-slate-400 font-semibold pt-2 border-t border-slate-100">
-              جميع العمليات والجلسات مشفرة ومسجلة بسجلات Audit Logs 🔒
+              جميع الجلسات والعمليات مشفرة ومحمية بـ Audit Logs 🔒
             </div>
 
           </form>

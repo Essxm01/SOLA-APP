@@ -26,7 +26,7 @@ export function App() {
     return stored ? JSON.parse(stored) : null;
   });
 
-  const [activeTab, setActiveTab] = useState<'verifications' | 'disputes' | 'payouts' | 'properties' | 'overview'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'verifications' | 'properties' | 'payouts' | 'disputes'>('overview');
   const [selectedDisputeId, setSelectedDisputeId] = useState<string | null>(null);
   const [selectedPayoutId, setSelectedPayoutId] = useState<string | null>(null);
   const [selectedPropertyId, setSelectedPropertyId] = useState<string | null>(null);
@@ -79,6 +79,12 @@ export function App() {
     setAdminUser(null);
   };
 
+  const resetSubSelections = () => {
+    setSelectedDisputeId(null);
+    setSelectedPayoutId(null);
+    setSelectedPropertyId(null);
+  };
+
   if (!adminUser) {
     return (
       <AdminLogin
@@ -91,9 +97,9 @@ export function App() {
   }
 
   return (
-    <div className="min-h-screen bg-[#F5F7FA] text-[#0F172A] font-sans flex flex-col dir-rtl" dir="rtl">
+    <div className="min-h-screen bg-[#F8FAFC] text-[#0F172A] font-sans flex flex-col dir-rtl" dir="rtl">
       
-      {/* SOLA Clean White Master Header — White-First Design System Standard */}
+      {/* SOLA Master Header — Unified Design System Standard */}
       <header className="bg-white sticky top-0 z-40 px-4 sm:px-6 py-3.5 border-b border-slate-200/90 shadow-xs">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4">
           
@@ -109,7 +115,7 @@ export function App() {
                   بوابة الإدارة
                 </span>
               </div>
-              <p className="text-[11px] text-slate-500 font-semibold">بوابة الإدارة والتشغيل والرقابة</p>
+              <p className="text-[11px] text-slate-500 font-semibold">منظومة الإدارة والتشغيل والرقابة المالية</p>
             </div>
           </div>
 
@@ -119,7 +125,7 @@ export function App() {
             {/* Live Status Badge */}
             <div className="hidden sm:flex items-center gap-2 bg-emerald-50 text-emerald-700 px-3.5 py-1.5 rounded-2xl border border-emerald-200 text-xs font-bold shadow-xs">
               <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
-              <span>متصل بالنظام الرئيسي</span>
+              <span>النظام مستقر وتعمل الكيانات بنجاح</span>
             </div>
 
             {/* Notifications Counter */}
@@ -138,7 +144,7 @@ export function App() {
                 A
               </div>
               <div className="text-right">
-                <div className="text-slate-900 text-xs leading-none font-bold">{adminUser.fullName || 'مسئول المنصة'}</div>
+                <div className="text-slate-900 text-xs leading-none font-bold">{adminUser.fullName || 'مسؤول المنصة'}</div>
                 <div className="text-[10px] text-slate-500 font-semibold mt-0.5">إدارة صولا</div>
               </div>
             </div>
@@ -157,23 +163,37 @@ export function App() {
         </div>
       </header>
 
-      {/* Main Navigation Sub-Bar */}
-      <div className="bg-white border-b border-slate-200 shadow-xs">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 flex items-center justify-between overflow-x-auto">
+      {/* Primary Core Navigation Bar — Unified Visual Priority */}
+      <div className="bg-white border-b border-slate-200 shadow-xs sticky top-[65px] z-30">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 flex items-center overflow-x-auto">
           
-          <nav className="flex space-x-1 space-x-reverse py-2">
+          <nav className="flex space-x-1.5 space-x-reverse py-3">
             
-            {/* Tab 1: Verifications Queue */}
+            {/* Core Tab 1: Operational Overview */}
+            <button
+              onClick={() => {
+                setActiveTab('overview');
+                resetSubSelections();
+              }}
+              className={`px-4.5 py-2.5 rounded-2xl text-xs font-black transition-all flex items-center gap-2 whitespace-nowrap cursor-pointer ${
+                activeTab === 'overview'
+                  ? 'bg-[#0059FF] text-white shadow-md shadow-blue-500/20'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+              }`}
+            >
+              <BarChart3 className="w-4 h-4" />
+              <span>نظرة عامة تشغيلية</span>
+            </button>
+
+            {/* Core Tab 2: Owner Verifications */}
             <button
               onClick={() => {
                 setActiveTab('verifications');
-                setSelectedDisputeId(null);
-                setSelectedPayoutId(null);
-                setSelectedPropertyId(null);
+                resetSubSelections();
               }}
-              className={`px-4 py-2.5 rounded-xl text-xs font-extrabold transition-all flex items-center gap-2 whitespace-nowrap ${
+              className={`px-4.5 py-2.5 rounded-2xl text-xs font-black transition-all flex items-center gap-2 whitespace-nowrap cursor-pointer ${
                 activeTab === 'verifications'
-                  ? 'bg-[#0059FF] text-white shadow-xs'
+                  ? 'bg-[#0059FF] text-white shadow-md shadow-blue-500/20'
                   : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
               }`}
             >
@@ -181,17 +201,15 @@ export function App() {
               <span>توثيق الملاك</span>
             </button>
 
-            {/* Tab: مراجعة الوحدات */}
+            {/* Core Tab 3: Unit Reviews */}
             <button
               onClick={() => {
                 setActiveTab('properties');
-                setSelectedPropertyId(null);
-                setSelectedDisputeId(null);
-                setSelectedPayoutId(null);
+                resetSubSelections();
               }}
-              className={`px-4 py-2.5 rounded-xl text-xs font-extrabold transition-all flex items-center gap-2 whitespace-nowrap ${
+              className={`px-4.5 py-2.5 rounded-2xl text-xs font-black transition-all flex items-center gap-2 whitespace-nowrap cursor-pointer ${
                 activeTab === 'properties'
-                  ? 'bg-[#0059FF] text-white shadow-xs'
+                  ? 'bg-[#0059FF] text-white shadow-md shadow-blue-500/20'
                   : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
               }`}
             >
@@ -199,35 +217,15 @@ export function App() {
               <span>مراجعة الوحدات</span>
             </button>
 
-            {/* Tab 2: Disputes Workspace */}
-            <button
-              onClick={() => {
-                setActiveTab('disputes');
-                setSelectedDisputeId(null);
-                setSelectedPayoutId(null);
-                setSelectedPropertyId(null);
-              }}
-              className={`px-4 py-2.5 rounded-xl text-xs font-extrabold transition-all flex items-center gap-2 whitespace-nowrap ${
-                activeTab === 'disputes'
-                  ? 'bg-[#0059FF] text-white shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-              }`}
-            >
-              <Scale className="w-4 h-4" />
-              <span>إدارة النزاعات</span>
-            </button>
-
-            {/* Tab 3: Payouts Execution */}
+            {/* Core Tab 4: Payout Requests */}
             <button
               onClick={() => {
                 setActiveTab('payouts');
-                setSelectedDisputeId(null);
-                setSelectedPayoutId(null);
-                setSelectedPropertyId(null);
+                resetSubSelections();
               }}
-              className={`px-4 py-2.5 rounded-xl text-xs font-extrabold transition-all flex items-center gap-2 whitespace-nowrap ${
+              className={`px-4.5 py-2.5 rounded-2xl text-xs font-black transition-all flex items-center gap-2 whitespace-nowrap cursor-pointer ${
                 activeTab === 'payouts'
-                  ? 'bg-[#0059FF] text-white shadow-xs'
+                  ? 'bg-[#0059FF] text-white shadow-md shadow-blue-500/20'
                   : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
               }`}
             >
@@ -235,22 +233,20 @@ export function App() {
               <span>طلبات السحب المالي</span>
             </button>
 
-            {/* Tab 4: Operational Overview */}
+            {/* Core Tab 5: Disputes Management */}
             <button
               onClick={() => {
-                setActiveTab('overview');
-                setSelectedDisputeId(null);
-                setSelectedPayoutId(null);
-                setSelectedPropertyId(null);
+                setActiveTab('disputes');
+                resetSubSelections();
               }}
-              className={`px-4 py-2.5 rounded-xl text-xs font-extrabold transition-all flex items-center gap-2 whitespace-nowrap ${
-                activeTab === 'overview'
-                  ? 'bg-[#0059FF] text-white shadow-xs'
+              className={`px-4.5 py-2.5 rounded-2xl text-xs font-black transition-all flex items-center gap-2 whitespace-nowrap cursor-pointer ${
+                activeTab === 'disputes'
+                  ? 'bg-[#0059FF] text-white shadow-md shadow-blue-500/20'
                   : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
               }`}
             >
-              <BarChart3 className="w-4 h-4" />
-              <span>نظرة عامة تشغيلية (Overview)</span>
+              <Scale className="w-4 h-4" />
+              <span>إدارة النزاعات</span>
             </button>
 
           </nav>
@@ -259,57 +255,9 @@ export function App() {
       </div>
 
       {/* Main Operational Workspace */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
         
-        {/* TAB 1: VERIFICATIONS QUEUE */}
-        {activeTab === 'verifications' && (
-          <VerificationsQueue onStatusChange={fetchAdminNotifications} />
-        )}
-
-        {/* TAB 2: DISPUTES (FLOW-ADM-09) */}
-        {activeTab === 'disputes' && (
-          selectedDisputeId ? (
-            <DisputeDetailExecution
-              disputeId={selectedDisputeId}
-              onBack={() => setSelectedDisputeId(null)}
-            />
-          ) : (
-            <DisputesQueue
-              onSelectDispute={(id) => setSelectedDisputeId(id)}
-            />
-          )
-        )}
-
-        {/* TAB: PROPERTIES */}
-        {activeTab === 'properties' && (
-          selectedPropertyId ? (
-            <PropertyReviewDetail
-              propertyId={selectedPropertyId}
-              onBack={() => setSelectedPropertyId(null)}
-            />
-          ) : (
-            <PropertyReviewQueue
-              onSelectProperty={(id) => setSelectedPropertyId(id)}
-              onStatusChange={fetchAdminNotifications}
-            />
-          )
-        )}
-
-        {/* TAB 3: PAYOUTS (FLOW-ADM-07/08) */}
-        {activeTab === 'payouts' && (
-          selectedPayoutId ? (
-            <PayoutDetailExecution
-              payoutId={selectedPayoutId}
-              onBack={() => setSelectedPayoutId(null)}
-            />
-          ) : (
-            <PayoutsQueue
-              onSelectPayoutDetail={(id: string) => setSelectedPayoutId(id)}
-            />
-          )
-        )}
-
-        {/* TAB 4: OPERATIONAL OVERVIEW — White-First Design System Standard */}
+        {/* CORE TAB 1: OPERATIONAL OVERVIEW */}
         {activeTab === 'overview' && (
           <div className="space-y-6 animate-fade-in dir-rtl" dir="rtl">
             <Card className="p-6 bg-white border border-slate-200 shadow-sm rounded-3xl">
@@ -324,75 +272,137 @@ export function App() {
                   </div>
                   <h2 className="text-2xl font-black text-slate-900">لوحة النظرة العامة والعمليات التشغيلية</h2>
                   <p className="text-xs text-slate-500 font-semibold mt-1">
-                    مؤشرات الأداء التشغيلية وموجز المحافظ والحجوزات ومرحلة تجميد العقود المغلقة.
+                    مؤشرات الأداء التشغيلية وموجز طلبات التوثيق والوحدات والسحوبات المالية والنزاعات.
                   </p>
                 </div>
 
                 <div className="flex items-center gap-2 bg-emerald-50 text-emerald-700 px-4 py-2 rounded-2xl border border-emerald-200 text-xs font-bold shadow-xs">
                   <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
-                  <span>جميع الأنظمة التشغيلية تعمل بنجاح 100% 🔒</span>
+                  <span>جميع الأنظمة التشغيلية تعمل بنجاح</span>
                 </div>
               </div>
 
-              {/* Operational Metrics Cards */}
+              {/* Operational Metrics Cards Grid */}
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                
                 {/* Metric 1: Pending Unit Reviews */}
-                <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs text-right space-y-2 hover:border-blue-300 transition-all cursor-pointer" onClick={() => { setActiveTab('properties'); setSelectedPropertyId(null); }}>
+                <div 
+                  className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs text-right space-y-2 hover:border-blue-300 hover:shadow-md transition-all cursor-pointer"
+                  onClick={() => { setActiveTab('properties'); setSelectedPropertyId(null); }}
+                >
                   <div className="flex items-center justify-between">
-                    <span className="text-xs font-extrabold text-slate-600">وحدات ينتظر المراجعة</span>
+                    <span className="text-xs font-extrabold text-slate-600">وحدات تنتظر المراجعة</span>
                     <div className="w-8 h-8 rounded-xl bg-blue-50 text-[#0059FF] flex items-center justify-center font-bold">
                       <Building2 className="w-4 h-4" />
                     </div>
                   </div>
-                  <div className="text-3xl font-black text-slate-900">{overviewStats?.properties?.pendingProperties ?? 0} وحدة</div>
+                  <div className="text-3xl font-black text-slate-900">{overviewStats?.properties?.pendingProperties ?? 0} <span className="text-xs font-semibold text-slate-400">وحدة</span></div>
                   <div className="text-[11px] font-bold text-[#0059FF]">طابور مراجعة العقارات والوحدات</div>
                 </div>
 
                 {/* Metric 2: Pending Verifications */}
-                <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs text-right space-y-2 hover:border-[#0059FF] transition-all cursor-pointer" onClick={() => setActiveTab('verifications')}>
+                <div 
+                  className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs text-right space-y-2 hover:border-[#0059FF] hover:shadow-md transition-all cursor-pointer"
+                  onClick={() => { setActiveTab('verifications'); }}
+                >
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-extrabold text-slate-600">طلبات التوثيق المعلقة</span>
                     <div className="w-8 h-8 rounded-xl bg-blue-50 text-[#0059FF] flex items-center justify-center font-bold">
                       <UserCheck className="w-4 h-4" />
                     </div>
                   </div>
-                  <div className="text-3xl font-black text-slate-900">{overviewStats?.verifications?.pendingVerifications ?? 0} طلبات</div>
+                  <div className="text-3xl font-black text-slate-900">{overviewStats?.verifications?.pendingVerifications ?? 0} <span className="text-xs font-semibold text-slate-400">طلبات</span></div>
                   <div className="text-[11px] font-bold text-[#0059FF]">قائمة انتظار توثيق هوية الملاك</div>
                 </div>
 
-                {/* Metric 3: Disputes Queue */}
-                <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs text-right space-y-2 hover:border-rose-300 transition-all cursor-pointer" onClick={() => { setActiveTab('disputes'); setSelectedDisputeId(null); }}>
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-extrabold text-slate-600">النزاعات المفتوحة</span>
-                    <div className="w-8 h-8 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center font-bold">
-                      <Scale className="w-4 h-4" />
-                    </div>
-                  </div>
-                  <div className="text-3xl font-black text-slate-900">{overviewStats?.disputes?.openDisputes ?? 0} نزاعات</div>
-                  <div className="text-[11px] font-bold text-rose-600">طابور النزاعات</div>
-                </div>
-
-                {/* Metric 4: Payout Requests */}
-                <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs text-right space-y-2 hover:border-amber-300 transition-all cursor-pointer" onClick={() => { setActiveTab('payouts'); setSelectedPayoutId(null); }}>
+                {/* Metric 3: Payout Requests */}
+                <div 
+                  className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs text-right space-y-2 hover:border-amber-300 hover:shadow-md transition-all cursor-pointer"
+                  onClick={() => { setActiveTab('payouts'); setSelectedPayoutId(null); }}
+                >
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-extrabold text-slate-600">طلبات سحب الأرباح</span>
                     <div className="w-8 h-8 rounded-xl bg-amber-50 text-amber-800 flex items-center justify-center font-bold">
                       <CreditCard className="w-4 h-4" />
                     </div>
                   </div>
-                  <div className="text-3xl font-black text-slate-900">{overviewStats?.payouts?.pendingPayouts ?? 0} طلبات</div>
+                  <div className="text-3xl font-black text-slate-900">{overviewStats?.payouts?.pendingPayouts ?? 0} <span className="text-xs font-semibold text-slate-400">طلبات</span></div>
                   <div className="text-[11px] font-bold text-amber-800">قائمة السحوبات المالية</div>
                 </div>
+
+                {/* Metric 4: Disputes Queue */}
+                <div 
+                  className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs text-right space-y-2 hover:border-rose-300 hover:shadow-md transition-all cursor-pointer"
+                  onClick={() => { setActiveTab('disputes'); setSelectedDisputeId(null); }}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-extrabold text-slate-600">النزاعات المفتوحة</span>
+                    <div className="w-8 h-8 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center font-bold">
+                      <Scale className="w-4 h-4" />
+                    </div>
+                  </div>
+                  <div className="text-3xl font-black text-slate-900">{overviewStats?.disputes?.openDisputes ?? 0} <span className="text-xs font-semibold text-slate-400">نزاعات</span></div>
+                  <div className="text-[11px] font-bold text-rose-600">طابور النزاعات والبت المالي</div>
+                </div>
+
               </div>
             </Card>
           </div>
         )}
 
+        {/* CORE TAB 2: VERIFICATIONS QUEUE */}
+        {activeTab === 'verifications' && (
+          <VerificationsQueue onStatusChange={fetchAdminNotifications} />
+        )}
+
+        {/* CORE TAB 3: PROPERTIES QUEUE */}
+        {activeTab === 'properties' && (
+          selectedPropertyId ? (
+            <PropertyReviewDetail
+              propertyId={selectedPropertyId}
+              onBack={() => setSelectedPropertyId(null)}
+            />
+          ) : (
+            <PropertyReviewQueue
+              onSelectProperty={(id) => setSelectedPropertyId(id)}
+              onStatusChange={fetchAdminNotifications}
+            />
+          )
+        )}
+
+        {/* CORE TAB 4: PAYOUTS QUEUE */}
+        {activeTab === 'payouts' && (
+          selectedPayoutId ? (
+            <PayoutDetailExecution
+              payoutId={selectedPayoutId}
+              onBack={() => setSelectedPayoutId(null)}
+            />
+          ) : (
+            <PayoutsQueue
+              onSelectPayoutDetail={(id: string) => setSelectedPayoutId(id)}
+            />
+          )
+        )}
+
+        {/* CORE TAB 5: DISPUTES QUEUE */}
+        {activeTab === 'disputes' && (
+          selectedDisputeId ? (
+            <DisputeDetailExecution
+              disputeId={selectedDisputeId}
+              onBack={() => setSelectedDisputeId(null)}
+            />
+          ) : (
+            <DisputesQueue
+              onSelectDispute={(id) => setSelectedDisputeId(id)}
+            />
+          )
+        )}
+
       </main>
 
-      {/* Footer */}
+      {/* Unified Footer */}
       <footer className="border-t border-slate-200 bg-white py-4 px-6 text-center text-xs font-semibold text-slate-500">
-        SOLA Vacation Rentals Hospitality Operations Platform © 2026 — Unified Brand & Design System
+        SOLA Vacation Rentals Hospitality Operations Platform © 2026 — Unified Design System
       </footer>
 
     </div>

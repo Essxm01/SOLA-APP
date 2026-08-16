@@ -1163,6 +1163,25 @@ export class ExpressServerApp {
           };
         }
 
+        // A0.5. Admin Overview Stats Endpoint — PostgreSQL Driven
+        if (path === '/api/v1/admin/overview/stats' && method === 'GET') {
+          const stats = await adminStatsDb.getOverviewStats().catch(() => ({
+            properties: { pendingProperties: 0, publishedProperties: 0, rejectedProperties: 0, totalProperties: 0 },
+            bookings: { pendingBookings: 0, confirmedBookings: 0, totalBookings: 0 },
+            verifications: { pendingVerifications: 0, verifiedOwners: 0, totalOwners: 0 },
+            payouts: { pendingPayouts: 0, completedPayouts: 0, totalPaidOutEgp: 0 },
+            disputes: { openDisputes: 0, resolvedDisputes: 0, totalDisputes: 0 },
+          }));
+          return {
+            statusCode: 200,
+            body: {
+              success: true,
+              data: stats,
+              timestamp,
+            },
+          };
+        }
+
         // A1. Admin Pending Verification Queue Endpoint — PostgreSQL Driven
         if (path === '/api/v1/admin/verifications/pending' && method === 'GET') {
           const pendingRows = await ownerDb.getPendingVerifications().catch(() => []);

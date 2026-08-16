@@ -735,7 +735,7 @@ export class ExpressServerApp {
           // Ensure owner record exists in PostgreSQL DB before inserting property
           await ownerDb.upsert({
             id: ownerId,
-            phoneNumber: formatOwnerPhone(ownerId),
+            phoneNumber: ownerId.startsWith('0000') ? '+20' + ownerId.slice(-10) : '+201012345678',
             fullName: 'مالك صولا',
             status: 'ACTIVE',
             verificationStatus: 'UNVERIFIED',

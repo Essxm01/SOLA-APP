@@ -9,6 +9,13 @@ import { signAccessToken, signRefreshToken } from './jwtService.js';
 import { ownerDb } from './dbRepository.js';
 import type { AuthSessionTokens, UserRole } from '../types/server.js';
 
+export function phoneToUuid(phone: string): string {
+  if (!phone) return '00000000-0000-4000-8000-000000000000';
+  if (phone.includes('-') && phone.length === 36) return phone;
+  const clean = phone.replace(/\D/g, '').slice(-12).padStart(12, '0');
+  return `00000000-0000-4000-8000-${clean}`;
+}
+
 export interface UserSessionRecord {
   id: string;
   ownerId: string;
@@ -149,8 +156,7 @@ export class AuthService {
 
     this.otpStore.delete(phone);
 
-    const cleanPhone = phone.replace(/\D/g, '') || '01001234567';
-    const ownerId = `owner_${cleanPhone}`;
+    const ownerId = phoneToUuid(phone);
     
     // Fetch or Create real Owner Record in PostgreSQL DB store
     let owner = await ownerDb.getById(ownerId).catch(() => null);

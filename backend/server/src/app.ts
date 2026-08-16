@@ -731,7 +731,7 @@ export class ExpressServerApp {
 
         // --- E. Property Domain Endpoints (PostgreSQL Driven) ---
         if (path === '/api/v1/owner/properties' && method === 'POST') {
-          const propId = `prop_${Date.now()}`;
+          const propId = crypto.randomUUID();
           // Ensure owner record exists in PostgreSQL DB before inserting property
           await ownerDb.upsert({
             id: ownerId,

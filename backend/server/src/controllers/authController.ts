@@ -4,7 +4,7 @@
  * Master Source of Truth: PHASE_7_MASTER_SPECIFICATION.md
  */
 
-import { AuthService } from '../services/authService';
+import { AuthService } from '../services/authService.js';
 import type { ApiSuccessResponse, ApiErrorResponse } from '../types/server';
 
 export class AuthController {

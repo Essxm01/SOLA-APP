@@ -16,6 +16,7 @@ import { Button } from './ui/Button';
 import { StatusBadge } from './ui/Badge';
 import { Input, Select } from './ui/Input';
 import { TableSkeleton, EmptyState } from './ui/StateViews';
+import { getApiUrl } from '../utils/api';
 
 export interface DisputesQueueProps {
   onSelectDispute: (disputeId: string) => void;
@@ -31,7 +32,7 @@ export function DisputesQueue({ onSelectDispute }: DisputesQueueProps) {
     setLoading(true);
     try {
       const token = localStorage.getItem('sola_admin_access_token') || 'admin_token_valid';
-      const response = await fetch('/api/v1/admin/disputes/pending', {
+      const response = await fetch(getApiUrl('/admin/disputes/pending'), {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Accept': 'application/json',
@@ -82,11 +83,11 @@ export function DisputesQueue({ onSelectDispute }: DisputesQueueProps) {
             <div className="flex items-center gap-2 mb-2">
               <span className="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full text-xs font-extrabold bg-blue-50 text-[#0059FF] border border-blue-200">
                 <Scale className="w-4 h-4 text-[#0059FF]" />
-                <span>FLOW-ADM-09 Governance</span>
+                <span>مركز البت والرقابة</span>
               </span>
-              <span className="text-xs text-slate-500 font-medium">/ مركز الحسم التشغيلي</span>
+              <span className="text-xs text-slate-500 font-medium">/ إدارة النزاعات</span>
             </div>
-            <h1 className="text-2xl font-black text-slate-900 tracking-tight">إدارة ونزاعات المستأجرين والمالك (Disputes Workspace)</h1>
+            <h1 className="text-2xl font-black text-slate-900 tracking-tight">إدارة ونزاعات المستأجرين والمالك</h1>
             <p className="text-xs text-slate-500 mt-1 max-w-2xl font-medium">
               المراجعة الإدارية للنزاعات المصعدة، البت المالي الذري، والتحفظ على الأموال وفقاً لمواصفات Sola.
             </p>

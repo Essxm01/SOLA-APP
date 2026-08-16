@@ -227,6 +227,7 @@ export const BOOKING_STATUS_CONFIG: Record<
   { label: string; bg: string; text: string }
 > = {
   PENDING_OWNER_APPROVAL: { label: 'بانتظار موافقتك ⏳', bg: 'bg-amber-100', text: 'text-amber-900' },
+  APPROVED_PENDING_PAYMENT: { label: 'مقبول — بانتظار سداد العربون من النزيل 💰', bg: 'bg-blue-100', text: 'text-blue-900' },
   CONFIRMED: { label: 'مؤكد 🟢', bg: 'bg-emerald-100', text: 'text-emerald-900' },
   REJECTED: { label: 'مرفوض 🔴', bg: 'bg-rose-100', text: 'text-rose-900' },
   EXPIRED: { label: 'منتهي الصلاحية ⏱️', bg: 'bg-slate-100', text: 'text-slate-600' },

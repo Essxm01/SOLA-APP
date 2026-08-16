@@ -4,7 +4,7 @@
  * Master Source of Truth: PHASE_7_MASTER_SPECIFICATION.md
  */
 
-import { queryDb } from './dbClient';
+import { queryDb } from './dbClient.js';
 
 // Helper to mask PII strings for admin queue outputs
 export function maskPii(val?: string, visibleLength = 4): string {
@@ -160,16 +160,119 @@ export const propertyDb = {
     return res.rows[0];
   },
 
-  async getAllForAdmin() {
+  async getAllForAdmin(statusFilter?: string) {
+    const params: any[] = [];
+    let whereClause = 'WHERE p.deleted_at IS NULL';
+    if (statusFilter) {
+      params.push(statusFilter);
+      whereClause += ` AND p.status = $${params.length}`;
+    }
     const res = await queryDb(
-      `SELECT p.id, p.title, p.unit_type AS "unitType", p.address, p.base_price_per_night AS "pricePerNight",
-              p.status, p.verification_status AS "verificationStatus", p.created_at AS "createdAt",
-              o.id AS "ownerId", o.full_name AS "ownerName", o.phone_number AS "ownerPhone"
+      `SELECT p.id, p.title, p.unit_type AS "unitType", p.property_type AS "propertyType",
+              p.address, p.bedrooms, p.bathrooms, p.max_guests AS "maxGuests",
+              p.base_price_per_night AS "pricePerNight",
+              p.status, p.verification_status AS "verificationStatus",
+              p.created_at AS "createdAt", p.updated_at AS "updatedAt",
+              o.id AS "ownerId", o.full_name AS "ownerName", o.phone_number AS "ownerPhone",
+              o.verification_status AS "ownerVerificationStatus"
        FROM properties p
        JOIN owners o ON p.owner_id = o.id
-       WHERE p.deleted_at IS NULL ORDER BY p.created_at DESC`
+       ${whereClause} ORDER BY p.created_at DESC`,
+      params
     );
-    return res.rows;
+    return res.rows.map(r => ({
+      ...r,
+      pricePerNight: Number(r.pricePerNight),
+    }));
+  },
+
+  async getPendingForAdmin() {
+    const res = await queryDb(
+      `SELECT p.id, p.title, p.unit_type AS "unitType", p.property_type AS "propertyType",
+              p.address, p.bedrooms, p.bathrooms, p.max_guests AS "maxGuests",
+              p.base_price_per_night AS "pricePerNight",
+              p.status, p.verification_status AS "verificationStatus",
+              p.created_at AS "createdAt", p.updated_at AS "updatedAt",
+              o.id AS "ownerId", o.full_name AS "ownerName", o.phone_number AS "ownerPhone",
+              o.verification_status AS "ownerVerificationStatus"
+       FROM properties p
+       JOIN owners o ON p.owner_id = o.id
+       WHERE p.deleted_at IS NULL AND (p.status = 'PENDING_REVIEW' OR p.status = 'REJECTED')
+       ORDER BY CASE WHEN p.status = 'PENDING_REVIEW' THEN 0 ELSE 1 END, p.created_at ASC`
+    );
+    return res.rows.map(r => ({
+      ...r,
+      pricePerNight: Number(r.pricePerNight),
+    }));
+  },
+
+  async getDetailForAdmin(id: string) {
+    const res = await queryDb(
+      `SELECT p.id, p.owner_id AS "ownerId", p.title, p.unit_type AS "unitType", p.property_type AS "propertyType",
+              p.address, p.bedrooms, p.bathrooms, p.max_guests AS "maxGuests",
+              p.base_price_per_night AS "pricePerNight",
+              p.status, p.verification_status AS "verificationStatus",
+              p.created_at AS "createdAt", p.updated_at AS "updatedAt",
+              o.full_name AS "ownerName", o.phone_number AS "ownerPhone", o.email AS "ownerEmail",
+              o.verification_status AS "ownerVerificationStatus", o.status AS "ownerStatus",
+              o.created_at AS "ownerCreatedAt"
+       FROM properties p
+       JOIN owners o ON p.owner_id = o.id
+       WHERE p.id = $1 AND p.deleted_at IS NULL`,
+      [id]
+    );
+    if (!res.rows[0]) return null;
+    const p = res.rows[0];
+    return {
+      ...p,
+      pricePerNight: Number(p.pricePerNight),
+    };
+  },
+
+  async update(id: string, ownerId: string, updates: {
+    title?: string; unitType?: string; propertyType?: string; address?: string;
+    bedrooms?: number; bathrooms?: number; maxGuests?: number; basePricePerNight?: number;
+    status?: string; verificationStatus?: string;
+  }) {
+    const fields: string[] = [];
+    const values: any[] = [id, ownerId];
+    let paramIdx = 3;
+
+    if (updates.title !== undefined) { fields.push(`title = $${paramIdx++}`); values.push(updates.title); }
+    if (updates.unitType !== undefined) { fields.push(`unit_type = $${paramIdx++}`); values.push(updates.unitType); }
+    if (updates.propertyType !== undefined) { fields.push(`property_type = $${paramIdx++}`); values.push(updates.propertyType); }
+    if (updates.address !== undefined) { fields.push(`address = $${paramIdx++}`); values.push(updates.address); }
+    if (updates.bedrooms !== undefined) { fields.push(`bedrooms = $${paramIdx++}`); values.push(updates.bedrooms); }
+    if (updates.bathrooms !== undefined) { fields.push(`bathrooms = $${paramIdx++}`); values.push(updates.bathrooms); }
+    if (updates.maxGuests !== undefined) { fields.push(`max_guests = $${paramIdx++}`); values.push(updates.maxGuests); }
+    if (updates.basePricePerNight !== undefined) { fields.push(`base_price_per_night = $${paramIdx++}`); values.push(updates.basePricePerNight); }
+    if (updates.status !== undefined) { fields.push(`status = $${paramIdx++}`); values.push(updates.status); }
+    if (updates.verificationStatus !== undefined) { fields.push(`verification_status = $${paramIdx++}`); values.push(updates.verificationStatus); }
+
+    if (fields.length === 0) return null;
+    fields.push('updated_at = NOW()');
+
+    const res = await queryDb(
+      `UPDATE properties SET ${fields.join(', ')} WHERE id = $1 AND owner_id = $2 AND deleted_at IS NULL
+       RETURNING id, owner_id AS "ownerId", title, unit_type AS "unitType", property_type AS "propertyType",
+                 address, bedrooms, bathrooms, max_guests AS "maxGuests",
+                 base_price_per_night AS "pricePerNight", status, verification_status AS "verificationStatus",
+                 created_at AS "createdAt", updated_at AS "updatedAt"`,
+      values
+    );
+    return res.rows[0] || null;
+  },
+
+  async getAdminStats() {
+    const res = await queryDb(
+      `SELECT
+        COUNT(*) FILTER (WHERE status = 'PENDING_REVIEW') AS "pendingReview",
+        COUNT(*) FILTER (WHERE status = 'PUBLISHED') AS "published",
+        COUNT(*) FILTER (WHERE status = 'REJECTED') AS "rejected",
+        COUNT(*) AS "total"
+       FROM properties WHERE deleted_at IS NULL`
+    );
+    return res.rows[0] || { pendingReview: 0, published: 0, rejected: 0, total: 0 };
   }
 };
 
@@ -553,3 +656,117 @@ export const imageDb = {
     return res.rows[0] || null;
   },
 };
+
+// ----------------------------------------------------------------------------
+// 9. ADMIN OVERVIEW STATS REPOSITORY
+// ----------------------------------------------------------------------------
+export const adminStatsDb = {
+  async getOverviewStats() {
+    const [propRes, bookRes, verRes, payRes, dispRes] = await Promise.all([
+      queryDb(`SELECT
+        COUNT(*) FILTER (WHERE status = 'PENDING_REVIEW') AS "pendingProperties",
+        COUNT(*) FILTER (WHERE status = 'PUBLISHED') AS "publishedProperties",
+        COUNT(*) FILTER (WHERE status = 'REJECTED') AS "rejectedProperties",
+        COUNT(*) AS "totalProperties"
+       FROM properties WHERE deleted_at IS NULL`),
+      queryDb(`SELECT
+        COUNT(*) FILTER (WHERE status = 'PENDING_OWNER_APPROVAL') AS "pendingBookings",
+        COUNT(*) FILTER (WHERE status = 'CONFIRMED') AS "confirmedBookings",
+        COUNT(*) AS "totalBookings"
+       FROM bookings`),
+      queryDb(`SELECT
+        COUNT(*) FILTER (WHERE verification_status = 'PENDING_VERIFICATION') AS "pendingVerifications",
+        COUNT(*) FILTER (WHERE verification_status = 'VERIFIED') AS "verifiedOwners",
+        COUNT(*) AS "totalOwners"
+       FROM owners`),
+      queryDb(`SELECT
+        COUNT(*) FILTER (WHERE status = 'PENDING_ADMIN_PROCESSING') AS "pendingPayouts",
+        COUNT(*) FILTER (WHERE status = 'COMPLETED') AS "completedPayouts",
+        COALESCE(SUM(net_amount) FILTER (WHERE status = 'COMPLETED'), 0) AS "totalPaidOutEgp"
+       FROM payout_requests`),
+      queryDb(`SELECT
+        COUNT(*) FILTER (WHERE status IN ('OPEN', 'ESCALATED_TO_ADMIN', 'WAITING_FOR_MORE_EVIDENCE')) AS "openDisputes",
+        COUNT(*) FILTER (WHERE status = 'RESOLVED') AS "resolvedDisputes",
+        COUNT(*) AS "totalDisputes"
+       FROM disputes`),
+    ]);
+    return {
+      properties: propRes.rows[0] || {},
+      bookings: bookRes.rows[0] || {},
+      verifications: verRes.rows[0] || {},
+      payouts: payRes.rows[0] || {},
+      disputes: dispRes.rows[0] || {},
+    };
+  },
+};
+
+// ----------------------------------------------------------------------------
+// 10. WALLET / LEDGER REPOSITORY
+// ----------------------------------------------------------------------------
+export const walletDb = {
+  async getOwnerWalletSummary(ownerId: string) {
+    // Compute wallet from bookings that have been settled
+    const res = await queryDb(
+      `SELECT
+        COALESCE(SUM(CASE WHEN b.status = 'CONFIRMED' THEN p.base_price_per_night * 0.80 ELSE 0 END), 0) AS "totalEarnedLifeTime",
+        COALESCE(SUM(CASE WHEN b.status = 'CONFIRMED' AND b.check_in <= CURRENT_DATE THEN p.base_price_per_night * 0.80 ELSE 0 END), 0) AS "availableBalance",
+        COALESCE(SUM(CASE WHEN b.status = 'CONFIRMED' AND b.check_in > CURRENT_DATE THEN p.base_price_per_night * 0.80 ELSE 0 END), 0) AS "pendingBalance"
+       FROM bookings b
+       JOIN properties p ON b.property_id = p.id
+       WHERE b.owner_id = $1`,
+      [ownerId]
+    );
+    const payoutRes = await queryDb(
+      `SELECT
+        COALESCE(SUM(net_amount) FILTER (WHERE status = 'COMPLETED'), 0) AS "totalWithdrawnLifeTime",
+        COALESCE(SUM(net_amount) FILTER (WHERE status IN ('PENDING_ADMIN_PROCESSING', 'PROCESSING')), 0) AS "reservedForPayout"
+       FROM payout_requests WHERE owner_id = $1`,
+      [ownerId]
+    );
+    const disputeRes = await queryDb(
+      `SELECT COALESCE(SUM(d.guest_refund_amount), 0) AS "heldBalance"
+       FROM disputes d WHERE d.owner_id = $1 AND d.status IN ('OPEN', 'ESCALATED_TO_ADMIN', 'WAITING_FOR_MORE_EVIDENCE')`,
+      [ownerId]
+    );
+    const w = res.rows[0] || {};
+    const p = payoutRes.rows[0] || {};
+    const d = disputeRes.rows[0] || {};
+    return {
+      ownerId,
+      currency: 'EGP',
+      availableBalance: Number(w.availableBalance || 0) - Number(p.reservedForPayout || 0) - Number(p.totalWithdrawnLifeTime || 0),
+      pendingBalance: Number(w.pendingBalance || 0),
+      reservedForPayout: Number(p.reservedForPayout || 0),
+      heldBalance: Number(d.heldBalance || 0),
+      totalEarnedLifeTime: Number(w.totalEarnedLifeTime || 0),
+      totalWithdrawnLifeTime: Number(p.totalWithdrawnLifeTime || 0),
+    };
+  },
+
+  async getOwnerLedger(ownerId: string, limit = 50, offset = 0) {
+    // Combine booking credits and payout debits into a unified ledger
+    const res = await queryDb(
+      `(SELECT 'DEPOSIT_CREDIT' AS type, b.id, p.base_price_per_night * 0.80 AS amount,
+              p.base_price_per_night * 0.20 AS fee, p.base_price_per_night * 0.80 AS "netAmount",
+              'EGP' AS currency, b.created_at AS "createdAt",
+              CONCAT('حجز #', b.booking_number) AS description
+       FROM bookings b JOIN properties p ON b.property_id = p.id
+       WHERE b.owner_id = $1 AND b.status = 'CONFIRMED')
+       UNION ALL
+       (SELECT 'PAYOUT_DEBIT' AS type, pr.id, pr.gross_amount * -1 AS amount,
+              pr.actual_provider_fee AS fee, pr.net_amount * -1 AS "netAmount",
+              'EGP' AS currency, pr.created_at AS "createdAt",
+              CONCAT('سحب #', pr.request_number) AS description
+       FROM payout_requests pr WHERE pr.owner_id = $1 AND pr.status = 'COMPLETED')
+       ORDER BY "createdAt" DESC LIMIT $2 OFFSET $3`,
+      [ownerId, limit, offset]
+    );
+    return res.rows.map(r => ({
+      ...r,
+      amount: Number(r.amount),
+      fee: Number(r.fee),
+      netAmount: Number(r.netAmount),
+    }));
+  },
+};
+

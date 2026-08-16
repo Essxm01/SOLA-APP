@@ -6,14 +6,17 @@ import { PayoutsQueue } from './components/PayoutsQueue';
 import { PayoutDetailExecution } from './components/PayoutDetailExecution';
 import { DisputesQueue } from './components/DisputesQueue';
 import { DisputeDetailExecution } from './components/DisputeDetailExecution';
+import { PropertyReviewQueue } from './components/PropertyReviewQueue';
+import { PropertyReviewDetail } from './components/PropertyReviewDetail';
+import { getApiUrl } from './utils/api';
 import {
   Scale,
   CreditCard,
   BarChart3,
-  ShieldCheck,
   Bell,
   LogOut,
-  UserCheck
+  UserCheck,
+  Building2
 } from 'lucide-react';
 import { Card } from './components/ui/Card';
 
@@ -23,17 +26,19 @@ export function App() {
     return stored ? JSON.parse(stored) : null;
   });
 
-  const [activeTab, setActiveTab] = useState<'verifications' | 'disputes' | 'payouts' | 'overview'>('verifications');
+  const [activeTab, setActiveTab] = useState<'verifications' | 'disputes' | 'payouts' | 'properties' | 'overview'>('overview');
   const [selectedDisputeId, setSelectedDisputeId] = useState<string | null>(null);
   const [selectedPayoutId, setSelectedPayoutId] = useState<string | null>(null);
+  const [selectedPropertyId, setSelectedPropertyId] = useState<string | null>(null);
 
   const [notificationsCount, setNotificationsCount] = useState<number>(0);
+  const [overviewStats, setOverviewStats] = useState<any>(null);
 
   const fetchAdminNotifications = async () => {
     try {
       const token = localStorage.getItem('sola_admin_access_token') || '';
       if (!token) return;
-      const response = await fetch('/api/v1/admin/notifications', {
+      const response = await fetch(getApiUrl('/admin/notifications'), {
         headers: { 'Authorization': `Bearer ${token}` },
       });
       const json = await response.json();
@@ -45,9 +50,26 @@ export function App() {
     }
   };
 
+  const fetchOverviewStats = async () => {
+    try {
+      const token = localStorage.getItem('sola_admin_access_token') || '';
+      if (!token) return;
+      const response = await fetch(getApiUrl('/admin/overview/stats'), {
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+      const json = await response.json();
+      if (json.success && json.data) {
+        setOverviewStats(json.data);
+      }
+    } catch {
+      // Quiet fallback
+    }
+  };
+
   useEffect(() => {
     if (adminUser) {
       fetchAdminNotifications();
+      fetchOverviewStats();
     }
   }, [adminUser]);
 
@@ -84,20 +106,20 @@ export function App() {
               <div className="flex items-center gap-2">
                 <h1 className="font-black text-lg text-slate-900 tracking-wide">SOLA VACATION RENTALS</h1>
                 <span className="text-[10px] font-extrabold bg-blue-50 text-[#0059FF] px-2.5 py-0.5 rounded-full border border-blue-200">
-                  ADMIN PORTAL
+                  بوابة الإدارة
                 </span>
               </div>
-              <p className="text-[11px] text-slate-500 font-semibold">بوابة الإدارة والحسم التشغيلي — Administrator (ROLE_ADMIN)</p>
+              <p className="text-[11px] text-slate-500 font-semibold">بوابة الإدارة والتشغيل والرقابة</p>
             </div>
           </div>
 
           {/* User Controls & Status Indicators */}
           <div className="flex items-center gap-3">
             
-            {/* Live Status Badge — Semantic Functional Green */}
+            {/* Live Status Badge */}
             <div className="hidden sm:flex items-center gap-2 bg-emerald-50 text-emerald-700 px-3.5 py-1.5 rounded-2xl border border-emerald-200 text-xs font-bold shadow-xs">
               <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
-              <span>PostgreSQL Real-Time Connected 🔒</span>
+              <span>متصل بالنظام الرئيسي</span>
             </div>
 
             {/* Notifications Counter */}
@@ -117,11 +139,11 @@ export function App() {
               </div>
               <div className="text-right">
                 <div className="text-slate-900 text-xs leading-none font-bold">{adminUser.fullName || 'مسئول المنصة'}</div>
-                <div className="text-[10px] text-slate-500 font-semibold mt-0.5">{adminUser.role || 'ROLE_ADMIN'}</div>
+                <div className="text-[10px] text-slate-500 font-semibold mt-0.5">إدارة صولا</div>
               </div>
             </div>
 
-            {/* Logout Button — Semantic Functional Red */}
+            {/* Logout Button */}
             <button
               onClick={handleLogout}
               className="p-2.5 rounded-2xl bg-rose-50 text-rose-700 hover:bg-rose-600 hover:text-white transition-all border border-rose-200 flex items-center gap-1 text-xs font-extrabold cursor-pointer active:scale-95"
@@ -147,6 +169,7 @@ export function App() {
                 setActiveTab('verifications');
                 setSelectedDisputeId(null);
                 setSelectedPayoutId(null);
+                setSelectedPropertyId(null);
               }}
               className={`px-4 py-2.5 rounded-xl text-xs font-extrabold transition-all flex items-center gap-2 whitespace-nowrap ${
                 activeTab === 'verifications'
@@ -155,7 +178,25 @@ export function App() {
               }`}
             >
               <UserCheck className="w-4 h-4" />
-              <span>توثيق الملاك (Live Queue)</span>
+              <span>توثيق الملاك</span>
+            </button>
+
+            {/* Tab: مراجعة الوحدات */}
+            <button
+              onClick={() => {
+                setActiveTab('properties');
+                setSelectedPropertyId(null);
+                setSelectedDisputeId(null);
+                setSelectedPayoutId(null);
+              }}
+              className={`px-4 py-2.5 rounded-xl text-xs font-extrabold transition-all flex items-center gap-2 whitespace-nowrap ${
+                activeTab === 'properties'
+                  ? 'bg-[#0059FF] text-white shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+              }`}
+            >
+              <Building2 className="w-4 h-4" />
+              <span>مراجعة الوحدات</span>
             </button>
 
             {/* Tab 2: Disputes Workspace */}
@@ -164,6 +205,7 @@ export function App() {
                 setActiveTab('disputes');
                 setSelectedDisputeId(null);
                 setSelectedPayoutId(null);
+                setSelectedPropertyId(null);
               }}
               className={`px-4 py-2.5 rounded-xl text-xs font-extrabold transition-all flex items-center gap-2 whitespace-nowrap ${
                 activeTab === 'disputes'
@@ -172,7 +214,7 @@ export function App() {
               }`}
             >
               <Scale className="w-4 h-4" />
-              <span>النزاعات والبت الإداري (FLOW-ADM-09)</span>
+              <span>إدارة النزاعات</span>
             </button>
 
             {/* Tab 3: Payouts Execution */}
@@ -181,6 +223,7 @@ export function App() {
                 setActiveTab('payouts');
                 setSelectedDisputeId(null);
                 setSelectedPayoutId(null);
+                setSelectedPropertyId(null);
               }}
               className={`px-4 py-2.5 rounded-xl text-xs font-extrabold transition-all flex items-center gap-2 whitespace-nowrap ${
                 activeTab === 'payouts'
@@ -189,7 +232,7 @@ export function App() {
               }`}
             >
               <CreditCard className="w-4 h-4" />
-              <span>طلبات سحب الأرباح (FLOW-ADM-07/08)</span>
+              <span>طلبات السحب المالي</span>
             </button>
 
             {/* Tab 4: Operational Overview */}
@@ -198,6 +241,7 @@ export function App() {
                 setActiveTab('overview');
                 setSelectedDisputeId(null);
                 setSelectedPayoutId(null);
+                setSelectedPropertyId(null);
               }}
               className={`px-4 py-2.5 rounded-xl text-xs font-extrabold transition-all flex items-center gap-2 whitespace-nowrap ${
                 activeTab === 'overview'
@@ -210,11 +254,6 @@ export function App() {
             </button>
 
           </nav>
-
-          <div className="hidden lg:flex items-center gap-2 text-xs font-bold text-slate-500">
-            <ShieldCheck className="w-4 h-4 text-emerald-600" />
-            <span>Master Contracts: FLOW-ADM-01 ➔ FLOW-ADM-09 Locked 🔒</span>
-          </div>
 
         </div>
       </div>
@@ -237,6 +276,21 @@ export function App() {
           ) : (
             <DisputesQueue
               onSelectDispute={(id) => setSelectedDisputeId(id)}
+            />
+          )
+        )}
+
+        {/* TAB: PROPERTIES */}
+        {activeTab === 'properties' && (
+          selectedPropertyId ? (
+            <PropertyReviewDetail
+              propertyId={selectedPropertyId}
+              onBack={() => setSelectedPropertyId(null)}
+            />
+          ) : (
+            <PropertyReviewQueue
+              onSelectProperty={(id) => setSelectedPropertyId(id)}
+              onStatusChange={fetchAdminNotifications}
             />
           )
         )}
@@ -264,11 +318,11 @@ export function App() {
                   <div className="flex items-center gap-2 mb-1">
                     <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-extrabold bg-blue-50 text-[#0059FF] border border-blue-200">
                       <BarChart3 className="w-3.5 h-3.5 text-[#0059FF]" />
-                      <span>SOLA Control Center</span>
+                      <span>مركز التحكم</span>
                     </span>
                     <span className="text-xs text-slate-500 font-semibold">/ المؤشرات التشغيلية الحية</span>
                   </div>
-                  <h2 className="text-2xl font-black text-slate-900">لوحة النظرة العامة والعمليات التشغيلية (Live Operations Dashboard)</h2>
+                  <h2 className="text-2xl font-black text-slate-900">لوحة النظرة العامة والعمليات التشغيلية</h2>
                   <p className="text-xs text-slate-500 font-semibold mt-1">
                     مؤشرات الأداء التشغيلية وموجز المحافظ والحجوزات ومرحلة تجميد العقود المغلقة.
                   </p>
@@ -282,52 +336,52 @@ export function App() {
 
               {/* Operational Metrics Cards */}
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                {/* Metric 1: Pending Verifications */}
-                <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs text-right space-y-2 hover:border-blue-300 transition-all">
+                {/* Metric 1: Pending Unit Reviews */}
+                <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs text-right space-y-2 hover:border-blue-300 transition-all cursor-pointer" onClick={() => { setActiveTab('properties'); setSelectedPropertyId(null); }}>
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-extrabold text-slate-600">وحدات ينتظر المراجعة</span>
+                    <div className="w-8 h-8 rounded-xl bg-blue-50 text-[#0059FF] flex items-center justify-center font-bold">
+                      <Building2 className="w-4 h-4" />
+                    </div>
+                  </div>
+                  <div className="text-3xl font-black text-slate-900">{overviewStats?.properties?.pendingProperties ?? 0} وحدة</div>
+                  <div className="text-[11px] font-bold text-[#0059FF]">طابور مراجعة العقارات والوحدات</div>
+                </div>
+
+                {/* Metric 2: Pending Verifications */}
+                <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs text-right space-y-2 hover:border-[#0059FF] transition-all cursor-pointer" onClick={() => setActiveTab('verifications')}>
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-extrabold text-slate-600">طلبات التوثيق المعلقة</span>
                     <div className="w-8 h-8 rounded-xl bg-blue-50 text-[#0059FF] flex items-center justify-center font-bold">
                       <UserCheck className="w-4 h-4" />
                     </div>
                   </div>
-                  <div className="text-3xl font-black text-slate-900">1 طلبات</div>
+                  <div className="text-3xl font-black text-slate-900">{overviewStats?.verifications?.pendingVerifications ?? 0} طلبات</div>
                   <div className="text-[11px] font-bold text-[#0059FF]">قائمة انتظار توثيق هوية الملاك</div>
                 </div>
 
-                {/* Metric 2: Disputes Queue */}
-                <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs text-right space-y-2 hover:border-rose-300 transition-all">
+                {/* Metric 3: Disputes Queue */}
+                <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs text-right space-y-2 hover:border-rose-300 transition-all cursor-pointer" onClick={() => { setActiveTab('disputes'); setSelectedDisputeId(null); }}>
                   <div className="flex items-center justify-between">
-                    <span className="text-xs font-extrabold text-slate-600">النزاعات المصعدة للبت</span>
+                    <span className="text-xs font-extrabold text-slate-600">النزاعات المفتوحة</span>
                     <div className="w-8 h-8 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center font-bold">
                       <Scale className="w-4 h-4" />
                     </div>
                   </div>
-                  <div className="text-3xl font-black text-slate-900">0 نزاعات</div>
-                  <div className="text-[11px] font-bold text-rose-600">FLOW-ADM-09 Governance Queue</div>
+                  <div className="text-3xl font-black text-slate-900">{overviewStats?.disputes?.openDisputes ?? 0} نزاعات</div>
+                  <div className="text-[11px] font-bold text-rose-600">طابور النزاعات</div>
                 </div>
 
-                {/* Metric 3: Payout Requests */}
-                <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs text-right space-y-2 hover:border-amber-300 transition-all">
+                {/* Metric 4: Payout Requests */}
+                <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs text-right space-y-2 hover:border-amber-300 transition-all cursor-pointer" onClick={() => { setActiveTab('payouts'); setSelectedPayoutId(null); }}>
                   <div className="flex items-center justify-between">
-                    <span className="text-xs font-extrabold text-slate-600">طلبات سحب الأرباح المعلقة</span>
+                    <span className="text-xs font-extrabold text-slate-600">طلبات سحب الأرباح</span>
                     <div className="w-8 h-8 rounded-xl bg-amber-50 text-amber-800 flex items-center justify-center font-bold">
                       <CreditCard className="w-4 h-4" />
                     </div>
                   </div>
-                  <div className="text-3xl font-black text-slate-900">0 طلبات</div>
-                  <div className="text-[11px] font-bold text-amber-800">FLOW-ADM-07/08 Payouts Queue</div>
-                </div>
-
-                {/* Metric 4: System Architecture Freeze Status */}
-                <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs text-right space-y-2 hover:border-emerald-300 transition-all">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-extrabold text-slate-600">حالة التجميد المالي والعقود</span>
-                    <div className="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold">
-                      <ShieldCheck className="w-4 h-4" />
-                    </div>
-                  </div>
-                  <div className="text-3xl font-black text-emerald-700">FROZEN 🔒</div>
-                  <div className="text-[11px] font-bold text-emerald-700">Master Closed Contracts Active</div>
+                  <div className="text-3xl font-black text-slate-900">{overviewStats?.payouts?.pendingPayouts ?? 0} طلبات</div>
+                  <div className="text-[11px] font-bold text-amber-800">قائمة السحوبات المالية</div>
                 </div>
               </div>
             </Card>

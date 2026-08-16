@@ -78,7 +78,7 @@ export const BookingsFoundationView: React.FC = () => {
   const today = new Date().toISOString().slice(0, 10);
 
   const pendingBookings = (bookings || []).filter(
-    (b) => b.status === 'PENDING_OWNER_APPROVAL' || b.status === 'EXPIRED'
+    (b) => b.status === 'PENDING_OWNER_APPROVAL' || b.status === 'APPROVED_PENDING_PAYMENT' || b.status === 'EXPIRED'
   );
 
   const upcomingBookings = (bookings || [])

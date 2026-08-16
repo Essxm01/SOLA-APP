@@ -30,7 +30,8 @@ import type {
 
 // Factory flag checking environment configuration
 const useMockRepo = import.meta.env.VITE_USE_MOCK_REPO === 'true';
-const httpRepo = new HttpRepository('/api/v1');
+const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || '/api/v1';
+const httpRepo = new HttpRepository(apiBaseUrl);
 
 export const repositoryFactory = {
   useMockMode: useMockRepo,

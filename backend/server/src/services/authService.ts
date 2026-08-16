@@ -4,9 +4,9 @@
  * Master Source of Truth: PHASE_7_MASTER_SPECIFICATION.md
  */
 
-import { MockSmsProvider, type ISmsProvider } from './smsProvider';
-import { signAccessToken, signRefreshToken } from './jwtService';
-import type { AuthSessionTokens, UserRole } from '../types/server';
+import { MockSmsProvider, type ISmsProvider } from './smsProvider.js';
+import { signAccessToken, signRefreshToken } from './jwtService.js';
+import type { AuthSessionTokens, UserRole } from '../types/server.js';
 
 export interface UserSessionRecord {
   id: string;

@@ -15,6 +15,7 @@ import { StatusBadge } from './ui/Badge';
 import { Input, Select } from './ui/Input';
 import { Modal } from './ui/Modal';
 import { AlertBanner, SkeletonBox } from './ui/StateViews';
+import { getApiUrl } from '../utils/api';
 
 export interface PayoutDetailExecutionProps {
   payoutId: string;
@@ -45,7 +46,7 @@ export function PayoutDetailExecution({ payoutId, onBack }: PayoutDetailExecutio
     setError(null);
     try {
       const token = localStorage.getItem('sola_admin_access_token') || 'admin_token_valid';
-      const response = await fetch(`/api/v1/admin/payouts/${payoutId}`, {
+      const response = await fetch(getApiUrl(`/admin/payouts/${payoutId}`), {
         headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/json' },
       });
       if (!response.ok) throw new Error('فشل استرجاع تفاصيل طلب السحب');
@@ -84,7 +85,7 @@ export function PayoutDetailExecution({ payoutId, onBack }: PayoutDetailExecutio
     setError(null);
     try {
       const token = localStorage.getItem('sola_admin_access_token') || 'admin_token_valid';
-      const response = await fetch(`/api/v1/admin/payouts/${payoutId}/reveal-pii`, {
+      const response = await fetch(getApiUrl(`/admin/payouts/${payoutId}/reveal-pii`), {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ reason: 'تنفيذ التحويل البنكي اليدوي المباشر بواسطة المسؤول' }),
@@ -111,7 +112,7 @@ export function PayoutDetailExecution({ payoutId, onBack }: PayoutDetailExecutio
       }
 
       const token = localStorage.getItem('sola_admin_access_token') || 'admin_token_valid';
-      const response = await fetch(`/api/v1/admin/payouts/${payoutId}/approve`, {
+      const response = await fetch(getApiUrl(`/admin/payouts/${payoutId}/approve`), {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -140,7 +141,7 @@ export function PayoutDetailExecution({ payoutId, onBack }: PayoutDetailExecutio
       }
 
       const token = localStorage.getItem('sola_admin_access_token') || 'admin_token_valid';
-      const response = await fetch(`/api/v1/admin/payouts/${payoutId}/reject`, {
+      const response = await fetch(getApiUrl(`/admin/payouts/${payoutId}/reject`), {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,

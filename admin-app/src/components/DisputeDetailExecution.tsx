@@ -15,6 +15,7 @@ import { StatusBadge } from './ui/Badge';
 import { Input, Select } from './ui/Input';
 import { Modal } from './ui/Modal';
 import { AlertBanner, SkeletonBox } from './ui/StateViews';
+import { getApiUrl } from '../utils/api';
 
 export interface DisputeDetailExecutionProps {
   disputeId: string;
@@ -39,7 +40,7 @@ export function DisputeDetailExecution({ disputeId, onBack }: DisputeDetailExecu
     setError(null);
     try {
       const token = localStorage.getItem('sola_admin_access_token') || 'admin_token_valid';
-      const response = await fetch(`/api/v1/admin/disputes/${disputeId}`, {
+      const response = await fetch(getApiUrl(`/admin/disputes/${disputeId}`), {
         headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/json' },
       });
       if (!response.ok) throw new Error('فشل استرجاع تفاصيل النزاع والأدلة');
@@ -69,7 +70,7 @@ export function DisputeDetailExecution({ disputeId, onBack }: DisputeDetailExecu
       }
 
       const token = localStorage.getItem('sola_admin_access_token') || 'admin_token_valid';
-      const response = await fetch(`/api/v1/admin/disputes/${disputeId}/resolve`, {
+      const response = await fetch(getApiUrl(`/admin/disputes/${disputeId}/resolve`), {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -102,7 +103,7 @@ export function DisputeDetailExecution({ disputeId, onBack }: DisputeDetailExecu
     setError(null);
     try {
       const token = localStorage.getItem('sola_admin_access_token') || 'admin_token_valid';
-      const response = await fetch(`/api/v1/admin/disputes/${disputeId}/reconcile`, {
+      const response = await fetch(getApiUrl(`/admin/disputes/${disputeId}/reconcile`), {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${token}`, 'Idempotency-Key': `reconcile_${Date.now()}` },
       });

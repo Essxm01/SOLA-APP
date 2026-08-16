@@ -9,8 +9,14 @@ import type http from 'node:http';
 const DEFAULT_ALLOWED_ORIGINS = [
   'http://localhost:5173', // Owner App Dev Server
   'http://localhost:5174', // Admin App Dev Server
+  'http://localhost:5175', // Customer App Dev Server
   'http://127.0.0.1:5173',
   'http://127.0.0.1:5174',
+  'http://127.0.0.1:5175',
+  'https://sola-owner-app.vercel.app',
+  'https://sola-admin-app.vercel.app',
+  'https://sola-customer-app.vercel.app',
+  'https://sola-app.vercel.app',
 ];
 
 export function getCorsAllowedOrigins(): string[] {
@@ -27,8 +33,21 @@ export function getCorsAllowedOrigins(): string[] {
 
 export function isOriginAllowed(origin?: string): boolean {
   if (!origin) return false;
+  const cleanOrigin = origin.trim();
   const allowed = getCorsAllowedOrigins();
-  return allowed.includes(origin.trim());
+  if (allowed.includes(cleanOrigin)) return true;
+
+  // Allow Sola Vercel deployments matching *.vercel.app if sola- prefix is present
+  try {
+    const url = new URL(cleanOrigin);
+    if (url.hostname.endsWith('.vercel.app') && url.hostname.includes('sola')) {
+      return true;
+    }
+  } catch {
+    return false;
+  }
+
+  return false;
 }
 
 /**

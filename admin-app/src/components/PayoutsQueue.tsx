@@ -12,6 +12,7 @@ import { Button } from './ui/Button';
 import { StatusBadge } from './ui/Badge';
 import { Input } from './ui/Input';
 import { TableSkeleton, EmptyState, AlertBanner } from './ui/StateViews';
+import { getApiUrl } from '../utils/api';
 
 export interface PayoutItem {
   payoutRequestId: string;
@@ -56,7 +57,7 @@ export function PayoutsQueue({ onSelectPayoutDetail }: PayoutsQueueProps = {}) {
     setError(null);
     try {
       const token = localStorage.getItem('sola_admin_access_token') || 'admin_token_valid';
-      const response = await fetch(`/api/v1/admin/payouts/pending?page=${pageNum}&limit=10`, {
+      const response = await fetch(getApiUrl(`/admin/payouts/pending?page=${pageNum}&limit=10`), {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Accept': 'application/json',

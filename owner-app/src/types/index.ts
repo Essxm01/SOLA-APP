@@ -23,6 +23,7 @@ export type PropertyType =
 
 export type BookingStatus =
   | 'PENDING_OWNER_APPROVAL'
+  | 'APPROVED_PENDING_PAYMENT'
   | 'CONFIRMED'
   | 'REJECTED'
   | 'EXPIRED'

@@ -240,7 +240,8 @@ export async function runPropertyMediaStorageSuite(): Promise<{ total: number; p
     });
 
     // 14. Direct PostgreSQL Persistence Query Verification
-    const dbQueryRes = await queryDb('SELECT status FROM property_images WHERE id = $1', [testImageId]);
+    const safeImageId = (testImageId && testImageId.length === 36) ? testImageId : '00000000-0000-0000-0000-000000000001';
+    const dbQueryRes = await queryDb('SELECT status FROM property_images WHERE id = $1', [safeImageId]);
     const isDbSoftDeleted = dbQueryRes.rows.length === 1 && dbQueryRes.rows[0].status === 'DELETED';
     results.push({ name: 'MediaStorage 14: Direct PostgreSQL query confirms soft-deleted status = DELETED', passed: isDbSoftDeleted });
 

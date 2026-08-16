@@ -52,12 +52,12 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onOTPSent }) => {
           </div>
           <div>
             <span className="text-base font-extrabold text-slate-900 block leading-tight">Sola</span>
-            <span className="text-[10px] font-bold text-[#0059FF] tracking-wider block">OWNER APP</span>
+            <span className="text-[10px] font-bold text-[#0059FF] tracking-wider block">VACATION RENTALS</span>
           </div>
         </div>
-        <div className="flex items-center gap-1 bg-amber-50 border border-amber-200 px-2.5 py-1 rounded-full text-amber-800 text-xs font-semibold">
+        <div className="flex items-center gap-1 bg-blue-50 border border-blue-200 px-2.5 py-1 rounded-full text-[#0059FF] text-xs font-semibold">
           <ShieldCheck className="w-3.5 h-3.5" />
-          <span>حساب المالك</span>
+          <span>منصة موثقة</span>
         </div>
       </div>
 
@@ -66,7 +66,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onOTPSent }) => {
         <div className="mb-8 text-right">
           <h2 className="text-2xl font-black text-slate-900 mb-2">تسجيل الدخول / إنشاء حساب</h2>
           <p className="text-sm text-slate-500 leading-relaxed">
-            أدخل رقم الهاتف المسجل كمالك وحدات ساحلية لتلقي رمز التأكيد OTP عبر SMS.
+            أدخل رقم الهاتف المسجل لديك لتلقي رمز التأكيد (OTP) عبر SMS.
           </p>
         </div>
 

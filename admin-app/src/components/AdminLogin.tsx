@@ -4,6 +4,7 @@ import { Card } from './ui/Card';
 import { Button } from './ui/Button';
 import { Input } from './ui/Input';
 import { AlertBanner } from './ui/StateViews';
+import { getApiUrl } from '../utils/api';
 
 export interface AdminLoginProps {
   onLoginSuccess: (adminData: any, token: string) => void;
@@ -21,7 +22,7 @@ export function AdminLogin({ onLoginSuccess }: AdminLoginProps) {
     setLoading(true);
 
     try {
-      const response = await fetch('/api/v1/admin/auth/login', {
+      const response = await fetch(getApiUrl('/admin/auth/login'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),
@@ -53,7 +54,7 @@ export function AdminLogin({ onLoginSuccess }: AdminLoginProps) {
             S
           </div>
           <h1 className="text-2xl font-black text-slate-900 tracking-tight">SOLA VACATION RENTALS</h1>
-          <p className="text-xs text-slate-500 font-semibold">بوابة تسجيل دخول مسئول المنصة — Administrator Portal Login</p>
+          <p className="text-xs text-slate-500 font-semibold">بوابة دخول الإدارة والتشغيل</p>
         </div>
 
         {/* Login Card */}
@@ -66,7 +67,7 @@ export function AdminLogin({ onLoginSuccess }: AdminLoginProps) {
 
             <Input
               type="email"
-              label="البريد الإلكتروني للإدارة (Admin Email):"
+              label="البريد الإلكتروني:"
               placeholder="admin@sola.com"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
@@ -76,7 +77,7 @@ export function AdminLogin({ onLoginSuccess }: AdminLoginProps) {
 
             <Input
               type="password"
-              label="كلمة المرور (Password):"
+              label="كلمة المرور:"
               placeholder="••••••••••••"
               value={password}
               onChange={(e) => setPassword(e.target.value)}

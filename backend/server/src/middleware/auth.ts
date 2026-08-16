@@ -4,8 +4,8 @@
  * Master Source of Truth: PHASE_7_MASTER_SPECIFICATION.md
  */
 
-import { verifyAccessToken } from '../services/jwtService';
-import type { UserRole, JwtPayload } from '../types/server';
+import { verifyAccessToken } from '../services/jwtService.js';
+import type { UserRole, JwtPayload } from '../types/server.js';
 
 export interface AuthenticatedUser {
   id: string;

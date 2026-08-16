@@ -106,11 +106,18 @@ export class LocalStorageEngineProvider implements IObjectStorageProvider {
   private secretKey: string;
 
   constructor() {
-    this.baseDir = path.resolve(process.cwd(), 'storage_volume');
+    const isVercel = Boolean(process.env.VERCEL);
+    this.baseDir = isVercel
+      ? path.join(process.env.TMPDIR || '/tmp', 'storage_volume')
+      : path.resolve(process.cwd(), 'storage_volume');
     this.cdnHost = process.env.STORAGE_CDN_HOST || 'http://localhost:4000/storage';
     this.secretKey = process.env.STORAGE_SECRET_KEY || 'sola_storage_secret_key_2026';
-    if (!fs.existsSync(this.baseDir)) {
-      fs.mkdirSync(this.baseDir, { recursive: true });
+    try {
+      if (!fs.existsSync(this.baseDir)) {
+        fs.mkdirSync(this.baseDir, { recursive: true });
+      }
+    } catch (e) {
+      console.warn('[StorageProvider] Could not create local storage directory:', e);
     }
   }
 
@@ -333,7 +340,8 @@ export class SupabaseStorageProvider implements IObjectStorageProvider {
  * Storage Provider Factory (Strict Policy: No Silent Fallback)
  */
 export function createStorageProvider(): IObjectStorageProvider {
-  const providerType = (process.env.OBJECT_STORAGE_PROVIDER || 'local').toLowerCase().trim();
+  const defaultProvider = process.env.VERCEL ? 'supabase' : 'local';
+  const providerType = (process.env.OBJECT_STORAGE_PROVIDER || defaultProvider).toLowerCase().trim();
 
   if (providerType === 'supabase') {
     return new SupabaseStorageProvider();

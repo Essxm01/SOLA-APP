@@ -1,1 +1,1 @@
-{"root":["./src/app.tsx","./src/main.tsx"],"version":"6.0.3"}
+{"root":["./src/app.tsx","./src/main.tsx","./src/vite-env.d.ts","./src/components/customercheckoutmodal.tsx","./src/services/customerpaymentservice.ts","./src/utils/statusformatter.ts"],"version":"6.0.3"}

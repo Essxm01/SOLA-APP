@@ -5,8 +5,7 @@
  */
 
 import jwt from 'jsonwebtoken';
-import { cryptoDb } from './dbRepository';
-import type { JwtPayload, UserRole, AuthSessionTokens } from '../types/server';
+import type { JwtPayload, UserRole, AuthSessionTokens } from '../types/server.js';
 
 const JWT_ACCESS_SECRET = process.env.JWT_ACCESS_SECRET || 'sola_vacation_rentals_jwt_access_secret_key_2026_super_secure';
 const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || 'sola_vacation_rentals_jwt_refresh_secret_key_2026_super_secure';
@@ -90,37 +89,39 @@ export function verifyAccessToken(token: string): JwtPayload {
       exp: decoded.exp,
     };
   } catch (err: any) {
-    // Legacy mock token pattern fallback for test harness backward compatibility
-    if (token.includes('admin')) {
-      return {
-        sub: 'admin-001',
-        phone: '+201000000000',
-        role: 'ROLE_ADMIN',
-        iat: Math.floor(Date.now() / 1000),
-        exp: Math.floor(Date.now() / 1000) + 900,
-      };
-    }
-    if (token.startsWith('customer')) {
-      const parts = token.split('_');
-      const customId = parts.length > 1 ? parts[1] : 'customer-001';
-      return {
-        sub: customId,
-        phone: '+201111111111',
-        role: 'ROLE_CUSTOMER',
-        iat: Math.floor(Date.now() / 1000),
-        exp: Math.floor(Date.now() / 1000) + 900,
-      };
-    }
-    if (token.includes('owner_')) {
-      const match = token.match(/(owner_\d+)/);
-      const extractedOwnerId = match ? match[1] : 'owner-001';
-      return {
-        sub: extractedOwnerId,
-        phone: '+201012345678',
-        role: 'ROLE_OWNER',
-        iat: Math.floor(Date.now() / 1000),
-        exp: Math.floor(Date.now() / 1000) + 900,
-      };
+    // Legacy mock token pattern fallback for test harness backward compatibility (Non-production environments only)
+    if (process.env.NODE_ENV !== 'production') {
+      if (token.includes('admin')) {
+        return {
+          sub: 'admin-001',
+          phone: '+201000000000',
+          role: 'ROLE_ADMIN',
+          iat: Math.floor(Date.now() / 1000),
+          exp: Math.floor(Date.now() / 1000) + 900,
+        };
+      }
+      if (token.startsWith('customer')) {
+        const parts = token.split('_');
+        const customId = parts.length > 1 ? parts[1] : 'customer-001';
+        return {
+          sub: customId,
+          phone: '+201111111111',
+          role: 'ROLE_CUSTOMER',
+          iat: Math.floor(Date.now() / 1000),
+          exp: Math.floor(Date.now() / 1000) + 900,
+        };
+      }
+      if (token.includes('owner_')) {
+        const match = token.match(/(owner_\d+)/);
+        const extractedOwnerId = match ? match[1] : 'owner-001';
+        return {
+          sub: extractedOwnerId,
+          phone: '+201012345678',
+          role: 'ROLE_OWNER',
+          iat: Math.floor(Date.now() / 1000),
+          exp: Math.floor(Date.now() / 1000) + 900,
+        };
+      }
     }
 
     if (err.name === 'TokenExpiredError') {

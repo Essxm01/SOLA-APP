@@ -18,6 +18,7 @@ import { Button } from './ui/Button';
 import { StatusBadge } from './ui/Badge';
 import { Modal } from './ui/Modal';
 import { TableSkeleton, EmptyState, AlertBanner } from './ui/StateViews';
+import { getApiUrl } from '../utils/api';
 
 export interface VerificationsQueueProps {
   onStatusChange?: () => void;
@@ -123,7 +124,7 @@ export function VerificationsQueue({ onStatusChange }: VerificationsQueueProps =
     setError(null);
     try {
       const token = localStorage.getItem('sola_admin_access_token') || '';
-      const response = await fetch('/api/v1/admin/verifications/pending', {
+      const response = await fetch(getApiUrl('/admin/verifications/pending'), {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Accept': 'application/json',
@@ -161,7 +162,7 @@ export function VerificationsQueue({ onStatusChange }: VerificationsQueueProps =
       }
 
       const token = localStorage.getItem('sola_admin_access_token') || '';
-      const response = await fetch(`/api/v1/admin/verifications/${selectedRequest.ownerId}/review`, {
+      const response = await fetch(getApiUrl(`/admin/verifications/${selectedRequest.ownerId}/review`), {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,

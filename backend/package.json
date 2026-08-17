@@ -20,6 +20,7 @@
   "devDependencies": {
     "@types/node": "^24.13.3",
     "tsx": "^4.20.0",
-    "typescript": "~6.0.2"
+    "typescript": "~6.0.2",
+    "wrangler": "^4.123.0"
   }
 }

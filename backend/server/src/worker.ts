@@ -96,15 +96,19 @@ export default {
 
       let bodyPayload: any = undefined;
       if (method !== 'GET' && method !== 'HEAD') {
-        const contentType = request.headers.get('content-type') || '';
-        if (contentType.includes('application/json')) {
-          try {
-            bodyPayload = await request.json();
-          } catch {
-            bodyPayload = await request.text();
+        // Read incoming Request stream ONCE to prevent "Body has already been used" V8 stream errors
+        const rawText = await request.text().catch(() => '');
+        if (rawText && rawText.trim().length > 0) {
+          const contentType = request.headers.get('content-type') || '';
+          if (contentType.includes('application/json') || rawText.trim().startsWith('{') || rawText.trim().startsWith('[')) {
+            try {
+              bodyPayload = JSON.parse(rawText);
+            } catch {
+              bodyPayload = rawText;
+            }
+          } else {
+            bodyPayload = rawText;
           }
-        } else {
-          bodyPayload = await request.text();
         }
       }
 

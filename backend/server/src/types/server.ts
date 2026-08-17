@@ -14,7 +14,7 @@ export interface ApiErrorResponse {
   timestamp: string;
 }
 
-export interface ApiSuccessResponse<T> {
+export interface ApiSuccessResponse<T = any> {
   success: true;
   data: T;
   meta?: Record<string, unknown>;
@@ -35,4 +35,30 @@ export interface AuthSessionTokens {
   accessToken: string;
   refreshToken: string;
   expiresIn: number;
+}
+
+export interface Property {
+  id: string;
+  ownerId: string;
+  title: string;
+  unitType?: string;
+  propertyType?: string;
+  status: string;
+  verificationStatus?: string;
+  [key: string]: any;
+}
+
+export interface Booking {
+  id: string;
+  propertyId: string;
+  customerId: string;
+  status: string;
+  [key: string]: any;
+}
+
+export interface Dispute {
+  id: string;
+  bookingId: string;
+  status: string;
+  [key: string]: any;
 }

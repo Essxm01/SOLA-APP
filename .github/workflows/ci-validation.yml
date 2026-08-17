@@ -1,0 +1,118 @@
+name: SOLA Monorepo CI Validation
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  # ----------------------------------------------------------------------------
+  # JOB 1: Detect Monorepo Path Changes
+  # ----------------------------------------------------------------------------
+  changes:
+    name: Detect Changed Modules
+    runs-on: ubuntu-latest
+    outputs:
+      admin: ${{ steps.filter.outputs.admin }}
+      owner: ${{ steps.filter.outputs.owner }}
+      customer: ${{ steps.filter.outputs.customer }}
+      backend: ${{ steps.filter.outputs.backend }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            admin:
+              - 'admin-app/**'
+              - 'package.json'
+            owner:
+              - 'owner-app/**'
+              - 'package.json'
+            customer:
+              - 'customer-app/**'
+              - 'package.json'
+            backend:
+              - 'backend/**'
+              - 'package.json'
+
+  # ----------------------------------------------------------------------------
+  # JOB 2: Validate Admin App
+  # ----------------------------------------------------------------------------
+  validate-admin:
+    name: Validate Admin App
+    needs: changes
+    if: ${{ needs.changes.outputs.admin == 'true' || github.event_name == 'push' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+      - name: Install & Build Admin App
+        run: |
+          cd admin-app
+          npm ci || npm install
+          npm run build
+
+  # ----------------------------------------------------------------------------
+  # JOB 3: Validate Owner App
+  # ----------------------------------------------------------------------------
+  validate-owner:
+    name: Validate Owner App
+    needs: changes
+    if: ${{ needs.changes.outputs.owner == 'true' || github.event_name == 'push' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+      - name: Install & Build Owner App
+        run: |
+          cd owner-app
+          npm ci || npm install
+          npm run build
+
+  # ----------------------------------------------------------------------------
+  # JOB 4: Validate Customer App
+  # ----------------------------------------------------------------------------
+  validate-customer:
+    name: Validate Customer App
+    needs: changes
+    if: ${{ needs.changes.outputs.customer == 'true' || github.event_name == 'push' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+      - name: Install & Build Customer App
+        run: |
+          cd customer-app
+          npm ci || npm install
+          npm run build
+
+  # ----------------------------------------------------------------------------
+  # JOB 5: Validate Backend API
+  # ----------------------------------------------------------------------------
+  validate-backend:
+    name: Validate Backend API
+    needs: changes
+    if: ${{ needs.changes.outputs.backend == 'true' || github.event_name == 'push' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+      - name: Install & Check Backend
+        run: |
+          cd backend
+          npm ci || npm install
+          npm run check

@@ -8,6 +8,7 @@
  */
 
 import { ExpressServerApp } from './app.js';
+import { isOriginAllowed } from './middleware/cors.js';
 
 export interface ExecutionContext {
   waitUntil(promise: Promise<any>): void;
@@ -50,35 +51,39 @@ export default {
     const url = new URL(request.url);
     const method = request.method.toUpperCase();
 
-    // 2. Handle CORS Preflight OPTIONS requests
-    const origin = request.headers.get('origin') || '*';
-    const allowedOrigins = [
-      'https://sola-admin-app.vercel.app',
-      'https://sola-owner-app.vercel.app',
-      'https://sola-customer-app.vercel.app',
-      'https://sola-admin-app.pages.dev',
-      'https://sola-owner-app.pages.dev',
-      'https://sola-customer-app.pages.dev',
-      'http://localhost:5173',
-      'http://localhost:5174',
-      'http://localhost:5175',
-      'http://localhost:3000'
-    ];
-
-    const corsOrigin = allowedOrigins.includes(origin) ? origin : allowedOrigins[0];
+    // 2. Handle Dynamic CORS Origin Validation & Preflight OPTIONS requests
+    const rawOrigin = request.headers.get('origin') || '';
+    const origin = rawOrigin.trim();
+    const isAllowed = isOriginAllowed(origin);
 
     const corsHeaders: Record<string, string> = {
-      'Access-Control-Allow-Origin': corsOrigin,
-      'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, PATCH, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type, Authorization, Idempotency-Key, Accept, X-Requested-With, hmac',
-      'Access-Control-Allow-Credentials': 'true',
-      'Vary': 'Origin'
+      'vary': 'Origin'
     };
 
+    if (isAllowed) {
+      corsHeaders['access-control-allow-origin'] = origin;
+      corsHeaders['access-control-allow-methods'] = 'GET, POST, PUT, DELETE, PATCH, OPTIONS';
+      corsHeaders['access-control-allow-headers'] = 'Content-Type, Authorization, Idempotency-Key, Accept, X-Requested-With, hmac, X-Sola-Signature';
+      corsHeaders['access-control-allow-credentials'] = 'true';
+    }
+
     if (method === 'OPTIONS') {
+      if (origin && !isAllowed) {
+        return new Response(JSON.stringify({
+          success: false,
+          error: {
+            code: 'CORS_FORBIDDEN_ORIGIN',
+            message: 'Origin is not permitted by CORS policy'
+          }
+        }), {
+          status: 403,
+          headers: { 'content-type': 'application/json', 'vary': 'Origin' }
+        });
+      }
+
       return new Response(null, {
         status: 204,
-        headers: corsHeaders,
+        headers: corsHeaders
       });
     }
 
@@ -107,14 +112,16 @@ export default {
       const app = getAppInstance();
 
       let statusCode = 200;
-      let responseHeaders: Record<string, string> = { ...corsHeaders, 'Content-Type': 'application/json' };
+      let responseHeaders: Record<string, string> = { ...corsHeaders, 'content-type': 'application/json' };
       let responseBody = '';
 
       const syntheticRes: any = {
         writeHead: (code: number, headersArg?: Record<string, string>) => {
           statusCode = code;
           if (headersArg) {
-            Object.assign(responseHeaders, headersArg);
+            for (const [hk, hv] of Object.entries(headersArg)) {
+              responseHeaders[hk.toLowerCase()] = hv;
+            }
           }
         },
         setHeader: (name: string, value: string) => {
@@ -181,7 +188,7 @@ export default {
         status: 500,
         headers: {
           ...corsHeaders,
-          'Content-Type': 'application/json'
+          'content-type': 'application/json'
         }
       });
     }

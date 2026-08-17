@@ -1,46 +1,83 @@
 /**
- * Sola Vacation Rentals — Strict CORS Whitelist & Preflight Policy Middleware
+ * Sola Vacation Rentals — Strict CORS Whitelist & Dynamic Origin Validation Middleware
  * Location: server/src/middleware/cors.ts
  * Master Source of Truth: PHASE_7_MASTER_SPECIFICATION.md
  */
 
 import type http from 'node:http';
 
-const DEFAULT_ALLOWED_ORIGINS = [
-  'http://localhost:5173', // Owner App Dev Server
-  'http://localhost:5174', // Admin App Dev Server
-  'http://localhost:5175', // Customer App Dev Server
+const DEFAULT_EXACT_ALLOWED_ORIGINS = [
+  // Local Development
+  'http://localhost:5173',
+  'http://localhost:5174',
+  'http://localhost:5175',
+  'http://localhost:3000',
+  'http://localhost:4000',
   'http://127.0.0.1:5173',
   'http://127.0.0.1:5174',
   'http://127.0.0.1:5175',
+  'http://127.0.0.1:3000',
+  'http://127.0.0.1:4000',
+
+  // Production Cloudflare Pages Domains
+  'https://sola-admin-app.pages.dev',
+  'https://sola-owner-app.pages.dev',
+  'https://sola-customer-app.pages.dev',
+
+  // Legacy Vercel Deployments
   'https://sola-owner-app.vercel.app',
   'https://sola-admin-app.vercel.app',
   'https://sola-customer-app.vercel.app',
   'https://sola-app.vercel.app',
 ];
 
-export function getCorsAllowedOrigins(): string[] {
-  const envOrigins = process.env.CORS_ALLOWED_ORIGINS;
-  if (!envOrigins) return DEFAULT_ALLOWED_ORIGINS;
-
-  const parsed = envOrigins
-    .split(',')
-    .map(o => o.trim())
-    .filter(o => o.length > 0);
-
-  return parsed.length > 0 ? parsed : DEFAULT_ALLOWED_ORIGINS;
-}
-
+/**
+ * Validates whether an incoming HTTP Origin is permitted by the SOLA platform CORS policy.
+ * Supports exact origin matching, local development ports, and dynamic Cloudflare Pages preview subdomains.
+ */
 export function isOriginAllowed(origin?: string): boolean {
   if (!origin) return false;
   const cleanOrigin = origin.trim();
-  const allowed = getCorsAllowedOrigins();
-  if (allowed.includes(cleanOrigin)) return true;
+  if (cleanOrigin === '' || cleanOrigin === 'null') return false;
 
-  // Allow Sola Vercel deployments matching *.vercel.app if sola- prefix is present
+  // 1. Check exact matches & custom environment overrides
+  if (DEFAULT_EXACT_ALLOWED_ORIGINS.includes(cleanOrigin)) {
+    return true;
+  }
+
+  const envOrigins = process.env.CORS_ALLOWED_ORIGINS;
+  if (envOrigins) {
+    const parsed = envOrigins.split(',').map(o => o.trim()).filter(o => o.length > 0);
+    if (parsed.includes(cleanOrigin)) return true;
+  }
+
+  // 2. Parse URL for dynamic subdomain pattern matching
   try {
     const url = new URL(cleanOrigin);
-    if (url.hostname.endsWith('.vercel.app') && url.hostname.includes('sola')) {
+    const protocol = url.protocol; // 'http:' or 'https:'
+    const hostname = url.hostname.toLowerCase();
+
+    // Localhost / 127.0.0.1 on any port
+    if (hostname === 'localhost' || hostname === '127.0.0.1') {
+      return protocol === 'http:' || protocol === 'https:';
+    }
+
+    // Remote domains must use HTTPS
+    if (protocol !== 'https:') {
+      return false;
+    }
+
+    // Cloudflare Pages Preview subdomains (*.sola-admin-app.pages.dev, *.sola-owner-app.pages.dev, *.sola-customer-app.pages.dev)
+    if (
+      hostname.endsWith('.sola-admin-app.pages.dev') ||
+      hostname.endsWith('.sola-owner-app.pages.dev') ||
+      hostname.endsWith('.sola-customer-app.pages.dev')
+    ) {
+      return true;
+    }
+
+    // Vercel Preview subdomains (*.vercel.app containing sola)
+    if (hostname.endsWith('.vercel.app') && hostname.includes('sola')) {
       return true;
     }
   } catch {
@@ -51,7 +88,7 @@ export function isOriginAllowed(origin?: string): boolean {
 }
 
 /**
- * Apply Strict CORS Headers & Handle Preflight OPTIONS requests
+ * Apply Dynamic CORS Headers & Handle Preflight OPTIONS requests for Node HTTP server
  * @returns true if preflight request was handled (caller should end request), false otherwise
  */
 export function applyCorsHeaders(req: http.IncomingMessage, res: http.ServerResponse): boolean {
@@ -65,8 +102,9 @@ export function applyCorsHeaders(req: http.IncomingMessage, res: http.ServerResp
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
     res.setHeader(
       'Access-Control-Allow-Headers',
-      'Content-Type, Authorization, Idempotency-Key, X-Sola-Signature, X-Requested-With, Accept'
+      'Content-Type, Authorization, Idempotency-Key, X-Sola-Signature, X-Requested-With, Accept, hmac'
     );
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
   }
 
   // Preflight OPTIONS Request handling

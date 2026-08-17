@@ -4,39 +4,8 @@
  * Master Source of Truth: PHASE_7_MASTER_SPECIFICATION.md
  */
 
-export interface Property {
-  id: string;
-  ownerId: string;
-  title: string;
-  status: string;
-  rejectionReason?: string;
-  updatedAt: string;
-  [key: string]: any;
-}
-
-export interface Booking {
-  id: string;
-  propertyId: string;
-  customerId: string;
-  ownerId: string;
-  status: string;
-  rejectionReason?: string;
-  cancellationReason?: string;
-  updatedAt: string;
-  [key: string]: any;
-}
-
-export interface Dispute {
-  id: string;
-  bookingId: string;
-  status: 'OPEN' | 'UNDER_REVIEW' | 'RESOLVED' | 'ESCALATED_TO_ADMIN' | 'RESOLVING_PENDING_GATEWAY';
-  resolutionOutcome?: 'RELEASE_TO_OWNER' | 'REFUND_GUEST' | 'SPLIT';
-  heldAmountEgp: number;
-  refundAmountEgp?: number;
-  ownerReleaseAmountEgp?: number;
-  updatedAt: string;
-  [key: string]: any;
-}
+import type { Property, Booking, Dispute } from '../types/server.js';
+export type { Property, Booking, Dispute };
 
 // ==========================================
 // 1. PROPERTY DOMAIN CONTROLLER (RULE-4C-01 & RULE-4C-02)

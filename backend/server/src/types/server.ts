@@ -6,6 +6,7 @@
 
 export interface ApiErrorResponse {
   success: false;
+  data?: undefined;
   error: {
     code: string;
     message: string;
@@ -17,9 +18,12 @@ export interface ApiErrorResponse {
 export interface ApiSuccessResponse<T = any> {
   success: true;
   data: T;
+  error?: undefined;
   meta?: Record<string, unknown>;
   timestamp: string;
 }
+
+export type ApiResponse<T = any> = ApiSuccessResponse<T> | ApiErrorResponse;
 
 export type UserRole = 'ROLE_OWNER' | 'ROLE_ADMIN' | 'ROLE_GUEST' | 'ROLE_CUSTOMER';
 
@@ -43,8 +47,13 @@ export interface Property {
   title: string;
   unitType?: string;
   propertyType?: string;
+  address?: string;
+  pricePerNight?: number;
   status: string;
   verificationStatus?: string;
+  rejectionReason?: string;
+  createdAt?: string;
+  updatedAt: string;
   [key: string]: any;
 }
 
@@ -52,7 +61,24 @@ export interface Booking {
   id: string;
   propertyId: string;
   customerId: string;
+  ownerId: string;
   status: string;
+  checkInDate?: string;
+  checkOutDate?: string;
+  totalAmount?: number;
+  depositAmount?: number;
+  rejectionReason?: string;
+  cancellationReason?: string;
+  createdAt?: string;
+  updatedAt: string;
+  [key: string]: any;
+}
+
+export interface BookingPropertySnapshot {
+  propertyId: string;
+  propertyTitle: string;
+  basePriceAtBooking: number;
+  capturedAt: string;
   [key: string]: any;
 }
 
@@ -60,5 +86,12 @@ export interface Dispute {
   id: string;
   bookingId: string;
   status: string;
+  resolutionOutcome?: 'RELEASE_TO_OWNER' | 'REFUND_GUEST' | 'SPLIT' | string;
+  heldAmountEgp: number;
+  refundAmountEgp?: number;
+  ownerReleaseAmountEgp?: number;
+  adminNotes?: string;
+  createdAt?: string;
+  updatedAt: string;
   [key: string]: any;
 }

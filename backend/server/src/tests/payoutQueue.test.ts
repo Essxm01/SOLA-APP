@@ -97,7 +97,7 @@ export async function runPayoutQueueSuite() {
 
   // Test 5: Invalid Page Parameter (page = 0) -> 400 Bad Request
   try {
-    const res = await app.handleHttpRequest('GET', '/api/v1/admin/payouts/pending', adminHeaders, undefined, { page: '0' });
+    const res = await app.handleHttpRequest('GET', '/api/v1/admin/payouts/pending', adminHeaders, undefined, new URLSearchParams({ page: '0' }));
     if (res.statusCode === 400 && res.body.error?.code === 'INVALID_PAGINATION_PARAMETERS') {
       results.push({ name: 'FLOW-ADM-07 [1.5] Invalid Page (page=0) -> 400 Bad Request', passed: true });
     } else {
@@ -109,7 +109,7 @@ export async function runPayoutQueueSuite() {
 
   // Test 6: Invalid Limit Parameter (limit = 51) -> 400 Bad Request
   try {
-    const res = await app.handleHttpRequest('GET', '/api/v1/admin/payouts/pending', adminHeaders, undefined, { limit: '51' });
+    const res = await app.handleHttpRequest('GET', '/api/v1/admin/payouts/pending', adminHeaders, undefined, new URLSearchParams({ limit: '51' }));
     if (res.statusCode === 400 && res.body.error?.code === 'INVALID_PAGINATION_PARAMETERS') {
       results.push({ name: 'FLOW-ADM-07 [1.6] Invalid Limit (limit=51) -> 400 Bad Request', passed: true });
     } else {
@@ -121,7 +121,7 @@ export async function runPayoutQueueSuite() {
 
   // Test 7: Deterministic FIFO Ordering & Queue Eligibility Filter
   try {
-    const res = await app.handleHttpRequest('GET', '/api/v1/admin/payouts/pending', adminHeaders, undefined, { page: '1', limit: '10' });
+    const res = await app.handleHttpRequest('GET', '/api/v1/admin/payouts/pending', adminHeaders, undefined, new URLSearchParams({ page: '1', limit: '10' }));
 
     const items = res.body.data.items;
     const isSortedFIFO = items.every((item: any, idx: number) => {

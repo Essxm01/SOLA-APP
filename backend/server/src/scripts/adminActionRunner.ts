@@ -8,7 +8,7 @@
  * - Zero direct DB mutations inside runner script
  */
 
-import { generateJwtToken } from '../middleware/auth';
+import { signAccessToken } from '../services/jwtService.js';
 
 export async function runAdminActionSimulation(baseUrl = 'http://localhost:4000/api/v1') {
   if (process.env.NODE_ENV === 'production') {
@@ -16,7 +16,7 @@ export async function runAdminActionSimulation(baseUrl = 'http://localhost:4000/
   }
 
   console.log('[Admin Action Runner] Generating Development ROLE_ADMIN JWT Token...');
-  const devAdminToken = 'admin_token_dev_secret';
+  const devAdminToken = signAccessToken({ sub: 'admin-001', role: 'ROLE_ADMIN' });
 
   const headers = {
     'Content-Type': 'application/json',

@@ -731,15 +731,17 @@ export class ExpressServerApp {
 
         // --- E. Property Domain Endpoints (PostgreSQL Driven) ---
         if (path === '/api/v1/owner/properties' && method === 'POST') {
-          const propId = crypto.randomUUID();
+          const isValidUuid = (val?: string) => val && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val);
+          const propId = isValidUuid(bodyPayload?.id) ? bodyPayload.id : crypto.randomUUID();
+
           // Ensure owner record exists in PostgreSQL DB before inserting property
           await ownerDb.upsert({
             id: ownerId,
-            phoneNumber: ownerId.startsWith('0000') ? '+20' + ownerId.slice(-10) : '+201012345678',
+            phoneNumber: formatOwnerPhone(ownerId),
             fullName: 'مالك صولا',
             status: 'ACTIVE',
             verificationStatus: 'UNVERIFIED',
-          }).catch(() => null);
+          }).catch((err) => console.error('❌ [ownerDb.upsert DB ERROR]:', err));
 
           const newProperty = await propertyDb.create({
             id: propId,

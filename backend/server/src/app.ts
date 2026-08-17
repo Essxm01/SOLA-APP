@@ -159,13 +159,16 @@ export class ExpressServerApp {
     try {
       // Helper to format owner phone number
       const formatOwnerPhone = (raw?: string, fallbackId?: string) => {
-        const digits = (raw || fallbackId || '').replace(/\D/g, '');
-        if (digits.length >= 8) {
-          if (digits.startsWith('20')) return `+${digits}`;
-          if (digits.startsWith('0')) return `+20${digits.slice(1)}`;
-          return `+20${digits}`;
+        const str = raw || fallbackId || '';
+        if (!str) return '+201012345678';
+        const cleanDigits = str.replace(/\D/g, '');
+        const last12 = cleanDigits.slice(-12);
+        if (last12.length >= 10) {
+          if (last12.startsWith('20')) return `+${last12}`;
+          if (last12.startsWith('0')) return `+20${last12.slice(1)}`;
+          return `+20${last12.slice(-10)}`;
         }
-        return '+201001234567';
+        return '+201012345678';
       };
 
       // ----------------------------------------------------------------------

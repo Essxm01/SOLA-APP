@@ -92,6 +92,7 @@ export const AlertBanner: React.FC<AlertBannerProps> = ({ type, message, onClose
     </div>
   );
 };
+
 export interface ErrorStateProps {
   title?: string;
   message?: string;
@@ -99,8 +100,8 @@ export interface ErrorStateProps {
 }
 
 export const ErrorState: React.FC<ErrorStateProps> = ({
-  title = 'فشل الاتصال بالخادم الرئيسي (API Failure)',
-  message = 'تعذر جلب البيانات الحقيقية من الخادم. يرجى التأكد من تشغيل PostgreSQL وسيرفر الـ Backend.',
+  title = 'فشل الاتصال بالخادم الرئيسي',
+  message = 'تعذر جلب البيانات الحقيقية من الخادم. يرجى التأكد من تشغيل سيرفر الـ Backend والقاعدة الرئيسية.',
   onRetry,
 }) => {
   return (

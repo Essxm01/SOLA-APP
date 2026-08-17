@@ -13,6 +13,24 @@ export const StatusBadge: React.FC<StatusBadgeProps> = ({
 }) => {
   const getStatusConfig = (st: string) => {
     switch (st) {
+      // Properties
+      case 'PENDING_REVIEW':
+        return {
+          label: label || 'قيد المراجعة والاعتماد',
+          bg: 'bg-amber-50',
+          text: 'text-amber-900',
+          border: 'border-amber-300',
+          dot: 'bg-amber-500',
+        };
+      case 'PUBLISHED':
+        return {
+          label: label || 'منشورة بالمنصة ✓',
+          bg: 'bg-emerald-50',
+          text: 'text-emerald-900',
+          border: 'border-emerald-300',
+          dot: 'bg-emerald-500',
+        };
+
       // Payouts
       case 'PENDING':
       case 'PENDING_ADMIN_PROCESSING':
@@ -54,7 +72,7 @@ export const StatusBadge: React.FC<StatusBadgeProps> = ({
       case 'WAITING_FOR_MORE_EVIDENCE':
       case 'ESCALATED_TO_ADMIN':
         return {
-          label: label || (st === 'ESCALATED_TO_ADMIN' ? 'مصعد للإدارة (Admin Review)' : 'مفتوح / بانتظار الرد'),
+          label: label || (st === 'ESCALATED_TO_ADMIN' ? 'مصعد لمراجعة الإدارة' : 'مفتوح / بانتظار الرد'),
           bg: 'bg-amber-50',
           text: 'text-amber-900',
           border: 'border-amber-300',
@@ -62,7 +80,7 @@ export const StatusBadge: React.FC<StatusBadgeProps> = ({
         };
       case 'RESOLVING_PENDING_GATEWAY':
         return {
-          label: label || 'معالجة الاسترداد البنكي (Pending Gateway)',
+          label: label || 'قيد المعالجة البنكية',
           bg: 'bg-blue-50',
           text: 'text-[#0059FF]',
           border: 'border-blue-300',

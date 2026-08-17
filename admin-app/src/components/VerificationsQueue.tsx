@@ -122,7 +122,13 @@ export function VerificationsQueue({ onStatusChange }: VerificationsQueueProps =
     setLoading(true);
     setError(null);
     try {
-      const token = localStorage.getItem('sola_admin_access_token') || 'admin_token_valid';
+      const token = localStorage.getItem('sola_admin_access_token') || '';
+      if (!token) {
+        setItems([]);
+        setLoading(false);
+        return;
+      }
+
       const response = await fetch(getApiUrl('/admin/verifications/pending'), {
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -130,8 +136,12 @@ export function VerificationsQueue({ onStatusChange }: VerificationsQueueProps =
         },
       });
 
+      if (response.status === 401 || response.status === 403) {
+        throw new Error('انتهت جلسة الدخول. يرجى تسجيل الدخول مجدداً لبوابة الإدارة.');
+      }
+
       if (!response.ok) {
-        throw new Error('فشل استرجاع قائمة طلبات التوثيق المعلقة');
+        throw new Error('فشل استرجاع قائمة طلبات التوثيق المعلقة من الخادم');
       }
 
       const json = await response.json();

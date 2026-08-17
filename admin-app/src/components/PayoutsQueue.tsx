@@ -57,13 +57,23 @@ export function PayoutsQueue({ onSelectPayoutDetail }: PayoutsQueueProps = {}) {
     setLoading(true);
     setError(null);
     try {
-      const token = localStorage.getItem('sola_admin_access_token') || 'admin_token_valid';
+      const token = localStorage.getItem('sola_admin_access_token') || '';
+      if (!token) {
+        setItems([]);
+        setLoading(false);
+        return;
+      }
+
       const response = await fetch(getApiUrl(`/admin/payouts/pending?page=${pageNum}&limit=10`), {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Accept': 'application/json',
         },
       });
+
+      if (response.status === 401 || response.status === 403) {
+        throw new Error('انتهت جلسة الدخول. يرجى تسجيل الدخول مجدداً لبوابة الإدارة.');
+      }
 
       if (!response.ok) {
         throw new Error('فشل استرجاع قائمة انتظار طلبات سحب الأرباح');

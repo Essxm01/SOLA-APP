@@ -163,11 +163,11 @@ export function App() {
         </div>
       </header>
 
-      {/* Primary Core Navigation Bar — Unified Visual Priority */}
-      <div className="bg-white border-b border-slate-200 shadow-xs sticky top-[65px] z-30">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 flex items-center overflow-x-auto">
+      {/* Primary Core Navigation Bar — Refactored Design Standard */}
+      <div className="bg-white border-b border-slate-200/90 shadow-xs sticky top-[65px] z-30">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 overflow-x-auto no-scrollbar scroll-smooth">
           
-          <nav className="flex space-x-1.5 space-x-reverse py-3">
+          <nav className="flex items-center space-x-2 space-x-reverse py-2.5">
             
             {/* Core Tab 1: Operational Overview */}
             <button
@@ -175,13 +175,13 @@ export function App() {
                 setActiveTab('overview');
                 resetSubSelections();
               }}
-              className={`px-4.5 py-2.5 rounded-2xl text-xs font-black transition-all flex items-center gap-2 whitespace-nowrap cursor-pointer ${
+              className={`px-5 py-3 rounded-2xl text-xs sm:text-[13px] font-black transition-all flex items-center gap-2.5 whitespace-nowrap cursor-pointer active:scale-98 ${
                 activeTab === 'overview'
-                  ? 'bg-[#0059FF] text-white shadow-md shadow-blue-500/20'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                  ? 'bg-[#0059FF] text-white shadow-md shadow-blue-500/25'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/90 font-bold'
               }`}
             >
-              <BarChart3 className="w-4 h-4" />
+              <BarChart3 className="w-4.5 h-4.5 shrink-0" />
               <span>نظرة عامة تشغيلية</span>
             </button>
 
@@ -191,13 +191,13 @@ export function App() {
                 setActiveTab('verifications');
                 resetSubSelections();
               }}
-              className={`px-4.5 py-2.5 rounded-2xl text-xs font-black transition-all flex items-center gap-2 whitespace-nowrap cursor-pointer ${
+              className={`px-5 py-3 rounded-2xl text-xs sm:text-[13px] font-black transition-all flex items-center gap-2.5 whitespace-nowrap cursor-pointer active:scale-98 ${
                 activeTab === 'verifications'
-                  ? 'bg-[#0059FF] text-white shadow-md shadow-blue-500/20'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                  ? 'bg-[#0059FF] text-white shadow-md shadow-blue-500/25'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/90 font-bold'
               }`}
             >
-              <UserCheck className="w-4 h-4" />
+              <UserCheck className="w-4.5 h-4.5 shrink-0" />
               <span>توثيق الملاك</span>
             </button>
 
@@ -207,13 +207,13 @@ export function App() {
                 setActiveTab('properties');
                 resetSubSelections();
               }}
-              className={`px-4.5 py-2.5 rounded-2xl text-xs font-black transition-all flex items-center gap-2 whitespace-nowrap cursor-pointer ${
+              className={`px-5 py-3 rounded-2xl text-xs sm:text-[13px] font-black transition-all flex items-center gap-2.5 whitespace-nowrap cursor-pointer active:scale-98 ${
                 activeTab === 'properties'
-                  ? 'bg-[#0059FF] text-white shadow-md shadow-blue-500/20'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                  ? 'bg-[#0059FF] text-white shadow-md shadow-blue-500/25'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/90 font-bold'
               }`}
             >
-              <Building2 className="w-4 h-4" />
+              <Building2 className="w-4.5 h-4.5 shrink-0" />
               <span>مراجعة الوحدات</span>
             </button>
 
@@ -223,13 +223,13 @@ export function App() {
                 setActiveTab('payouts');
                 resetSubSelections();
               }}
-              className={`px-4.5 py-2.5 rounded-2xl text-xs font-black transition-all flex items-center gap-2 whitespace-nowrap cursor-pointer ${
+              className={`px-5 py-3 rounded-2xl text-xs sm:text-[13px] font-black transition-all flex items-center gap-2.5 whitespace-nowrap cursor-pointer active:scale-98 ${
                 activeTab === 'payouts'
-                  ? 'bg-[#0059FF] text-white shadow-md shadow-blue-500/20'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                  ? 'bg-[#0059FF] text-white shadow-md shadow-blue-500/25'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/90 font-bold'
               }`}
             >
-              <CreditCard className="w-4 h-4" />
+              <CreditCard className="w-4.5 h-4.5 shrink-0" />
               <span>طلبات السحب المالي</span>
             </button>
 
@@ -239,13 +239,13 @@ export function App() {
                 setActiveTab('disputes');
                 resetSubSelections();
               }}
-              className={`px-4.5 py-2.5 rounded-2xl text-xs font-black transition-all flex items-center gap-2 whitespace-nowrap cursor-pointer ${
+              className={`px-5 py-3 rounded-2xl text-xs sm:text-[13px] font-black transition-all flex items-center gap-2.5 whitespace-nowrap cursor-pointer active:scale-98 ${
                 activeTab === 'disputes'
-                  ? 'bg-[#0059FF] text-white shadow-md shadow-blue-500/20'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                  ? 'bg-[#0059FF] text-white shadow-md shadow-blue-500/25'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/90 font-bold'
               }`}
             >
-              <Scale className="w-4 h-4" />
+              <Scale className="w-4.5 h-4.5 shrink-0" />
               <span>إدارة النزاعات</span>
             </button>
 

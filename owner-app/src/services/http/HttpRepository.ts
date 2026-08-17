@@ -99,12 +99,22 @@ export class HttpRepository implements
       headers,
     });
 
-    if (!res.ok) {
-      const errorJson = await res.json().catch(() => ({}));
-      throw new Error(errorJson?.error?.message || `HTTP_ERROR_${res.status}`);
+    // Safely consume response body ONCE to prevent "Body has already been used" stream errors
+    const responseText = await res.text().catch(() => '');
+    let data: any = {};
+    if (responseText) {
+      try {
+        data = JSON.parse(responseText);
+      } catch {
+        data = { message: responseText };
+      }
     }
 
-    const data = await res.json();
+    if (!res.ok) {
+      const serverMessage = data?.error?.message || data?.message || `HTTP_ERROR_${res.status}`;
+      throw new Error(serverMessage);
+    }
+
     if (data && typeof data === 'object' && !Array.isArray(data)) {
       if ('data' in data && data.data !== undefined) {
         return data.data;

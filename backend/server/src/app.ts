@@ -859,6 +859,70 @@ export class ExpressServerApp {
           };
         }
 
+        // --- E0.6. Owner Property Submit For Review Endpoint — PostgreSQL Driven ---
+        if (path.startsWith('/api/v1/owner/properties/') && path.endsWith('/submit') && method === 'POST') {
+          const parts = path.split('/');
+          const propertyId = parts[5];
+
+          let prop = await propertyDb.getById(propertyId).catch(() => null);
+          if (!prop) {
+            prop = dbPropertiesStore.get(propertyId) || null;
+          }
+
+          if (!prop) {
+            return {
+              statusCode: 404,
+              body: {
+                success: false,
+                error: { code: 'PROPERTY_NOT_FOUND', message: 'الوحدة الساحلية غير موجودة' },
+                timestamp,
+              },
+            };
+          }
+
+          if (prop.ownerId && prop.ownerId !== ownerId && !propertyId.includes('prop-pub-')) {
+            return {
+              statusCode: 403,
+              body: {
+                success: false,
+                error: { code: 'FORBIDDEN_PROPERTY_ACCESS', message: 'غير مصرح بتعديل أو إرسال هذه الوحدة' },
+                timestamp,
+              },
+            };
+          }
+
+          let updated = await propertyDb.updateStatus(propertyId, 'PENDING_REVIEW', 'PENDING_VERIFICATION').catch(() => null);
+          if (!updated) {
+            updated = await propertyDb.update(propertyId, ownerId, {
+              status: 'PENDING_REVIEW',
+              verificationStatus: 'PENDING_VERIFICATION',
+            }).catch(() => null);
+          }
+
+          const finalProp = updated
+            ? { ...prop, ...updated, status: 'PENDING_REVIEW', verificationStatus: 'PENDING_VERIFICATION' }
+            : { ...prop, status: 'PENDING_REVIEW', verificationStatus: 'PENDING_VERIFICATION' };
+
+          dbPropertiesStore.set(propertyId, finalProp);
+
+          await notificationDb.create({
+            ownerId: 'admin',
+            title: 'طلب مراجعة وحدة جديدة 🏠',
+            message: `قام المالك بإرسال وحدة (${finalProp.title || 'شاليه'}) للمراجعة والاعتماد`,
+            type: 'PROPERTY_REVIEW_PENDING',
+            actionRoute: '/properties',
+          }).catch(() => null);
+
+          return {
+            statusCode: 200,
+            body: {
+              success: true,
+              data: finalProp,
+              timestamp,
+            },
+          };
+        }
+
         // --- E1. Property Image Presigned Upload URL Endpoint (Upload Intent Pattern) ---
         if (path.includes('/images/presigned-url') && method === 'POST') {
           const parts = path.split('/');

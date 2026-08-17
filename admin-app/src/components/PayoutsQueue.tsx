@@ -85,7 +85,11 @@ export function PayoutsQueue({ onSelectPayoutDetail }: PayoutsQueueProps = {}) {
         setPagination(json.data.pagination || { totalItems: 0, page: 1, limit: 10, totalPages: 0 });
       }
     } catch (err: any) {
-      setError(err.message || 'حدث خطأ أثناء تحميل طلبات سحب الأرباح');
+      const isNetworkErr = err.name === 'TypeError' || (err.message && err.message.toLowerCase().includes('fetch'));
+      const friendlyMsg = isNetworkErr
+        ? 'تعذر تحميل طلبات سحب الأرباح. تحقق من الاتصال بالخادم وحاول مرة أخرى.'
+        : (err.message || 'حدث خطأ أثناء تحميل طلبات السحب');
+      setError(friendlyMsg);
       setItems([]);
       setPagination({ totalItems: 0, page: 1, limit: 10, totalPages: 0 });
     } finally {

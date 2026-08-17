@@ -74,7 +74,11 @@ export function PropertyReviewQueue({ onSelectProperty, onStatusChange }: Proper
         setItems(json.data || []);
       }
     } catch (err: any) {
-      setError(err.message || 'حدث خطأ أثناء تحميل الوحدات');
+      const isNetworkErr = err.name === 'TypeError' || (err.message && err.message.toLowerCase().includes('fetch'));
+      const friendlyMsg = isNetworkErr
+        ? 'تعذر تحميل بيانات الوحدات. تحقق من الاتصال بالخادم وحاول مرة أخرى.'
+        : (err.message || 'حدث خطأ أثناء تحميل الوحدات');
+      setError(friendlyMsg);
       setItems([]);
     } finally {
       setLoading(false);

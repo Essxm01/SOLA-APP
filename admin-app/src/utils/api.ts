@@ -8,7 +8,8 @@ export function getApiBaseUrl(): string {
   if (envUrl && typeof envUrl === 'string' && envUrl.trim().length > 0) {
     return envUrl.trim().replace(/\/+$/, '');
   }
-  return '/api/v1';
+  // Default to live production API server URL when VITE_API_BASE_URL is not set
+  return 'https://sola-backend-api.vercel.app/api/v1';
 }
 
 export function getApiUrl(path: string): string {
@@ -16,8 +17,8 @@ export function getApiUrl(path: string): string {
   const cleanPath = path.startsWith('/') ? path : `/${path}`;
   
   if (cleanPath.startsWith('/api/v1')) {
-    if (baseUrl === '/api/v1') return cleanPath;
-    return `${baseUrl}${cleanPath.replace('/api/v1', '')}`;
+    const relative = cleanPath.replace('/api/v1', '');
+    return `${baseUrl}${relative}`;
   }
   
   return `${baseUrl}${cleanPath}`;

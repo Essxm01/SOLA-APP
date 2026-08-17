@@ -58,7 +58,11 @@ export function DisputesQueue({ onSelectDispute }: DisputesQueueProps) {
         setItems(json.data.items);
       }
     } catch (err: any) {
-      setError(err.message || 'حدث خطأ أثناء تحميل النزاعات');
+      const isNetworkErr = err.name === 'TypeError' || (err.message && err.message.toLowerCase().includes('fetch'));
+      const friendlyMsg = isNetworkErr
+        ? 'تعذر تحميل بيانات النزاعات. تحقق من الاتصال بالخادم وحاول مرة أخرى.'
+        : (err.message || 'حدث خطأ أثناء تحميل النزاعات');
+      setError(friendlyMsg);
       setItems([]);
     } finally {
       setLoading(false);

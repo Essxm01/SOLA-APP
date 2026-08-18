@@ -11,7 +11,7 @@ let currentPool: pg.Pool | null = null;
 let currentConnectionString = '';
 
 export function getDbPool(): pg.Pool {
-  const connectionString = process.env.DATABASE_URL || 'postgresql://postgres:postgres@127.0.0.1:5432/sola_db';
+  const connectionString = process.env.DATABASE_URL || 'postgresql://postgres.zrbmbjgcsowfqklmxbyn:Essam112288-@aws-1-eu-west-1.pooler.supabase.com:6543/postgres';
   
   if (!currentPool || currentConnectionString !== connectionString) {
     if (currentPool) {

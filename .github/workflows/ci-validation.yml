@@ -116,3 +116,10 @@ jobs:
           cd backend
           npm ci || npm install
           npm run check
+      - name: Deploy to Cloudflare Workers
+        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          workingDirectory: 'backend'
+        continue-on-error: true

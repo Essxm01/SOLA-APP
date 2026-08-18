@@ -6,6 +6,12 @@
   "compatibility_flags": [
     "nodejs_compat"
   ],
+  "vars": {
+    "DATABASE_URL": "postgresql://postgres.zrbmbjgcsowfqklmxbyn:Essam112288-@aws-1-eu-west-1.pooler.supabase.com:6543/postgres",
+    "SUPABASE_URL": "https://zrbmbjgcsowfqklmxbyn.supabase.co",
+    "JWT_ACCESS_SECRET": "09950e89e69c29dced0782c63081d6467fad884a27673a19a2e416f162e91d44",
+    "JWT_REFRESH_SECRET": "a3d0df53e7ec8417407dd690ef0eb9f4ea58ce5cb41453a94c984e1c8904ada7"
+  },
   "observability": {
     "enabled": true
   }

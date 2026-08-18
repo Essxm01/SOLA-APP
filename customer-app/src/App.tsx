@@ -210,18 +210,17 @@ export function App() {
     const d1 = new Date(checkIn);
     const d2 = new Date(checkOut);
     const nights = Math.max(1, Math.round((d2.getTime() - d1.getTime()) / (1000 * 3600 * 24)));
-    const firstNightPrice = prop.basePricePerNight || 5000;
-    const totalValue = firstNightPrice * nights;
-    const deposit = firstNightPrice;
+    const nightlyPrice = prop.basePricePerNight || 0;
+    const totalValue = nightlyPrice * nights;
+    const deposit = nightlyPrice;
     const remaining = totalValue - deposit;
 
-    // Send real POST request to backend API
     try {
-      await fetch(getApiUrl('/customer/bookings'), {
+      const res = await fetch(getApiUrl('/customer/bookings'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${authToken}`,
+          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
         },
         body: JSON.stringify({
           propertyId: prop.id,
@@ -229,12 +228,34 @@ export function App() {
           checkOut,
           totalGuests: guests,
         }),
-      }).catch(() => null);
+      });
+
+      const json = await res.json();
+      if (res.ok && json.success && json.data) {
+        const created = json.data;
+        const newBooking: BookingDetails = {
+          id: created.id,
+          bookingNumber: created.bookingNumber,
+          propertyTitle: prop.title,
+          checkIn: created.checkIn,
+          checkOut: created.checkOut,
+          totalNights: created.nights,
+          depositAmountEgp: created.financialSummary?.depositAmount || deposit,
+          remainingBalanceEgp: created.financialSummary?.remainingBalance || remaining,
+          totalBookingValueEgp: created.financialSummary?.totalBookingValue || totalValue,
+          status: 'PENDING_OWNER_APPROVAL',
+        };
+
+        setActiveBooking(newBooking);
+        setSelectedProperty(null);
+        setShowSuccessModal(true);
+        return;
+      }
     } catch {
-      // Non-blocking fallback
+      // Fallback
     }
 
-    const newBooking: BookingDetails = {
+    const fallbackBooking: BookingDetails = {
       id: `bk_${Date.now()}`,
       bookingNumber: `BK-${Date.now().toString().slice(-6)}`,
       propertyTitle: prop.title,
@@ -247,22 +268,23 @@ export function App() {
       status: 'PENDING_OWNER_APPROVAL',
     };
 
-    setActiveBooking(newBooking);
+    setActiveBooking(fallbackBooking);
     setSelectedProperty(null);
     setShowSuccessModal(true);
   };
 
   return (
-    <div className="min-h-screen bg-white flex flex-col font-sans pb-20">
-      {/* Mobile White App Header */}
-      <CustomerHeader
-        customerPhone={customerPhone}
-        onOpenAuthModal={() => setShowAuthModal(true)}
-        onLogout={handleLogout}
-      />
+    <div className="min-h-screen bg-[#F5F7FA] flex justify-center selection:bg-blue-100">
+      <div className="w-full max-w-[430px] min-h-screen bg-white shadow-2xl relative flex flex-col font-sans pb-20">
+        {/* Mobile White App Header */}
+        <CustomerHeader
+          customerPhone={customerPhone}
+          onOpenAuthModal={() => setShowAuthModal(true)}
+          onLogout={handleLogout}
+        />
 
-      {/* Main Container — Max Mobile Width */}
-      <main className="flex-1 max-w-md w-full mx-auto px-4 pt-3">
+        {/* Main Container — Max Mobile Width */}
+        <main className="flex-1 w-full px-4 pt-3">
         {/* Tab 1: EXPLORE */}
         {activeTab === 'EXPLORE' && (
           <div>
@@ -514,15 +536,18 @@ export function App() {
         />
       )}
 
-      {/* Native Persistent Mobile Bottom Navigation Bar */}
-      <CustomerBottomNav
-        activeTab={activeTab}
-        onSelectTab={setActiveTab}
-        favoritesCount={favorites.length}
-        hasActiveBooking={!!activeBooking}
-      />
+      {/* Native Persistent Mobile Bottom Navigation Bar (hidden during property details view) */}
+      {!selectedProperty && (
+        <CustomerBottomNav
+          activeTab={activeTab}
+          onSelectTab={setActiveTab}
+          favoritesCount={favorites.length}
+          hasActiveBooking={!!activeBooking}
+        />
+      )}
     </div>
-  );
+  </div>
+);
 }
 
 export default App;

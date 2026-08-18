@@ -228,3 +228,56 @@
 7. **Post-Login Interception**: After login, guest MUST return to same property & selected dates/guests.
 8. **Financial Invariants**: Deposit = 1 night; Commission = 20% of deposit (NOT 20% of total booking); Available 24h post check-in.
 9. **Booking Request Rule**: Booking CTA says **"اطلب حجز الوحدة"**. Deposit payment is ONLY required AFTER owner approval (`APPROVED_PENDING_PAYMENT`).
+
+---
+
+## 5. CUSTOMER PROPERTY DECISION CLUSTER
+
+**Statuses:** `DESIGNED` | `IMPLEMENTED` | `LOCAL VERIFIED` | `LIVE VERIFIED`
+
+### Permanent Platform Contract
+- **Customer**: MOBILE APP (`max-w-[430px]` centered phone canvas)
+- **Owner**: MOBILE APP (`max-w-[430px]` centered phone canvas)
+- **Admin**: WEB APP (Desktop operational dashboard)
+- **Visual Identity**: White Dominant (`#FFFFFF`), Primary Accent SOLA Blue (`#0059FF`), Secondary Accent SOLA Summer Yellow (`#FFD700`)
+
+### Resolved Product Decisions
+1. **Stay-Length Rules**: RESOLVED — System-level MVP rules: Global 2-night minimum, 30-night maximum. (No DB columns or owner overrides in MVP).
+2. **Availability Blocking Statuses**: RESOLVED — `APPROVED_PENDING_PAYMENT` and `CONFIRMED` are the ONLY statuses that block calendar inventory. `PENDING_OWNER_APPROVAL`, `REJECTED`, `CANCELLED_BY_GUEST`, `EXPIRED`, and `COMPLETED` do NOT block.
+
+### Future Product Decisions / Questions
+- **Competing Pending Requests**: When an owner approves one request for dates with multiple competing `PENDING_OWNER_APPROVAL` requests, how/when should competing pending requests be handled? (Left untouched in MVP per product instruction).
+
+### Task List
+- [x] **Mobile shell width lock** (`LOCAL VERIFIED` — Centered 430px max-width mobile canvas on all viewports, neutral backdrop)
+- [x] **Gallery redesign** (`LOCAL VERIFIED` — Edge-to-edge mobile height, counter "1 / N", back & favorite overlay, navigation controls)
+- [x] **Property identity hierarchy** (`LOCAL VERIFIED` — Clean title, location with MapPin, verified host badge, natural Arabic)
+- [x] **Real quick facts** (`LOCAL VERIFIED` — Compact white 3-column card: max guests, bedrooms, bathrooms with SOLA Blue icons)
+- [x] **Description** (`LOCAL VERIFIED` — Readable preview with "عرض المزيد" / "عرض أقل" expandable toggle)
+- [x] **Real amenities** (`LOCAL VERIFIED` — Clean 2-column scannable grid with emerald check icons)
+- [x] **Real availability source** (`LOCAL VERIFIED` — Canonical blocking statuses: `APPROVED_PENDING_PAYMENT` + `CONFIRMED` only)
+- [x] **Availability endpoint** (`LOCAL VERIFIED` — `GET /api/v1/customer/properties/:id/availability` returning customer-safe ranges)
+- [x] **Fail-closed availability** (`LOCAL VERIFIED` — DB failures return 500 error, never fake empty calendar; booking disabled on error)
+- [x] **Visible inline calendar** (`LOCAL VERIFIED` — Visibly open directly inside Property Details without modal/toggle button)
+- [x] **Month navigation** (`LOCAL VERIFIED` — RTL month carousel with past months disabled)
+- [x] **Disabled dates** (`LOCAL VERIFIED` — Past and booked dates disabled, struck-through, and untappable)
+- [x] **Range selection** (`LOCAL VERIFIED` — Two-tap state machine: arrival tap + departure tap, auto-reset on invalid selection)
+- [x] **Range highlight** (`LOCAL VERIFIED` — Blue circles for start/end, continuous light blue highlight for days in range)
+- [x] **Nights summary** (`LOCAL VERIFIED` — Live "من X إلى Y • N ليالي" indicator with dynamic night counter)
+- [x] **Min/max stay validation** (`LOCAL VERIFIED` — 2-night minimum, 30-night maximum enforced in backend, quote, booking, and calendar UX)
+- [x] **Calendar stay guidance** (`LOCAL VERIFIED` — Natural Arabic copy: "الحد الأدنى للإقامة ليلتان", "الحد الأقصى للإقامة 30 ليلة")
+- [x] **Guest selector** (`LOCAL VERIFIED` — Mobile +/- stepper directly below calendar, min 1, max `property.maxGuests`, clear touch targets)
+- [x] **Server quote** (`LOCAL VERIFIED` — `POST /api/v1/customer/bookings/calculate` uses DB `basePricePerNight` and ignores client price)
+- [x] **Customer-safe quote** (`LOCAL VERIFIED` — DTO contains only `totalStay`, `depositAmount`, `remainingAmount`; zero commission/wallet fields)
+- [x] **White price summary** (`LOCAL VERIFIED` — White/light surface directly below configuration, ZERO dark navy)
+- [x] **Sticky CTA without overlap** (`LOCAL VERIFIED` — Dedicated bottom bar bounded to mobile canvas with `pb-36` scroll clearance)
+- [x] **White Booking Review redesign** (`LOCAL VERIFIED` — Complete white-dominant redesign, eliminated dark navy panel)
+- [x] **Fake data cleanup** (`LOCAL VERIFIED` — Removed `|| 5000` fallbacks, removed `prop-pub-` publication bypass)
+- [x] **Invented policy cleanup** (`LOCAL VERIFIED` — Removed invented cash-on-arrival text and 2:00 PM universal check-in claims)
+- [x] **375 visual QA** (`LOCAL VERIFIED` — Mobile canvas tested for 375x812 iPhone viewport)
+- [x] **390 visual QA** (`LOCAL VERIFIED` — Mobile canvas tested for 390x844 iPhone viewport)
+- [x] **430 visual QA** (`LOCAL VERIFIED` — Mobile canvas tested for 430x932 iPhone viewport)
+- [x] **Desktop/mobile-shell QA** (`LOCAL VERIFIED` — Verified centered max-w-[430px] canvas on wide 1440px/1920px viewports)
+- [x] **Local regression suite** (`LOCAL VERIFIED` — Focused 14-rule test suite passed, 0 TypeScript/build errors)
+
+

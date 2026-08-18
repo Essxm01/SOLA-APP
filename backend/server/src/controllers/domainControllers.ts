@@ -5,6 +5,7 @@
  */
 
 import type { Property, Booking, Dispute } from '../types/server.js';
+import { validateStayLength, GLOBAL_MIN_STAY_NIGHTS, GLOBAL_MAX_STAY_NIGHTS } from '../constants/bookingRules.js';
 export type { Property, Booking, Dispute };
 
 // ==========================================
@@ -344,6 +345,11 @@ export class CustomerDomainController {
     }
 
     const nights = Math.round((end - start) / (1000 * 60 * 60 * 24));
+    const stayCheck = validateStayLength(nights);
+    if (!stayCheck.isValid) {
+      throw new Error(`${stayCheck.errorCode}: ${stayCheck.errorMessageArabic}`);
+    }
+
     const totalBookingValue = property.basePricePerNight * nights;
     const firstNightPrice = property.basePricePerNight;
 

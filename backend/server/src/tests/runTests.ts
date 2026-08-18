@@ -18,9 +18,7 @@ import { runPayoutExecutionSuite } from './payoutExecution.test';
 import { runDisputesExecutionSuite } from './disputesExecution.test';
 import { runCorsPolicySuite } from './corsPolicy.test';
 import { runPropertyMediaStorageSuite } from './propertyMediaStorage.test';
-
-
-
+import { runCustomerPropertyDecisionSuite } from './customerPropertyDecision.test';
 
 async function main() {
   console.log('======================================================================');
@@ -162,9 +160,17 @@ async function main() {
     console.log(`  [15.${idx + 1}] ${status} - ${r.name} ${r.error ? `(${r.error})` : ''}`);
   });
 
-  const total = authSummary.total + finSummary.total + httpSummary.total + compSummary.total + exitSummary.total + pgSummary.total + adminSummary.total + custSummary.total + multiSummary.total + msgDispSummary.total + payoutQueueSummary.total + payoutExecSummary.total + disputesExecSummary.total + corsSummary.total + mediaSummary.total;
-  const passed = authSummary.passed + finSummary.passed + httpSummary.passed + compSummary.passed + exitSummary.passed + pgSummary.passed + adminSummary.passed + custSummary.passed + multiSummary.passed + msgDispSummary.passed + payoutQueueSummary.passed + payoutExecSummary.passed + disputesExecSummary.passed + corsSummary.passed + mediaSummary.passed;
-  const failed = authSummary.failed + finSummary.failed + httpSummary.failed + compSummary.failed + exitSummary.failed + pgSummary.failed + adminSummary.failed + custSummary.failed + multiSummary.failed + msgDispSummary.failed + payoutQueueSummary.failed + payoutExecSummary.failed + disputesExecSummary.failed + corsSummary.failed + mediaSummary.failed;
+  // Suite 16: Customer Property Decision Cluster Suite
+  console.log('\n[SUITE 16] CUSTOMER PROPERTY DECISION CLUSTER & PRICING SUITE:');
+  const custDecisionSummary = await runCustomerPropertyDecisionSuite();
+  custDecisionSummary.results.forEach((r, idx) => {
+    const status = r.passed ? '✅ PASS' : '❌ FAIL';
+    console.log(`  [16.${idx + 1}] ${status} - ${r.name} ${r.error ? `(${r.error})` : ''}`);
+  });
+
+  const total = authSummary.total + finSummary.total + httpSummary.total + compSummary.total + exitSummary.total + pgSummary.total + adminSummary.total + custSummary.total + multiSummary.total + msgDispSummary.total + payoutQueueSummary.total + payoutExecSummary.total + disputesExecSummary.total + corsSummary.total + mediaSummary.total + custDecisionSummary.total;
+  const passed = authSummary.passed + finSummary.passed + httpSummary.passed + compSummary.passed + exitSummary.passed + pgSummary.passed + adminSummary.passed + custSummary.passed + multiSummary.passed + msgDispSummary.passed + payoutQueueSummary.passed + payoutExecSummary.passed + disputesExecSummary.passed + corsSummary.passed + mediaSummary.passed + custDecisionSummary.passed;
+  const failed = authSummary.failed + finSummary.failed + httpSummary.failed + compSummary.failed + exitSummary.failed + pgSummary.failed + adminSummary.failed + custSummary.failed + multiSummary.failed + msgDispSummary.failed + payoutQueueSummary.failed + payoutExecSummary.failed + disputesExecSummary.failed + corsSummary.failed + mediaSummary.failed + custDecisionSummary.failed;
 
 
 

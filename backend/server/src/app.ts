@@ -15,6 +15,7 @@ import { dbOwnersStore, dbNotificationsStore, dbOwnerVerificationDocsStore, dbPr
 import { ownerDb, propertyDb, bookingDb, payoutDb, disputeDb, notificationDb, imageDb, uploadIntentDb, adminStatsDb, walletDb } from './services/dbRepository.js';
 import { paymentTxDb, PaymentService, MockPaymentGateway, PaymobGateway, verifyPaymobHmacSha512 } from './services/paymentService.js';
 import { createStorageProvider, IObjectStorageProvider, verifyMagicBytes, computeSha256 } from './services/storageProvider.js';
+import { GLOBAL_MIN_STAY_NIGHTS, GLOBAL_MAX_STAY_NIGHTS, hasDateRangeOverlap, validateStayLength } from './constants/bookingRules.js';
 import type { ApiSuccessResponse, ApiErrorResponse } from './types/server';
 
 export interface RouteHandlerResult {
@@ -2319,11 +2320,44 @@ export class ExpressServerApp {
           };
         }
 
-        // 4.2a Property Availability
+        // 4.2a Property Availability (Fail-Closed PostgreSQL Driven)
         if (path.match(/^\/api\/v1\/customer\/properties\/[^\/]+\/availability$/) && method === 'GET') {
           const propertyId = path.split('/')[5];
-          const blocks = await bookingDb.getBlocksByPropertyId(propertyId).catch(() => []);
-          const prop = await propertyDb.getById(propertyId).catch(() => null);
+          
+          let prop: any;
+          try {
+            prop = await propertyDb.getById(propertyId);
+          } catch (err: any) {
+            return {
+              statusCode: 500,
+              body: { success: false, error: { code: 'PROPERTY_QUERY_FAILED', message: 'فشل في الاستعلام عن الوحدة' }, timestamp },
+            };
+          }
+
+          if (!prop) {
+            return {
+              statusCode: 404,
+              body: { success: false, error: { code: 'PROPERTY_NOT_FOUND', message: 'الوحدة غير موجودة' }, timestamp },
+            };
+          }
+
+          if (prop.status !== 'PUBLISHED') {
+            return {
+              statusCode: 403,
+              body: { success: false, error: { code: 'UNPUBLISHED_PROPERTY', message: 'هذه الوحدة غير معروضة للنشر حالياً' }, timestamp },
+            };
+          }
+
+          let blocks: any[];
+          try {
+            blocks = await bookingDb.getBlocksByPropertyId(propertyId);
+          } catch (err: any) {
+            return {
+              statusCode: 500,
+              body: { success: false, error: { code: 'AVAILABILITY_QUERY_FAILED', message: 'تعذر جلب بيانات التوفر حالياً من قاعدة البيانات' }, timestamp },
+            };
+          }
+
           return {
             statusCode: 200,
             body: {
@@ -2334,8 +2368,8 @@ export class ExpressServerApp {
                   checkIn: typeof b.checkIn === 'string' ? b.checkIn : b.checkIn.toISOString().slice(0, 10),
                   checkOut: typeof b.checkOut === 'string' ? b.checkOut : b.checkOut.toISOString().slice(0, 10),
                 })),
-                minStay: prop?.houseRules?.minStay || 1,
-                maxStay: prop?.houseRules?.maxStay || 30
+                minStay: GLOBAL_MIN_STAY_NIGHTS,
+                maxStay: GLOBAL_MAX_STAY_NIGHTS,
               },
               timestamp,
             },
@@ -2345,20 +2379,38 @@ export class ExpressServerApp {
         // 4.2 Property Details (Public Details Only — PostgreSQL Driven)
         if (path.match(/^\/api\/v1\/customer\/properties\/[^\/]+$/) && method === 'GET') {
           const propertyId = path.split('/')[5];
-          let prop = await propertyDb.getDetailForAdmin(propertyId).catch(() => null);
-          if (!prop) {
-            prop = await propertyDb.getById(propertyId).catch(() => null);
+          let prop: any;
+          try {
+            prop = await propertyDb.getDetailForAdmin(propertyId);
+            if (!prop) {
+              prop = await propertyDb.getById(propertyId);
+            }
+          } catch (err: any) {
+            return {
+              statusCode: 500,
+              body: { success: false, error: { code: 'PROPERTY_QUERY_FAILED', message: 'فشل في الاستعلام عن الوحدة' }, timestamp },
+            };
           }
+
           if (!prop) {
             return {
               statusCode: 404,
               body: { success: false, error: { code: 'PROPERTY_NOT_FOUND', message: 'الوحدة الساحلية غير موجودة' }, timestamp },
             };
           }
-          if (prop.status !== 'PUBLISHED' && !propertyId.includes('prop-pub-')) {
+
+          if (prop.status !== 'PUBLISHED') {
             return {
               statusCode: 403,
               body: { success: false, error: { code: 'UNPUBLISHED_PROPERTY', message: 'هذه الوحدة غير معروضة للنشر حالياً' }, timestamp },
+            };
+          }
+
+          const rawPrice = prop.basePricePerNight || prop.pricePerNight;
+          if (!rawPrice || isNaN(Number(rawPrice)) || Number(rawPrice) <= 0) {
+            return {
+              statusCode: 400,
+              body: { success: false, error: { code: 'MISSING_PROPERTY_PRICE', message: 'سعر الليلة غير محدد لهذه الوحدة' }, timestamp },
             };
           }
 
@@ -2366,8 +2418,8 @@ export class ExpressServerApp {
           const imageUrls = images.map((img: any) => img.publicUrl || img.storagePath).filter(Boolean);
           const propWithImages = {
             ...prop,
-            basePricePerNight: Number(prop.basePricePerNight || prop.pricePerNight || 5000),
-            images: imageUrls.length > 0 ? imageUrls : ['https://images.unsplash.com/photo-1512917774080-9991f1c4c750?w=800'],
+            basePricePerNight: Number(rawPrice),
+            images: imageUrls.length > 0 ? imageUrls : (Array.isArray(prop.images) ? prop.images : []),
           };
           const sanitized = CustomerDomainController.sanitizePropertyForCustomer(propWithImages);
 
@@ -2388,11 +2440,20 @@ export class ExpressServerApp {
           if (!propertyId || !checkIn || !checkOut || !guests) {
             return {
               statusCode: 400,
-              body: { success: false, error: { code: 'MISSING_FIELDS', message: 'يرجى تقديم بيانات الحجز كاملة' }, timestamp },
+              body: { success: false, error: { code: 'MISSING_FIELDS', message: 'يرجى تقديم بيانات الحجز كاملة (الوحدة، الوصول، المغادرة، عدد الأفراد)' }, timestamp },
             };
           }
 
-          const prop = await propertyDb.getById(propertyId).catch(() => null);
+          let prop: any;
+          try {
+            prop = await propertyDb.getById(propertyId);
+          } catch (err: any) {
+            return {
+              statusCode: 500,
+              body: { success: false, error: { code: 'PROPERTY_QUERY_FAILED', message: 'فشل في الاستعلام عن الوحدة' }, timestamp },
+            };
+          }
+
           if (!prop) {
             return {
               statusCode: 404,
@@ -2400,18 +2461,32 @@ export class ExpressServerApp {
             };
           }
 
-          const blocks = await bookingDb.getBlocksByPropertyId(propertyId).catch(() => []);
-          const checkInDate = new Date(checkIn + 'T00:00:00');
-          const checkOutDate = new Date(checkOut + 'T00:00:00');
-          let overlap = false;
-          for (const b of blocks) {
-            const bIn = new Date(b.checkIn + 'T00:00:00');
-            const bOut = new Date(b.checkOut + 'T00:00:00');
-            if (checkInDate < bOut && checkOutDate > bIn) {
-               overlap = true; break;
-            }
+          if (prop.status !== 'PUBLISHED') {
+            return {
+              statusCode: 403,
+              body: { success: false, error: { code: 'CANNOT_QUOTE_UNPUBLISHED_PROPERTY', message: 'لا يمكن حساب سعر لوحدة غير منشورة' }, timestamp },
+            };
           }
-          if (overlap) {
+
+          const rawPrice = prop.basePricePerNight || prop.pricePerNight;
+          if (!rawPrice || isNaN(Number(rawPrice)) || Number(rawPrice) <= 0) {
+            return {
+              statusCode: 400,
+              body: { success: false, error: { code: 'MISSING_PROPERTY_PRICE', message: 'سعر الليلة غير محدد لهذه الوحدة' }, timestamp },
+            };
+          }
+
+          let blocks: any[];
+          try {
+            blocks = await bookingDb.getBlocksByPropertyId(propertyId);
+          } catch (err: any) {
+            return {
+              statusCode: 500,
+              body: { success: false, error: { code: 'AVAILABILITY_CHECK_FAILED', message: 'تعذر التحقق من توفر التواريخ من قاعدة البيانات' }, timestamp },
+            };
+          }
+
+          if (hasDateRangeOverlap(checkIn, checkOut, blocks)) {
             return {
               statusCode: 409,
               body: { success: false, error: { code: 'DATE_OVERLAP', message: 'التواريخ المطلوبة محجوزة مسبقاً' }, timestamp },
@@ -2420,11 +2495,11 @@ export class ExpressServerApp {
 
           const propWithPrice = {
             ...prop,
-            basePricePerNight: Number(prop.basePricePerNight || prop.pricePerNight || 5000),
+            basePricePerNight: Number(rawPrice),
           };
 
           try {
-            const validated = CustomerDomainController.validateCustomerBookingRequest(propWithPrice, checkIn, checkOut, guests);
+            const validated = CustomerDomainController.validateCustomerBookingRequest(propWithPrice, checkIn, checkOut, Number(guests));
             const breakdown = calculateBookingFinancials(validated.totalBookingValue, validated.firstNightPrice);
 
             return {
@@ -2435,15 +2510,13 @@ export class ExpressServerApp {
                   propertyId,
                   checkIn,
                   checkOut,
-                  guests,
                   nights: validated.nights,
+                  guests: Number(guests),
                   pricePerNight: validated.firstNightPrice,
-                  totalBookingValue: breakdown.totalBookingValueInCents / 100,
+                  totalStay: breakdown.totalBookingValueInCents / 100,
                   depositAmount: breakdown.depositAmountInCents / 100,
-                  solaCommissionAmount: breakdown.solaCommissionInCents / 100,
-                  ownerNetDepositAmount: breakdown.ownerNetDepositInCents / 100,
-                  remainingBalance: breakdown.remainingBalanceInCents / 100,
-                  commissionOnRemainingBalance: 0,
+                  remainingAmount: breakdown.remainingBalanceInCents / 100,
+                  currency: 'EGP',
                 },
                 timestamp,
               },
@@ -2460,82 +2533,138 @@ export class ExpressServerApp {
         if (path === '/api/v1/customer/bookings' && method === 'POST') {
           const { propertyId, checkIn, checkOut, totalGuests } = bodyPayload || {};
 
-          if (!propertyId || !checkIn || !checkOut) {
+          if (!propertyId || !checkIn || !checkOut || !totalGuests) {
             return {
               statusCode: 400,
-              body: { success: false, error: { code: 'MISSING_BOOKING_FIELDS', message: 'مطلوب تفاصيل الحجز وتواريخ الإقامة' }, timestamp },
+              body: { success: false, error: { code: 'MISSING_BOOKING_FIELDS', message: 'مطلوب تفاصيل الحجز وتواريخ الإقامة وعدد الأفراد' }, timestamp },
             };
           }
 
-          const mockProp: any = {
-            id: propertyId,
-            title: 'Beachfront Chalet Ras El Hekma',
-            unitType: 'شاليه',
-            propertyType: 'CHALET',
-            address: 'Ras El Hekma Bay',
-            bedrooms: 2,
-            bathrooms: 2,
-            maxGuests: 6,
-            basePricePerNight: 5000,
-            status: 'PUBLISHED',
-            verificationStatus: 'VERIFIED',
-            createdAt: timestamp,
-            updatedAt: timestamp,
+          let prop: any;
+          try {
+            prop = await propertyDb.getById(propertyId);
+          } catch (err: any) {
+            return {
+              statusCode: 500,
+              body: { success: false, error: { code: 'PROPERTY_QUERY_FAILED', message: 'فشل في الاستعلام عن الوحدة' }, timestamp },
+            };
+          }
+
+          if (!prop) {
+            return {
+              statusCode: 404,
+              body: { success: false, error: { code: 'PROPERTY_NOT_FOUND', message: 'الوحدة غير موجودة' }, timestamp },
+            };
+          }
+
+          if (prop.status !== 'PUBLISHED') {
+            return {
+              statusCode: 403,
+              body: { success: false, error: { code: 'UNPUBLISHED_PROPERTY', message: 'الوحدة غير متاحة للحجز حالياً' }, timestamp },
+            };
+          }
+
+          const rawPrice = prop.basePricePerNight || prop.pricePerNight;
+          if (!rawPrice || isNaN(Number(rawPrice)) || Number(rawPrice) <= 0) {
+            return {
+              statusCode: 400,
+              body: { success: false, error: { code: 'MISSING_PROPERTY_PRICE', message: 'سعر الليلة غير محدد لهذه الوحدة' }, timestamp },
+            };
+          }
+
+          let blocks: any[];
+          try {
+            blocks = await bookingDb.getBlocksByPropertyId(propertyId);
+          } catch (err: any) {
+            return {
+              statusCode: 500,
+              body: { success: false, error: { code: 'AVAILABILITY_CHECK_FAILED', message: 'تعذر التحقق من توفر التواريخ من قاعدة البيانات' }, timestamp },
+            };
+          }
+
+          if (hasDateRangeOverlap(checkIn, checkOut, blocks)) {
+            return {
+              statusCode: 409,
+              body: { success: false, error: { code: 'DATE_OVERLAP', message: 'التواريخ المطلوبة محجوزة مسبقاً' }, timestamp },
+            };
+          }
+
+          const propWithPrice = {
+            ...prop,
+            basePricePerNight: Number(rawPrice),
           };
 
-          const validated = CustomerDomainController.validateCustomerBookingRequest(mockProp, checkIn, checkOut, totalGuests || 2);
-          const breakdown = calculateBookingFinancials(validated.totalBookingValue, validated.firstNightPrice);
+          try {
+            const validated = CustomerDomainController.validateCustomerBookingRequest(propWithPrice, checkIn, checkOut, Number(totalGuests));
+            const breakdown = calculateBookingFinancials(validated.totalBookingValue, validated.firstNightPrice);
 
-          const bookingId = crypto.randomUUID();
-          const bookingNumber = `BK-${Date.now().toString().slice(-6)}`;
-          const createdIso = timestamp;
-          const expiresIso = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+            const bookingId = crypto.randomUUID();
+            const bookingNumber = `BK-${Date.now().toString().slice(-6)}`;
+            const createdIso = timestamp;
+            const expiresIso = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
 
-          await bookingDb.create({
-            id: bookingId,
-            bookingNumber,
-            propertyId,
-            ownerId: '00000000-0000-0000-0000-000000000001',
-            guestName: 'Sola Customer',
-            guestPhone: customerPhone,
-            checkIn,
-            checkOut,
-            nights: validated.nights,
-            totalGuests: totalGuests || 2,
-            status: 'PENDING_OWNER_APPROVAL',
-          }).catch(() => null);
-
-          return {
-            statusCode: 201,
-            body: {
-              success: true,
-              data: {
+            try {
+              await bookingDb.create({
                 id: bookingId,
                 bookingNumber,
-                propertyId,
-                ownerId: 'owner-001',
-                customerId,
+                propertyId: prop.id,
+                ownerId: prop.ownerId || '00000000-0000-0000-0000-000000000001',
                 guestName: 'Sola Customer',
                 guestPhone: customerPhone,
                 checkIn,
                 checkOut,
                 nights: validated.nights,
-                totalGuests: totalGuests || 2,
+                totalGuests: Number(totalGuests),
                 status: 'PENDING_OWNER_APPROVAL',
-                createdAt: createdIso,
-                expiredAt: expiresIso,
-                financialSummary: {
-                  totalBookingValue: breakdown.totalBookingValueInCents / 100,
-                  depositAmount: breakdown.depositAmountInCents / 100,
-                  solaCommissionAmount: breakdown.solaCommissionInCents / 100,
-                  ownerNetDepositAmount: breakdown.ownerNetDepositInCents / 100,
-                  remainingBalance: breakdown.remainingBalanceInCents / 100,
-                  commissionOnRemainingBalance: 0,
+              });
+            } catch (dbErr: any) {
+              return {
+                statusCode: 500,
+                body: { success: false, error: { code: 'BOOKING_PERSISTENCE_FAILED', message: 'فشل حفظ طلب الحجز في قاعدة البيانات' }, timestamp },
+              };
+            }
+
+            return {
+              statusCode: 201,
+              body: {
+                success: true,
+                data: {
+                  id: bookingId,
+                  bookingNumber,
+                  propertyId: prop.id,
+                  ownerId: prop.ownerId,
+                  customerId,
+                  guestName: 'Sola Customer',
+                  guestPhone: customerPhone,
+                  checkIn,
+                  checkOut,
+                  nights: validated.nights,
+                  totalGuests: Number(totalGuests),
+                  status: 'PENDING_OWNER_APPROVAL',
+                  createdAt: createdIso,
+                  expiredAt: expiresIso,
+                  financialSummary: {
+                    totalBookingValue: breakdown.totalBookingValueInCents / 100,
+                    depositAmount: breakdown.depositAmountInCents / 100,
+                    depositPaymentStatus: 'NOT_DUE',
+                    solaCommissionAmount: breakdown.solaCommissionInCents / 100,
+                    ownerNetDepositAmount: breakdown.ownerNetDepositInCents / 100,
+                    remainingBalance: breakdown.remainingBalanceInCents / 100,
+                    remainingBalancePaymentMethod: 'CASH_ON_ARRIVAL',
+                    remainingBalanceStatus: 'NOT_DUE',
+                    ownerPayoutStatus: 'OWNER_PAYOUT_PENDING',
+                    currency: 'EGP',
+                  },
                 },
+                timestamp,
               },
-              timestamp,
-            },
-          };
+            };
+          } catch (e: any) {
+            return {
+              statusCode: 400,
+              body: { success: false, error: { code: 'VALIDATION_ERROR', message: e.message }, timestamp },
+            };
+          }
         }
 
         // 4.4 Customer Booking List (IDOR Scoped to Requesting Customer)

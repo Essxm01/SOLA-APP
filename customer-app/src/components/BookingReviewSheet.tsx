@@ -103,7 +103,7 @@ export const BookingReviewSheet: React.FC<BookingReviewSheetProps> = ({
           </div>
           <div className="flex justify-between text-slate-400 text-[11px]">
             <span>المبلغ المتبقي يدفعه النزيل كاش للمالك يوم الاستلام:</span>
-            <span className="dir-ltr">{remainingBalance.toLocaleString()} ج.m</span>
+            <span className="dir-ltr">{remainingBalance.toLocaleString()} ج.م</span>
           </div>
         </div>
 
@@ -111,7 +111,8 @@ export const BookingReviewSheet: React.FC<BookingReviewSheetProps> = ({
         <div className="p-3 bg-amber-50 border border-amber-200 rounded-2xl flex items-start gap-2 text-xs font-bold text-amber-900 leading-relaxed">
           <ShieldCheck className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
           <span>
-            سيتم إرسال طلبك إلى المالك للموافقة أولاً. لن يتم خصم العربون قبل موافقة المالك على إقامتك.
+            سيتم إرسال طلبك إلى المالك للموافقة أولاً. لن يتم خصم العربون قبل موافقة المالك على إقامتك. 
+            (ملاحظة: سيتم التحقق من توفر التواريخ مرة أخرى عند إرسال الطلب).
           </span>
         </div>
 

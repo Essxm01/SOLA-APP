@@ -342,6 +342,16 @@ export const bookingDb = {
       [id, status]
     );
     return res.rows[0];
+  },
+
+  async getBlocksByPropertyId(propertyId: string) {
+    const res = await queryDb(
+      `SELECT check_in AS "checkIn", check_out AS "checkOut", status
+       FROM bookings
+       WHERE property_id = $1 AND status NOT IN ('REJECTED', 'CANCELLED_BY_GUEST', 'EXPIRED')`,
+      [propertyId]
+    );
+    return res.rows;
   }
 };
 

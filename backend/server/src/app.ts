@@ -2319,8 +2319,31 @@ export class ExpressServerApp {
           };
         }
 
+        // 4.2a Property Availability
+        if (path.match(/^\/api\/v1\/customer\/properties\/[^\/]+\/availability$/) && method === 'GET') {
+          const propertyId = path.split('/')[5];
+          const blocks = await bookingDb.getBlocksByPropertyId(propertyId).catch(() => []);
+          const prop = await propertyDb.getById(propertyId).catch(() => null);
+          return {
+            statusCode: 200,
+            body: {
+              success: true,
+              data: {
+                propertyId,
+                unavailableRanges: blocks.map((b) => ({
+                  checkIn: typeof b.checkIn === 'string' ? b.checkIn : b.checkIn.toISOString().slice(0, 10),
+                  checkOut: typeof b.checkOut === 'string' ? b.checkOut : b.checkOut.toISOString().slice(0, 10),
+                })),
+                minStay: prop?.houseRules?.minStay || 1,
+                maxStay: prop?.houseRules?.maxStay || 30
+              },
+              timestamp,
+            },
+          };
+        }
+
         // 4.2 Property Details (Public Details Only — PostgreSQL Driven)
-        if (path.startsWith('/api/v1/customer/properties/') && method === 'GET') {
+        if (path.match(/^\/api\/v1\/customer\/properties\/[^\/]+$/) && method === 'GET') {
           const propertyId = path.split('/')[5];
           let prop = await propertyDb.getDetailForAdmin(propertyId).catch(() => null);
           if (!prop) {
@@ -2360,27 +2383,77 @@ export class ExpressServerApp {
 
         // 4.3 Customer Booking Preview Calculation (Server Authoritative Financial Engine)
         if (path === '/api/v1/customer/bookings/calculate' && method === 'POST') {
-          const { basePricePerNight, checkIn, checkOut } = bodyPayload || {};
-          const mockProp: any = { status: 'PUBLISHED', maxGuests: 10, basePricePerNight: basePricePerNight || 5000 };
-          const validated = CustomerDomainController.validateCustomerBookingRequest(mockProp, checkIn || '2026-09-01', checkOut || '2026-09-05', 1);
-          const breakdown = calculateBookingFinancials(validated.totalBookingValue, validated.firstNightPrice);
+          const { propertyId, checkIn, checkOut, guests } = bodyPayload || {};
+          
+          if (!propertyId || !checkIn || !checkOut || !guests) {
+            return {
+              statusCode: 400,
+              body: { success: false, error: { code: 'MISSING_FIELDS', message: 'يرجى تقديم بيانات الحجز كاملة' }, timestamp },
+            };
+          }
 
-          return {
-            statusCode: 200,
-            body: {
-              success: true,
-              data: {
-                nights: validated.nights,
-                totalBookingValue: breakdown.totalBookingValueInCents / 100,
-                depositAmount: breakdown.depositAmountInCents / 100,
-                solaCommissionAmount: breakdown.solaCommissionInCents / 100,
-                ownerNetDepositAmount: breakdown.ownerNetDepositInCents / 100,
-                remainingBalance: breakdown.remainingBalanceInCents / 100,
-                commissionOnRemainingBalance: 0,
-              },
-              timestamp,
-            },
+          const prop = await propertyDb.getById(propertyId).catch(() => null);
+          if (!prop) {
+            return {
+              statusCode: 404,
+              body: { success: false, error: { code: 'PROPERTY_NOT_FOUND', message: 'الوحدة غير موجودة' }, timestamp },
+            };
+          }
+
+          const blocks = await bookingDb.getBlocksByPropertyId(propertyId).catch(() => []);
+          const checkInDate = new Date(checkIn + 'T00:00:00');
+          const checkOutDate = new Date(checkOut + 'T00:00:00');
+          let overlap = false;
+          for (const b of blocks) {
+            const bIn = new Date(b.checkIn + 'T00:00:00');
+            const bOut = new Date(b.checkOut + 'T00:00:00');
+            if (checkInDate < bOut && checkOutDate > bIn) {
+               overlap = true; break;
+            }
+          }
+          if (overlap) {
+            return {
+              statusCode: 409,
+              body: { success: false, error: { code: 'DATE_OVERLAP', message: 'التواريخ المطلوبة محجوزة مسبقاً' }, timestamp },
+            };
+          }
+
+          const propWithPrice = {
+            ...prop,
+            basePricePerNight: Number(prop.basePricePerNight || prop.pricePerNight || 5000),
           };
+
+          try {
+            const validated = CustomerDomainController.validateCustomerBookingRequest(propWithPrice, checkIn, checkOut, guests);
+            const breakdown = calculateBookingFinancials(validated.totalBookingValue, validated.firstNightPrice);
+
+            return {
+              statusCode: 200,
+              body: {
+                success: true,
+                data: {
+                  propertyId,
+                  checkIn,
+                  checkOut,
+                  guests,
+                  nights: validated.nights,
+                  pricePerNight: validated.firstNightPrice,
+                  totalBookingValue: breakdown.totalBookingValueInCents / 100,
+                  depositAmount: breakdown.depositAmountInCents / 100,
+                  solaCommissionAmount: breakdown.solaCommissionInCents / 100,
+                  ownerNetDepositAmount: breakdown.ownerNetDepositInCents / 100,
+                  remainingBalance: breakdown.remainingBalanceInCents / 100,
+                  commissionOnRemainingBalance: 0,
+                },
+                timestamp,
+              },
+            };
+          } catch (e: any) {
+            return {
+              statusCode: 400,
+              body: { success: false, error: { code: 'VALIDATION_ERROR', message: e.message }, timestamp },
+            };
+          }
         }
 
         // 4.4 Customer Booking Creation Foundation

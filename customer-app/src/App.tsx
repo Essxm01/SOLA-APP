@@ -380,7 +380,7 @@ export function App() {
                     <div>
                       <h4 className="font-black text-emerald-950 text-sm mb-0.5">تم تأكيد حجزك رسمياً 🥳</h4>
                       <p className="text-emerald-800 text-[11px] leading-relaxed">
-                        تم استلام العربون وحجز الوحدة باسمك. موعد الوصول ابتداءً من الساعة 2:00 ظهراً يوم {activeBooking.checkIn}.
+                        تم استلام العربون وحجز الوحدة باسمك بشكل رسمي. يرجى التنسيق مع المالك لتحديد موعد الاستلام.
                       </p>
                     </div>
                   </div>

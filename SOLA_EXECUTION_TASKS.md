@@ -206,8 +206,8 @@
 ## 3. ORDERED IMPLEMENTATION BATCHES
 
 - [x] **BATCH 1: Explore + Search + Results** (`CustomerHeader.tsx`, `CoastalSearchBar.tsx`, `StateViews.tsx`)
-- [x] **BATCH 2: Property Details + Mobile Calendar + Guests** (`PropertyCard.tsx`, `PropertyDetailModal.tsx`)
-- [x] **BATCH 3: Price Calculation + Booking Request Review** (`PropertyDetailModal.tsx`, `BookingReviewSheet.tsx`)
+- [x] **BATCH 2: Property Details + Mobile Calendar + Guests** (`PropertyCard.tsx`, `PropertyDetailModal.tsx`, `AvailabilityCalendar.tsx` [NEW], `GuestSelector.tsx` [NEW])
+- [x] **BATCH 3: Price Calculation + Booking Request Review** (`PropertyDetailModal.tsx` — server-authoritative `POST /api/v1/customer/bookings/calculate` wired; BookingReviewSheet opens ONLY after server quote; loading/error/retry states)
 - [x] **BATCH 4: Auth Interception + Context Preservation** (`CustomerAuthModal.tsx`, `App.tsx`)
 - [x] **BATCH 5: Booking Request Submission + Success** (`App.tsx`, `BookingSuccessModal.tsx`)
 - [x] **BATCH 6: My Bookings + Booking Details Lifecycle** (`MyBookingsView.tsx`, `BookingDetailView.tsx`)

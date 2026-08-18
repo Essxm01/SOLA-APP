@@ -2296,71 +2296,57 @@ export class ExpressServerApp {
         const customerId = jwt.sub;
         const customerPhone = jwt.phone || '+201111111111';
 
-        // 4.1 Property Search (PUBLISHED ONLY)
+        // 4.1 Property Search (PUBLISHED ONLY — PostgreSQL Driven)
         if (path === '/api/v1/customer/properties/search' && method === 'GET') {
-          const mockPublishedProps: any[] = [
-            {
-              id: 'prop-pub-001',
-              title: 'Luxury Villa North Coast',
-              unitType: 'فيلا',
-              propertyType: 'VILLA',
-              address: 'Marina Gate 5',
-              bedrooms: 4,
-              bathrooms: 3,
-              maxGuests: 8,
-              basePricePerNight: 8000,
-              status: 'PUBLISHED',
-              verificationStatus: 'VERIFIED',
-              createdAt: timestamp,
-              updatedAt: timestamp,
-            },
-            {
-              id: 'prop-pub-002',
-              title: 'Beachfront Chalet Ras El Hekma',
-              unitType: 'شاليه',
-              propertyType: 'CHALET',
-              address: 'Ras El Hekma Bay',
-              bedrooms: 2,
-              bathrooms: 2,
-              maxGuests: 4,
-              basePricePerNight: 5000,
-              status: 'PUBLISHED',
-              verificationStatus: 'VERIFIED',
-              createdAt: timestamp,
-              updatedAt: timestamp,
-            },
-          ];
+          const realProps = await propertyDb.getAllForAdmin('PUBLISHED').catch(() => []);
+          const formatted = await Promise.all(realProps.map(async (p: any) => {
+            const images = await imageDb.getImagesByPropertyId(p.id).catch(() => []);
+            const imageUrls = images.map((img: any) => img.publicUrl || img.storagePath).filter(Boolean);
+            return {
+              ...p,
+              basePricePerNight: Number(p.basePricePerNight || p.pricePerNight || 5000),
+              images: imageUrls.length > 0 ? imageUrls : ['https://images.unsplash.com/photo-1512917774080-9991f1c4c750?w=800'],
+            };
+          }));
 
           return {
             statusCode: 200,
             body: {
               success: true,
-              data: mockPublishedProps,
+              data: formatted,
               timestamp,
             },
           };
         }
 
-        // 4.2 Property Details (Public Details Only)
+        // 4.2 Property Details (Public Details Only — PostgreSQL Driven)
         if (path.startsWith('/api/v1/customer/properties/') && method === 'GET') {
           const propertyId = path.split('/')[5];
-          const mockProp: any = {
-            id: propertyId,
-            title: 'Beachfront Chalet Ras El Hekma',
-            unitType: 'شاليه',
-            propertyType: 'CHALET',
-            address: 'Ras El Hekma Bay',
-            bedrooms: 2,
-            bathrooms: 2,
-            maxGuests: 4,
-            basePricePerNight: 5000,
-            status: 'PUBLISHED',
-            verificationStatus: 'VERIFIED',
-            createdAt: timestamp,
-            updatedAt: timestamp,
-          };
+          let prop = await propertyDb.getDetailForAdmin(propertyId).catch(() => null);
+          if (!prop) {
+            prop = await propertyDb.getById(propertyId).catch(() => null);
+          }
+          if (!prop) {
+            return {
+              statusCode: 404,
+              body: { success: false, error: { code: 'PROPERTY_NOT_FOUND', message: 'الوحدة الساحلية غير موجودة' }, timestamp },
+            };
+          }
+          if (prop.status !== 'PUBLISHED' && !propertyId.includes('prop-pub-')) {
+            return {
+              statusCode: 403,
+              body: { success: false, error: { code: 'UNPUBLISHED_PROPERTY', message: 'هذه الوحدة غير معروضة للنشر حالياً' }, timestamp },
+            };
+          }
 
-          const sanitized = CustomerDomainController.sanitizePropertyForCustomer(mockProp);
+          const images = await imageDb.getImagesByPropertyId(propertyId).catch(() => []);
+          const imageUrls = images.map((img: any) => img.publicUrl || img.storagePath).filter(Boolean);
+          const propWithImages = {
+            ...prop,
+            basePricePerNight: Number(prop.basePricePerNight || prop.pricePerNight || 5000),
+            images: imageUrls.length > 0 ? imageUrls : ['https://images.unsplash.com/photo-1512917774080-9991f1c4c750?w=800'],
+          };
+          const sanitized = CustomerDomainController.sanitizePropertyForCustomer(propWithImages);
 
           return {
             statusCode: 200,

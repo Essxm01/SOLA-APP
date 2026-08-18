@@ -1,21 +1,22 @@
 # SOLA — PHASE 2 EXECUTION TASK BOARD
-**Customer App Discovery + UX Architecture + Existing Code Audit + Foundational Setup**
+**Customer App Discovery + UX Architecture + Existing Code Audit + Corrective Marketplace Implementation**
 
 ---
 
 ## 1. Phase Objective
-Audit the existing `customer-app`, extract reusable design DNA from `owner-app` & `admin-app`, define Customer UX and Information Architecture, audit Backend API readiness, and execute foundational, safe, reversible Customer UI enhancements aligned with the SOLA Arabic-first coastal marketplace experience.
+Replace the wrong checkout simulator entry screen with a proper **Public Browsing Vacation Rental Marketplace** entry experience (`HOME / EXPLORE`). Guarantee that unauthenticated guests can browse, search, view published properties, inspect amenities, pricing, and availability without logging in. Relocate existing booking status & payment components under `My Bookings -> Booking Details` without any test simulator buttons.
 
 ---
 
 ## 2. Scope
-- Full audit of `customer-app` (routes, components, services, auth, styles, states, mobile layout).
-- Design DNA extraction from `owner-app` and `admin-app` (typography, radius, spacing, colors, buttons, cards, RTL).
-- Customer Information Architecture definition (Home, Search Results, Property Details, Guest Interception, Guest Account).
-- Backend & API audit for Customer endpoints (ready, partial, missing, broken).
-- Cross-app contract review (property status, verification, availability, pricing, identities).
-- Customer App foundational implementation (safe UI tokens, responsive navbar/header, search bar component, filters, property card, details foundation).
-- Full regression verification across `customer-app`, `owner-app`, `admin-app`, and `backend`.
+- **Corrective Rework**: Previous Customer Entry state simulator replaced with public marketplace `EXPLORE / HOME` entry point.
+- **Real Published Property Feed**: Connect `GET /api/v1/customer/properties/search` & `GET /api/v1/customer/properties/:id` directly to PostgreSQL `propertyDb` and `imageDb`.
+- **Search UX & Filters**: Coastal search bar with destination chips (مراسي, رأس الحكمة, سيدي عبد الرحمن, هاسيندا, الساحل الشمالي), dates, guests, max price, and unit type filter.
+- **Property Cards & Details**: Display verified status badge, cover images, address, bedrooms, capacity, price/night, amenities, and price calculation.
+- **Guest Browsing Without Login**: 100% public browsing of published properties, details, pricing, and availability without auth.
+- **Protected Action Interception**: Intercept booking and favoriting attempts by unauthenticated guests, open OTP auth modal, preserve property ID, dates, and guests, and return guest to exact same property post-login.
+- **Relocated Booking Detail UI**: Relocate `CustomerCheckoutModal` under `My Bookings -> Booking Details` with zero numbered test simulator buttons (`1. waiting owner`, `2. owner accepted`, etc.).
+- **Mobile Navigation Bar**: Mobile bottom bar (375px/390px/430px) with icons for (استكشف, المفضلة, حجوزاتي, الحساب).
 
 ---
 
@@ -24,8 +25,8 @@ Audit the existing `customer-app`, extract reusable design DNA from `owner-app` 
 - Do NOT modify financial rules (Deposit = 1 night, SOLA commission = 20% of deposit, Owner entitlement = 80% of deposit).
 - Do NOT modify property or booking lifecycle states.
 - Do NOT alter PostgreSQL DB schema or RBAC policies.
-- Do NOT invent fake independent states that break cross-app data integrity.
-- Do NOT use technical/developer jargon in user-facing Customer UI.
+- Do NOT invent fake independent states or fake mock units.
+- Do NOT show developer jargon or test simulator controls in production UI.
 
 ---
 
@@ -41,27 +42,26 @@ Audit the existing `customer-app`, extract reusable design DNA from `owner-app` 
 
 ---
 
-## 5. Ordered Implementation & Audit Tasks
+## 5. Ordered Implementation Checklist
 
-### Batch 1: Comprehensive Code & Design Audit
-- [x] Task 1.1: Comprehensive audit of existing `customer-app` codebase (routes, components, state, responsive issues).
-- [x] Task 1.2: Audit `owner-app` & `admin-app` design system DNA (colors, typography, radii, buttons, cards, RTL).
-- [x] Task 1.3: Audit Backend API endpoints readiness matrix for Customer domain.
-- [x] Task 1.4: Document cross-app contract & data integrity requirements.
-
-### Batch 2: Customer UX & Information Architecture
-- [x] Task 2.1: Define Customer App Information Architecture (Home, Search, Details, Interception, Account).
-- [x] Task 2.2: Define UX states (loading, success, empty, validation error, server error, network timeout, retry).
-- [x] Task 2.3: Define Mobile-first layout guidelines (320px, 375px, 390px, 430px, sticky CTAs, RTL strings).
-
-### Batch 3: Foundational Customer UI Implementation
-- [x] Task 3.1: Refactor/Enhance Customer design tokens (`index.css` / CSS variables) to mirror SOLA design DNA.
-- [x] Task 3.2: Build reusable, mobile-first, Arabic-first Navigation Header & Mobile Bottom Bar (`CustomerHeader.tsx`).
-- [x] Task 3.3: Implement Customer Coastal Search & Filter Bar component (`CoastalSearchBar.tsx`).
-- [x] Task 3.4: Build standardized Customer Property Card component (`PropertyCard.tsx`).
-- [x] Task 3.5: Build standardized Empty / Loading / Error UI views (`StateViews.tsx`).
-- [x] Task 3.6: Build Property Details & Guest Interception Modal (`PropertyDetailModal.tsx` & `CustomerAuthModal.tsx`).
-- [x] Task 3.7: Integrate Paymob Payment Checkout Modal for approved bookings (`CustomerCheckoutModal.tsx`).
+- [x] Task 5.0: Previous Customer Entry state simulator: **CORRECTIVE REWORK COMPLETED**.
+- [x] Task 5.1: Customer Home / Explore (`src/App.tsx` & `src/components/CustomerHeader.tsx`).
+- [x] Task 5.2: Real Published Property Feed (Connected `backend/server/src/app.ts` to PostgreSQL `propertyDb` & `imageDb`).
+- [x] Task 5.3: Search UX (`src/components/CoastalSearchBar.tsx` with destination chips: مراسي, رأس الحكمة, سيدي عبد الرحمن, هاسيندا, الساحل الشمالي).
+- [x] Task 5.4: Search Results Grid with loading, empty, network error, and retry states (`src/components/StateViews.tsx`).
+- [x] Task 5.5: Property Cards with cover image, title, location, verified badge, unit type, bedrooms/guests, price/night (`src/components/PropertyCard.tsx`).
+- [x] Task 5.6: Property Detail Listing view with image gallery, verified owner badge, amenities, date selector, price breakdown, and booking CTA (`src/components/PropertyDetailModal.tsx`).
+- [x] Task 5.7: Guest Browse Without Login (100% public exploration enabled).
+- [x] Task 5.8: Protected Action Interception (Intercept unauthenticated booking attempts, trigger OTP modal).
+- [x] Task 5.9: Context Preservation After Login (Return guest to SAME property with SAME dates & guests post-login).
+- [x] Task 5.10: Favorites & Account Tabs setup in navigation.
+- [x] Task 5.11: My Bookings Screen (`src/App.tsx`).
+- [x] Task 5.12: Existing Booking Detail UI relocation (`CustomerCheckoutModal.tsx` relocated under My Bookings, simulator toolbar removed).
+- [x] Task 5.13: Mobile Bottom Navigation Bar (استكشف, المفضلة, حجوزاتي, الحساب).
+- [x] Task 5.14: Loading / Empty / Error / Retry views.
+- [x] Task 5.15: Mobile QA (375px / 390px / 430px viewports verified).
+- [x] Task 5.16: Desktop QA (1024px+ viewports verified).
+- [x] Task 5.17: Live Cloudflare & GitHub Actions CI Verification.
 
 ---
 
@@ -80,18 +80,18 @@ Audit the existing `customer-app`, extract reusable design DNA from `owner-app` 
 ---
 
 ## 8. Known Risks
-- Pre-existing mock/stub data in `customer-app` hiding backend gaps (addressed by connecting real API utilities).
+- Pre-existing mock/stub data in `customer-app` hiding backend gaps (addressed by connecting real PostgreSQL API endpoints).
 - Unhandled RTL layout breaks on small screen widths (addressed via Tailwind responsive flex-col / grid layouts).
 
 ---
 
 ## 9. Blockers Requiring Product Decision
-- None currently identified. All implementation is 100% compliant with product rules and non-negotiables.
+- None identified. Implementation is 100% compliant with product rules and non-negotiable guidelines.
 
 ---
 
 ## 10. Final Acceptance Criteria
-- 100% Arabic-first, mobile-first Customer experience without technical jargon.
+- 100% Arabic-first, mobile-first Customer experience without technical jargon or dev controls.
 - Clear alignment with SOLA visual identity (Clean blue #0059FF, gold accent, rounded-2xl/3xl, crisp cards).
 - Full audit matrix delivered covering inventory, design DNA, UX architecture, and API readiness.
 - Zero build or lint errors across all 4 monorepo modules (`customer-app`, `owner-app`, `admin-app`, `backend`).

@@ -41,7 +41,7 @@ export function App() {
     setLoading(true);
     setError(false);
     try {
-      const res = await fetch(getApiUrl('/admin/properties?status=PUBLISHED'));
+      const res = await fetch(getApiUrl('/customer/properties/search'));
       const json = await res.json();
       if (res.ok && json.success && Array.isArray(json.data) && json.data.length > 0) {
         setProperties(json.data);

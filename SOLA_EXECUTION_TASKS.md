@@ -1,32 +1,53 @@
 # SOLA — PHASE 2 EXECUTION TASK BOARD
-**Customer App Discovery + UX Architecture + Existing Code Audit + Corrective Marketplace Implementation**
+**Customer App Discovery + UX Architecture + Existing Code Audit + Mobile App Correction**
+
+---
+
+## 0. AUTHORITATIVE PLATFORM MATRIX
+- **Customer App**: **MOBILE APPLICATION** (Mobile-first UX, 375px/390px/430px viewports, persistent mobile bottom nav, white-dominant background, NO dark navy headers or desktop horizontal search bars).
+- **Owner App**: **MOBILE APPLICATION** (Mobile-first management dashboard).
+- **Admin App**: **WEB APPLICATION ONLY** (Desktop governance and operations portal).
 
 ---
 
 ## 1. Phase Objective
-Replace the wrong checkout simulator entry screen with a proper **Public Browsing Vacation Rental Marketplace** entry experience (`HOME / EXPLORE`). Guarantee that unauthenticated guests can browse, search, view published properties, inspect amenities, pricing, and availability without logging in. Relocate existing booking status & payment components under `My Bookings -> Booking Details` without any test simulator buttons.
+Replace desktop-style layouts and dark navy headers in Customer App with a **WHITE-DOMINANT, MOBILE-NATIVE VACATION RENTAL APPLICATION**. Enforce public browsing without login, mobile search card, horizontal destination chips (مراسي, رأس الحكمة, سيدي عبد الرحمن, هاسيندا, الساحل الشمالي), mobile property cards, full-screen mobile property details sheet, sticky booking request CTA ("اطلب حجز الوحدة"), guest auth interception with context preservation, and persistent mobile bottom navigation (`استكشف`, `المفضلة`, `حجوزاتي`, `الحساب`).
 
 ---
 
-## 2. Scope
-- **Corrective Rework**: Previous Customer Entry state simulator replaced with public marketplace `EXPLORE / HOME` entry point.
-- **Real Published Property Feed**: Connect `GET /api/v1/customer/properties/search` & `GET /api/v1/customer/properties/:id` directly to PostgreSQL `propertyDb` and `imageDb`.
-- **Search UX & Filters**: Coastal search bar with destination chips (مراسي, رأس الحكمة, سيدي عبد الرحمن, هاسيندا, الساحل الشمالي), dates, guests, max price, and unit type filter.
-- **Property Cards & Details**: Display verified status badge, cover images, address, bedrooms, capacity, price/night, amenities, and price calculation.
-- **Guest Browsing Without Login**: 100% public browsing of published properties, details, pricing, and availability without auth.
-- **Protected Action Interception**: Intercept booking and favoriting attempts by unauthenticated guests, open OTP auth modal, preserve property ID, dates, and guests, and return guest to exact same property post-login.
-- **Relocated Booking Detail UI**: Relocate `CustomerCheckoutModal` under `My Bookings -> Booking Details` with zero numbered test simulator buttons (`1. waiting owner`, `2. owner accepted`, etc.).
-- **Mobile Navigation Bar**: Mobile bottom bar (375px/390px/430px) with icons for (استكشف, المفضلة, حجوزاتي, الحساب).
+## 2. Locked Visual Identity Rules
+1. **Dominant Color**: **WHITE (`#FFFFFF`)** must visually dominate background, navigation surfaces, search cards, and sheets.
+2. **Primary Accent**: **`#0059FF` SOLA Blue**.
+3. **Secondary Accent**: **`#FFD700` SOLA Summer Yellow** (exact approved brand value only, used for ratings/highlights).
+4. **NO Dark Navy Dominant Header**: Eliminate dark navy top headers or page-filling dark backgrounds.
+5. **Aesthetic**: Bright, clean, premium, coastal, spacious, comfortable.
 
 ---
 
-## 3. Explicit Non-Goals
-- Do NOT rewrite or delete Vercel/Cloudflare infrastructure.
-- Do NOT modify financial rules (Deposit = 1 night, SOLA commission = 20% of deposit, Owner entitlement = 80% of deposit).
-- Do NOT modify property or booking lifecycle states.
-- Do NOT alter PostgreSQL DB schema or RBAC policies.
-- Do NOT invent fake independent states or fake mock units.
-- Do NOT show developer jargon or test simulator controls in production UI.
+## 3. PHASE 2C — CUSTOMER MOBILE APP CORRECTION CHECKLIST
+
+- [x] Task 3.1: Lock Customer = Mobile App platform matrix.
+- [x] Task 3.2: Remove desktop-first shell and wide horizontal web search bars.
+- [x] Task 3.3: Remove dark/navy dominant header surfaces (`glass-header`).
+- [x] Task 3.4: Apply white-dominant SOLA visual identity (`#FFFFFF` bg, `#0059FF` blue accent, `#FFD700` yellow).
+- [x] Task 3.5: Create mobile app compact white header (`CustomerHeader.tsx`).
+- [x] Task 3.6: Create persistent mobile bottom navigation bar (`CustomerBottomNav.tsx`: استكشف, المفضلة, حجوزاتي, الحساب).
+- [x] Task 3.7: Redesign mobile Explore/Home ("هتصيف فين؟" greeting + compact mobile search button).
+- [x] Task 3.8: Mobile search interaction & bottom sheet / filter modal.
+- [x] Task 3.9: Destination discovery cards/chips (مراسي, رأس الحكمة, سيدي عبد الرحمن, هاسيندا, الساحل الشمالي).
+- [x] Task 3.10: Mobile property feed with large prominent cover imagery.
+- [x] Task 3.11: Mobile property cards (`PropertyCard.tsx`).
+- [x] Task 3.12: Full-screen mobile property details screen/sheet with gallery & sticky CTA (`PropertyDetailModal.tsx`).
+- [x] Task 3.13: Sticky booking request CTA ("اطلب حجز الوحدة").
+- [x] Task 3.14: Guest auth interception (Intercept unauthenticated booking & favorite clicks).
+- [x] Task 3.15: Context restoration (Return guest to exact same property & dates post-login).
+- [x] Task 3.16: Favorites protected flow.
+- [x] Task 3.17: My Bookings mobile screen.
+- [x] Task 3.18: Real data verification (Connected to PostgreSQL `propertyDb` & `imageDb`).
+- [x] Task 3.19: 375px Visual QA.
+- [x] Task 3.20: 390px Visual QA.
+- [x] Task 3.21: 430px Visual QA.
+- [x] Task 3.22: Live Cloudflare & GitHub Actions CI Verification.
 
 ---
 
@@ -39,59 +60,17 @@ Replace the wrong checkout simulator entry screen with a proper **Public Browsin
 6. **Unauthenticated Guest Restrictions**: Guests can browse/search/view, but CANNOT book, favorite, pay, or review.
 7. **Post-Login Interception**: After login, guest MUST return to same property & selected dates/guests.
 8. **Financial Invariants**: Deposit = 1 night; Commission = 20% of deposit (NOT 20% of total booking); Available 24h post check-in.
+9. **Booking CTA Rule**: Detail page CTA must say **"اطلب حجز الوحدة"** (Request Booking). Deposit payment is ONLY for `APPROVED_PENDING_PAYMENT` state after owner approval!
 
 ---
 
-## 5. Ordered Implementation Checklist
-
-- [x] Task 5.0: Previous Customer Entry state simulator: **CORRECTIVE REWORK COMPLETED**.
-- [x] Task 5.1: Customer Home / Explore (`src/App.tsx` & `src/components/CustomerHeader.tsx`).
-- [x] Task 5.2: Real Published Property Feed (Connected `backend/server/src/app.ts` to PostgreSQL `propertyDb` & `imageDb`).
-- [x] Task 5.3: Search UX (`src/components/CoastalSearchBar.tsx` with destination chips: مراسي, رأس الحكمة, سيدي عبد الرحمن, هاسيندا, الساحل الشمالي).
-- [x] Task 5.4: Search Results Grid with loading, empty, network error, and retry states (`src/components/StateViews.tsx`).
-- [x] Task 5.5: Property Cards with cover image, title, location, verified badge, unit type, bedrooms/guests, price/night (`src/components/PropertyCard.tsx`).
-- [x] Task 5.6: Property Detail Listing view with image gallery, verified owner badge, amenities, date selector, price breakdown, and booking CTA (`src/components/PropertyDetailModal.tsx`).
-- [x] Task 5.7: Guest Browse Without Login (100% public exploration enabled).
-- [x] Task 5.8: Protected Action Interception (Intercept unauthenticated booking attempts, trigger OTP modal).
-- [x] Task 5.9: Context Preservation After Login (Return guest to SAME property with SAME dates & guests post-login).
-- [x] Task 5.10: Favorites & Account Tabs setup in navigation.
-- [x] Task 5.11: My Bookings Screen (`src/App.tsx`).
-- [x] Task 5.12: Existing Booking Detail UI relocation (`CustomerCheckoutModal.tsx` relocated under My Bookings, simulator toolbar removed).
-- [x] Task 5.13: Mobile Bottom Navigation Bar (استكشف, المفضلة, حجوزاتي, الحساب).
-- [x] Task 5.14: Loading / Empty / Error / Retry views.
-- [x] Task 5.15: Mobile QA (375px / 390px / 430px viewports verified).
-- [x] Task 5.16: Desktop QA (1024px+ viewports verified).
-- [x] Task 5.17: Live Cloudflare & GitHub Actions CI Verification.
-
----
-
-## 6. Verification Tasks
-- [x] Run `npm run build` / `npm run check` across `customer-app`, `owner-app`, `admin-app`, and `backend`.
-- [x] Test mobile viewport responsiveness (320px, 375px, 390px, 430px, desktop).
-- [x] Test Arabic RTL alignment and UI visual cleanliness.
-
----
-
-## 7. Live E2E Verification Tasks
-- [x] Verify `customer-app` build artifact cleanly bundles without errors.
-- [x] Verify live backend compatibility (`sola-backend-api.essxm01.workers.dev`).
-- [x] Run property search and detail retrieval against published PostgreSQL properties.
-
----
-
-## 8. Known Risks
-- Pre-existing mock/stub data in `customer-app` hiding backend gaps (addressed by connecting real PostgreSQL API endpoints).
-- Unhandled RTL layout breaks on small screen widths (addressed via Tailwind responsive flex-col / grid layouts).
-
----
-
-## 9. Blockers Requiring Product Decision
-- None identified. Implementation is 100% compliant with product rules and non-negotiable guidelines.
-
----
-
-## 10. Final Acceptance Criteria
-- 100% Arabic-first, mobile-first Customer experience without technical jargon or dev controls.
-- Clear alignment with SOLA visual identity (Clean blue #0059FF, gold accent, rounded-2xl/3xl, crisp cards).
-- Full audit matrix delivered covering inventory, design DNA, UX architecture, and API readiness.
-- Zero build or lint errors across all 4 monorepo modules (`customer-app`, `owner-app`, `admin-app`, `backend`).
+## 5. Final Acceptance Criteria
+- 100% White-dominant mobile marketplace application.
+- ZERO dark navy top headers or page-filling dark backgrounds.
+- Designed for mobile touch viewports (375px / 390px / 430px).
+- Native-feeling bottom navigation bar.
+- Guest browse without login enabled.
+- Real published properties rendered from PostgreSQL.
+- Booking CTA says "اطلب حجز الوحدة".
+- Login OTP modal triggers on protected action and preserves context.
+- Zero build or type errors across all modules.

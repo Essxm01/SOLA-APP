@@ -1,6 +1,6 @@
 /* ============================================================================
- * SOLA VACATION RENTALS — UNIFIED DESIGN SYSTEM (CUSTOMER APP)
- * Extracted Verbatim from SOLA Design System DNA
+ * SOLA VACATION RENTALS — CUSTOMER MOBILE APP DESIGN SYSTEM
+ * White-Dominant Coastal Mobile Marketplace
  * ============================================================================ */
 
 @import "tailwindcss";
@@ -11,14 +11,14 @@
   --sola-primary-blue-hover: #0046CC;
   --sola-primary-blue-soft: rgba(0, 89, 255, 0.08);
   
-  --sola-secondary-yellow: #FFD700;
-  --sola-secondary-yellow-soft: rgba(255, 215, 0, 0.15);
+  --sola-summer-yellow: #FFD700;
+  --sola-summer-yellow-soft: rgba(255, 215, 0, 0.15);
 
-  /* Backgrounds & Surfaces */
-  --sola-bg-main: #F5F7FA;
+  /* Backgrounds & Surfaces — WHITE DOMINANT */
+  --sola-bg-main: #FFFFFF;
   --sola-bg-surface: #FFFFFF;
   --sola-bg-surface-elevated: #F8FAFC;
-  --sola-bg-dark-header: rgba(15, 23, 42, 0.95);
+  --sola-bg-subtle: #F1F5F9;
   
   /* Text & Typography Colors */
   --sola-text-primary: #0F172A;
@@ -42,10 +42,6 @@
   --sola-danger-bg: #FFF1F2;
   --sola-danger-text: #881337;
   --sola-danger-border: #FECDD3;
-
-  --sola-info-bg: #EFF6FF;
-  --sola-info-text: #1E40AF;
-  --sola-info-border: #BFDBFE;
 }
 
 body {
@@ -59,67 +55,64 @@ body {
   padding: 0;
 }
 
-/* Custom Scrollbars */
+/* Custom Mobile Scrollbars */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 4px;
+  height: 4px;
 }
 ::-webkit-scrollbar-track {
-  background: #f1f5f9;
+  background: transparent;
 }
 ::-webkit-scrollbar-thumb {
   background: #cbd5e1;
   border-radius: 9999px;
 }
-::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
+
+/* Hide scrollbar utility */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
 }
 
-/* Glassmorphism Panel */
-.glass-panel {
-  background: rgba(255, 255, 255, 0.9);
+/* White Glassmorphism Header */
+.mobile-app-header {
+  background: rgba(255, 255, 255, 0.95);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(226, 232, 240, 0.8);
+  border-bottom: 1px solid #F1F5F9;
 }
 
-.glass-header {
-  background: rgba(15, 23, 42, 0.95);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-/* Cards & Elevation */
-.sola-card {
+/* Mobile Cards */
+.sola-mobile-card {
   background: #ffffff;
-  border: 1px solid var(--sola-border-main);
+  border: 1px solid #E2E8F0;
   border-radius: 20px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
-  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.04);
+  transition: all 0.2s ease-in-out;
 }
 
-.sola-card-hover:hover {
-  border-color: #cbd5e1;
-  transform: translateY(-2px);
-  box-shadow: 0 12px 24px -4px rgba(0, 89, 255, 0.08);
+.sola-mobile-card:active {
+  transform: scale(0.99);
 }
 
-/* Buttons */
+/* Primary Button Styling */
 .sola-btn-primary {
   background-color: var(--sola-primary-blue);
   color: #ffffff;
-  border-radius: 14px;
+  border-radius: 16px;
   font-weight: 800;
   transition: all 0.15s ease-in-out;
-  display: inline-flex;
+  display: flex;
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
 }
 .sola-btn-primary:hover {
   background-color: var(--sola-primary-blue-hover);
-  box-shadow: 0 4px 14px rgba(0, 89, 255, 0.3);
+  box-shadow: 0 6px 20px rgba(0, 89, 255, 0.25);
 }
 .sola-btn-primary:active {
   transform: scale(0.98);
@@ -127,22 +120,10 @@ body {
 
 /* Animations */
 @keyframes fadeIn {
-  from { opacity: 0; transform: translateY(8px); }
+  from { opacity: 0; transform: translateY(6px); }
   to { opacity: 1; transform: translateY(0); }
 }
 
 .animate-fade-in {
-  animation: fadeIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-}
-
-/* Skeleton Pulse */
-@keyframes skeletonPulse {
-  0%, 100% { opacity: 0.6; }
-  50% { opacity: 0.3; }
-}
-
-.skeleton-box {
-  background-color: #e2e8f0;
-  border-radius: 12px;
-  animation: skeletonPulse 1.5s infinite ease-in-out;
+  animation: fadeIn 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }

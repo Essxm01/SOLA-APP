@@ -5,9 +5,10 @@ import { PropertyCard, CustomerPropertyItem } from './components/PropertyCard';
 import { PropertyDetailModal } from './components/PropertyDetailModal';
 import { CustomerAuthModal } from './components/CustomerAuthModal';
 import { CustomerCheckoutModal, BookingDetails } from './components/CustomerCheckoutModal';
+import { CustomerBottomNav, CustomerTabType } from './components/CustomerBottomNav';
 import { LoadingStateView, EmptyStateView, ErrorStateView } from './components/StateViews';
 import { getApiUrl } from './utils/api';
-import { ShieldCheck, Compass, Heart, CalendarCheck, Home } from 'lucide-react';
+import { Heart, CalendarCheck, ShieldCheck, UserCheck } from 'lucide-react';
 
 export function App() {
   const [authToken, setAuthToken] = useState<string | null>(localStorage.getItem('sola_customer_access_token'));
@@ -17,13 +18,14 @@ export function App() {
   const [properties, setProperties] = useState<CustomerPropertyItem[]>([]);
   const [filteredProperties, setFilteredProperties] = useState<CustomerPropertyItem[]>([]);
   const [activeDestination, setActiveDestination] = useState<string>('الكل');
+  const [favorites, setFavorites] = useState<string[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<boolean>(false);
 
-  // Modals & Navigation
+  // Navigation & Modals
+  const [activeTab, setActiveTab] = useState<CustomerTabType>('EXPLORE');
   const [selectedProperty, setSelectedProperty] = useState<CustomerPropertyItem | null>(null);
   const [showAuthModal, setShowAuthModal] = useState<boolean>(false);
-  const [activeTab, setActiveTab] = useState<'EXPLORE' | 'BOOKINGS' | 'FAVORITES'>('EXPLORE');
 
   // Intercepted Guest Context
   const [interceptedContext, setInterceptedContext] = useState<{
@@ -33,10 +35,10 @@ export function App() {
     guests: number;
   } | null>(null);
 
-  // Active Checkout Booking State
+  // Active Booking State for Checkout
   const [activeBooking, setActiveBooking] = useState<BookingDetails | null>(null);
 
-  // Fetch Published Properties from API
+  // Fetch Published Properties from API (Real PostgreSQL Records)
   const fetchProperties = async () => {
     setLoading(true);
     setError(false);
@@ -155,6 +157,21 @@ export function App() {
     }
   };
 
+  // Favorite Toggle Handler (Protected Action)
+  const handleToggleFavorite = (id: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+
+    if (!authToken) {
+      // Unauthenticated Guest Interception for Favorites
+      setShowAuthModal(true);
+      return;
+    }
+
+    setFavorites((prev) =>
+      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
+    );
+  };
+
   // Auth Handlers
   const handleAuthSuccess = (token: string, phone: string) => {
     localStorage.setItem('sola_customer_access_token', token);
@@ -163,7 +180,7 @@ export function App() {
     setCustomerPhone(phone);
     setShowAuthModal(false);
 
-    // If intercepted, resume exact booking flow
+    // Context Preservation: Return to exact same property & dates post-login
     if (interceptedContext) {
       const targetProp = properties.find((p) => p.id === interceptedContext.propertyId) || selectedProperty;
       if (targetProp) {
@@ -178,9 +195,10 @@ export function App() {
     localStorage.removeItem('sola_customer_phone');
     setAuthToken(null);
     setCustomerPhone(null);
+    setActiveTab('EXPLORE');
   };
 
-  // Initiate Booking Handler
+  // Booking Request Handler (Initiates PENDING_OWNER_APPROVAL Request)
   const handleInitiateBooking = async (
     prop: CustomerPropertyItem,
     checkIn: string,
@@ -205,96 +223,62 @@ export function App() {
       depositAmountEgp: deposit,
       remainingBalanceEgp: remaining,
       totalBookingValueEgp: totalValue,
-      status: 'APPROVED_PENDING_PAYMENT',
+      status: 'PENDING_OWNER_APPROVAL',
     };
 
     setActiveBooking(newBooking);
     setSelectedProperty(null);
+    setActiveTab('BOOKINGS');
   };
 
   return (
-    <div className="min-h-screen bg-[#F5F7FA] flex flex-col font-sans pb-20 md:pb-8">
-      {/* Navbar Header */}
+    <div className="min-h-screen bg-white flex flex-col font-sans pb-20">
+      {/* Mobile White App Header */}
       <CustomerHeader
         customerPhone={customerPhone}
         onOpenAuthModal={() => setShowAuthModal(true)}
         onLogout={handleLogout}
-        activeDestination={activeDestination}
-        onSelectDestination={handleSelectDestinationChip}
       />
 
-      {/* Main Container */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 pt-4">
-        {/* Navigation Tabs Bar */}
-        <div className="flex items-center justify-between border-b border-slate-200 pb-3 mb-4">
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setActiveTab('EXPLORE')}
-              className={`px-4 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-2 ${
-                activeTab === 'EXPLORE'
-                  ? 'bg-[#0059FF] text-white shadow-md'
-                  : 'text-slate-600 hover:bg-slate-200/60'
-              }`}
-            >
-              <Compass className="w-4 h-4" />
-              <span>استكشاف الإقامات</span>
-            </button>
-            <button
-              onClick={() => setActiveTab('BOOKINGS')}
-              className={`px-4 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-2 ${
-                activeTab === 'BOOKINGS'
-                  ? 'bg-[#0059FF] text-white shadow-md'
-                  : 'text-slate-600 hover:bg-slate-200/60'
-              }`}
-            >
-              <CalendarCheck className="w-4 h-4" />
-              <span>حجوزاتي</span>
-            </button>
-          </div>
-
-          {/* Guarantee Badge */}
-          <div className="hidden sm:flex items-center gap-1.5 text-[11px] font-extrabold text-slate-500 bg-white px-3 py-1.5 rounded-xl border border-slate-200 shadow-2xs">
-            <ShieldCheck className="w-4 h-4 text-emerald-500" />
-            <span>جميع الإقامات معروضة ومثبتة برقم الهاتف</span>
-          </div>
-        </div>
-
+      {/* Main Container — Max Mobile Width */}
+      <main className="flex-1 max-w-md w-full mx-auto px-4 pt-3">
         {/* Tab 1: EXPLORE */}
         {activeTab === 'EXPLORE' && (
           <div>
-            {/* Coastal Search Bar */}
+            {/* Mobile Coastal Search & Destination Chips */}
             <CoastalSearchBar
               onSearch={handleSearchFilters}
-              initialDestination={activeDestination}
+              activeDestination={activeDestination}
+              onSelectDestinationChip={handleSelectDestinationChip}
             />
 
-            {/* Results Header */}
-            <div className="flex items-center justify-between my-4">
-              <div>
-                <h2 className="text-lg font-black text-slate-900">
-                  إقامات الساحل الشمالي المتاحة ({filteredProperties.length})
-                </h2>
-                <p className="text-xs text-slate-500 font-bold">
-                  احجز وحدتك الساحلية مباشرة من المالك مع ضمان صولا بدفع عربون ليلة واحدة فقط.
-                </p>
-              </div>
+            {/* Results Counter */}
+            <div className="flex items-center justify-between my-3">
+              <h2 className="text-sm font-black text-slate-900">
+                الوحدات الساحلية المتاحة ({filteredProperties.length})
+              </h2>
+              <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                ضمان صولا للإقامات ⭐️
+              </span>
             </div>
 
             {/* Viewport States */}
             {loading ? (
-              <LoadingStateView message="جاري استكشاف وحدات الساحل الشمالي..." />
+              <LoadingStateView message="جاري استكشاف إقامات الساحل الشمالي..." />
             ) : error ? (
               <ErrorStateView onRetry={fetchProperties} />
             ) : filteredProperties.length === 0 ? (
               <EmptyStateView onReset={() => setFilteredProperties(properties)} />
             ) : (
-              /* Property Cards Grid */
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 my-6">
+              /* Mobile Vertical Feed */
+              <div className="space-y-4 my-3">
                 {filteredProperties.map((prop) => (
                   <PropertyCard
                     key={prop.id}
                     property={prop}
                     onSelect={() => setSelectedProperty(prop)}
+                    isFavorite={favorites.includes(prop.id)}
+                    onToggleFavorite={handleToggleFavorite}
                   />
                 ))}
               </div>
@@ -302,9 +286,46 @@ export function App() {
           </div>
         )}
 
-        {/* Tab 2: BOOKINGS */}
+        {/* Tab 2: FAVORITES */}
+        {activeTab === 'FAVORITES' && (
+          <div className="my-4">
+            <h2 className="text-base font-black text-slate-900 mb-3">الوحدات المفضلة ({favorites.length})</h2>
+            {favorites.length === 0 ? (
+              <div className="bg-slate-50 p-8 rounded-3xl border border-slate-200 text-center my-6">
+                <Heart className="w-10 h-10 text-slate-300 mx-auto mb-2" />
+                <h3 className="text-sm font-black text-slate-800 mb-1">لا توجد وحدات مفضلة بعد</h3>
+                <p className="text-xs text-slate-500 mb-4 font-bold">
+                  انقر على رمز القلب على أي وحدة ساحلية لحفظها في قائمتك المفضلة.
+                </p>
+                <button
+                  onClick={() => setActiveTab('EXPLORE')}
+                  className="px-5 py-2.5 bg-[#0059FF] text-white font-extrabold text-xs rounded-xl shadow-xs"
+                >
+                  استكشف الإقامات
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {properties
+                  .filter((p) => favorites.includes(p.id))
+                  .map((prop) => (
+                    <PropertyCard
+                      key={prop.id}
+                      property={prop}
+                      onSelect={() => setSelectedProperty(prop)}
+                      isFavorite={true}
+                      onToggleFavorite={handleToggleFavorite}
+                    />
+                  ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Tab 3: BOOKINGS */}
         {activeTab === 'BOOKINGS' && (
-          <div className="my-6">
+          <div className="my-4">
+            <h2 className="text-base font-black text-slate-900 mb-3">حجوزاتي النشطة</h2>
             {activeBooking ? (
               <CustomerCheckoutModal
                 booking={activeBooking}
@@ -317,15 +338,15 @@ export function App() {
                 }}
               />
             ) : (
-              <div className="bg-white p-8 rounded-3xl border border-slate-200 text-center max-w-md mx-auto my-8">
-                <CalendarCheck className="w-12 h-12 text-[#0059FF] mx-auto mb-3" />
-                <h3 className="text-base font-black text-slate-900 mb-1">لا توجد حجوزات نشطة حالياً</h3>
-                <p className="text-xs text-slate-500 mb-6 font-bold">
-                  اختر إقامتك المفضل في الساحل الشمالي واطلب الحجز لتظهر تفاصيله هنا.
+              <div className="bg-slate-50 p-8 rounded-3xl border border-slate-200 text-center my-6">
+                <CalendarCheck className="w-10 h-10 text-[#0059FF] mx-auto mb-2" />
+                <h3 className="text-sm font-black text-slate-900 mb-1">لا توجد طلبات حجز حالية</h3>
+                <p className="text-xs text-slate-500 mb-5 font-bold">
+                  اختر إقامتك المفضل في الساحل الشمالي واطلب حجز الوحدة لتتابع حالة الطلب هنا.
                 </p>
                 <button
                   onClick={() => setActiveTab('EXPLORE')}
-                  className="px-6 py-2.5 bg-[#0059FF] text-white font-extrabold text-xs rounded-xl shadow-md"
+                  className="px-5 py-2.5 bg-[#0059FF] text-white font-extrabold text-xs rounded-xl shadow-xs"
                 >
                   استكشف الإقامات الآن
                 </button>
@@ -333,9 +354,52 @@ export function App() {
             )}
           </div>
         )}
+
+        {/* Tab 4: ACCOUNT */}
+        {activeTab === 'ACCOUNT' && (
+          <div className="my-4 space-y-4">
+            <h2 className="text-base font-black text-slate-900 mb-3">حسابي</h2>
+            {authToken ? (
+              <div className="bg-slate-50 p-5 rounded-3xl border border-slate-200 space-y-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 bg-[#0059FF] text-white rounded-2xl flex items-center justify-center font-black text-lg">
+                    <UserCheck className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <h3 className="font-black text-slate-900 text-sm">نزيل صولا المعتمد</h3>
+                    <p className="text-xs text-slate-500 font-bold dir-ltr">{customerPhone}</p>
+                  </div>
+                </div>
+                <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-2xl flex items-center gap-2 text-xs font-bold text-emerald-800">
+                  <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>حسابك موثق برقم الهاتف وجاهز لتقديم طلبات الحجز المباشرة.</span>
+                </div>
+                <button
+                  onClick={handleLogout}
+                  className="w-full py-3 bg-rose-50 hover:bg-rose-100 text-rose-600 font-black text-xs rounded-xl transition-all"
+                >
+                  تسجيل الخروج
+                </button>
+              </div>
+            ) : (
+              <div className="bg-slate-50 p-6 rounded-3xl border border-slate-200 text-center space-y-3">
+                <h3 className="font-black text-slate-900 text-sm">تسجيل الدخول / إنشاء حساب</h3>
+                <p className="text-xs text-slate-500 font-bold">
+                  ادخل رقم هاتفك لتأكيد طلبات الحجز وحفظ الإقامات المفضلة لديك.
+                </p>
+                <button
+                  onClick={() => setShowAuthModal(true)}
+                  className="w-full py-3 bg-[#0059FF] text-white font-black text-xs rounded-xl shadow-xs"
+                >
+                  دخول برقم الجوال
+                </button>
+              </div>
+            )}
+          </div>
+        )}
       </main>
 
-      {/* Property Details Modal */}
+      {/* Full-Screen Mobile Property Details Screen/Sheet */}
       {selectedProperty && (
         <PropertyDetailModal
           property={selectedProperty}
@@ -346,10 +410,12 @@ export function App() {
             setInterceptedContext(context);
             setShowAuthModal(true);
           }}
+          isFavorite={favorites.includes(selectedProperty.id)}
+          onToggleFavorite={(id) => handleToggleFavorite(id)}
         />
       )}
 
-      {/* Customer Auth Modal */}
+      {/* Customer Auth OTP Modal */}
       {showAuthModal && (
         <CustomerAuthModal
           onClose={() => setShowAuthModal(false)}
@@ -358,36 +424,13 @@ export function App() {
         />
       )}
 
-      {/* Mobile Bottom Navigation Bar (< 768px) */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-slate-900/95 backdrop-blur-md border-t border-slate-800 text-white flex items-center justify-around py-2.5 px-4 shadow-2xl">
-        <button
-          onClick={() => setActiveTab('EXPLORE')}
-          className={`flex flex-col items-center gap-1 text-[10px] font-black ${
-            activeTab === 'EXPLORE' ? 'text-[#0059FF]' : 'text-slate-400'
-          }`}
-        >
-          <Home className="w-5 h-5" />
-          <span>الرئيسية</span>
-        </button>
-        <button
-          onClick={() => setActiveTab('BOOKINGS')}
-          className={`flex flex-col items-center gap-1 text-[10px] font-black ${
-            activeTab === 'BOOKINGS' ? 'text-[#0059FF]' : 'text-slate-400'
-          }`}
-        >
-          <CalendarCheck className="w-5 h-5" />
-          <span>حجوزاتي</span>
-        </button>
-        <button
-          onClick={() => (authToken ? handleLogout() : setShowAuthModal(true))}
-          className={`flex flex-col items-center gap-1 text-[10px] font-black ${
-            authToken ? 'text-emerald-400' : 'text-slate-400'
-          }`}
-        >
-          <Heart className="w-5 h-5" />
-          <span>{authToken ? 'حسابي' : 'الدخول'}</span>
-        </button>
-      </nav>
+      {/* Native Persistent Mobile Bottom Navigation Bar */}
+      <CustomerBottomNav
+        activeTab={activeTab}
+        onSelectTab={setActiveTab}
+        favoritesCount={favorites.length}
+        hasActiveBooking={!!activeBooking}
+      />
     </div>
   );
 }

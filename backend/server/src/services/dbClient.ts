@@ -217,6 +217,57 @@ async function queryViaSupabaseRest(text: string, params: any[] | undefined, url
     return { rows: mapped, command: 'SELECT', rowCount: mapped.length, oid: 0, fields: [] };
   }
 
+  // 7. SELECT bookings for Property Availability & Overlap Checks (Canonical Blocking Statuses)
+  if (sql.includes('FROM bookings') && (sql.includes('WHERE property_id = $1') || sql.includes('property_id = $1'))) {
+    const propId = params?.[0];
+    let queryParams = `property_id=eq.${encodeURIComponent(propId)}&select=check_in,check_out,status`;
+    if (sql.includes("status IN ('APPROVED_PENDING_PAYMENT', 'CONFIRMED')") || sql.includes('status IN')) {
+      queryParams += '&status=in.(APPROVED_PENDING_PAYMENT,CONFIRMED)';
+    }
+    const res = await fetch(`${url}/rest/v1/bookings?${queryParams}`, { headers });
+    if (!res.ok) {
+      throw new Error(`Supabase REST bookings query failed with status ${res.status}`);
+    }
+    const rows: any[] = await res.json();
+    const mapped = (Array.isArray(rows) ? rows : []).map(b => ({
+      checkIn: b.check_in,
+      checkOut: b.check_out,
+      status: b.status,
+    }));
+    return { rows: mapped, command: 'SELECT', rowCount: mapped.length, oid: 0, fields: [] };
+  }
+
+  // 8. SELECT published properties for Customer Exploration / Search
+  if (sql.includes('FROM properties') && (sql.includes("status = 'PUBLISHED'") || sql.includes('p.status = $1') || sql.includes('status = $1'))) {
+    const statusVal = params?.[0] || 'PUBLISHED';
+    const res = await fetch(`${url}/rest/v1/properties?deleted_at=is.null&status=eq.${encodeURIComponent(statusVal)}&order=created_at.desc`, { headers });
+    if (!res.ok) {
+      throw new Error(`Supabase REST properties query failed with status ${res.status}`);
+    }
+    const rows: any[] = await res.json();
+    const mapped = (Array.isArray(rows) ? rows : []).map(p => ({
+      id: p.id,
+      ownerId: p.owner_id,
+      title: p.title,
+      unitType: p.unit_type,
+      propertyType: p.property_type,
+      address: p.address,
+      bedrooms: p.bedrooms,
+      bathrooms: p.bathrooms,
+      maxGuests: p.max_guests,
+      pricePerNight: p.base_price_per_night,
+      basePricePerNight: p.base_price_per_night,
+      status: p.status,
+      verificationStatus: p.verification_status,
+      createdAt: p.created_at,
+      updatedAt: p.updated_at,
+      ownerName: 'مالك صولا',
+      ownerPhone: '',
+      ownerVerificationStatus: 'UNVERIFIED',
+    }));
+    return { rows: mapped, command: 'SELECT', rowCount: mapped.length, oid: 0, fields: [] };
+  }
+
   return null;
 }
 

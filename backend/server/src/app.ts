@@ -2288,14 +2288,35 @@ export class ExpressServerApp {
       }
 
       // ----------------------------------------------------------------------
-      // 4. PROTECTED CUSTOMER ROUTES (/api/v1/customer/*) — Require ROLE_CUSTOMER
+      // 4. CUSTOMER ROUTES (/api/v1/customer/*)
       // ----------------------------------------------------------------------
       if (path.startsWith('/api/v1/customer/')) {
-        const jwt = verifyJwtToken(headers['authorization'] || headers['Authorization']);
-        requireRole(jwt, ['ROLE_CUSTOMER']); // Strictly block ROLE_OWNER and ROLE_ADMIN
+        const isPublicCustomerRoute =
+          (path === '/api/v1/customer/properties/search' && method === 'GET') ||
+          (path.match(/^\/api\/v1\/customer\/properties\/[^\/]+\/availability$/) && method === 'GET') ||
+          (path.match(/^\/api\/v1\/customer\/properties\/[^\/]+$/) && method === 'GET') ||
+          (path === '/api/v1/customer/bookings/calculate' && method === 'POST');
 
-        const customerId = jwt.sub;
-        const customerPhone = jwt.phone || '+201111111111';
+        let customerId = 'cust-guest';
+        let customerPhone = '+201111111111';
+
+        const authHeader = headers['authorization'] || headers['Authorization'];
+        if (!isPublicCustomerRoute) {
+          const jwt = verifyJwtToken(authHeader);
+          requireRole(jwt, ['ROLE_CUSTOMER']); // Strictly block ROLE_OWNER and ROLE_ADMIN
+          customerId = jwt.sub;
+          customerPhone = jwt.phone || '+201111111111';
+        } else if (authHeader && authHeader.startsWith('Bearer ')) {
+          try {
+            const jwt = verifyJwtToken(authHeader);
+            if (jwt && jwt.sub) {
+              customerId = jwt.sub;
+              if (jwt.phone) customerPhone = jwt.phone;
+            }
+          } catch {
+            // Public route: ignore optional invalid token gracefully
+          }
+        }
 
         // 4.1 Property Search (PUBLISHED ONLY — PostgreSQL Driven)
         if (path === '/api/v1/customer/properties/search' && method === 'GET') {

@@ -386,18 +386,14 @@ export const bookingDb = {
       ];
     }
 
-    try {
-      const res = await queryDb(
-        `SELECT check_in AS "checkIn", check_out AS "checkOut", status
-         FROM bookings
-         WHERE property_id = $1 AND status IN ('APPROVED_PENDING_PAYMENT', 'CONFIRMED')`,
-        [propertyId]
-      );
-      if (res && res.rows) {
-        return res.rows;
-      }
-    } catch {
-      // fallback
+    const res = await queryDb(
+      `SELECT check_in AS "checkIn", check_out AS "checkOut", status
+       FROM bookings
+       WHERE property_id = $1 AND status IN ('APPROVED_PENDING_PAYMENT', 'CONFIRMED')`,
+      [propertyId]
+    );
+    if (res && res.rows) {
+      return res.rows;
     }
 
     return [];

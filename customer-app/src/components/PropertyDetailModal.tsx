@@ -108,12 +108,15 @@ export const PropertyDetailModal: React.FC<PropertyDetailModalProps> = ({
   const fetchAvailability = useCallback(async () => {
     setAvailabilityLoading(true);
     setAvailabilityError(false);
-    const token = authToken || localStorage.getItem('sola_customer_access_token') || 'customer_cust001_token';
+    const token = authToken || localStorage.getItem('sola_customer_access_token');
+    const headers: Record<string, string> = {};
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
     try {
       const res = await fetch(getApiUrl(`/customer/properties/${property.id}/availability`), {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+        headers,
       });
       const json = await res.json();
       if (res.ok && json.success && json.data) {
@@ -148,15 +151,18 @@ export const PropertyDetailModal: React.FC<PropertyDetailModalProps> = ({
 
     setQuoteLoading(true);
     setQuoteError(null);
-    const token = authToken || localStorage.getItem('sola_customer_access_token') || 'customer_cust001_token';
+    const token = authToken || localStorage.getItem('sola_customer_access_token');
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
 
     try {
       const res = await fetch(getApiUrl('/customer/bookings/calculate'), {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
+        headers,
         body: JSON.stringify({
           propertyId: property.id,
           checkIn,

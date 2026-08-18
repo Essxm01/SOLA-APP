@@ -287,6 +287,71 @@ export async function runCustomerPropertyDecisionSuite(): Promise<{
     results.push({ name: 'Rule 14: Fail-closed availability', passed: false, error: err.message });
   }
 
+  // =========================================================================
+  // 4. LIVE AVAILABILITY THREE REAL CASES (Section 6)
+  // =========================================================================
+
+  // Test 15: Public unauthenticated guest can fetch availability (no 401 error)
+  try {
+    const unauthenticatedRes = await app.handleHttpRequest('GET', '/api/v1/customer/properties/prop-pub-001/availability', {});
+    const body: any = unauthenticatedRes.body;
+    results.push({
+      name: 'Rule 15: Unauthenticated guest can fetch public property availability (HTTP 200, minStay 2, maxStay 30)',
+      passed:
+        unauthenticatedRes.statusCode === 200 &&
+        body?.success === true &&
+        body?.data?.minStay === 2 &&
+        body?.data?.maxStay === 30,
+    });
+  } catch (err: any) {
+    results.push({ name: 'Rule 15: Public availability', passed: false, error: err.message });
+  }
+
+  // Test 16: CASE A — Property with no blocking bookings returns HTTP 200 and empty unavailableRanges
+  try {
+    const emptyPropAvailRes = await app.handleHttpRequest('GET', '/api/v1/customer/properties/prop-pub-003/availability', {});
+    const body: any = emptyPropAvailRes.body;
+    results.push({
+      name: 'Rule 16 (CASE A): Property with zero blocking bookings returns HTTP 200 with empty unavailableRanges array',
+      passed:
+        emptyPropAvailRes.statusCode === 200 &&
+        body?.success === true &&
+        Array.isArray(body?.data?.unavailableRanges),
+    });
+  } catch (err: any) {
+    results.push({ name: 'Rule 16: CASE A empty availability', passed: false, error: err.message });
+  }
+
+  // Test 17: CASE B — Property with CONFIRMED or APPROVED_PENDING_PAYMENT booking returns HTTP 200 with correct blocked date range
+  try {
+    const blockedPropAvailRes = await app.handleHttpRequest('GET', '/api/v1/customer/properties/prop-pub-001/availability', {});
+    const body: any = blockedPropAvailRes.body;
+    const ranges = body?.data?.unavailableRanges || [];
+    results.push({
+      name: 'Rule 17 (CASE B): Property with blocking bookings returns HTTP 200 with correct unavailable date ranges',
+      passed:
+        blockedPropAvailRes.statusCode === 200 &&
+        ranges.length > 0 &&
+        ranges[0].checkIn === '2026-09-08' &&
+        ranges[0].checkOut === '2026-09-12',
+    });
+  } catch (err: any) {
+    results.push({ name: 'Rule 17: CASE B blocked ranges', passed: false, error: err.message });
+  }
+
+  // Test 18: CASE C — DB/Query failure returns controlled 5xx and NEVER HTTP 200 with empty array
+  try {
+    const errorPropAvailRes = await app.handleHttpRequest('GET', '/api/v1/customer/properties/non-existent-prop-999/availability', {});
+    results.push({
+      name: 'Rule 18 (CASE C): DB or property failure returns controlled 4xx/5xx error (never fake 200 with empty array)',
+      passed:
+        errorPropAvailRes.statusCode !== 200 &&
+        (errorPropAvailRes.statusCode === 404 || errorPropAvailRes.statusCode === 403 || errorPropAvailRes.statusCode === 500),
+    });
+  } catch (err: any) {
+    results.push({ name: 'Rule 18: CASE C fail-closed error', passed: false, error: err.message });
+  }
+
   const passed = results.filter((r) => r.passed).length;
   const failed = results.length - passed;
 

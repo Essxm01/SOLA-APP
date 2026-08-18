@@ -44,8 +44,8 @@ async function queryViaSupabaseRest(text: string, params: any[] | undefined, url
 
   const sql = text.trim();
 
-  // 1. SELECT properties WHERE id = $1
-  if (sql.startsWith('SELECT') && sql.includes('FROM properties') && sql.includes('WHERE id = $1')) {
+  // 1. SELECT properties WHERE id = $1 or p.id = $1
+  if (sql.startsWith('SELECT') && (sql.includes('FROM properties') || sql.includes('FROM properties p')) && (sql.includes('WHERE id = $1') || sql.includes('WHERE p.id = $1'))) {
     const propId = params?.[0];
     const res = await fetch(`${url}/rest/v1/properties?id=eq.${encodeURIComponent(propId)}`, { headers });
     const rows: any[] = await res.json().catch(() => []);
@@ -64,7 +64,12 @@ async function queryViaSupabaseRest(text: string, params: any[] | undefined, url
       status: p.status,
       verificationStatus: p.verification_status,
       createdAt: p.created_at,
-      updatedAt: p.updated_at
+      updatedAt: p.updated_at,
+      ownerName: 'مالك صولا',
+      ownerPhone: '',
+      ownerEmail: 'owner@sola.eg',
+      ownerVerificationStatus: 'UNVERIFIED',
+      ownerStatus: 'ACTIVE'
     }));
     return { rows: mapped, command: 'SELECT', rowCount: mapped.length, oid: 0, fields: [] };
   }

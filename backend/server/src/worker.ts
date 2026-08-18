@@ -112,73 +112,16 @@ export default {
         }
       }
 
-      // 4. Adapt Request to Synthetic Node HTTP Request Stream expected by app.ts
+      // 4. Dispatch directly to ExpressServerApp router
       const app = getAppInstance();
+      const result = await app.handleHttpRequest(method, url.pathname, headers, bodyPayload, url.searchParams);
 
-      let statusCode = 200;
-      let responseHeaders: Record<string, string> = { ...corsHeaders, 'content-type': 'application/json' };
-      let responseBody = '';
-
-      const syntheticRes: any = {
-        writeHead: (code: number, headersArg?: Record<string, string>) => {
-          statusCode = code;
-          if (headersArg) {
-            for (const [hk, hv] of Object.entries(headersArg)) {
-              responseHeaders[hk.toLowerCase()] = hv;
-            }
-          }
+      return new Response(JSON.stringify(result.body), {
+        status: result.statusCode,
+        headers: {
+          ...corsHeaders,
+          'content-type': 'application/json',
         },
-        setHeader: (name: string, value: string) => {
-          responseHeaders[name.toLowerCase()] = value;
-        },
-        end: (data?: any) => {
-          if (data) {
-            responseBody = typeof data === 'string' ? data : JSON.stringify(data);
-          }
-        }
-      };
-
-      const syntheticReq: any = {
-        method,
-        url: url.pathname + url.search,
-        headers,
-        body: bodyPayload,
-        on: (event: string, handler: Function) => {
-          if (event === 'data' && bodyPayload) {
-            handler(typeof bodyPayload === 'string' ? Buffer.from(bodyPayload) : Buffer.from(JSON.stringify(bodyPayload)));
-          }
-          if (event === 'end') {
-            handler();
-          }
-        },
-        [Symbol.asyncIterator]: async function* () {
-          if (bodyPayload) {
-            yield typeof bodyPayload === 'string' ? Buffer.from(bodyPayload) : Buffer.from(JSON.stringify(bodyPayload));
-          }
-        }
-      };
-
-      // Dispatch to existing ExpressServerApp HTTP server handler
-      const server = app.createHttpServer();
-      server.emit('request', syntheticReq, syntheticRes);
-
-      let retries = 0;
-      while (!responseBody && retries < 100) {
-        await new Promise(r => setTimeout(r, 20));
-        retries++;
-      }
-
-      if (!responseBody) {
-        responseBody = JSON.stringify({
-          success: false,
-          error: { code: 'GATEWAY_TIMEOUT', message: 'انتهت مهلة استجابة خادم الباك اند' }
-        });
-        statusCode = 504;
-      }
-
-      return new Response(responseBody, {
-        status: statusCode,
-        headers: responseHeaders
       });
 
     } catch (err: any) {

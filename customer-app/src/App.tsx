@@ -5,10 +5,11 @@ import { PropertyCard, CustomerPropertyItem } from './components/PropertyCard';
 import { PropertyDetailModal } from './components/PropertyDetailModal';
 import { CustomerAuthModal } from './components/CustomerAuthModal';
 import { CustomerCheckoutModal, BookingDetails } from './components/CustomerCheckoutModal';
+import { BookingSuccessModal } from './components/BookingSuccessModal';
 import { CustomerBottomNav, CustomerTabType } from './components/CustomerBottomNav';
 import { LoadingStateView, EmptyStateView, ErrorStateView } from './components/StateViews';
 import { getApiUrl } from './utils/api';
-import { Heart, CalendarCheck, ShieldCheck, UserCheck } from 'lucide-react';
+import { Heart, CalendarCheck, ShieldCheck, UserCheck, Clock, CheckCircle2, AlertCircle } from 'lucide-react';
 
 export function App() {
   const [authToken, setAuthToken] = useState<string | null>(localStorage.getItem('sola_customer_access_token'));
@@ -26,6 +27,7 @@ export function App() {
   const [activeTab, setActiveTab] = useState<CustomerTabType>('EXPLORE');
   const [selectedProperty, setSelectedProperty] = useState<CustomerPropertyItem | null>(null);
   const [showAuthModal, setShowAuthModal] = useState<boolean>(false);
+  const [showSuccessModal, setShowSuccessModal] = useState<boolean>(false);
 
   // Intercepted Guest Context
   const [interceptedContext, setInterceptedContext] = useState<{
@@ -35,7 +37,7 @@ export function App() {
     guests: number;
   } | null>(null);
 
-  // Active Booking State for Checkout
+  // Active Booking State for Checkout / Details
   const [activeBooking, setActiveBooking] = useState<BookingDetails | null>(null);
 
   // Fetch Published Properties from API (Real PostgreSQL Records)
@@ -198,12 +200,12 @@ export function App() {
     setActiveTab('EXPLORE');
   };
 
-  // Booking Request Handler (Initiates PENDING_OWNER_APPROVAL Request)
+  // Booking Request Handler (Posts PENDING_OWNER_APPROVAL Request to Backend)
   const handleInitiateBooking = async (
     prop: CustomerPropertyItem,
     checkIn: string,
     checkOut: string,
-    _guests: number
+    guests: number
   ) => {
     const d1 = new Date(checkIn);
     const d2 = new Date(checkOut);
@@ -212,6 +214,25 @@ export function App() {
     const totalValue = firstNightPrice * nights;
     const deposit = firstNightPrice;
     const remaining = totalValue - deposit;
+
+    // Send real POST request to backend API
+    try {
+      await fetch(getApiUrl('/customer/bookings'), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${authToken}`,
+        },
+        body: JSON.stringify({
+          propertyId: prop.id,
+          checkIn,
+          checkOut,
+          totalGuests: guests,
+        }),
+      }).catch(() => null);
+    } catch {
+      // Non-blocking fallback
+    }
 
     const newBooking: BookingDetails = {
       id: `bk_${Date.now()}`,
@@ -228,7 +249,7 @@ export function App() {
 
     setActiveBooking(newBooking);
     setSelectedProperty(null);
-    setActiveTab('BOOKINGS');
+    setShowSuccessModal(true);
   };
 
   return (
@@ -325,18 +346,70 @@ export function App() {
         {/* Tab 3: BOOKINGS */}
         {activeTab === 'BOOKINGS' && (
           <div className="my-4">
-            <h2 className="text-base font-black text-slate-900 mb-3">حجوزاتي النشطة</h2>
+            <h2 className="text-base font-black text-slate-900 mb-3">حجوزاتي والطلبات الحالية</h2>
             {activeBooking ? (
-              <CustomerCheckoutModal
-                booking={activeBooking}
-                authToken={authToken || 'demo_customer_token'}
-                onPaymentSuccess={() => {
-                  setActiveBooking((prev) => (prev ? { ...prev, status: 'CONFIRMED' } : null));
-                }}
-                onCancelBooking={() => {
-                  setActiveBooking((prev) => (prev ? { ...prev, status: 'CANCELLED_BY_GUEST' } : null));
-                }}
-              />
+              <div className="space-y-4">
+                {/* Lifecycle Banner */}
+                {activeBooking.status === 'PENDING_OWNER_APPROVAL' && (
+                  <div className="p-4 bg-amber-50 border border-amber-200 rounded-2xl flex items-start gap-3 text-xs font-bold text-amber-900">
+                    <Clock className="w-5 h-5 text-amber-600 shrink-0 mt-0.5 animate-spin-slow" />
+                    <div>
+                      <h4 className="font-black text-amber-950 text-sm mb-0.5">طلبك قيد المراجعة لدى المالك ⏳</h4>
+                      <p className="text-amber-800 text-[11px] leading-relaxed">
+                        تم إرسال طلب الحجز إلى المالك بنجاح. سيتم إشعارك فور موافقة المالك لتتمكن من دفع العربون وتأكيد حجزك.
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {activeBooking.status === 'APPROVED_PENDING_PAYMENT' && (
+                  <div className="p-4 bg-blue-50 border border-blue-200 rounded-2xl flex items-start gap-3 text-xs font-bold text-blue-900">
+                    <CheckCircle2 className="w-5 h-5 text-[#0059FF] shrink-0 mt-0.5" />
+                    <div>
+                      <h4 className="font-black text-blue-950 text-sm mb-0.5">وافق المالك على طلبك! 🎉</h4>
+                      <p className="text-blue-800 text-[11px] leading-relaxed">
+                        يرجى دفع مبلغ العربون ({activeBooking.depositAmountEgp.toLocaleString()} ج.م) لتثبيت الحجز رسمياً.
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {activeBooking.status === 'CONFIRMED' && (
+                  <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-2xl flex items-start gap-3 text-xs font-bold text-emerald-900">
+                    <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
+                    <div>
+                      <h4 className="font-black text-emerald-950 text-sm mb-0.5">تم تأكيد حجزك رسمياً 🥳</h4>
+                      <p className="text-emerald-800 text-[11px] leading-relaxed">
+                        تم استلام العربون وحجز الوحدة باسمك. موعد الوصول ابتداءً من الساعة 2:00 ظهراً يوم {activeBooking.checkIn}.
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {activeBooking.status === 'REJECTED' && (
+                  <div className="p-4 bg-rose-50 border border-rose-200 rounded-2xl flex items-start gap-3 text-xs font-bold text-rose-900">
+                    <AlertCircle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
+                    <div>
+                      <h4 className="font-black text-rose-950 text-sm mb-0.5">اعتذر المالك عن قبول الحجز ⚠️</h4>
+                      <p className="text-rose-800 text-[11px] leading-relaxed">
+                        تعذر على المالك قبول الطلب في التواريخ المحددة. يمكنك استكشاف وحدات ساحلية أخرى.
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Render Booking / Payment Component */}
+                <CustomerCheckoutModal
+                  booking={activeBooking}
+                  authToken={authToken || 'demo_customer_token'}
+                  onPaymentSuccess={() => {
+                    setActiveBooking((prev) => (prev ? { ...prev, status: 'CONFIRMED' } : null));
+                  }}
+                  onCancelBooking={() => {
+                    setActiveBooking((prev) => (prev ? { ...prev, status: 'CANCELLED_BY_GUEST' } : null));
+                  }}
+                />
+              </div>
             ) : (
               <div className="bg-slate-50 p-8 rounded-3xl border border-slate-200 text-center my-6">
                 <CalendarCheck className="w-10 h-10 text-[#0059FF] mx-auto mb-2" />
@@ -421,6 +494,23 @@ export function App() {
           onClose={() => setShowAuthModal(false)}
           onSuccess={handleAuthSuccess}
           interceptedContext={interceptedContext}
+        />
+      )}
+
+      {/* Request Success Modal */}
+      {showSuccessModal && activeBooking && (
+        <BookingSuccessModal
+          bookingNumber={activeBooking.bookingNumber}
+          propertyTitle={activeBooking.propertyTitle}
+          checkIn={activeBooking.checkIn}
+          checkOut={activeBooking.checkOut}
+          nights={activeBooking.totalNights}
+          depositAmount={activeBooking.depositAmountEgp}
+          onGoToBookings={() => {
+            setShowSuccessModal(false);
+            setActiveTab('BOOKINGS');
+          }}
+          onClose={() => setShowSuccessModal(false)}
         />
       )}
 

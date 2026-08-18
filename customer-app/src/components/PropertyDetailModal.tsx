@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { CustomerPropertyItem } from './PropertyCard';
+import { BookingReviewSheet } from './BookingReviewSheet';
 import { ChevronRight, MapPin, Users, Bed, Bath, ShieldCheck, CheckCircle2, Calendar, Lock, Heart, Star } from 'lucide-react';
 
 interface PropertyDetailModalProps {
@@ -23,7 +24,8 @@ export const PropertyDetailModal: React.FC<PropertyDetailModalProps> = ({
 }) => {
   const [checkIn, setCheckIn] = useState<string>('2026-09-01');
   const [checkOut, setCheckOut] = useState<string>('2026-09-05');
-  const [guests] = useState<number>(4);
+  const [guests, setGuests] = useState<number>(4);
+  const [showReviewSheet, setShowReviewSheet] = useState<boolean>(false);
 
   // Nights calculation
   const d1 = new Date(checkIn);
@@ -43,7 +45,11 @@ export const PropertyDetailModal: React.FC<PropertyDetailModalProps> = ({
   const images = property.images && property.images.length > 0 ? property.images : defaultImages;
   const [activeImage, setActiveImage] = useState<string>(images[0]);
 
-  const handleBookClick = () => {
+  const handleOpenReviewSheet = () => {
+    setShowReviewSheet(true);
+  };
+
+  const handleConfirmSubmitRequest = () => {
     if (!authToken) {
       // Unauthenticated Guest Interception: Save intent & open auth modal
       onRequireAuth({
@@ -183,7 +189,7 @@ export const PropertyDetailModal: React.FC<PropertyDetailModalProps> = ({
             </div>
           </div>
 
-          {/* Dates Selection Box */}
+          {/* Dates & Guest Selector Box */}
           <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-3">
             <div className="flex items-center justify-between text-xs font-black text-slate-900 border-b border-slate-200 pb-2">
               <span className="flex items-center gap-1">
@@ -212,6 +218,21 @@ export const PropertyDetailModal: React.FC<PropertyDetailModalProps> = ({
                   className="w-full p-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-900 focus:outline-none"
                 />
               </div>
+            </div>
+
+            <div>
+              <label className="block text-[10px] font-bold text-slate-500 mb-1">عدد الأفراد</label>
+              <select
+                value={guests}
+                onChange={(e) => setGuests(Number(e.target.value))}
+                className="w-full p-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-900 focus:outline-none"
+              >
+                {Array.from({ length: property.maxGuests || 6 }, (_, i) => i + 1).map((n) => (
+                  <option key={n} value={n}>
+                    {n} {n === 1 ? 'فرد' : 'أفراد'}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
 
@@ -252,14 +273,32 @@ export const PropertyDetailModal: React.FC<PropertyDetailModalProps> = ({
           </div>
 
           <button
-            onClick={handleBookClick}
+            onClick={handleOpenReviewSheet}
             className="flex-1 py-3.5 bg-[#0059FF] hover:bg-blue-600 text-white font-black text-sm rounded-2xl shadow-md shadow-blue-500/25 transition-all flex items-center justify-center gap-1.5"
           >
             {!authToken && <Lock className="w-4 h-4 text-white/80" />}
-            <span>اطلب حجز الوحدة</span>
+            <span>متابعة طلب الحجز</span>
           </button>
         </div>
       </div>
+
+      {/* Booking Review Sheet */}
+      {showReviewSheet && (
+        <BookingReviewSheet
+          property={property}
+          checkIn={checkIn}
+          checkOut={checkOut}
+          guests={guests}
+          nights={nights}
+          firstNightPrice={firstNightPrice}
+          totalBookingValue={totalBookingValue}
+          depositAmount={depositAmount}
+          remainingBalance={remainingBalance}
+          onClose={() => setShowReviewSheet(false)}
+          onConfirmSubmit={handleConfirmSubmitRequest}
+          onEditDetails={() => setShowReviewSheet(false)}
+        />
+      )}
     </div>
   );
 };

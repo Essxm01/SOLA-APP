@@ -279,10 +279,14 @@ export async function queryDb<T = any>(text: string, params?: any[]): Promise<pg
       if (restResult) {
         return restResult;
       }
-    } catch {
-      // Fall through to TCP pool if REST translation fails
+    } catch (restErr: any) {
+      throw new Error(`REST_QUERY_ERROR: ${restErr?.message || String(restErr)}`);
     }
   }
 
-  return await getDbPool().query<T>(text, params);
+  try {
+    return await getDbPool().query<T>(text, params);
+  } catch (poolErr: any) {
+    throw new Error(`POOL_QUERY_ERROR: ${poolErr?.message || String(poolErr)} (sql: ${text.slice(0, 80).replace(/\s+/g, ' ')})`);
+  }
 }

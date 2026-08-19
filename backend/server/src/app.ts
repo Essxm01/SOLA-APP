@@ -2375,7 +2375,7 @@ export class ExpressServerApp {
           } catch (err: any) {
             return {
               statusCode: 500,
-              body: { success: false, error: { code: 'AVAILABILITY_QUERY_FAILED', message: 'تعذر جلب بيانات التوفر حالياً من قاعدة البيانات' }, timestamp },
+              body: { success: false, error: { code: 'AVAILABILITY_QUERY_FAILED', message: err?.message || 'تعذر جلب بيانات التوفر حالياً من قاعدة البيانات' }, timestamp },
             };
           }
 

@@ -1,0 +1,15 @@
+{
+  "$schema": "backend/node_modules/wrangler/config-schema.json",
+  "name": "sola-backend-api",
+  "main": "backend/server/src/worker.ts",
+  "compatibility_date": "2026-08-17",
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
+  "vars": {
+    "SUPABASE_URL": "https://zrbmbjgcsowfqklmxbyn.supabase.co"
+  },
+  "observability": {
+    "enabled": true
+  }
+}

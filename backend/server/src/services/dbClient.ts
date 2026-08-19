@@ -221,18 +221,16 @@ async function queryViaSupabaseRest(text: string, params: any[] | undefined, url
   // 7. SELECT bookings for Property Availability & Overlap Checks (Canonical Blocking Statuses)
   if (lowerSql.includes('from bookings') && lowerSql.includes('property_id')) {
     const propId = params?.[0];
-    let queryParams = `property_id=eq.${encodeURIComponent(propId)}&select=check_in,check_out,status`;
-    if (lowerSql.includes('approved_pending_payment') || lowerSql.includes('confirmed') || lowerSql.includes('status in')) {
-      queryParams += '&status=in.(APPROVED_PENDING_PAYMENT,CONFIRMED)';
-    }
-    const res = await fetch(`${url}/rest/v1/bookings?${queryParams}`, { headers });
+    const res = await fetch(`${url}/rest/v1/bookings?property_id=eq.${encodeURIComponent(propId)}&select=check_in,check_out,status`, { headers });
     const raw: any = await res.json().catch(() => []);
     const rows: any[] = Array.isArray(raw) ? raw : [];
-    const mapped = rows.map(b => ({
-      checkIn: b.check_in,
-      checkOut: b.check_out,
-      status: b.status,
-    }));
+    const mapped = rows
+      .filter(b => b && (b.status === 'APPROVED_PENDING_PAYMENT' || b.status === 'CONFIRMED'))
+      .map(b => ({
+        checkIn: b.check_in,
+        checkOut: b.check_out,
+        status: b.status,
+      }));
     return { rows: mapped, command: 'SELECT', rowCount: mapped.length, oid: 0, fields: [] };
   }
 

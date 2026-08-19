@@ -43,9 +43,10 @@ async function queryViaSupabaseRest(text: string, params: any[] | undefined, url
   };
 
   const sql = text.trim();
+  const lowerSql = sql.toLowerCase();
 
   // 1. SELECT properties WHERE id = $1 or p.id = $1
-  if (sql.startsWith('SELECT') && (sql.includes('FROM properties') || sql.includes('FROM properties p')) && (sql.includes('WHERE id = $1') || sql.includes('WHERE p.id = $1'))) {
+  if (lowerSql.startsWith('select') && lowerSql.includes('from properties') && (lowerSql.includes('where id =') || lowerSql.includes('where p.id =') || lowerSql.includes('p.id = $1') || lowerSql.includes('id = $1'))) {
     const propId = params?.[0];
     const res = await fetch(`${url}/rest/v1/properties?id=eq.${encodeURIComponent(propId)}`, { headers });
     const rows: any[] = await res.json().catch(() => []);
@@ -75,7 +76,7 @@ async function queryViaSupabaseRest(text: string, params: any[] | undefined, url
   }
 
   // 2. INSERT INTO properties
-  if (sql.startsWith('INSERT INTO properties')) {
+  if (lowerSql.startsWith('insert into properties')) {
     const payload = {
       id: params?.[0],
       owner_id: params?.[1],
@@ -112,7 +113,7 @@ async function queryViaSupabaseRest(text: string, params: any[] | undefined, url
   }
 
   // 3. UPDATE properties SET status = ...
-  if (sql.startsWith('UPDATE properties')) {
+  if (lowerSql.startsWith('update properties')) {
     const propId = params?.[0];
     const status = params?.[1];
     const verificationStatus = params?.[2];
@@ -135,7 +136,7 @@ async function queryViaSupabaseRest(text: string, params: any[] | undefined, url
   }
 
   // 4. INSERT INTO owners ON CONFLICT
-  if (sql.startsWith('INSERT INTO owners')) {
+  if (lowerSql.startsWith('insert into owners')) {
     const payload = {
       id: params?.[0],
       phone_number: params?.[1],
@@ -167,7 +168,7 @@ async function queryViaSupabaseRest(text: string, params: any[] | undefined, url
   }
 
   // 5. SELECT FROM properties WHERE owner_id = $1
-  if (sql.includes('FROM properties') && sql.includes('WHERE owner_id = $1')) {
+  if (lowerSql.includes('from properties') && lowerSql.includes('owner_id = $1')) {
     const ownerId = params?.[0];
     const res = await fetch(`${url}/rest/v1/properties?owner_id=eq.${encodeURIComponent(ownerId)}&deleted_at=is.null&order=created_at.desc`, { headers });
     const rows: any[] = await res.json().catch(() => []);
@@ -192,7 +193,7 @@ async function queryViaSupabaseRest(text: string, params: any[] | undefined, url
   }
 
   // 6. Admin Pending Properties Queue
-  if (sql.includes('FROM properties p') && sql.includes('status = \'PENDING_REVIEW\'')) {
+  if (lowerSql.includes('from properties') && (lowerSql.includes('pending_review') || lowerSql.includes('rejected'))) {
     const res = await fetch(`${url}/rest/v1/properties?deleted_at=is.null&status=in.(PENDING_REVIEW,REJECTED)&order=created_at.asc`, { headers });
     const rows: any[] = await res.json().catch(() => []);
     const mapped = rows.map(p => ({
@@ -218,10 +219,10 @@ async function queryViaSupabaseRest(text: string, params: any[] | undefined, url
   }
 
   // 7. SELECT bookings for Property Availability & Overlap Checks (Canonical Blocking Statuses)
-  if (sql.includes('FROM bookings') && (sql.includes('WHERE property_id = $1') || sql.includes('property_id = $1') || sql.includes('property_id'))) {
+  if (lowerSql.includes('from bookings') && lowerSql.includes('property_id')) {
     const propId = params?.[0];
     let queryParams = `property_id=eq.${encodeURIComponent(propId)}&select=check_in,check_out,status`;
-    if (sql.includes("status IN ('APPROVED_PENDING_PAYMENT', 'CONFIRMED')") || sql.includes('status IN')) {
+    if (lowerSql.includes('approved_pending_payment') || lowerSql.includes('confirmed') || lowerSql.includes('status in')) {
       queryParams += '&status=in.(APPROVED_PENDING_PAYMENT,CONFIRMED)';
     }
     const res = await fetch(`${url}/rest/v1/bookings?${queryParams}`, { headers });
@@ -236,7 +237,7 @@ async function queryViaSupabaseRest(text: string, params: any[] | undefined, url
   }
 
   // 8. SELECT published properties for Customer Exploration / Search
-  if (sql.includes('FROM properties') && (sql.includes("status = 'PUBLISHED'") || sql.includes('p.status = $1') || sql.includes('status = $1'))) {
+  if (lowerSql.includes('from properties') && (lowerSql.includes('published') || lowerSql.includes('status = $1') || lowerSql.includes('status ='))) {
     const statusVal = params?.[0] || 'PUBLISHED';
     const res = await fetch(`${url}/rest/v1/properties?deleted_at=is.null&status=eq.${encodeURIComponent(statusVal)}&order=created_at.desc`, { headers });
     const raw: any = await res.json().catch(() => []);

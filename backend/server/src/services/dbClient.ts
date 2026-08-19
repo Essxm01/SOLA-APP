@@ -271,18 +271,19 @@ async function queryViaSupabaseRest(text: string, params: any[] | undefined, url
  * Execute parameterized SQL query against PostgreSQL sola_db
  */
 export async function queryDb<T = any>(text: string, params?: any[]): Promise<pg.QueryResult<T>> {
-  try {
-    return await getDbPool().query<T>(text, params);
-  } catch (err: any) {
-    const supabaseUrl = process.env.SUPABASE_URL || 'https://zrbmbjgcsowfqklmxbyn.supabase.co';
-    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || (typeof atob === 'function' ? atob('c2Jfc2VjcmV0XzBBWHdfVFpiVFRCRWtxZGRKU1BYX2dfc3FZVEd6ZGc=') : Buffer.from('c2Jfc2VjcmV0XzBBWHdfVFpiVFRCRWtxZGRKU1BYX2dfc3FZVEd6ZGc=', 'base64').toString('utf-8'));
+  const supabaseUrl = process.env.SUPABASE_URL || 'https://zrbmbjgcsowfqklmxbyn.supabase.co';
+  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || (typeof atob === 'function' ? atob('c2Jfc2VjcmV0XzBBWHdfVFpiVFRCRWtxZGRKU1BYX2dfc3FZVEd6ZGc=') : Buffer.from('c2Jfc2VjcmV0XzBBWHdfVFpiVFRCRWtxZGRKU1BYX2dfc3FZVEd6ZGc=', 'base64').toString('utf-8'));
 
-    if (supabaseUrl && supabaseKey) {
-      const restResult = await queryViaSupabaseRest(text, params, supabaseUrl, supabaseKey).catch(() => null);
+  if (supabaseUrl && supabaseKey) {
+    try {
+      const restResult = await queryViaSupabaseRest(text, params, supabaseUrl, supabaseKey);
       if (restResult) {
         return restResult;
       }
+    } catch {
+      // Fall through to TCP pool if REST translation fails
     }
-    throw err;
   }
+
+  return await getDbPool().query<T>(text, params);
 }

@@ -34,9 +34,9 @@ export class AuthController {
     }
   }
 
-  async verifyOtp(phone: string, code: string): Promise<ApiSuccessResponse<any> | ApiErrorResponse> {
+  async verifyOtp(phone: string, code: string, surface: 'CUSTOMER' | 'OWNER' = 'CUSTOMER'): Promise<ApiSuccessResponse<any> | ApiErrorResponse> {
     try {
-      const result = await this.authService.verifyOtp(phone, code);
+      const result = await this.authService.verifyOtp(phone, code, surface);
       return {
         success: true,
         data: result,

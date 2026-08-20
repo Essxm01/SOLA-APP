@@ -2,13 +2,21 @@
  * Sola Vacation Rentals — Server Authentication & Session Service
  * Location: server/src/services/authService.ts
  * Master Source of Truth: PHASE_7_MASTER_SPECIFICATION.md
+ * 
+ * Complies with AUTH-02B1: Shared Identity Resolution, Canonical Phone & Correct Role Issuance
  */
 
 import { MockSmsProvider, type ISmsProvider } from './smsProvider.js';
 import { signAccessToken, signRefreshToken } from './jwtService.js';
-import { ownerDb } from './dbRepository.js';
+import { userDb, ownerDb } from './dbRepository.js';
+import { normalizePhoneNumber } from '../utils/phoneNormalizer.js';
+import { isProductionDatabase } from '../utils/testDbGuard.js';
 import type { AuthSessionTokens, UserRole } from '../types/server.js';
 
+/**
+ * @deprecated Legacy deterministic UUID derivation. Deprecated in AUTH-02B1.
+ * New users use cryptographically random UUIDs; existing users are resolved via canonical phone.
+ */
 export function phoneToUuid(phone: string): string {
   if (!phone) return '00000000-0000-4000-8000-000000000000';
   if (phone.includes('-') && phone.length === 36) return phone;
@@ -16,9 +24,11 @@ export function phoneToUuid(phone: string): string {
   return `00000000-0000-4000-8000-${clean}`;
 }
 
+export type AuthSurface = 'CUSTOMER' | 'OWNER';
+
 export interface UserSessionRecord {
   id: string;
-  ownerId: string;
+  ownerId: string; // User ID
   refreshTokenHash: string;
   deviceInfo?: string;
   ipAddress?: string;
@@ -32,6 +42,18 @@ export interface OtpRecord {
   expiresAt: number;
   requestCount: number;
   failedAttempts: number;
+}
+
+export interface UserRecord {
+  id: string;
+  phoneNumber: string;
+  phoneVerifiedAt?: string | null;
+  fullName?: string | null;
+  email?: string | null;
+  avatarUrl?: string | null;
+  status: 'ACTIVE' | 'SUSPENDED' | 'DEACTIVATED';
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface OwnerRecord {
@@ -54,7 +76,8 @@ export interface AdminRecord {
   isActive: boolean;
 }
 
-// In-memory Database Store for Live Runtime (Mirrors PostgreSQL schema)
+// In-memory Database Stores for Live Runtime & Unit Test Mocking
+export const dbUsersStore = new Map<string, UserRecord>();
 export const dbOwnersStore = new Map<string, OwnerRecord>();
 export const dbAdminUsersStore = new Map<string, AdminRecord>();
 export const dbUserSessionsStore = new Map<string, UserSessionRecord>();
@@ -93,13 +116,12 @@ export class AuthService {
   }
 
   // 1. Request OTP (Rate limited: Max 3 requests / 15 mins)
-  async requestOtp(phone: string): Promise<{ success: boolean; message: string }> {
-    if (!phone || phone.length < 8) {
-      throw new Error('INVALID_PHONE_NUMBER');
-    }
+  // Authoritatively normalizes phone before keying / rate-limiting / sending
+  async requestOtp(rawPhone: string): Promise<{ success: boolean; message: string }> {
+    const canonicalPhone = normalizePhoneNumber(rawPhone);
 
     const now = Date.now();
-    const existing = this.otpStore.get(phone);
+    const existing = this.otpStore.get(canonicalPhone);
 
     if (existing && existing.requestCount >= 3 && now < existing.expiresAt) {
       throw new Error('RATE_LIMIT_EXCEEDED_MAX_3_OTP_PER_15_MIN');
@@ -109,7 +131,7 @@ export class AuthService {
     const expiresAt = now + 5 * 60 * 1000; // 5 mins
     const requestCount = existing ? existing.requestCount + 1 : 1;
 
-    this.otpStore.set(phone, {
+    this.otpStore.set(canonicalPhone, {
       code: otpCode,
       expiresAt,
       requestCount,
@@ -117,7 +139,7 @@ export class AuthService {
     });
 
     await this.smsProvider.sendOtpSms({
-      phone,
+      phone: canonicalPhone,
       message: `كود التحقق الخاص بك في صولا هو: ${otpCode}`,
       otpCode,
     });
@@ -126,68 +148,128 @@ export class AuthService {
   }
 
   // 2. Verify OTP & Issue Tokens
-  async verifyOtp(phone: string, code: string, deviceInfo?: string, ipAddress?: string): Promise<{
+  // Resolves User through canonical users table, checks Owner capability, and issues surface-specific JWT
+  async verifyOtp(
+    rawPhone: string,
+    code: string,
+    surface: AuthSurface = 'CUSTOMER',
+    deviceInfo?: string,
+    ipAddress?: string
+  ): Promise<{
     tokens: AuthSessionTokens;
-    owner: OwnerRecord;
+    user: UserRecord;
+    owner?: OwnerRecord | null;
+    isOwner: boolean;
+    ownerOnboardingRequired?: boolean;
   }> {
-    const record = this.otpStore.get(phone);
+    const canonicalPhone = normalizePhoneNumber(rawPhone);
+
+    const record = this.otpStore.get(canonicalPhone);
     if (!record) {
       throw new Error('OTP_NOT_FOUND_OR_EXPIRED');
     }
 
     if (Date.now() > record.expiresAt) {
-      this.otpStore.delete(phone);
+      this.otpStore.delete(canonicalPhone);
       throw new Error('OTP_EXPIRED');
     }
 
     if (record.failedAttempts >= 5) {
-      this.otpStore.delete(phone);
+      this.otpStore.delete(canonicalPhone);
       throw new Error('OTP_MAX_ATTEMPTS_EXCEEDED');
     }
 
     if (record.code !== code) {
       record.failedAttempts += 1;
       if (record.failedAttempts >= 5) {
-        this.otpStore.delete(phone);
+        this.otpStore.delete(canonicalPhone);
         throw new Error('OTP_MAX_ATTEMPTS_EXCEEDED');
       }
       throw new Error('INVALID_OTP_CODE');
     }
 
-    this.otpStore.delete(phone);
+    this.otpStore.delete(canonicalPhone);
 
-    const ownerId = phoneToUuid(phone);
+    // 1. Resolve or Create Canonical User Identity
+    let user: UserRecord | null = null;
     
-    // Fetch or Create real Owner Record in PostgreSQL DB store
-    let owner = await ownerDb.getById(ownerId).catch(() => null);
-    if (!owner) {
-      owner = await ownerDb.upsert({
-        id: ownerId,
-        phoneNumber: phone,
-        fullName: 'مالك صولا المعين',
-        status: 'ACTIVE',
-        verificationStatus: 'UNVERIFIED',
-      }).catch(() => null);
-    }
-    if (!owner) {
-      owner = {
-        id: ownerId,
-        phoneNumber: phone,
-        fullName: 'مالك صولا المعين',
-        status: 'ACTIVE',
-        verificationStatus: 'UNVERIFIED',
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
-    }
-    dbOwnersStore.set(ownerId, owner);
+    // First try PostgreSQL database
+    user = await userDb.getByPhone(canonicalPhone).catch(() => null);
 
-    const accessToken = signAccessToken({ sub: ownerId, role: 'ROLE_OWNER', phone });
-    const refreshToken = signRefreshToken({ sub: ownerId, role: 'ROLE_OWNER' });
+    // If not in DB, check in-memory store
+    if (!user) {
+      user = dbUsersStore.get(canonicalPhone) || null;
+    }
 
+    // If still missing, create new User with random UUID (zero fake profile strings)
+    if (!user) {
+      const newUserId = crypto.randomUUID();
+      let createdDbUser: UserRecord | null = null;
+      if (!isProductionDatabase()) {
+        createdDbUser = await userDb.create({
+          id: newUserId,
+          phoneNumber: canonicalPhone,
+          status: 'ACTIVE',
+        }).catch(() => null);
+      }
+
+      if (createdDbUser) {
+        user = createdDbUser;
+      } else {
+        user = {
+          id: newUserId,
+          phoneNumber: canonicalPhone,
+          phoneVerifiedAt: new Date().toISOString(),
+          fullName: null,
+          email: null,
+          avatarUrl: null,
+          status: 'ACTIVE',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
+      }
+    } else {
+      // Update phone verified timestamp on safe test DBs
+      if (!isProductionDatabase()) {
+        await userDb.updatePhoneVerified(user.id).catch(() => null);
+      }
+      user.phoneVerifiedAt = new Date().toISOString();
+    }
+
+    dbUsersStore.set(canonicalPhone, user);
+
+    // 2. Check Owner capability (matching owners.id == users.id)
+    let ownerRecord: OwnerRecord | null = await ownerDb.getById(user.id).catch(() => null);
+    if (!ownerRecord) {
+      ownerRecord = dbOwnersStore.get(user.id) || null;
+    }
+
+    // 3. Evaluate Surface and Issue Surface-Specific Role & JWT
+    let role: UserRole;
+    let ownerOnboardingRequired = false;
+
+    if (surface === 'OWNER') {
+      if (ownerRecord) {
+        role = 'ROLE_OWNER';
+        ownerOnboardingRequired = false;
+      } else {
+        // Pure User logging into Owner app — DO NOT create owners row
+        role = 'ROLE_CUSTOMER';
+        ownerOnboardingRequired = true;
+      }
+    } else {
+      // surface === 'CUSTOMER'
+      role = 'ROLE_CUSTOMER';
+      ownerOnboardingRequired = false;
+    }
+
+    const accessToken = signAccessToken({ sub: user.id, role, phone: canonicalPhone });
+    const refreshToken = signRefreshToken({ sub: user.id, role });
+
+    // Session tracking
     const sessionRecord: UserSessionRecord = {
       id: `session_${Date.now()}`,
-      ownerId,
+      ownerId: user.id,
       refreshTokenHash: this.hashToken(refreshToken),
       deviceInfo,
       ipAddress,
@@ -204,7 +286,20 @@ export class AuthService {
         refreshToken,
         expiresIn: 900, // 15 mins
       },
-      owner,
+      user: {
+        id: user.id,
+        phoneNumber: user.phoneNumber,
+        fullName: user.fullName || null,
+        email: user.email || null,
+        avatarUrl: user.avatarUrl || null,
+        status: user.status,
+        phoneVerifiedAt: user.phoneVerifiedAt,
+        createdAt: user.createdAt,
+        updatedAt: user.updatedAt,
+      },
+      owner: surface === 'OWNER' && ownerRecord ? ownerRecord : null,
+      isOwner: !!ownerRecord,
+      ownerOnboardingRequired: surface === 'OWNER' ? ownerOnboardingRequired : undefined,
     };
   }
 

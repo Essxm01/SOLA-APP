@@ -28,7 +28,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   });
 
   const [phoneNumber, setPhoneNumber] = useState<string>(() => {
-    return localStorage.getItem('sola_owner_phone') || '+201000000001';
+    return localStorage.getItem('sola_owner_phone') || '';
   });
 
   const [owner, setOwner] = useState<Owner | null>(null);
@@ -79,13 +79,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const verifyOTP = async (code: string): Promise<boolean> => {
     const repo = repositoryFactory;
     if (!repo.useMockMode) {
-      const res: any = await repo.auth.verifyOtp({ phone: phoneNumber, code });
+      const res: any = await repo.auth.verifyOtp({ phone: phoneNumber, code, surface: 'OWNER' });
       const token = res.accessToken || res.tokens?.accessToken;
       if (token) {
         localStorage.setItem('sola_access_token', token);
         localStorage.setItem('sola_owner_authenticated', 'true');
         if (res.owner) {
           setOwner(res.owner);
+        }
+        if (res.ownerOnboardingRequired) {
+          setHasCompletedOnboarding(false);
+          localStorage.setItem('sola_owner_onboarding', 'false');
         }
         setIsAuthenticated(true);
         return true;

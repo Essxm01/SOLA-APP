@@ -32,6 +32,27 @@ export const userDb = {
       [phoneNumber]
     );
     return res.rows[0] || null;
+  },
+
+  async create(user: { id?: string; phoneNumber: string; status?: string; fullName?: string | null; email?: string | null; avatarUrl?: string | null }) {
+    const id = user.id || crypto.randomUUID();
+    const res = await queryDb(
+      `INSERT INTO users (id, phone_number, phone_verified_at, full_name, email, avatar_url, status, created_at, updated_at)
+       VALUES ($1, $2, NOW(), $3, $4, $5, COALESCE($6, 'ACTIVE'), NOW(), NOW())
+       RETURNING id, phone_number AS "phoneNumber", phone_verified_at AS "phoneVerifiedAt", full_name AS "fullName", email, avatar_url AS "avatarUrl", status, created_at AS "createdAt", updated_at AS "updatedAt"`,
+      [id, user.phoneNumber, user.fullName || null, user.email || null, user.avatarUrl || null, user.status || 'ACTIVE']
+    );
+    return res.rows[0];
+  },
+
+  async updatePhoneVerified(userId: string) {
+    const res = await queryDb(
+      `UPDATE users SET phone_verified_at = NOW(), updated_at = NOW()
+       WHERE id = $1
+       RETURNING id, phone_number AS "phoneNumber", phone_verified_at AS "phoneVerifiedAt", full_name AS "fullName", email, avatar_url AS "avatarUrl", status, created_at AS "createdAt", updated_at AS "updatedAt"`,
+      [userId]
+    );
+    return res.rows[0] || null;
   }
 };
 

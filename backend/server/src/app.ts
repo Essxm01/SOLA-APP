@@ -192,7 +192,7 @@ export class ExpressServerApp {
       }
 
       if (path === '/api/v1/auth/verify-otp' && method === 'POST') {
-        const response = await this.authController.verifyOtp(bodyPayload?.phone, bodyPayload?.code);
+        const response = await this.authController.verifyOtp(bodyPayload?.phone, bodyPayload?.code, bodyPayload?.surface);
         return { statusCode: response.success ? 200 : 401, body: response };
       }
 

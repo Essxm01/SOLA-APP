@@ -41,13 +41,15 @@ export interface RequestOtpPayload {
 export interface VerifyOtpPayload {
   phone: string;
   code: string;
+  surface?: 'CUSTOMER' | 'OWNER';
 }
 
 export interface AuthSessionResponse {
   accessToken: string;
   refreshToken: string;
   expiresIn: number;
-  owner: Owner;
+  owner?: Owner | null;
+  ownerOnboardingRequired?: boolean;
 }
 
 export interface IAuthRepository {

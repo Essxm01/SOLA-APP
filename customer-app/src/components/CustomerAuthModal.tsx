@@ -14,8 +14,8 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
   interceptedContext,
 }) => {
   const [step, setStep] = useState<'PHONE' | 'OTP'>('PHONE');
-  const [phone, setPhone] = useState<string>('01012345678');
-  const [code, setCode] = useState<string>('1234');
+  const [phone, setPhone] = useState<string>('');
+  const [code, setCode] = useState<string>('');
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string>('');
 
@@ -63,7 +63,7 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
       const res = await fetch(getApiUrl('/auth/verify-otp'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone: fullPhone, code }),
+        body: JSON.stringify({ phone: fullPhone, code, surface: 'CUSTOMER' }),
       });
 
       const json = await res.json();
@@ -71,7 +71,10 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
         throw new Error(json.error?.message || 'كود التحقق غير صحيح');
       }
 
-      const token = json.data?.tokens?.accessToken || 'demo_customer_access_token';
+      const token = json.data?.tokens?.accessToken;
+      if (!token) {
+        throw new Error('لم يتم استلام رمز الدخول من الخادم');
+      }
       onSuccess(token, fullPhone);
     } catch (err: any) {
       setError(err.message || 'رمز التحقق غير صحيح أو منتهي الصلاحية.');

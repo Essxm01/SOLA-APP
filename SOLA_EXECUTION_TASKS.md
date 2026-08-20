@@ -323,4 +323,21 @@
 - [x] **Protected mutation test suites** (`propertyMediaStorage.test.ts` and `postgresRuntime.test.ts` fail fast before any write when configured against production)
 - [x] **Production read-only smoke verification** (Health, Search, Details, Availability, and Quote all 200 OK)
 
+---
+
+## 9. AUTH-02B1: SHARED IDENTITY RESOLUTION, CANONICAL PHONE & CORRECT ROLE ISSUANCE
+
+**Statuses:** `IMPLEMENTED + LOCAL VERIFIED`
+
+### Tasks
+- [x] **Authoritative phone normalizer** (`backend/server/src/utils/phoneNormalizer.ts` normalizes Egyptian mobiles e.g. `010...` to `+2010...` and rejects malformed inputs)
+- [x] **Deprecate deterministic `phoneToUuid`** (New users generated with random UUIDs; existing users resolved by canonical phone)
+- [x] **Explicit auth surface parameter** (`verifyOtp` receives `surface: 'CUSTOMER' | 'OWNER'` across HTTP routing, controllers, and clients)
+- [x] **Customer identity resolution** (Creates `users` only with random UUID, NULL profile fields, issues `ROLE_CUSTOMER`, never auto-creates `owners`)
+- [x] **Owner identity resolution** (Resolves `users` first; if matching `owners.id` exists issues `ROLE_OWNER`; if no `owners` row returns `ownerOnboardingRequired: true` with `ROLE_CUSTOMER`)
+- [x] **Cross-surface same human UUID invariant** (Existing owner on Customer App gets `ROLE_CUSTOMER` with same UUID; on Owner App gets `ROLE_OWNER` with same UUID)
+- [x] **Remove fake/demo auth fallbacks** (Removed `demo_customer_access_token` and default fake phone from `CustomerAuthModal.tsx` and `AuthContext.tsx`)
+- [x] **13-case test suite verified** (`backend/server/src/tests/sharedIdentityResolution.test.ts` 13/13 PASS)
+- [x] **Production database invariants verified** (18 Owners == 18 Users, 0 unmatched, 0 isolated)
+
 

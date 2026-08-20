@@ -6,6 +6,7 @@
 
 import pkg from 'pg';
 const { Pool } = pkg;
+import { assertSafeTestDatabase } from '../utils/testDbGuard';
 import type { TestResult } from './authSecurity.test';
 
 const PG_CONFIG = {
@@ -24,6 +25,19 @@ export async function runPostgresRuntimeSuite(): Promise<{
   results: TestResult[];
 }> {
   const results: TestResult[] = [];
+
+  // Production DB Isolation Guard (AUTH-02A.2)
+  try {
+    assertSafeTestDatabase('PostgresRuntimeSuite');
+  } catch (err: any) {
+    results.push({
+      name: 'PostgreSQL Engine: Production DB Mutation Guard',
+      passed: false,
+      error: err.message,
+    });
+    return { total: 1, passed: 0, failed: 1, results };
+  }
+
   const pool = new Pool(PG_CONFIG);
 
   try {

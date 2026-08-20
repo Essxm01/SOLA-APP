@@ -309,4 +309,18 @@
 - [x] **Master schema documentation** (`backend/database/schema.sql` updated)
 - [x] **Live production smoke regression** (Health, Search, Details, Availability, and Quote all 200 OK on Cloudflare Worker)
 
+---
+
+## 8. AUTH-02A.2: PRODUCTION TEST ISOLATION & TEST ARTIFACT CLEANUP
+
+**Statuses:** `FULLY CLOSED | PRODUCTION TEST ISOLATION VERIFIED`
+
+### Tasks
+- [x] **Investigate isolated user records** (Traced origin of 2 users to `propertyMediaStorage.test.ts` test harness setup)
+- [x] **Targeted test artifact deletion** (Safely removed `a1111111...` and `b2222222...` after proving 0 domain references)
+- [x] **Re-verified clean DB invariants** (18 Owners == 18 Users, 0 unmatched, 0 isolated)
+- [x] **Production DB isolation guard** (`backend/server/src/utils/testDbGuard.ts` throws `REFUSING_TEST_MUTATION_AGAINST_PRODUCTION_DB`)
+- [x] **Protected mutation test suites** (`propertyMediaStorage.test.ts` and `postgresRuntime.test.ts` fail fast before any write when configured against production)
+- [x] **Production read-only smoke verification** (Health, Search, Details, Availability, and Quote all 200 OK)
+
 

@@ -327,17 +327,21 @@
 
 ## 9. AUTH-02B1: SHARED IDENTITY RESOLUTION, CANONICAL PHONE & CORRECT ROLE ISSUANCE
 
-**Statuses:** `IMPLEMENTED + LOCAL VERIFIED`
+**Statuses:** `FULLY LIVE VERIFIED`
 
 ### Tasks
 - [x] **Authoritative phone normalizer** (`backend/server/src/utils/phoneNormalizer.ts` normalizes Egyptian mobiles e.g. `010...` to `+2010...` and rejects malformed inputs)
 - [x] **Deprecate deterministic `phoneToUuid`** (New users generated with random UUIDs; existing users resolved by canonical phone)
-- [x] **Explicit auth surface parameter** (`verifyOtp` receives `surface: 'CUSTOMER' | 'OWNER'` across HTTP routing, controllers, and clients)
+- [x] **Mandatory explicit auth surface contract** (`verifyOtp` requires mandatory `surface: 'CUSTOMER' | 'OWNER'`; missing/invalid rejected with 400 `MISSING_OR_INVALID_AUTH_SURFACE`)
 - [x] **Customer identity resolution** (Creates `users` only with random UUID, NULL profile fields, issues `ROLE_CUSTOMER`, never auto-creates `owners`)
 - [x] **Owner identity resolution** (Resolves `users` first; if matching `owners.id` exists issues `ROLE_OWNER`; if no `owners` row returns `ownerOnboardingRequired: true` with `ROLE_CUSTOMER`)
 - [x] **Cross-surface same human UUID invariant** (Existing owner on Customer App gets `ROLE_CUSTOMER` with same UUID; on Owner App gets `ROLE_OWNER` with same UUID)
 - [x] **Remove fake/demo auth fallbacks** (Removed `demo_customer_access_token` and default fake phone from `CustomerAuthModal.tsx` and `AuthContext.tsx`)
-- [x] **13-case test suite verified** (`backend/server/src/tests/sharedIdentityResolution.test.ts` 13/13 PASS)
-- [x] **Production database invariants verified** (18 Owners == 18 Users, 0 unmatched, 0 isolated)
+- [x] **15-case local test suite verified** (`backend/server/src/tests/sharedIdentityResolution.test.ts` 15/15 PASS)
+- [x] **Production deployment verified** (GitHub Actions runs `32398021748`, `32400744759`, `32400972540` all completed with success to `sola-backend-api` Cloudflare Worker)
+- [x] **Live Worker contract & role issuance verified** (`https://sola-backend-api.essxm01.workers.dev` Customer -> `ROLE_CUSTOMER`, Owner -> `ROLE_OWNER`, `CUSTOMER.sub == OWNER.sub`)
+- [x] **Live role isolation verified** (Customer token allows customer endpoints, rejects owner/admin endpoints with 403; Owner token allows owner endpoints, rejects admin with 403)
+- [x] **Production database invariants verified** (18 Owners == 18 Users, 0 unmatched, 0 isolated, 0 new records created during auth probes)
+- [x] **Public regression verified** (Health 200, Search 200, Details 200, Availability 200, Quote 200)
 
 

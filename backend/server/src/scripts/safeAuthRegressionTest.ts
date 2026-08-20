@@ -32,7 +32,7 @@ async function runAuthRegression() {
 
     // Request & Verify OTP for existing owner
     await authService.requestOtp(existingOwner.phone_number);
-    const verifyResult = await authService.verifyOtp(existingOwner.phone_number, '1234');
+    const verifyResult = await authService.verifyOtp(existingOwner.phone_number, '1234', 'OWNER');
 
     console.log('   - OTP Verification Success:', !!verifyResult.tokens.accessToken);
     console.log('   - Resolved ID Matches Existing Owner UUID:', verifyResult.owner.id === existingOwner.id);

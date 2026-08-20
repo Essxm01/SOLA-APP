@@ -99,9 +99,9 @@ export async function runExitAuditSuite(): Promise<{
   try {
     const phoneSingle = '+201200000002';
     await authService.requestOtp(phoneSingle);
-    await authService.verifyOtp(phoneSingle, '123456'); // First use
+    await authService.verifyOtp(phoneSingle, '123456', 'OWNER'); // First use
     // Second use with same OTP must fail
-    await authService.verifyOtp(phoneSingle, '123456');
+    await authService.verifyOtp(phoneSingle, '123456', 'OWNER');
     results.push({ name: 'Auth Security 2: OTP single-use replay rejection', passed: false, error: 'Should have thrown OTP_NOT_FOUND_OR_EXPIRED' });
   } catch (err: any) {
     results.push({ name: 'Auth Security 2: OTP single-use replay rejection', passed: err.message === 'OTP_NOT_FOUND_OR_EXPIRED' });
@@ -113,11 +113,11 @@ export async function runExitAuditSuite(): Promise<{
     await authService.requestOtp(phoneLock);
     for (let i = 0; i < 5; i++) {
       try {
-        await authService.verifyOtp(phoneLock, '999999');
+        await authService.verifyOtp(phoneLock, '999999', 'OWNER');
       } catch {}
     }
     // Subsequent attempt with correct code must fail because OTP was invalidated
-    await authService.verifyOtp(phoneLock, '123456');
+    await authService.verifyOtp(phoneLock, '123456', 'OWNER');
     results.push({ name: 'Auth Security 3: OTP brute-force 5-attempt lockout', passed: false, error: 'Should have locked out OTP' });
   } catch (err: any) {
     const locked = err.message === 'OTP_NOT_FOUND_OR_EXPIRED' || err.message === 'OTP_MAX_ATTEMPTS_EXCEEDED';

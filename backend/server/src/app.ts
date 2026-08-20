@@ -193,7 +193,8 @@ export class ExpressServerApp {
 
       if (path === '/api/v1/auth/verify-otp' && method === 'POST') {
         const response = await this.authController.verifyOtp(bodyPayload?.phone, bodyPayload?.code, bodyPayload?.surface);
-        return { statusCode: response.success ? 200 : 401, body: response };
+        const statusCode = response.success ? 200 : (response.error?.code === 'MISSING_OR_INVALID_AUTH_SURFACE' ? 400 : 401);
+        return { statusCode, body: response };
       }
 
       if (path === '/api/v1/auth/refresh' && method === 'POST') {

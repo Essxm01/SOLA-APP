@@ -34,7 +34,17 @@ export class AuthController {
     }
   }
 
-  async verifyOtp(phone: string, code: string, surface: 'CUSTOMER' | 'OWNER' = 'CUSTOMER'): Promise<ApiSuccessResponse<any> | ApiErrorResponse> {
+  async verifyOtp(phone: string, code: string, surface: 'CUSTOMER' | 'OWNER'): Promise<ApiSuccessResponse<any> | ApiErrorResponse> {
+    if (!surface || (surface !== 'CUSTOMER' && surface !== 'OWNER')) {
+      return {
+        success: false,
+        error: {
+          code: 'MISSING_OR_INVALID_AUTH_SURFACE',
+          message: 'يجب تحديد نوع واجهة الدخول (CUSTOMER أو OWNER)',
+        },
+        timestamp: new Date().toISOString(),
+      };
+    }
     try {
       const result = await this.authService.verifyOtp(phone, code, surface);
       return {

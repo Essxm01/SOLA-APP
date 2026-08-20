@@ -309,6 +309,47 @@ export async function runSharedIdentityResolutionSuite(): Promise<{ total: numbe
     results.push({ name: 'AUTH-02B1 [13]: HTTP Verify-OTP Endpoint Routing', passed: false, error: err.message });
   }
 
+  // --------------------------------------------------------------------------
+  // TEST 14: Mandatory Surface Contract — Missing Surface Rejected with 400
+  // --------------------------------------------------------------------------
+  try {
+    await app.handleHttpRequest('POST', '/api/v1/auth/request-otp', {}, { phone: '01011112222' });
+    const missingSurfaceRes = await app.handleHttpRequest('POST', '/api/v1/auth/verify-otp', {}, {
+      phone: '01011112222',
+      code: '1234',
+    });
+    const is400 = missingSurfaceRes.statusCode === 400;
+    const isErrorCode = (missingSurfaceRes.body as any)?.error?.code === 'MISSING_OR_INVALID_AUTH_SURFACE';
+    results.push({
+      name: 'AUTH-02B1 [14]: POST /api/v1/auth/verify-otp with missing surface rejected with 400 Bad Request',
+      passed: is400 && isErrorCode,
+      error: !is400 ? `Expected 400, got ${missingSurfaceRes.statusCode}` : undefined,
+    });
+  } catch (err: any) {
+    results.push({ name: 'AUTH-02B1 [14]: Missing Surface Validation', passed: false, error: err.message });
+  }
+
+  // --------------------------------------------------------------------------
+  // TEST 15: Invalid Surface Value Rejected with 400
+  // --------------------------------------------------------------------------
+  try {
+    await app.handleHttpRequest('POST', '/api/v1/auth/request-otp', {}, { phone: '01011112222' });
+    const invalidSurfaceRes = await app.handleHttpRequest('POST', '/api/v1/auth/verify-otp', {}, {
+      phone: '01011112222',
+      code: '1234',
+      surface: 'ADMIN',
+    });
+    const is400 = invalidSurfaceRes.statusCode === 400;
+    const isErrorCode = (invalidSurfaceRes.body as any)?.error?.code === 'MISSING_OR_INVALID_AUTH_SURFACE';
+    results.push({
+      name: 'AUTH-02B1 [15]: POST /api/v1/auth/verify-otp with invalid surface (ADMIN) rejected with 400 Bad Request',
+      passed: is400 && isErrorCode,
+      error: !is400 ? `Expected 400, got ${invalidSurfaceRes.statusCode}` : undefined,
+    });
+  } catch (err: any) {
+    results.push({ name: 'AUTH-02B1 [15]: Invalid Surface Validation', passed: false, error: err.message });
+  }
+
   const passed = results.filter(r => r.passed).length;
   const failed = results.length - passed;
 

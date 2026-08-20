@@ -152,7 +152,7 @@ export class AuthService {
   async verifyOtp(
     rawPhone: string,
     code: string,
-    surface: AuthSurface = 'CUSTOMER',
+    surface: AuthSurface,
     deviceInfo?: string,
     ipAddress?: string
   ): Promise<{
@@ -162,6 +162,10 @@ export class AuthService {
     isOwner: boolean;
     ownerOnboardingRequired?: boolean;
   }> {
+    if (!surface || (surface !== 'CUSTOMER' && surface !== 'OWNER')) {
+      throw new Error('MISSING_OR_INVALID_AUTH_SURFACE');
+    }
+
     const canonicalPhone = normalizePhoneNumber(rawPhone);
 
     const record = this.otpStore.get(canonicalPhone);

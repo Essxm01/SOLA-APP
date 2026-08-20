@@ -58,7 +58,7 @@ export async function runAuthSecuritySuite(): Promise<{ total: number; passed: n
   // Test 5: OTP Lifecycle & JWT Issuance
   try {
     await authService.requestOtp('+201000000001');
-    const authResult = await authService.verifyOtp('+201000000001', '1234');
+    const authResult = await authService.verifyOtp('+201000000001', '1234', 'OWNER');
     const tokenValid = !!authResult.tokens.accessToken && !!authResult.tokens.refreshToken;
     results.push({ name: 'Security 5: OTP lifecycle & JWT issuance', passed: tokenValid });
   } catch (err: any) {
@@ -69,7 +69,7 @@ export async function runAuthSecuritySuite(): Promise<{ total: number; passed: n
   try {
     const phone6 = '+201000000002';
     await authService.requestOtp(phone6);
-    const authResult = await authService.verifyOtp(phone6, '1234');
+    const authResult = await authService.verifyOtp(phone6, '1234', 'OWNER');
     const refreshToken = authResult.tokens.refreshToken;
     await authService.revokeSession(refreshToken);
     

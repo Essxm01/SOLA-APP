@@ -41,7 +41,7 @@ export interface RequestOtpPayload {
 export interface VerifyOtpPayload {
   phone: string;
   code: string;
-  surface?: 'CUSTOMER' | 'OWNER';
+  surface: 'CUSTOMER' | 'OWNER';
 }
 
 export interface AuthSessionResponse {

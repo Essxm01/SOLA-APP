@@ -18,8 +18,9 @@ export interface ExecutionContext {
 export interface Env {
   DATABASE_URL?: string;
   SUPABASE_URL?: string;
-  SUPABASE_ANON_KEY?: string;
+  SUPABASE_SECRET_KEY?: string;
   SUPABASE_SERVICE_ROLE_KEY?: string;
+  SUPABASE_ANON_KEY?: string;
   JWT_ACCESS_SECRET?: string;
   JWT_REFRESH_SECRET?: string;
   PAYMOB_API_KEY?: string;

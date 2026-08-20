@@ -225,11 +225,11 @@ export class SupabaseStorageProvider implements IObjectStorageProvider {
 
   constructor() {
     const url = process.env.SUPABASE_URL;
-    const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
+    const key = process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
     this.bucketName = process.env.SUPABASE_STORAGE_BUCKET || 'property-media';
 
     if (!url || !key) {
-      throw new Error('FATAL_MISSING_SUPABASE_STORAGE_CREDENTIALS: SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY environment variables are required when OBJECT_STORAGE_PROVIDER=supabase.');
+      throw new Error('FATAL_MISSING_SUPABASE_STORAGE_CREDENTIALS: SUPABASE_URL and SUPABASE_SECRET_KEY (or SUPABASE_SERVICE_ROLE_KEY) environment variables are required when OBJECT_STORAGE_PROVIDER=supabase.');
     }
 
     this.supabaseUrl = url;

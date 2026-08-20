@@ -379,7 +379,7 @@ async function queryViaSupabaseRest(text: string, params: any[] | undefined, url
  */
 export async function queryDb<T = any>(text: string, params?: any[]): Promise<pg.QueryResult<T>> {
   const supabaseUrl = process.env.SUPABASE_URL;
-  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const supabaseKey = process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
 
   if (supabaseUrl && supabaseKey) {
     try {

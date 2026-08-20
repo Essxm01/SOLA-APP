@@ -45,6 +45,111 @@ async function queryViaSupabaseRest(text: string, params: any[] | undefined, url
   const sql = text.trim();
   const lowerSql = sql.toLowerCase();
 
+  // 0A. SELECT users WHERE phone_number = $1
+  if (lowerSql.includes('from users') && lowerSql.includes('phone_number = $1')) {
+    const phone = params?.[0];
+    const res = await fetch(`${url}/rest/v1/users?phone_number=eq.${encodeURIComponent(phone)}`, { headers });
+    const raw: any = await res.json().catch(() => []);
+    const rows: any[] = Array.isArray(raw) ? raw : [];
+    const mapped = rows.map(u => ({
+      id: u.id,
+      phoneNumber: u.phone_number,
+      phoneVerifiedAt: u.phone_verified_at,
+      fullName: u.full_name,
+      email: u.email,
+      avatarUrl: u.avatar_url,
+      status: u.status,
+      createdAt: u.created_at,
+      updatedAt: u.updated_at,
+    }));
+    return { rows: mapped, command: 'SELECT', rowCount: mapped.length, oid: 0, fields: [] };
+  }
+
+  // 0B. SELECT users WHERE id = $1
+  if (lowerSql.includes('from users') && lowerSql.includes('where id = $1')) {
+    const userId = params?.[0];
+    const res = await fetch(`${url}/rest/v1/users?id=eq.${encodeURIComponent(userId)}`, { headers });
+    const raw: any = await res.json().catch(() => []);
+    const rows: any[] = Array.isArray(raw) ? raw : [];
+    const mapped = rows.map(u => ({
+      id: u.id,
+      phoneNumber: u.phone_number,
+      phoneVerifiedAt: u.phone_verified_at,
+      fullName: u.full_name,
+      email: u.email,
+      avatarUrl: u.avatar_url,
+      status: u.status,
+      createdAt: u.created_at,
+      updatedAt: u.updated_at,
+    }));
+    return { rows: mapped, command: 'SELECT', rowCount: mapped.length, oid: 0, fields: [] };
+  }
+
+  // 0C. SELECT owners WHERE id = $1
+  if (lowerSql.includes('from owners') && lowerSql.includes('where id = $1')) {
+    const ownerId = params?.[0];
+    const res = await fetch(`${url}/rest/v1/owners?id=eq.${encodeURIComponent(ownerId)}`, { headers });
+    const raw: any = await res.json().catch(() => []);
+    const rows: any[] = Array.isArray(raw) ? raw : [];
+    const mapped = rows.map(o => ({
+      id: o.id,
+      phoneNumber: o.phone_number,
+      fullName: o.full_name,
+      email: o.email,
+      avatarUrl: o.avatar_url,
+      status: o.status,
+      verificationStatus: o.verification_status,
+      createdAt: o.created_at,
+      updatedAt: o.updated_at,
+    }));
+    return { rows: mapped, command: 'SELECT', rowCount: mapped.length, oid: 0, fields: [] };
+  }
+
+  // 0D. SELECT owners WHERE phone_number = $1
+  if (lowerSql.includes('from owners') && lowerSql.includes('phone_number = $1')) {
+    const phone = params?.[0];
+    const res = await fetch(`${url}/rest/v1/owners?phone_number=eq.${encodeURIComponent(phone)}`, { headers });
+    const raw: any = await res.json().catch(() => []);
+    const rows: any[] = Array.isArray(raw) ? raw : [];
+    const mapped = rows.map(o => ({
+      id: o.id,
+      phoneNumber: o.phone_number,
+      fullName: o.full_name,
+      email: o.email,
+      avatarUrl: o.avatar_url,
+      status: o.status,
+      verificationStatus: o.verification_status,
+      createdAt: o.created_at,
+      updatedAt: o.updated_at,
+    }));
+    return { rows: mapped, command: 'SELECT', rowCount: mapped.length, oid: 0, fields: [] };
+  }
+
+  // 0E. UPDATE users SET phone_verified_at = NOW(), updated_at = NOW() WHERE id = $1
+  if (lowerSql.startsWith('update users') && lowerSql.includes('phone_verified_at')) {
+    const userId = params?.[0];
+    const nowIso = new Date().toISOString();
+    const res = await fetch(`${url}/rest/v1/users?id=eq.${encodeURIComponent(userId)}`, {
+      method: 'PATCH',
+      headers,
+      body: JSON.stringify({ phone_verified_at: nowIso, updated_at: nowIso }),
+    });
+    const raw: any = await res.json().catch(() => []);
+    const rows: any[] = Array.isArray(raw) ? raw : [];
+    const mapped = rows.map(u => ({
+      id: u.id,
+      phoneNumber: u.phone_number,
+      phoneVerifiedAt: u.phone_verified_at,
+      fullName: u.full_name,
+      email: u.email,
+      avatarUrl: u.avatar_url,
+      status: u.status,
+      createdAt: u.created_at,
+      updatedAt: u.updated_at,
+    }));
+    return { rows: mapped, command: 'UPDATE', rowCount: mapped.length, oid: 0, fields: [] };
+  }
+
   // 1. SELECT properties WHERE id = $1 or p.id = $1
   if (lowerSql.startsWith('select') && lowerSql.includes('from properties') && (lowerSql.includes('where id =') || lowerSql.includes('where p.id =') || lowerSql.includes('p.id = $1') || lowerSql.includes('id = $1'))) {
     const propId = params?.[0];

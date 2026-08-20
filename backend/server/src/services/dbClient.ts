@@ -11,7 +11,10 @@ let currentPool: pg.Pool | null = null;
 let currentConnectionString = '';
 
 export function getDbPool(): pg.Pool {
-  const connectionString = process.env.DATABASE_URL || 'postgresql://postgres.zrbmbjgcsowfqklmxbyn:Essam112288-@aws-1-eu-west-1.pooler.supabase.com:6543/postgres';
+  const connectionString = process.env.DATABASE_URL;
+  if (!connectionString) {
+    throw new Error('MISSING_DATABASE_URL_ENVIRONMENT_VARIABLE');
+  }
   
   if (!currentPool || currentConnectionString !== connectionString) {
     if (currentPool) {
@@ -375,8 +378,8 @@ async function queryViaSupabaseRest(text: string, params: any[] | undefined, url
  * Execute parameterized SQL query against PostgreSQL sola_db
  */
 export async function queryDb<T = any>(text: string, params?: any[]): Promise<pg.QueryResult<T>> {
-  const supabaseUrl = process.env.SUPABASE_URL || 'https://zrbmbjgcsowfqklmxbyn.supabase.co';
-  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || (typeof atob === 'function' ? atob('c2Jfc2VjcmV0XzBBWHdfVFpiVFRCRWtxZGRKU1BYX2dfc3FZVEd6ZGc=') : Buffer.from('c2Jfc2VjcmV0XzBBWHdfVFpiVFRCRWtxZGRKU1BYX2dfc3FZVEd6ZGc=', 'base64').toString('utf-8'));
+  const supabaseUrl = process.env.SUPABASE_URL;
+  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
   if (supabaseUrl && supabaseKey) {
     try {

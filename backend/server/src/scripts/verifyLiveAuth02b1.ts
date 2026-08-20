@@ -208,7 +208,13 @@ async function main() {
     const ownerAdminRes = await fetch(`${WORKER_URL}/api/v1/admin/overview`, {
       headers: { 'Authorization': `Bearer ${ownerToken}` },
     });
-    console.log(`  [6.5] Owner Token on /api/v1/admin/overview -> HTTP ${ownerAdminRes.status} (${ownerAdminRes.status === 403 ? '✅ PASS: Forbidden' : '❌ FAIL'})\n`);
+    console.log(`  [6.5] Owner Token on /api/v1/admin/overview -> HTTP ${ownerAdminRes.status} (${ownerAdminRes.status === 403 ? '✅ PASS: Forbidden' : '❌ FAIL'})`);
+
+    // 6.6 Owner token on protected Customer endpoint (strictly requires ROLE_CUSTOMER)
+    const ownerCustRes = await fetch(`${WORKER_URL}/api/v1/customer/bookings`, {
+      headers: { 'Authorization': `Bearer ${ownerToken}` },
+    });
+    console.log(`  [6.6] Owner Token on /api/v1/customer/bookings -> HTTP ${ownerCustRes.status} (${ownerCustRes.status === 403 ? '✅ PASS: Forbidden' : '❌ FAIL'})\n`);
 
     // ------------------------------------------------------------------------
     // PHASE 7: Production Identity Invariant Audit Post-Auth

@@ -15,10 +15,29 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE EXTENSION IF NOT EXISTS "btree_gist"; -- Mandatory for GIST UUID + Date Range Exclusion Constraints
 
 -- ----------------------------------------------------------------------------
--- 1. OWNERS TABLE
+-- 0. USERS TABLE (CANONICAL HUMAN ACCOUNT IDENTITY - AUTH-02A)
+-- ----------------------------------------------------------------------------
+CREATE TABLE users (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    phone_number VARCHAR(20) UNIQUE NOT NULL,
+    phone_verified_at TIMESTAMPTZ,
+    full_name VARCHAR(100),
+    email VARCHAR(150),
+    avatar_url TEXT,
+    status VARCHAR(30) NOT NULL DEFAULT 'ACTIVE' CHECK (status IN ('ACTIVE', 'SUSPENDED', 'DEACTIVATED')),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    deleted_at TIMESTAMPTZ
+);
+
+CREATE INDEX idx_users_phone ON users(phone_number) WHERE deleted_at IS NULL;
+CREATE INDEX idx_users_status ON users(status) WHERE deleted_at IS NULL;
+
+-- ----------------------------------------------------------------------------
+-- 1. OWNERS TABLE (1:1 Extension of users - AUTH-02A)
 -- ----------------------------------------------------------------------------
 CREATE TABLE owners (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id UUID PRIMARY KEY REFERENCES users(id) ON DELETE RESTRICT,
     phone_number VARCHAR(20) UNIQUE NOT NULL,
     full_name VARCHAR(100) NOT NULL,
     email VARCHAR(150),
@@ -132,13 +151,14 @@ CREATE TABLE bookings (
     booking_number VARCHAR(30) UNIQUE NOT NULL,
     property_id UUID NOT NULL REFERENCES properties(id) ON DELETE RESTRICT,
     owner_id UUID NOT NULL REFERENCES owners(id) ON DELETE RESTRICT,
+    customer_id UUID REFERENCES users(id) ON DELETE SET NULL,
     guest_name VARCHAR(100) NOT NULL,
     guest_phone VARCHAR(20) NOT NULL,
     check_in DATE NOT NULL,
     check_out DATE NOT NULL,
     nights INT NOT NULL CHECK (nights > 0),
     total_guests INT NOT NULL CHECK (total_guests > 0),
-    status VARCHAR(30) NOT NULL DEFAULT 'PENDING_OWNER_APPROVAL' CHECK (status IN ('PENDING_OWNER_APPROVAL', 'CONFIRMED', 'REJECTED', 'EXPIRED', 'CANCELLED_BY_OWNER', 'CANCELLED_BY_GUEST', 'COMPLETED')),
+    status VARCHAR(30) NOT NULL DEFAULT 'PENDING_OWNER_APPROVAL' CHECK (status IN ('PENDING_OWNER_APPROVAL', 'APPROVED_PENDING_PAYMENT', 'CONFIRMED', 'REJECTED', 'EXPIRED', 'CANCELLED_BY_OWNER', 'CANCELLED_BY_GUEST', 'COMPLETED')),
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     confirmed_at TIMESTAMPTZ,
     rejected_at TIMESTAMPTZ,

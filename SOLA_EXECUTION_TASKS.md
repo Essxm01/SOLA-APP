@@ -277,7 +277,36 @@
 - [x] **375 visual QA** (`LOCAL VERIFIED` — Mobile canvas tested for 375x812 iPhone viewport)
 - [x] **390 visual QA** (`LOCAL VERIFIED` — Mobile canvas tested for 390x844 iPhone viewport)
 - [x] **430 visual QA** (`LOCAL VERIFIED` — Mobile canvas tested for 430x932 iPhone viewport)
-- [x] **Desktop/mobile-shell QA** (`LOCAL VERIFIED` — Verified centered max-w-[430px] canvas on wide 1440px/1920px viewports)
-- [x] **Local regression suite** (`LOCAL VERIFIED` — Focused 14-rule test suite passed, 0 TypeScript/build errors)
+---
+
+## 6. AUTH-01: AUTHENTICATION, IDENTITY & ACCOUNT FOUNDATION CLUSTER
+
+**Statuses:** `AUDIT COMPLETED` | `AWAITING FOUNDER DECISIONS`
+
+### Tasks
+- [x] **Database Identity Schema Audit** (Audited all 25 tables in PostgreSQL; cataloged missing `users`/`customers`/`profiles` tables)
+- [x] **Renter Authentication & Session Audit** (Traced `CustomerAuthModal` ➔ `/auth/request-otp` ➔ `/auth/verify-otp` ➔ `localStorage` token)
+- [x] **Owner Authentication & Identity Audit** (Traced `LoginScreen` ➔ `authService.verifyOtp` ➔ `owners` table upsert ➔ `GET /owner/profile`)
+- [x] **Admin Authentication & Isolation Audit** (Traced `AdminLogin` ➔ `admin_users` table ➔ `ROLE_ADMIN` RBAC isolation)
+- [x] **Fake / Hardcoded / Generated Identity Source Audit** (Scanned 39 files; classified 168 fake identity occurrences across frontend & backend)
+- [x] **Account UI Data Source Matrix** (Mapped Renter, Owner, and Admin Account/Profile screens against DB, hardcoded, and persisted sources)
+- [x] **Session / JWT / Security Findings** (Audited JWT lifespan, token storage, OTP logic, memory map state, secrets exposure)
+- [x] **Cross-App Identity Risk Analysis** (Documented phone conflict, role collisions, free-floating UUIDs, and technical debt)
+
+---
+
+## 7. AUTH-02A: UNIFIED IDENTITY SCHEMA FOUNDATION
+
+**Statuses:** `LIVE VERIFIED`
+
+### Tasks
+- [x] **Preflight database assertions** (0 schema conflicts, 18 valid owner UUIDs, 18 distinct phones)
+- [x] **Migration 014: Canonical `users` table** (`backend/database/migrations/014_unified_identity_users_schema.sql`)
+- [x] **Safe Owner-to-User backfill** (18/18 owners backfilled to matching `users.id`, 0 PII promoted, 0 unmapped)
+- [x] **1:1 Owner-to-User relationship** (`fk_owners_users` constraint `owners.id -> users.id` ON DELETE RESTRICT)
+- [x] **Bookings Customer ID foundation** (`bookings.customer_id UUID NULL REFERENCES users(id)` with index; historical non-null = 0)
+- [x] **Safe FK rejection test** (Verified invalid `customer_id` is rejected by PostgreSQL error 23503 and rolled back)
+- [x] **Master schema documentation** (`backend/database/schema.sql` updated)
+- [x] **Live production smoke regression** (Health, Search, Details, Availability, and Quote all 200 OK on Cloudflare Worker)
 
 

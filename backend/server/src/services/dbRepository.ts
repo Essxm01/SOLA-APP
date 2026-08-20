@@ -15,6 +15,27 @@ export function maskPii(val?: string, visibleLength = 4): string {
 }
 
 // ----------------------------------------------------------------------------
+// 0. USERS REPOSITORY (AUTH-02A)
+// ----------------------------------------------------------------------------
+export const userDb = {
+  async getById(userId: string) {
+    const res = await queryDb(
+      'SELECT id, phone_number AS "phoneNumber", phone_verified_at AS "phoneVerifiedAt", full_name AS "fullName", email, avatar_url AS "avatarUrl", status, created_at AS "createdAt", updated_at AS "updatedAt" FROM users WHERE id = $1',
+      [userId]
+    );
+    return res.rows[0] || null;
+  },
+
+  async getByPhone(phoneNumber: string) {
+    const res = await queryDb(
+      'SELECT id, phone_number AS "phoneNumber", phone_verified_at AS "phoneVerifiedAt", full_name AS "fullName", email, avatar_url AS "avatarUrl", status, created_at AS "createdAt", updated_at AS "updatedAt" FROM users WHERE phone_number = $1',
+      [phoneNumber]
+    );
+    return res.rows[0] || null;
+  }
+};
+
+// ----------------------------------------------------------------------------
 // 1. OWNERS & VERIFICATION REPOSITORY
 // ----------------------------------------------------------------------------
 export const ownerDb = {
@@ -27,6 +48,18 @@ export const ownerDb = {
   },
 
   async upsert(owner: { id: string; phoneNumber: string; fullName: string; email?: string; avatarUrl?: string; status?: string; verificationStatus?: string }) {
+    // 1. Ensure parent users identity record exists (1:1 Identity Invariant - AUTH-02A)
+    await queryDb(
+      `INSERT INTO users (id, phone_number, phone_verified_at, status, created_at, updated_at)
+       VALUES ($1, $2, NOW(), COALESCE($3, 'ACTIVE'), NOW(), NOW())
+       ON CONFLICT (id) DO UPDATE SET
+         phone_number = EXCLUDED.phone_number,
+         status = COALESCE(EXCLUDED.status, users.status),
+         updated_at = NOW()`,
+      [owner.id, owner.phoneNumber, owner.status || 'ACTIVE']
+    ).catch(() => null);
+
+    // 2. Upsert owners record referencing users.id
     const res = await queryDb(
       `INSERT INTO owners (id, phone_number, full_name, email, avatar_url, status, verification_status, updated_at)
        VALUES ($1, $2, $3, $4, $5, COALESCE($6, 'ACTIVE'), COALESCE($7, 'UNVERIFIED'), NOW())

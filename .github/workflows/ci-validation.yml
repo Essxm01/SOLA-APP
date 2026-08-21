@@ -26,15 +26,19 @@ jobs:
           filters: |
             admin:
               - 'admin-app/**'
+              - '.github/**'
               - 'package.json'
             owner:
               - 'owner-app/**'
+              - '.github/**'
               - 'package.json'
             customer:
               - 'customer-app/**'
+              - '.github/**'
               - 'package.json'
             backend:
               - 'backend/**'
+              - '.github/**'
               - 'package.json'
 
   # ----------------------------------------------------------------------------

@@ -1,16 +1,19 @@
 import React from 'react';
-import { Compass, User, LogOut, PhoneCall } from 'lucide-react';
+import { Compass, User, PhoneCall } from 'lucide-react';
 
 interface CustomerHeaderProps {
   customerPhone?: string | null;
+  activeTab?: string;
   onOpenAuthModal: () => void;
-  onLogout: () => void;
+  onGoToAccount?: () => void;
+  onLogout?: () => void;
 }
 
 export const CustomerHeader: React.FC<CustomerHeaderProps> = ({
   customerPhone,
+  activeTab,
   onOpenAuthModal,
-  onLogout,
+  onGoToAccount,
 }) => {
   return (
     <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-slate-100 shadow-xs">
@@ -36,19 +39,15 @@ export const CustomerHeader: React.FC<CustomerHeaderProps> = ({
         {/* User Account / Auth Entry */}
         <div>
           {customerPhone ? (
-            <div className="flex items-center gap-1.5 bg-slate-50 px-2.5 py-1.5 rounded-xl border border-slate-200">
-              <div className="w-6 h-6 bg-[#0059FF]/10 text-[#0059FF] rounded-lg flex items-center justify-center font-bold">
-                <User className="w-3.5 h-3.5" />
-              </div>
-              <span className="text-[11px] font-bold text-slate-700 dir-ltr">{customerPhone.slice(-8)}</span>
+            activeTab === 'ACCOUNT' ? null : (
               <button
-                onClick={onLogout}
-                title="تسجيل الخروج"
-                className="text-slate-400 hover:text-rose-500 p-0.5 mr-0.5"
+                onClick={onGoToAccount}
+                title="حسابي"
+                className="w-8 h-8 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl flex items-center justify-center transition-colors border border-slate-200"
               >
-                <LogOut className="w-3.5 h-3.5" />
+                <User className="w-4 h-4 text-slate-700" />
               </button>
-            </div>
+            )
           ) : (
             <button
               onClick={onOpenAuthModal}

@@ -248,7 +248,7 @@ async function queryViaSupabaseRest(text: string, params: any[] | undefined, url
 
     const patchBody: any = { updated_at: nowIso };
     if (fullName !== undefined && fullName !== null && fullName !== '') patchBody.full_name = fullName;
-    if (email) patchBody.email = email;
+    if (email !== undefined) patchBody.email = email || null;
     if (avatarUrl) patchBody.avatar_url = avatarUrl;
 
     // 1. Update users table by id

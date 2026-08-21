@@ -59,12 +59,12 @@ export const userDb = {
     const res = await queryDb(
       `UPDATE users
        SET full_name = COALESCE($2, full_name),
-           email = COALESCE($3, email),
+           email = CASE WHEN $3::text = '__NULL__' THEN NULL WHEN $3 IS NOT NULL THEN $3 ELSE email END,
            avatar_url = COALESCE($4, avatar_url),
            updated_at = NOW()
        WHERE id = $1
        RETURNING id, phone_number AS "phoneNumber", phone_verified_at AS "phoneVerifiedAt", full_name AS "fullName", email, avatar_url AS "avatarUrl", status, created_at AS "createdAt", updated_at AS "updatedAt"`,
-      [userId, data.fullName || null, data.email || null, data.avatarUrl || null]
+      [userId, data.fullName || null, data.email === null ? '__NULL__' : (data.email || null), data.avatarUrl || null]
     );
     return res.rows[0] || null;
   }

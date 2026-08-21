@@ -4,7 +4,7 @@ import { CoastalSearchBar, SearchFilterState } from './components/CoastalSearchB
 import { PropertyCard, CustomerPropertyItem } from './components/PropertyCard';
 import { PropertyDetailModal } from './components/PropertyDetailModal';
 import { CustomerAuthModal, type CustomerUserProfile } from './components/CustomerAuthModal';
-import { CustomerEditProfileModal } from './components/CustomerEditProfileModal';
+import { CustomerEditAccountPage } from './components/CustomerEditAccountPage';
 import { CustomerSupportModal } from './components/CustomerSupportModal';
 import { CustomerWalletModal } from './components/CustomerWalletModal';
 import { CustomerCheckoutModal, BookingDetails } from './components/CustomerCheckoutModal';
@@ -35,6 +35,9 @@ export function App() {
     return saved ? JSON.parse(saved) : null;
   });
 
+  // Dedicated Full-Screen Edit Account View State
+  const [isEditingAccount, setIsEditingAccount] = useState<boolean>(false);
+
   // Account Hub Summary State
   const [accountSummary, setAccountSummary] = useState<{
     confirmedBookingsCount: number;
@@ -55,7 +58,6 @@ export function App() {
   const [activeTab, setActiveTab] = useState<CustomerTabType>('EXPLORE');
   const [selectedProperty, setSelectedProperty] = useState<CustomerPropertyItem | null>(null);
   const [showAuthModal, setShowAuthModal] = useState<boolean>(false);
-  const [showEditProfileModal, setShowEditProfileModal] = useState<boolean>(false);
   const [showSupportModal, setShowSupportModal] = useState<boolean>(false);
   const [showWalletModal, setShowWalletModal] = useState<boolean>(false);
   const [showSuccessModal, setShowSuccessModal] = useState<boolean>(false);
@@ -414,16 +416,35 @@ export function App() {
 
   return (
     <div className="min-h-screen bg-[#F5F7FA] flex justify-center selection:bg-blue-100">
-      <div className="w-full max-w-[430px] min-h-screen bg-white shadow-2xl relative flex flex-col font-sans pb-20">
-        {/* Mobile White App Header */}
-        <CustomerHeader
-          customerPhone={customerPhone}
-          onOpenAuthModal={() => setShowAuthModal(true)}
-          onLogout={handleLogout}
-        />
+      <div className="w-full max-w-[430px] min-h-screen bg-white shadow-2xl relative flex flex-col font-sans">
+        {/* Full-Screen Dedicated Edit Account Page */}
+        {isEditingAccount && authToken ? (
+          <CustomerEditAccountPage
+            user={userProfile}
+            customerPhone={customerPhone}
+            authToken={authToken}
+            onBack={() => setIsEditingAccount(false)}
+            onUpdated={(updated) => {
+              setUserProfile(updated);
+              localStorage.setItem('sola_customer_profile', JSON.stringify(updated));
+            }}
+          />
+        ) : (
+          <>
+            {/* Mobile White App Header */}
+            <CustomerHeader
+              customerPhone={customerPhone}
+              activeTab={activeTab}
+              onOpenAuthModal={() => setShowAuthModal(true)}
+              onGoToAccount={() => {
+                setIsEditingAccount(false);
+                setActiveTab('ACCOUNT');
+              }}
+              onLogout={handleLogout}
+            />
 
-        {/* Main Container — Max Mobile Width */}
-        <main className="flex-1 w-full px-4 pt-3">
+            {/* Main Container — Max Mobile Width */}
+            <main className="flex-1 w-full px-4 pt-3 pb-20">
         {/* Tab 1: EXPLORE */}
         {activeTab === 'EXPLORE' && (
           <div>
@@ -636,7 +657,7 @@ export function App() {
 
                     {/* Clear Working Edit Profile Affordance */}
                     <button
-                      onClick={() => setShowEditProfileModal(true)}
+                      onClick={() => setIsEditingAccount(true)}
                       className="px-3 py-1.5 bg-slate-50 hover:bg-slate-100 text-slate-700 font-black text-xs rounded-xl border border-slate-200 transition-colors flex items-center gap-1 shrink-0"
                     >
                       <Edit3 className="w-3.5 h-3.5" />
@@ -652,7 +673,7 @@ export function App() {
                         <span>يرجى إضافة اسمك بالكامل لإتمام الملف الشخصي.</span>
                       </div>
                       <button
-                        onClick={() => setShowEditProfileModal(true)}
+                        onClick={() => setIsEditingAccount(true)}
                         className="px-3 py-1 bg-amber-600 hover:bg-amber-700 text-white font-black text-[11px] rounded-lg shrink-0 transition-colors"
                       >
                         أكمل بيانات حسابك
@@ -689,7 +710,10 @@ export function App() {
                   <div className="bg-white rounded-2xl border border-slate-200 shadow-xs divide-y divide-slate-100 overflow-hidden">
                     {/* Row 1: حجوزاتي */}
                     <button
-                      onClick={() => setActiveTab('BOOKINGS')}
+                      onClick={() => {
+                        setIsEditingAccount(false);
+                        setActiveTab('BOOKINGS');
+                      }}
                       className="w-full p-3.5 flex items-center justify-between hover:bg-slate-50 transition-colors text-right"
                     >
                       <div className="flex items-center gap-3">
@@ -706,7 +730,10 @@ export function App() {
 
                     {/* Row 2: المفضلة */}
                     <button
-                      onClick={() => setActiveTab('FAVORITES')}
+                      onClick={() => {
+                        setIsEditingAccount(false);
+                        setActiveTab('FAVORITES');
+                      }}
                       className="w-full p-3.5 flex items-center justify-between hover:bg-slate-50 transition-colors text-right"
                     >
                       <div className="flex items-center gap-3">
@@ -758,7 +785,7 @@ export function App() {
                   <div className="bg-white rounded-2xl border border-slate-200 shadow-xs divide-y divide-slate-100 overflow-hidden">
                     {/* Row 1: البيانات الشخصية */}
                     <button
-                      onClick={() => setShowEditProfileModal(true)}
+                      onClick={() => setIsEditingAccount(true)}
                       className="w-full p-3.5 flex items-center justify-between hover:bg-slate-50 transition-colors text-right"
                     >
                       <div className="flex items-center gap-3">
@@ -826,6 +853,8 @@ export function App() {
           </div>
         )}
       </main>
+      </>
+      )}
 
       {/* Full-Screen Mobile Property Details Screen/Sheet */}
       {selectedProperty && (
@@ -849,19 +878,6 @@ export function App() {
           onClose={() => setShowAuthModal(false)}
           onSuccess={handleAuthSuccess}
           interceptedContext={interceptedContext}
-        />
-      )}
-
-      {/* Customer Edit Profile Modal */}
-      {showEditProfileModal && userProfile && authToken && (
-        <CustomerEditProfileModal
-          user={userProfile}
-          authToken={authToken}
-          onClose={() => setShowEditProfileModal(false)}
-          onUpdated={(updated) => {
-            setUserProfile(updated);
-            localStorage.setItem('sola_customer_profile', JSON.stringify(updated));
-          }}
         />
       )}
 
@@ -889,17 +905,21 @@ export function App() {
           depositAmount={activeBooking.depositAmountEgp}
           onGoToBookings={() => {
             setShowSuccessModal(false);
+            setIsEditingAccount(false);
             setActiveTab('BOOKINGS');
           }}
           onClose={() => setShowSuccessModal(false)}
         />
       )}
 
-      {/* Native Persistent Mobile Bottom Navigation Bar (hidden during property details view) */}
-      {!selectedProperty && (
+      {/* Native Persistent Mobile Bottom Navigation Bar (hidden during property details or edit account view) */}
+      {!selectedProperty && !isEditingAccount && (
         <CustomerBottomNav
           activeTab={activeTab}
-          onSelectTab={setActiveTab}
+          onSelectTab={(tab) => {
+            setIsEditingAccount(false);
+            setActiveTab(tab);
+          }}
           favoritesCount={favorites.length}
           hasActiveBooking={!!activeBooking}
         />

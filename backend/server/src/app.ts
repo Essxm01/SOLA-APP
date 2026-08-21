@@ -2397,9 +2397,33 @@ export class ExpressServerApp {
             };
           }
 
+          let emailVal: string | null | undefined = undefined;
+          if (bodyPayload?.email !== undefined) {
+            const rawEmail = String(bodyPayload.email).trim();
+            if (rawEmail.length > 0) {
+              const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+              if (!emailRegex.test(rawEmail)) {
+                return {
+                  statusCode: 400,
+                  body: {
+                    success: false,
+                    error: {
+                      code: 'INVALID_EMAIL_FORMAT',
+                      message: 'يرجى إدخال بريد إلكتروني صالح',
+                    },
+                    timestamp,
+                  },
+                };
+              }
+              emailVal = rawEmail;
+            } else {
+              emailVal = null;
+            }
+          }
+
           let updatedUser = await userDb.updateProfile(customerId, {
             fullName: rawName,
-            email: bodyPayload?.email?.trim() || null,
+            email: emailVal,
             avatarUrl: bodyPayload?.avatarUrl || null,
           }).catch(() => null);
 
@@ -2414,12 +2438,13 @@ export class ExpressServerApp {
             updatedUser = {
               ...existing,
               fullName: rawName !== undefined ? rawName : existing.fullName,
-              email: bodyPayload?.email !== undefined ? bodyPayload.email : existing.email,
+              email: emailVal !== undefined ? emailVal : existing.email,
               avatarUrl: bodyPayload?.avatarUrl !== undefined ? bodyPayload.avatarUrl : existing.avatarUrl,
               updatedAt: timestamp,
             };
-          } else if (rawName !== undefined) {
-            updatedUser.fullName = rawName;
+          } else {
+            if (rawName !== undefined) updatedUser.fullName = rawName;
+            if (emailVal !== undefined) updatedUser.email = emailVal;
           }
 
           if (updatedUser) {

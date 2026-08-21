@@ -9,7 +9,9 @@ export interface CustomerUserProfile {
   email?: string | null;
   avatarUrl?: string | null;
   phoneVerifiedAt?: string | null;
+  status?: string;
   createdAt?: string;
+  updatedAt?: string;
 }
 
 interface CustomerAuthModalProps {

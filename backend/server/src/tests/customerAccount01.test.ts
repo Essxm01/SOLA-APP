@@ -183,6 +183,92 @@ export async function runCustomerAccount01Suite(): Promise<{ total: number; pass
     results.push({ name: '[20.5] Profile Integrity & Decoupling', passed: false, error: err.message });
   }
 
+  // --------------------------------------------------------------------------
+  // TEST 6: Customer Profile Optional Email Update & Persistence (200 OK)
+  // --------------------------------------------------------------------------
+  try {
+    const emailPhone = `+2010${randSuffix}04`;
+    const emailUserId = crypto.randomUUID();
+
+    dbUsersStore.set(emailPhone, {
+      id: emailUserId,
+      phoneNumber: emailPhone,
+      fullName: 'مستأجر بريد',
+      email: null,
+      status: 'ACTIVE',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+
+    await authService.requestOtp(emailPhone);
+    const emailAuth = await authService.verifyOtp(emailPhone, '1234', 'CUSTOMER');
+
+    // 1. Update with valid email
+    const validPatch = await app.handleHttpRequest(
+      'PATCH',
+      '/api/v1/customer/profile',
+      { authorization: `Bearer ${emailAuth.tokens.accessToken}` },
+      { email: 'renter.test@konfrm.eg' }
+    );
+
+    const is200 = validPatch.statusCode === 200 && validPatch.body.data?.email === 'renter.test@konfrm.eg';
+
+    // 2. Fetch profile and verify persisted email
+    const getProfile = await app.handleHttpRequest(
+      'GET',
+      '/api/v1/customer/profile',
+      { authorization: `Bearer ${emailAuth.tokens.accessToken}` }
+    );
+
+    const persisted = getProfile.statusCode === 200 && getProfile.body.data?.email === 'renter.test@konfrm.eg';
+
+    results.push({
+      name: '[20.6] Customer Profile Optional Email Update & Persistence in Canonical users (200 OK)',
+      passed: is200 && persisted,
+      error: is200 && persisted ? undefined : `Expected 200 + persisted email, got patch=${validPatch.statusCode}, get=${getProfile.statusCode}`,
+    });
+  } catch (err: any) {
+    results.push({ name: '[20.6] Optional Email Persistence', passed: false, error: err.message });
+  }
+
+  // --------------------------------------------------------------------------
+  // TEST 7: Customer Profile Rejects Invalid Email Format (400 Bad Request)
+  // --------------------------------------------------------------------------
+  try {
+    const invPhone = `+2010${randSuffix}05`;
+    const invUserId = crypto.randomUUID();
+
+    dbUsersStore.set(invPhone, {
+      id: invUserId,
+      phoneNumber: invPhone,
+      fullName: 'فحص البريد',
+      email: null,
+      status: 'ACTIVE',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+
+    await authService.requestOtp(invPhone);
+    const invAuth = await authService.verifyOtp(invPhone, '1234', 'CUSTOMER');
+
+    const badPatch = await app.handleHttpRequest(
+      'PATCH',
+      '/api/v1/customer/profile',
+      { authorization: `Bearer ${invAuth.tokens.accessToken}` },
+      { email: 'not-a-valid-email' }
+    );
+
+    const is400 = badPatch.statusCode === 400 && badPatch.body.error?.code === 'INVALID_EMAIL_FORMAT';
+
+    results.push({
+      name: '[20.7] Customer Profile Rejects Malformed Email with 400 INVALID_EMAIL_FORMAT',
+      passed: is400,
+      error: is400 ? undefined : `Expected 400 INVALID_EMAIL_FORMAT, got ${badPatch.statusCode}`,
+    });
+  } catch (err: any) {
+    results.push({ name: '[20.7] Invalid Email Format Rejection', passed: false, error: err.message });
+  }
+
   const passed = results.filter((r) => r.passed).length;
   const failed = results.filter((r) => !r.passed).length;
   return { total: results.length, passed, failed, results };

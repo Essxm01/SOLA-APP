@@ -5,7 +5,7 @@
 
 import { ExpressServerApp } from '../app.js';
 import { AuthService, dbUsersStore, dbOwnersStore } from '../services/authService.js';
-import { bookingDb, paymentTxDb } from '../services/dbRepository.js';
+import { userDb, bookingDb, paymentTransactionDb } from '../services/dbRepository.js';
 import type { TestResult } from './authSecurity.test.js';
 
 export async function runCustomerAccount01Suite(): Promise<{ total: number; passed: number; failed: number; results: TestResult[] }> {

@@ -84,16 +84,18 @@ export const CustomerEditAccountPage: React.FC<CustomerEditAccountPageProps> = (
     setSuccessMsg('');
 
     try {
+      const patchBody: any = { fullName: trimmedName };
+      if (trimmedEmail.length > 0) {
+        patchBody.email = trimmedEmail;
+      }
+
       const res = await fetch(getApiUrl('/customer/profile'), {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${authToken}`,
         },
-        body: JSON.stringify({
-          fullName: trimmedName,
-          email: trimmedEmail.length > 0 ? trimmedEmail : null,
-        }),
+        body: JSON.stringify(patchBody),
       });
 
       let json: any = null;
@@ -124,10 +126,7 @@ export const CustomerEditAccountPage: React.FC<CustomerEditAccountPageProps> = (
                   'Content-Type': 'application/json',
                   Authorization: `Bearer ${newTok}`,
                 },
-                body: JSON.stringify({
-                  fullName: trimmedName,
-                  email: trimmedEmail.length > 0 ? trimmedEmail : null,
-                }),
+                body: JSON.stringify(patchBody),
               });
               const retryJson = await retryRes.json();
               if (retryRes.ok && retryJson.success) {

@@ -2399,25 +2399,29 @@ export class ExpressServerApp {
 
           let emailVal: string | null | undefined = undefined;
           if (bodyPayload?.email !== undefined) {
-            const rawEmail = String(bodyPayload.email).trim();
-            if (rawEmail.length > 0) {
-              const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-              if (!emailRegex.test(rawEmail)) {
-                return {
-                  statusCode: 400,
-                  body: {
-                    success: false,
-                    error: {
-                      code: 'INVALID_EMAIL_FORMAT',
-                      message: 'يرجى إدخال بريد إلكتروني صالح',
-                    },
-                    timestamp,
-                  },
-                };
-              }
-              emailVal = rawEmail;
-            } else {
+            if (bodyPayload.email === null || bodyPayload.email === '') {
               emailVal = null;
+            } else {
+              const rawEmail = String(bodyPayload.email).trim();
+              if (rawEmail.length > 0) {
+                const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+                if (!emailRegex.test(rawEmail)) {
+                  return {
+                    statusCode: 400,
+                    body: {
+                      success: false,
+                      error: {
+                        code: 'INVALID_EMAIL_FORMAT',
+                        message: 'يرجى إدخال بريد إلكتروني صالح',
+                      },
+                      timestamp,
+                    },
+                  };
+                }
+                emailVal = rawEmail;
+              } else {
+                emailVal = null;
+              }
             }
           }
 

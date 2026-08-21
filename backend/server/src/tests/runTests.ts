@@ -20,6 +20,7 @@ import { runCorsPolicySuite } from './corsPolicy.test';
 import { runPropertyMediaStorageSuite } from './propertyMediaStorage.test';
 import { runCustomerPropertyDecisionSuite } from './customerPropertyDecision.test';
 import { runSharedIdentityResolutionSuite } from './sharedIdentityResolution.test';
+import { runAuth02b2ReliabilitySuite } from './auth02b2Reliability.test';
 
 async function main() {
   console.log('======================================================================');
@@ -177,9 +178,17 @@ async function main() {
     console.log(`  [17.${idx + 1}] ${status} - ${r.name} ${r.error ? `(${r.error})` : ''}`);
   });
 
-  const total = authSummary.total + finSummary.total + httpSummary.total + compSummary.total + exitSummary.total + pgSummary.total + adminSummary.total + custSummary.total + multiSummary.total + msgDispSummary.total + payoutQueueSummary.total + payoutExecSummary.total + disputesExecSummary.total + corsSummary.total + mediaSummary.total + custDecisionSummary.total + sharedIdentitySummary.total;
-  const passed = authSummary.passed + finSummary.passed + httpSummary.passed + compSummary.passed + exitSummary.passed + pgSummary.passed + adminSummary.passed + custSummary.passed + multiSummary.passed + msgDispSummary.passed + payoutQueueSummary.passed + payoutExecSummary.passed + disputesExecSummary.passed + corsSummary.passed + mediaSummary.passed + custDecisionSummary.passed + sharedIdentitySummary.passed;
-  const failed = authSummary.failed + finSummary.failed + httpSummary.failed + compSummary.failed + exitSummary.failed + pgSummary.failed + adminSummary.failed + custSummary.failed + multiSummary.failed + msgDispSummary.failed + payoutQueueSummary.failed + payoutExecSummary.failed + disputesExecSummary.failed + corsSummary.failed + mediaSummary.failed + custDecisionSummary.failed + sharedIdentitySummary.failed;
+  // Suite 18: AUTH-02B2 Authentication Runtime Reliability Suite
+  console.log('\n[SUITE 18] AUTH-02B2: AUTHENTICATION RUNTIME RELIABILITY & SESSION RECOVERY SUITE:');
+  const auth02b2Summary = await runAuth02b2ReliabilitySuite();
+  auth02b2Summary.results.forEach((r, idx) => {
+    const status = r.passed ? '✅ PASS' : '❌ FAIL';
+    console.log(`  [18.${idx + 1}] ${status} - ${r.name} ${r.error ? `(${r.error})` : ''}`);
+  });
+
+  const total = authSummary.total + finSummary.total + httpSummary.total + compSummary.total + exitSummary.total + pgSummary.total + adminSummary.total + custSummary.total + multiSummary.total + msgDispSummary.total + payoutQueueSummary.total + payoutExecSummary.total + disputesExecSummary.total + corsSummary.total + mediaSummary.total + custDecisionSummary.total + sharedIdentitySummary.total + auth02b2Summary.total;
+  const passed = authSummary.passed + finSummary.passed + httpSummary.passed + compSummary.passed + exitSummary.passed + pgSummary.passed + adminSummary.passed + custSummary.passed + multiSummary.passed + msgDispSummary.passed + payoutQueueSummary.passed + payoutExecSummary.passed + disputesExecSummary.passed + corsSummary.passed + mediaSummary.passed + custDecisionSummary.passed + sharedIdentitySummary.passed + auth02b2Summary.passed;
+  const failed = authSummary.failed + finSummary.failed + httpSummary.failed + compSummary.failed + exitSummary.failed + pgSummary.failed + adminSummary.failed + custSummary.failed + multiSummary.failed + msgDispSummary.failed + payoutQueueSummary.failed + payoutExecSummary.failed + disputesExecSummary.failed + corsSummary.failed + mediaSummary.failed + custDecisionSummary.failed + sharedIdentitySummary.failed + auth02b2Summary.failed;
 
 
 

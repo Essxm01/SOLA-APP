@@ -4,7 +4,7 @@ import { X, Smartphone, KeyRound, ShieldCheck } from 'lucide-react';
 
 interface CustomerAuthModalProps {
   onClose: () => void;
-  onSuccess: (token: string, phone: string) => void;
+  onSuccess: (token: string, phone: string, refreshToken?: string) => void;
   interceptedContext?: { propertyId: string; checkIn: string; checkOut: string; guests: number } | null;
 }
 
@@ -72,10 +72,11 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
       }
 
       const token = json.data?.tokens?.accessToken;
+      const refreshToken = json.data?.tokens?.refreshToken;
       if (!token) {
         throw new Error('لم يتم استلام رمز الدخول من الخادم');
       }
-      onSuccess(token, fullPhone);
+      onSuccess(token, fullPhone, refreshToken);
     } catch (err: any) {
       setError(err.message || 'رمز التحقق غير صحيح أو منتهي الصلاحية.');
     } finally {

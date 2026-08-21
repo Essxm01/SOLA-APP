@@ -40,21 +40,44 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       try {
         const repo = repositoryFactory;
         const hasToken = !!localStorage.getItem('sola_access_token');
-        if (hasToken) {
+        const refreshToken = localStorage.getItem('sola_refresh_token');
+
+        if (hasToken || refreshToken) {
           if (!repo.useMockMode) {
-            const profile = await repo.owner.getCurrentOwner();
-            setOwner(profile as Owner);
+            try {
+              const profile = await repo.owner.getCurrentOwner();
+              setOwner(profile as Owner);
+              setIsAuthenticated(true);
+            } catch (err: any) {
+              // If token expired, attempt refresh session
+              if (refreshToken) {
+                try {
+                  const refreshRes = await repo.auth.refreshSession(refreshToken);
+                  if (refreshRes && refreshRes.accessToken) {
+                    localStorage.setItem('sola_access_token', refreshRes.accessToken);
+                    const profile = await repo.owner.getCurrentOwner();
+                    setOwner(profile as Owner);
+                    setIsAuthenticated(true);
+                    return;
+                  }
+                } catch (refreshErr) {
+                  // Refresh token revoked or expired -> clean logout
+                  await logout();
+                  return;
+                }
+              }
+              await logout();
+            }
           } else {
             const profile = await mockRepository.getOwnerProfile();
             setOwner(profile);
+            setIsAuthenticated(true);
           }
-          setIsAuthenticated(true);
         } else {
           setIsAuthenticated(false);
           setOwner(null);
         }
       } catch (err) {
-        console.error('Failed to load profile', err);
         setIsAuthenticated(false);
         setOwner(null);
       } finally {
@@ -81,8 +104,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (!repo.useMockMode) {
       const res: any = await repo.auth.verifyOtp({ phone: phoneNumber, code, surface: 'OWNER' });
       const token = res.accessToken || res.tokens?.accessToken;
+      const refreshToken = res.refreshToken || res.tokens?.refreshToken;
       if (token) {
         localStorage.setItem('sola_access_token', token);
+        if (refreshToken) {
+          localStorage.setItem('sola_refresh_token', refreshToken);
+        }
         localStorage.setItem('sola_owner_authenticated', 'true');
         if (res.owner) {
           setOwner(res.owner);
@@ -105,10 +132,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return false;
   };
 
-  const logout = () => {
+  const logout = async () => {
+    const repo = repositoryFactory;
+    const refreshToken = localStorage.getItem('sola_refresh_token');
+    if (refreshToken && !repo.useMockMode) {
+      try {
+        await repo.auth.revokeSession(refreshToken);
+      } catch {}
+    }
     setIsAuthenticated(false);
+    setOwner(null);
     localStorage.removeItem('sola_owner_authenticated');
     localStorage.removeItem('sola_access_token');
+    localStorage.removeItem('sola_refresh_token');
+    localStorage.removeItem('sola_owner_phone');
+    localStorage.removeItem('sola_owner_onboarding');
   };
 
   const completeOnboarding = () => {

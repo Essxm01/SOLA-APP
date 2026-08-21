@@ -159,6 +159,35 @@ export function App() {
     }
   };
 
+  // Session Restoration & Token Refresh on Mount
+  useEffect(() => {
+    const restoreSession = async () => {
+      const refreshToken = localStorage.getItem('sola_customer_refresh_token');
+      if (refreshToken) {
+        try {
+          const res = await fetch(getApiUrl('/auth/refresh'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ refreshToken }),
+          });
+          const json = await res.json();
+          if (res.ok && json.success && json.data?.accessToken) {
+            localStorage.setItem('sola_customer_access_token', json.data.accessToken);
+            setAuthToken(json.data.accessToken);
+          } else {
+            // Revoked or expired refresh token -> clean logout
+            handleLogout();
+          }
+        } catch {
+          // Network error: preserve existing state without fabricating demo credentials
+        }
+      } else if (!authToken) {
+        setAuthToken(null);
+      }
+    };
+    restoreSession();
+  }, []);
+
   // Favorite Toggle Handler (Protected Action)
   const handleToggleFavorite = (id: string, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
@@ -175,8 +204,11 @@ export function App() {
   };
 
   // Auth Handlers
-  const handleAuthSuccess = (token: string, phone: string) => {
+  const handleAuthSuccess = (token: string, phone: string, refreshToken?: string) => {
     localStorage.setItem('sola_customer_access_token', token);
+    if (refreshToken) {
+      localStorage.setItem('sola_customer_refresh_token', refreshToken);
+    }
     localStorage.setItem('sola_customer_phone', phone);
     setAuthToken(token);
     setCustomerPhone(phone);
@@ -192,8 +224,19 @@ export function App() {
     }
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    const refreshToken = localStorage.getItem('sola_customer_refresh_token');
+    if (refreshToken) {
+      try {
+        await fetch(getApiUrl('/auth/revoke'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ refreshToken }),
+        });
+      } catch {}
+    }
     localStorage.removeItem('sola_customer_access_token');
+    localStorage.removeItem('sola_customer_refresh_token');
     localStorage.removeItem('sola_customer_phone');
     setAuthToken(null);
     setCustomerPhone(null);
@@ -423,7 +466,7 @@ export function App() {
                 {/* Render Booking / Payment Component */}
                 <CustomerCheckoutModal
                   booking={activeBooking}
-                  authToken={authToken || 'demo_customer_token'}
+                  authToken={authToken || ''}
                   onPaymentSuccess={() => {
                     setActiveBooking((prev) => (prev ? { ...prev, status: 'CONFIRMED' } : null));
                   }}

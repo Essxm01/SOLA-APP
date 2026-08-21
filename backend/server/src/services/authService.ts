@@ -3,12 +3,12 @@
  * Location: server/src/services/authService.ts
  * Master Source of Truth: PHASE_7_MASTER_SPECIFICATION.md
  * 
- * Complies with AUTH-02B1: Shared Identity Resolution, Canonical Phone & Correct Role Issuance
+ * Complies with AUTH-02B1 & AUTH-02B2: Shared Identity Resolution, Persistent OTP & Canonical Session Model
  */
 
 import { MockSmsProvider, type ISmsProvider } from './smsProvider.js';
-import { signAccessToken, signRefreshToken } from './jwtService.js';
-import { userDb, ownerDb } from './dbRepository.js';
+import { signAccessToken, signRefreshToken, verifyRefreshToken } from './jwtService.js';
+import { userDb, ownerDb, otpDb, sessionDb } from './dbRepository.js';
 import { normalizePhoneNumber } from '../utils/phoneNormalizer.js';
 import { isProductionDatabase } from '../utils/testDbGuard.js';
 import type { AuthSessionTokens, UserRole } from '../types/server.js';
@@ -28,7 +28,10 @@ export type AuthSurface = 'CUSTOMER' | 'OWNER';
 
 export interface UserSessionRecord {
   id: string;
-  ownerId: string; // User ID
+  userId: string;
+  ownerId?: string | null;
+  surface: AuthSurface;
+  role: UserRole;
   refreshTokenHash: string;
   deviceInfo?: string;
   ipAddress?: string;
@@ -121,7 +124,16 @@ export class AuthService {
     const canonicalPhone = normalizePhoneNumber(rawPhone);
 
     const now = Date.now();
-    const existing = this.otpStore.get(canonicalPhone);
+    
+    // Check persistent DB first, then fallback to in-memory store
+    const dbExisting = await otpDb.getByPhone(canonicalPhone).catch(() => null);
+    const memExisting = this.otpStore.get(canonicalPhone);
+    const existing = dbExisting ? {
+      code: dbExisting.code,
+      expiresAt: new Date(dbExisting.expiresAt).getTime(),
+      requestCount: dbExisting.requestCount,
+      failedAttempts: dbExisting.failedAttempts,
+    } : memExisting;
 
     if (existing && existing.requestCount >= 3 && now < existing.expiresAt) {
       throw new Error('RATE_LIMIT_EXCEEDED_MAX_3_OTP_PER_15_MIN');
@@ -131,6 +143,16 @@ export class AuthService {
     const expiresAt = now + 5 * 60 * 1000; // 5 mins
     const requestCount = existing ? existing.requestCount + 1 : 1;
 
+    // Persist to DB store across isolates
+    await otpDb.upsert({
+      phoneNumber: canonicalPhone,
+      code: otpCode,
+      expiresAt: new Date(expiresAt).toISOString(),
+      requestCount,
+      failedAttempts: 0,
+    }).catch(() => null);
+
+    // Sync in-memory map for fast isolate-local fallback
     this.otpStore.set(canonicalPhone, {
       code: otpCode,
       expiresAt,
@@ -168,30 +190,48 @@ export class AuthService {
 
     const canonicalPhone = normalizePhoneNumber(rawPhone);
 
-    const record = this.otpStore.get(canonicalPhone);
+    // Fetch challenge from DB or in-memory
+    const dbRecord = await otpDb.getByPhone(canonicalPhone).catch(() => null);
+    const memRecord = this.otpStore.get(canonicalPhone);
+
+    const record = dbRecord ? {
+      code: dbRecord.code,
+      expiresAt: new Date(dbRecord.expiresAt).getTime(),
+      requestCount: dbRecord.requestCount,
+      failedAttempts: dbRecord.failedAttempts,
+    } : memRecord;
+
     if (!record) {
       throw new Error('OTP_NOT_FOUND_OR_EXPIRED');
     }
 
     if (Date.now() > record.expiresAt) {
+      await otpDb.delete(canonicalPhone).catch(() => null);
       this.otpStore.delete(canonicalPhone);
       throw new Error('OTP_EXPIRED');
     }
 
     if (record.failedAttempts >= 5) {
+      await otpDb.delete(canonicalPhone).catch(() => null);
       this.otpStore.delete(canonicalPhone);
       throw new Error('OTP_MAX_ATTEMPTS_EXCEEDED');
     }
 
     if (record.code !== code) {
-      record.failedAttempts += 1;
-      if (record.failedAttempts >= 5) {
+      const updatedFailed = record.failedAttempts + 1;
+      await otpDb.updateFailedAttempts(canonicalPhone, updatedFailed).catch(() => null);
+      if (memRecord) memRecord.failedAttempts = updatedFailed;
+
+      if (updatedFailed >= 5) {
+        await otpDb.delete(canonicalPhone).catch(() => null);
         this.otpStore.delete(canonicalPhone);
         throw new Error('OTP_MAX_ATTEMPTS_EXCEEDED');
       }
       throw new Error('INVALID_OTP_CODE');
     }
 
+    // OTP matched -> consume challenge immediately
+    await otpDb.delete(canonicalPhone).catch(() => null);
     this.otpStore.delete(canonicalPhone);
 
     // 1. Resolve or Create Canonical User Identity
@@ -269,20 +309,39 @@ export class AuthService {
 
     const accessToken = signAccessToken({ sub: user.id, role, phone: canonicalPhone });
     const refreshToken = signRefreshToken({ sub: user.id, role });
+    const refreshTokenHash = this.hashToken(refreshToken);
+    const expiresAtIso = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
 
-    // Session tracking
+    // Session tracking (User-linked, surface-explicit)
     const sessionRecord: UserSessionRecord = {
       id: `session_${Date.now()}`,
-      ownerId: user.id,
-      refreshTokenHash: this.hashToken(refreshToken),
+      userId: user.id,
+      ownerId: ownerRecord ? user.id : null,
+      surface,
+      role,
+      refreshTokenHash,
       deviceInfo,
       ipAddress,
       isRevoked: false,
-      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+      expiresAt: expiresAtIso,
       createdAt: new Date().toISOString(),
     };
 
+    // Save to persistent database
+    await sessionDb.create({
+      id: crypto.randomUUID(),
+      userId: user.id,
+      ownerId: ownerRecord ? user.id : null,
+      surface,
+      role,
+      refreshTokenHash,
+      deviceInfo,
+      ipAddress,
+      expiresAt: expiresAtIso,
+    }).catch(() => null);
+
     dbUserSessionsStore.set(refreshToken, sessionRecord);
+    dbUserSessionsStore.set(refreshTokenHash, sessionRecord);
 
     return {
       tokens: {
@@ -341,7 +400,19 @@ export class AuthService {
 
   // 4. Refresh Session
   async refreshSession(refreshToken: string): Promise<{ accessToken: string; expiresIn: number }> {
-    const session = dbUserSessionsStore.get(refreshToken);
+    if (!refreshToken) {
+      throw new Error('UNAUTHORIZED_MISSING_TOKEN');
+    }
+
+    // 1. Verify cryptographic token signature
+    const decoded = verifyRefreshToken(refreshToken);
+    const tokenHash = this.hashToken(refreshToken);
+
+    // 2. Query persistent DB session or in-memory fallback
+    const dbSession = await sessionDb.getByRefreshTokenHash(tokenHash).catch(() => null);
+    const memSession = dbUserSessionsStore.get(refreshToken) || dbUserSessionsStore.get(tokenHash);
+
+    const session = dbSession || memSession;
     if (!session) {
       throw new Error('INVALID_REFRESH_TOKEN');
     }
@@ -354,7 +425,11 @@ export class AuthService {
       throw new Error('REFRESH_TOKEN_EXPIRED');
     }
 
-    const newAccessToken = signAccessToken({ sub: session.ownerId, role: 'ROLE_OWNER' });
+    // Resolve user ID and original role accurately
+    const userId = session.userId || session.ownerId || decoded.sub;
+    const role: UserRole = (session.role as UserRole) || decoded.role || 'ROLE_CUSTOMER';
+
+    const newAccessToken = signAccessToken({ sub: userId, role });
     return {
       accessToken: newAccessToken,
       expiresIn: 900,
@@ -363,10 +438,18 @@ export class AuthService {
 
   // 5. Revoke Session
   async revokeSession(refreshToken: string): Promise<{ success: boolean }> {
-    const session = dbUserSessionsStore.get(refreshToken);
-    if (session) {
-      session.isRevoked = true;
-    }
+    if (!refreshToken) return { success: true };
+
+    const tokenHash = this.hashToken(refreshToken);
+    await sessionDb.revokeByRefreshTokenHash(tokenHash).catch(() => null);
+
+    const session1 = dbUserSessionsStore.get(refreshToken);
+    if (session1) session1.isRevoked = true;
+
+    const session2 = dbUserSessionsStore.get(tokenHash);
+    if (session2) session2.isRevoked = true;
+
     return { success: true };
   }
 }
+

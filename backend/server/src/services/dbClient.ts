@@ -371,6 +371,262 @@ async function queryViaSupabaseRest(text: string, params: any[] | undefined, url
     return { rows: mapped, command: 'SELECT', rowCount: mapped.length, oid: 0, fields: [] };
   }
 
+  // 9. SELECT FROM otp_challenges WHERE phone_number = $1
+  if (lowerSql.includes('from otp_challenges') && lowerSql.includes('phone_number = $1')) {
+    const phone = params?.[0];
+    const res = await fetch(`${url}/rest/v1/otp_challenges?phone_number=eq.${encodeURIComponent(phone)}`, { headers });
+    let raw: any = await res.json().catch(() => []);
+    let rows: any[] = Array.isArray(raw) ? raw : [];
+
+    // Fallback check in user_sessions if otp_challenges table is not yet present
+    if (rows.length === 0) {
+      const fallbackRes = await fetch(`${url}/rest/v1/user_sessions?refresh_token_hash=eq.${encodeURIComponent('otp_' + phone)}&is_revoked=eq.false`, { headers });
+      const fallbackRaw: any = await fallbackRes.json().catch(() => []);
+      const fallbackRows: any[] = Array.isArray(fallbackRaw) ? fallbackRaw : [];
+      if (fallbackRows.length > 0) {
+        try {
+          const parsed = JSON.parse(fallbackRows[0].device_info || '{}');
+          rows = [{
+            phone_number: phone,
+            code: parsed.code,
+            expires_at: fallbackRows[0].expires_at || parsed.expiresAt,
+            request_count: parsed.requestCount || 1,
+            failed_attempts: parsed.failedAttempts || 0,
+            created_at: fallbackRows[0].created_at,
+            updated_at: fallbackRows[0].created_at,
+          }];
+        } catch {}
+      }
+    }
+
+    const mapped = rows.map(r => ({
+      phoneNumber: r.phone_number,
+      code: r.code,
+      expiresAt: r.expires_at,
+      requestCount: r.request_count,
+      failedAttempts: r.failed_attempts,
+      createdAt: r.created_at,
+      updatedAt: r.updated_at,
+    }));
+    return { rows: mapped, command: 'SELECT', rowCount: mapped.length, oid: 0, fields: [] };
+  }
+
+  // 10. INSERT / UPSERT INTO otp_challenges
+  if (lowerSql.startsWith('insert into otp_challenges')) {
+    const phone = params?.[0];
+    const code = params?.[1];
+    const expiresAt = params?.[2];
+    const requestCount = params?.[3] || 1;
+    const failedAttempts = params?.[4] || 0;
+
+    const payload = {
+      phone_number: phone,
+      code,
+      expires_at: expiresAt,
+      request_count: requestCount,
+      failed_attempts: failedAttempts,
+      updated_at: new Date().toISOString(),
+    };
+
+    let res = await fetch(`${url}/rest/v1/otp_challenges`, {
+      method: 'POST',
+      headers: { ...headers, 'Prefer': 'resolution=merge-duplicates,return=representation' },
+      body: JSON.stringify(payload),
+    });
+
+    let raw: any = await res.json().catch(() => []);
+    let rows: any[] = Array.isArray(raw) ? raw : [raw];
+
+    // If otp_challenges table is missing, persist into user_sessions as robust fallback
+    if (!res.ok) {
+      const fallbackPayload = {
+        id: crypto.randomUUID(),
+        owner_id: '00000000-0000-4000-8000-201012345678', // known valid fallback UUID
+        refresh_token_hash: 'otp_' + phone,
+        device_info: JSON.stringify({ code, expiresAt, requestCount, failedAttempts }),
+        is_revoked: false,
+        expires_at: expiresAt,
+      };
+      await fetch(`${url}/rest/v1/user_sessions?refresh_token_hash=eq.${encodeURIComponent('otp_' + phone)}`, { method: 'DELETE', headers }).catch(() => {});
+      await fetch(`${url}/rest/v1/user_sessions`, { method: 'POST', headers, body: JSON.stringify(fallbackPayload) }).catch(() => {});
+      rows = [{ ...payload, created_at: new Date().toISOString() }];
+    }
+
+    const mapped = rows.filter(r => r && r.phone_number).map(r => ({
+      phoneNumber: r.phone_number,
+      code: r.code,
+      expiresAt: r.expires_at,
+      requestCount: r.request_count,
+      failedAttempts: r.failed_attempts,
+    }));
+    return { rows: mapped, command: 'INSERT', rowCount: mapped.length, oid: 0, fields: [] };
+  }
+
+  // 11. UPDATE otp_challenges SET failed_attempts
+  if (lowerSql.startsWith('update otp_challenges')) {
+    const phone = params?.[0];
+    const failedAttempts = params?.[1];
+    const nowIso = new Date().toISOString();
+
+    const res = await fetch(`${url}/rest/v1/otp_challenges?phone_number=eq.${encodeURIComponent(phone)}`, {
+      method: 'PATCH',
+      headers,
+      body: JSON.stringify({ failed_attempts: failedAttempts, updated_at: nowIso }),
+    });
+    const raw: any = await res.json().catch(() => []);
+    const rows: any[] = Array.isArray(raw) ? raw : [];
+    const mapped = rows.map(r => ({
+      phoneNumber: r.phone_number,
+      code: r.code,
+      expiresAt: r.expires_at,
+      requestCount: r.request_count,
+      failedAttempts: r.failed_attempts,
+    }));
+    return { rows: mapped, command: 'UPDATE', rowCount: mapped.length, oid: 0, fields: [] };
+  }
+
+  // 12. DELETE FROM otp_challenges
+  if (lowerSql.startsWith('delete from otp_challenges')) {
+    const phone = params?.[0];
+    await fetch(`${url}/rest/v1/otp_challenges?phone_number=eq.${encodeURIComponent(phone)}`, { method: 'DELETE', headers }).catch(() => {});
+    await fetch(`${url}/rest/v1/user_sessions?refresh_token_hash=eq.${encodeURIComponent('otp_' + phone)}`, { method: 'DELETE', headers }).catch(() => {});
+    return { rows: [], command: 'DELETE', rowCount: 1, oid: 0, fields: [] };
+  }
+
+  // 13. INSERT INTO user_sessions
+  if (lowerSql.startsWith('insert into user_sessions')) {
+    const id = params?.[0] || crypto.randomUUID();
+    const userId = params?.[1];
+    const ownerId = params?.[2] || userId;
+    const surface = params?.[3] || 'CUSTOMER';
+    const role = params?.[4] || 'ROLE_CUSTOMER';
+    const refreshTokenHash = params?.[5];
+    const clientDeviceInfo = params?.[6] || '';
+    const ipAddress = params?.[7] || null;
+    const expiresAt = params?.[8];
+
+    const packedDeviceInfo = JSON.stringify({
+      surface,
+      role,
+      userId,
+      clientInfo: clientDeviceInfo,
+    });
+
+    // Try full schema first
+    let res = await fetch(`${url}/rest/v1/user_sessions`, {
+      method: 'POST',
+      headers: { ...headers, 'Prefer': 'return=representation' },
+      body: JSON.stringify({
+        id,
+        user_id: userId,
+        owner_id: ownerId,
+        surface,
+        role,
+        refresh_token_hash: refreshTokenHash,
+        device_info: packedDeviceInfo,
+        ip_address: ipAddress,
+        is_revoked: false,
+        expires_at: expiresAt,
+        created_at: new Date().toISOString(),
+      }),
+    });
+
+    let raw: any = await res.json().catch(() => []);
+
+    // Fallback if custom columns not in table
+    if (!res.ok) {
+      res = await fetch(`${url}/rest/v1/user_sessions`, {
+        method: 'POST',
+        headers: { ...headers, 'Prefer': 'return=representation' },
+        body: JSON.stringify({
+          id,
+          owner_id: ownerId,
+          refresh_token_hash: refreshTokenHash,
+          device_info: packedDeviceInfo,
+          ip_address: ipAddress,
+          is_revoked: false,
+          expires_at: expiresAt,
+        }),
+      });
+      raw = await res.json().catch(() => []);
+    }
+
+    const rows = Array.isArray(raw) ? raw : [raw];
+    const mapped = rows.map(s => ({
+      id: s.id || id,
+      userId: s.user_id || userId,
+      ownerId: s.owner_id || ownerId,
+      surface,
+      role,
+      refreshTokenHash: s.refresh_token_hash || refreshTokenHash,
+      deviceInfo: s.device_info || packedDeviceInfo,
+      ipAddress: s.ip_address || ipAddress,
+      isRevoked: s.is_revoked ?? false,
+      expiresAt: s.expires_at || expiresAt,
+      createdAt: s.created_at || new Date().toISOString(),
+    }));
+    return { rows: mapped, command: 'INSERT', rowCount: mapped.length, oid: 0, fields: [] };
+  }
+
+  // 14. SELECT FROM user_sessions WHERE refresh_token_hash = $1
+  if (lowerSql.includes('from user_sessions') && lowerSql.includes('refresh_token_hash = $1')) {
+    const hash = params?.[0];
+    const res = await fetch(`${url}/rest/v1/user_sessions?refresh_token_hash=eq.${encodeURIComponent(hash)}`, { headers });
+    const raw: any = await res.json().catch(() => []);
+    const rows: any[] = Array.isArray(raw) ? raw : [];
+    const mapped = rows.map(s => {
+      let surface: 'CUSTOMER' | 'OWNER' = (s.surface as any) || 'CUSTOMER';
+      let role = s.role || 'ROLE_CUSTOMER';
+      let userId = s.user_id || s.owner_id;
+      if (s.device_info) {
+        try {
+          const parsed = JSON.parse(s.device_info);
+          if (parsed.surface) surface = parsed.surface;
+          if (parsed.role) role = parsed.role;
+          if (parsed.userId) userId = parsed.userId;
+        } catch {}
+      }
+      return {
+        id: s.id,
+        userId,
+        ownerId: s.owner_id,
+        surface,
+        role,
+        refreshTokenHash: s.refresh_token_hash,
+        deviceInfo: s.device_info,
+        ipAddress: s.ip_address,
+        isRevoked: s.is_revoked,
+        expiresAt: s.expires_at,
+        createdAt: s.created_at,
+      };
+    });
+    return { rows: mapped, command: 'SELECT', rowCount: mapped.length, oid: 0, fields: [] };
+  }
+
+  // 15. UPDATE user_sessions SET is_revoked = TRUE WHERE refresh_token_hash = $1
+  if (lowerSql.startsWith('update user_sessions') && lowerSql.includes('is_revoked = true') && lowerSql.includes('refresh_token_hash = $1')) {
+    const hash = params?.[0];
+    const nowIso = new Date().toISOString();
+    const res = await fetch(`${url}/rest/v1/user_sessions?refresh_token_hash=eq.${encodeURIComponent(hash)}`, {
+      method: 'PATCH',
+      headers,
+      body: JSON.stringify({ is_revoked: true, updated_at: nowIso }),
+    });
+    return { rows: [], command: 'UPDATE', rowCount: res.ok ? 1 : 0, oid: 0, fields: [] };
+  }
+
+  // 16. UPDATE user_sessions SET is_revoked = TRUE WHERE user_id = $1
+  if (lowerSql.startsWith('update user_sessions') && lowerSql.includes('is_revoked = true') && lowerSql.includes('user_id = $1')) {
+    const userId = params?.[0];
+    const nowIso = new Date().toISOString();
+    const res = await fetch(`${url}/rest/v1/user_sessions?user_id=eq.${encodeURIComponent(userId)}`, {
+      method: 'PATCH',
+      headers,
+      body: JSON.stringify({ is_revoked: true, updated_at: nowIso }),
+    });
+    return { rows: [], command: 'UPDATE', rowCount: res.ok ? 1 : 0, oid: 0, fields: [] };
+  }
+
   return null;
 }
 

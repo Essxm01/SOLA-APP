@@ -879,3 +879,137 @@ export const walletDb = {
   },
 };
 
+// ----------------------------------------------------------------------------
+// 8. OTP CHALLENGES REPOSITORY (AUTH-02B2)
+// ----------------------------------------------------------------------------
+export interface OtpChallengeRecord {
+  phoneNumber: string;
+  code: string;
+  expiresAt: string;
+  requestCount: number;
+  failedAttempts: number;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export const otpDb = {
+  async getByPhone(phoneNumber: string): Promise<OtpChallengeRecord | null> {
+    const res = await queryDb(
+      `SELECT phone_number AS "phoneNumber", code, expires_at AS "expiresAt", request_count AS "requestCount", failed_attempts AS "failedAttempts", created_at AS "createdAt", updated_at AS "updatedAt"
+       FROM otp_challenges WHERE phone_number = $1`,
+      [phoneNumber]
+    );
+    return res.rows[0] || null;
+  },
+
+  async upsert(challenge: { phoneNumber: string; code: string; expiresAt: string; requestCount: number; failedAttempts?: number }) {
+    const res = await queryDb(
+      `INSERT INTO otp_challenges (phone_number, code, expires_at, request_count, failed_attempts, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, COALESCE($5, 0), NOW(), NOW())
+       ON CONFLICT (phone_number) DO UPDATE SET
+         code = EXCLUDED.code,
+         expires_at = EXCLUDED.expires_at,
+         request_count = EXCLUDED.request_count,
+         failed_attempts = EXCLUDED.failed_attempts,
+         updated_at = NOW()
+       RETURNING phone_number AS "phoneNumber", code, expires_at AS "expiresAt", request_count AS "requestCount", failed_attempts AS "failedAttempts"`,
+      [challenge.phoneNumber, challenge.code, challenge.expiresAt, challenge.requestCount, challenge.failedAttempts || 0]
+    );
+    return res.rows[0] || null;
+  },
+
+  async updateFailedAttempts(phoneNumber: string, failedAttempts: number) {
+    const res = await queryDb(
+      `UPDATE otp_challenges SET failed_attempts = $2, updated_at = NOW()
+       WHERE phone_number = $1
+       RETURNING phone_number AS "phoneNumber", code, expires_at AS "expiresAt", request_count AS "requestCount", failed_attempts AS "failedAttempts"`,
+      [phoneNumber, failedAttempts]
+    );
+    return res.rows[0] || null;
+  },
+
+  async delete(phoneNumber: string) {
+    await queryDb(
+      `DELETE FROM otp_challenges WHERE phone_number = $1`,
+      [phoneNumber]
+    );
+    return true;
+  }
+};
+
+// ----------------------------------------------------------------------------
+// 9. USER SESSIONS REPOSITORY (AUTH-02B2)
+// ----------------------------------------------------------------------------
+export interface SessionDbRecord {
+  id: string;
+  userId: string;
+  ownerId?: string | null;
+  surface: 'CUSTOMER' | 'OWNER';
+  role: string;
+  refreshTokenHash: string;
+  deviceInfo?: string | null;
+  ipAddress?: string | null;
+  isRevoked: boolean;
+  expiresAt: string;
+  createdAt: string;
+}
+
+export const sessionDb = {
+  async create(session: {
+    id?: string;
+    userId: string;
+    ownerId?: string | null;
+    surface: 'CUSTOMER' | 'OWNER';
+    role: string;
+    refreshTokenHash: string;
+    deviceInfo?: string | null;
+    ipAddress?: string | null;
+    expiresAt: string;
+  }) {
+    const id = session.id || crypto.randomUUID();
+    const res = await queryDb(
+      `INSERT INTO user_sessions (id, user_id, owner_id, surface, role, refresh_token_hash, device_info, ip_address, is_revoked, expires_at, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, FALSE, $9, NOW(), NOW())
+       RETURNING id, user_id AS "userId", owner_id AS "ownerId", surface, role, refresh_token_hash AS "refreshTokenHash", device_info AS "deviceInfo", ip_address AS "ipAddress", is_revoked AS "isRevoked", expires_at AS "expiresAt", created_at AS "createdAt"`,
+      [
+        id,
+        session.userId,
+        session.ownerId || session.userId,
+        session.surface,
+        session.role,
+        session.refreshTokenHash,
+        session.deviceInfo || null,
+        session.ipAddress || null,
+        session.expiresAt
+      ]
+    );
+    return res.rows[0];
+  },
+
+  async getByRefreshTokenHash(hash: string): Promise<SessionDbRecord | null> {
+    const res = await queryDb(
+      `SELECT id, user_id AS "userId", owner_id AS "ownerId", surface, role, refresh_token_hash AS "refreshTokenHash", device_info AS "deviceInfo", ip_address AS "ipAddress", is_revoked AS "isRevoked", expires_at AS "expiresAt", created_at AS "createdAt"
+       FROM user_sessions WHERE refresh_token_hash = $1`,
+      [hash]
+    );
+    return res.rows[0] || null;
+  },
+
+  async revokeByRefreshTokenHash(hash: string): Promise<boolean> {
+    const res = await queryDb(
+      `UPDATE user_sessions SET is_revoked = TRUE, updated_at = NOW() WHERE refresh_token_hash = $1`,
+      [hash]
+    );
+    return (res.rowCount || 0) > 0;
+  },
+
+  async revokeAllForUser(userId: string, surface?: 'CUSTOMER' | 'OWNER'): Promise<boolean> {
+    const query = surface
+      ? `UPDATE user_sessions SET is_revoked = TRUE, updated_at = NOW() WHERE user_id = $1 AND surface = $2`
+      : `UPDATE user_sessions SET is_revoked = TRUE, updated_at = NOW() WHERE user_id = $1`;
+    const params = surface ? [userId, surface] : [userId];
+    await queryDb(query, params);
+    return true;
+  }
+};
+

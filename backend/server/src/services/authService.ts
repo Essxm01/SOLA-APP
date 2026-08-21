@@ -413,23 +413,28 @@ export class AuthService {
     const memSession = dbUserSessionsStore.get(refreshToken) || dbUserSessionsStore.get(tokenHash);
 
     const session = dbSession || memSession;
-    if (!session) {
-      throw new Error('INVALID_REFRESH_TOKEN');
-    }
+    if (session) {
+      if (session.isRevoked) {
+        throw new Error('SESSION_REVOKED');
+      }
 
-    if (session.isRevoked) {
-      throw new Error('SESSION_REVOKED');
-    }
-
-    if (new Date() > new Date(session.expiresAt)) {
-      throw new Error('REFRESH_TOKEN_EXPIRED');
+      if (new Date() > new Date(session.expiresAt)) {
+        throw new Error('REFRESH_TOKEN_EXPIRED');
+      }
     }
 
     // Resolve user ID and original role accurately
-    const userId = session.userId || session.ownerId || decoded.sub;
-    const role: UserRole = (session.role as UserRole) || decoded.role || 'ROLE_CUSTOMER';
+    const userId = session?.userId || session?.ownerId || decoded.sub;
+    const role: UserRole = (session?.role as UserRole) || decoded.role || 'ROLE_CUSTOMER';
 
-    const newAccessToken = signAccessToken({ sub: userId, role });
+    // Retrieve user phone to embed in access token
+    let phone: string | undefined;
+    const user = await userDb.getById(userId).catch(() => null);
+    if (user && user.phoneNumber) {
+      phone = user.phoneNumber;
+    }
+
+    const newAccessToken = signAccessToken({ sub: userId, role, phone });
     return {
       accessToken: newAccessToken,
       expiresIn: 900,

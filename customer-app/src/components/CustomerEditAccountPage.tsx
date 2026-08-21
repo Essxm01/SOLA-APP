@@ -8,7 +8,7 @@ interface CustomerEditAccountPageProps {
   customerPhone?: string | null;
   authToken: string;
   onBack: () => void;
-  onUpdated: (user: CustomerUserProfile) => void;
+  onUpdated: (user: CustomerUserProfile, newAccessToken?: string) => void;
 }
 
 export const CustomerEditAccountPage: React.FC<CustomerEditAccountPageProps> = ({
@@ -84,6 +84,7 @@ export const CustomerEditAccountPage: React.FC<CustomerEditAccountPageProps> = (
     setSuccessMsg('');
 
     try {
+      const currentToken = localStorage.getItem('sola_customer_access_token') || authToken;
       const patchBody: any = { fullName: trimmedName };
       if (trimmedEmail.length > 0) {
         patchBody.email = trimmedEmail;
@@ -93,7 +94,7 @@ export const CustomerEditAccountPage: React.FC<CustomerEditAccountPageProps> = (
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${authToken}`,
+          Authorization: `Bearer ${currentToken}`,
         },
         body: JSON.stringify(patchBody),
       });
@@ -106,37 +107,48 @@ export const CustomerEditAccountPage: React.FC<CustomerEditAccountPageProps> = (
       }
 
       if (!res.ok || (json && json.success === false)) {
-        if (res.status === 401 || json?.error?.code === 'INVALID_TOKEN' || json?.error?.code === 'UNAUTHORIZED') {
+        if (
+          res.status === 401 ||
+          json?.error?.code === 'INVALID_TOKEN' ||
+          json?.error?.code === 'UNAUTHORIZED' ||
+          json?.error?.code === 'EXPIRED_ACCESS_TOKEN' ||
+          json?.error?.code === 'UNAUTHORIZED_INVALID_TOKEN' ||
+          json?.error?.code === 'UNAUTHORIZED_MISSING_TOKEN'
+        ) {
           // Token expired: attempt refresh
           const refreshToken = localStorage.getItem('sola_customer_refresh_token');
           if (refreshToken) {
-            const refreshRes = await fetch(getApiUrl('/auth/refresh'), {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ refreshToken }),
-            });
-            const refreshJson = await refreshRes.json();
-            if (refreshRes.ok && refreshJson.success && refreshJson.data?.accessToken) {
-              const newTok = refreshJson.data.accessToken;
-              localStorage.setItem('sola_customer_access_token', newTok);
-              // Retry PATCH with refreshed token
-              const retryRes = await fetch(getApiUrl('/customer/profile'), {
-                method: 'PATCH',
-                headers: {
-                  'Content-Type': 'application/json',
-                  Authorization: `Bearer ${newTok}`,
-                },
-                body: JSON.stringify(patchBody),
+            try {
+              const refreshRes = await fetch(getApiUrl('/auth/refresh'), {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ refreshToken }),
               });
-              const retryJson = await retryRes.json();
-              if (retryRes.ok && retryJson.success) {
-                const updatedData: CustomerUserProfile = retryJson.data;
-                setCurrentUser(updatedData);
-                onUpdated(updatedData);
-                setSuccessMsg('تم حفظ التغييرات بنجاح');
-                setTimeout(() => onBack(), 700);
-                return;
+              const refreshJson = await refreshRes.json();
+              if (refreshRes.ok && refreshJson.success && refreshJson.data?.accessToken) {
+                const newTok = refreshJson.data.accessToken;
+                localStorage.setItem('sola_customer_access_token', newTok);
+                // Retry PATCH with refreshed token
+                const retryRes = await fetch(getApiUrl('/customer/profile'), {
+                  method: 'PATCH',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${newTok}`,
+                  },
+                  body: JSON.stringify(patchBody),
+                });
+                const retryJson = await retryRes.json();
+                if (retryRes.ok && retryJson.success) {
+                  const updatedData: CustomerUserProfile = retryJson.data;
+                  setCurrentUser(updatedData);
+                  onUpdated(updatedData, newTok);
+                  setSuccessMsg('تم حفظ التغييرات بنجاح');
+                  setTimeout(() => onBack(), 700);
+                  return;
+                }
               }
+            } catch {
+              // Refresh failed
             }
           }
           throw new Error('انتهت صلاحية الجلسة، يرجى تسجيل الدخول مجدداً.');

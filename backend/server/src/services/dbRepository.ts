@@ -1019,7 +1019,7 @@ export const sessionDb = {
       [
         id,
         session.userId,
-        session.ownerId || session.userId,
+        session.ownerId || null,
         session.surface,
         session.role,
         session.refreshTokenHash,

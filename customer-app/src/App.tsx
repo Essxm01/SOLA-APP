@@ -80,68 +80,12 @@ export function App() {
     try {
       const res = await fetch(getApiUrl('/customer/properties/search'));
       const json = await res.json();
-      if (res.ok && json.success && Array.isArray(json.data) && json.data.length > 0) {
+      if (res.ok && json.success && Array.isArray(json.data)) {
         setProperties(json.data);
         setFilteredProperties(json.data);
       } else {
-        // Fallback default coastal items
-        const defaultItems: CustomerPropertyItem[] = [
-          {
-            id: 'prop-pub-001',
-            title: 'شاليه فاخر رأس الحكمة — مطل مباشر على البحر 🌊',
-            unitType: 'شاليه',
-            propertyType: 'CHALET',
-            address: 'رأس الحكمة — الساحل الشمالي',
-            bedrooms: 3,
-            bathrooms: 2,
-            maxGuests: 6,
-            basePricePerNight: 7500,
-            status: 'PUBLISHED',
-            verificationStatus: 'VERIFIED',
-            images: [
-              'https://images.unsplash.com/photo-1512917774080-9991f1c4c750?w=800',
-              'https://images.unsplash.com/photo-1613977257363-707ba9348227?w=800',
-            ],
-            ownerName: 'أحمد محمود علي',
-          },
-          {
-            id: 'prop-pub-002',
-            title: 'فيلا مراسي بصف أول — حمام سباحة خاص 🏊‍♂️',
-            unitType: 'فيلا',
-            propertyType: 'VILLA',
-            address: 'مراسي — الساحل الشمالي',
-            bedrooms: 4,
-            bathrooms: 3,
-            maxGuests: 8,
-            basePricePerNight: 12000,
-            status: 'PUBLISHED',
-            verificationStatus: 'VERIFIED',
-            images: [
-              'https://images.unsplash.com/photo-1580587771525-78b9dba3b914?w=800',
-              'https://images.unsplash.com/photo-1613977257363-707ba9348227?w=800',
-            ],
-            ownerName: 'حسام مصطفى',
-          },
-          {
-            id: 'prop-pub-003',
-            title: 'شقة مصيفية هاسيندا — إطلالة على الجولف ⛳️',
-            unitType: 'شقة',
-            propertyType: 'APARTMENT',
-            address: 'هاسيندا — الساحل الشمالي',
-            bedrooms: 2,
-            bathrooms: 2,
-            maxGuests: 4,
-            basePricePerNight: 5500,
-            status: 'PUBLISHED',
-            verificationStatus: 'VERIFIED',
-            images: [
-              'https://images.unsplash.com/photo-1512917774080-9991f1c4c750?w=800',
-            ],
-            ownerName: 'داليا إبراهيم',
-          },
-        ];
-        setProperties(defaultItems);
-        setFilteredProperties(defaultItems);
+        setProperties([]);
+        setFilteredProperties([]);
       }
     } catch {
       setError(true);
@@ -451,9 +395,13 @@ export function App() {
             customerPhone={customerPhone}
             authToken={authToken}
             onBack={() => setIsEditingAccount(false)}
-            onUpdated={(updated) => {
+            onUpdated={(updated, newAccessToken) => {
               setUserProfile(updated);
               localStorage.setItem('sola_customer_profile', JSON.stringify(updated));
+              if (newAccessToken) {
+                setAuthToken(newAccessToken);
+                localStorage.setItem('sola_customer_access_token', newAccessToken);
+              }
             }}
           />
         ) : (

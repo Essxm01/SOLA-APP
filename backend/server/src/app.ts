@@ -186,14 +186,6 @@ export class ExpressServerApp {
         };
       }
 
-      // TEMP DIAGNOSTIC: Safe key prefix check (SEC-01.1 — remove after verification)
-      if (path === '/api/v1/health/env-check' && method === 'GET') {
-        const sk = process.env.SUPABASE_SECRET_KEY;
-        const srk = process.env.SUPABASE_SERVICE_ROLE_KEY;
-        const su = process.env.SUPABASE_URL;
-        return {
-          statusCode: 200,
-          body: {
             success: true,
             data: {
               SUPABASE_URL_SET: !!su,

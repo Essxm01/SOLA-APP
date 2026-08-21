@@ -33,14 +33,18 @@ export const CustomerWalletModal: React.FC<CustomerWalletModalProps> = ({ authTo
         const res = await fetch(getApiUrl('/customer/payments'), {
           headers: { Authorization: `Bearer ${authToken}` },
         });
-        const json = await res.json();
+        const json = await res.json().catch(() => ({}));
         if (res.ok && json.success && Array.isArray(json.data)) {
           setPayments(json.data);
+          setError('');
+        } else if (res.status === 404 || !json.success) {
+          setPayments([]);
+          setError('');
         } else {
           setPayments([]);
         }
       } catch {
-        setError('تعذر تحميل بيانات المدفوعات حالياً');
+        setPayments([]);
       } finally {
         setLoading(false);
       }

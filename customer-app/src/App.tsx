@@ -591,7 +591,7 @@ export function App() {
 
         {/* Tab 4: ACCOUNT */}
         {activeTab === 'ACCOUNT' && (
-          <div className="my-4 space-y-4">
+          <div className="my-4 space-y-4 pb-20">
             {/* A. Top App Bar */}
             <div className="flex items-center justify-between pb-1">
               <h2 className="text-lg font-black text-slate-900">حسابي</h2>

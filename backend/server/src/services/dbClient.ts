@@ -73,6 +73,13 @@ async function queryViaSupabaseRest(text: string, params: any[] | undefined, url
           updated_at: ownerRows[0].updated_at,
         }];
       }
+    } else if (!rows[0].full_name) {
+      const ownerRes = await fetch(`${url}/rest/v1/owners?phone_number=eq.${encodeURIComponent(phone)}`, { headers });
+      const ownerRaw: any = await ownerRes.json().catch(() => []);
+      const ownerRows: any[] = Array.isArray(ownerRaw) ? ownerRaw : [];
+      if (ownerRows.length > 0 && ownerRows[0].full_name) {
+        rows[0].full_name = ownerRows[0].full_name;
+      }
     }
 
     const mapped = rows.map(u => ({
@@ -113,6 +120,13 @@ async function queryViaSupabaseRest(text: string, params: any[] | undefined, url
           created_at: ownerRows[0].created_at,
           updated_at: ownerRows[0].updated_at,
         }];
+      }
+    } else if (!rows[0].full_name) {
+      const ownerRes = await fetch(`${url}/rest/v1/owners?id=eq.${encodeURIComponent(userId)}`, { headers });
+      const ownerRaw: any = await ownerRes.json().catch(() => []);
+      const ownerRows: any[] = Array.isArray(ownerRaw) ? ownerRaw : [];
+      if (ownerRows.length > 0 && ownerRows[0].full_name) {
+        rows[0].full_name = ownerRows[0].full_name;
       }
     }
 

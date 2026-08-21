@@ -2327,7 +2327,7 @@ export class ExpressServerApp {
             user = await userDb.getByPhone(customerPhone).catch(() => null);
           }
           if (!user) {
-            user = dbUsersStore.get(customerPhone) || {
+            user = dbUsersStore.get(customerPhone) || dbUsersStore.get(customerId) || {
               id: customerId,
               phoneNumber: customerPhone,
               fullName: null,
@@ -2339,6 +2339,9 @@ export class ExpressServerApp {
             };
           }
 
+          const cachedUser = dbUsersStore.get(customerPhone) || dbUsersStore.get(customerId);
+          const resolvedFullName = user.fullName || cachedUser?.fullName || null;
+
           return {
             statusCode: 200,
             body: {
@@ -2347,9 +2350,9 @@ export class ExpressServerApp {
                 id: user.id,
                 phoneNumber: user.phoneNumber,
                 phoneVerifiedAt: user.phoneVerifiedAt,
-                fullName: user.fullName || null,
-                email: user.email || null,
-                avatarUrl: user.avatarUrl || null,
+                fullName: resolvedFullName,
+                email: user.email || cachedUser?.email || null,
+                avatarUrl: user.avatarUrl || cachedUser?.avatarUrl || null,
                 status: user.status,
                 createdAt: user.createdAt,
                 updatedAt: user.updatedAt,

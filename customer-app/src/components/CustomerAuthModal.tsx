@@ -57,9 +57,17 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
         body: JSON.stringify({ phone: fullPhone }),
       });
 
-      const json = await res.json();
-      if (!res.ok || !json.success) {
-        throw new Error(json.error?.message || 'تعذر إرسال رمز التحقق');
+      const json = await res.json().catch(() => null);
+      if (!res.ok || !json?.success) {
+        if (
+          json?.error?.code === 'RATE_LIMIT_EXCEEDED' ||
+          json?.error?.message?.includes('RATE_LIMIT') ||
+          json?.error?.message?.includes('MAX_3_OTP') ||
+          json?.error?.message?.includes('Rate limit exceeded')
+        ) {
+          throw new Error('تم طلب رمز الدخول عدة مرات. حاول مرة أخرى بعد قليل.');
+        }
+        throw new Error(json?.error?.message || 'تعذر إرسال رمز التحقق');
       }
 
       setStep('OTP');
@@ -87,20 +95,38 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
         body: JSON.stringify({ phone: fullPhone, code, surface: 'CUSTOMER' }),
       });
 
-      const json = await res.json();
-      if (!res.ok || !json.success) {
-        throw new Error(json.error?.message || 'كود التحقق غير صحيح');
+      const json = await res.json().catch(() => null);
+      if (!res.ok || !json?.success) {
+        throw new Error(json?.error?.message || 'كود التحقق غير صحيح');
       }
 
       const token = json.data?.tokens?.accessToken;
       const refreshToken = json.data?.tokens?.refreshToken;
-      const user = json.data?.user as CustomerUserProfile;
+      let user = json.data?.user as CustomerUserProfile;
 
       if (!token) {
         throw new Error('لم يتم استلام رمز الدخول من الخادم');
       }
 
-      // If new user or profile name is missing, proceed to name onboarding step
+      // Authoritatively resolve canonical customer profile before deciding whether name onboarding is needed
+      if (!user?.fullName || user.fullName.trim().length === 0) {
+        try {
+          const profileRes = await fetch(getApiUrl('/customer/profile'), {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          const profileJson = await profileRes.json().catch(() => null);
+          if (profileRes.ok && profileJson?.success && profileJson?.data?.fullName) {
+            user = {
+              ...user,
+              ...profileJson.data,
+            };
+          }
+        } catch {
+          // Continue with existing user record
+        }
+      }
+
+      // If new user or profile name is still missing, proceed to name onboarding step
       if (!user?.fullName || user.fullName.trim().length === 0) {
         setPendingAuth({ token, phone: fullPhone, refreshToken, user });
         setStep('NAME_ONBOARDING');

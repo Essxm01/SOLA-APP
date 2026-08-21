@@ -245,17 +245,14 @@ export class AuthService {
       user = dbUsersStore.get(canonicalPhone) || null;
     }
 
-    // If still missing, create new User with random UUID (zero fake profile strings)
+    // If still missing, create new User in database with random UUID
     if (!user) {
       const newUserId = crypto.randomUUID();
-      let createdDbUser: UserRecord | null = null;
-      if (!isProductionDatabase()) {
-        createdDbUser = await userDb.create({
-          id: newUserId,
-          phoneNumber: canonicalPhone,
-          status: 'ACTIVE',
-        }).catch(() => null);
-      }
+      const createdDbUser: UserRecord | null = await userDb.create({
+        id: newUserId,
+        phoneNumber: canonicalPhone,
+        status: 'ACTIVE',
+      }).catch(() => null);
 
       if (createdDbUser) {
         user = createdDbUser;
@@ -273,14 +270,13 @@ export class AuthService {
         };
       }
     } else {
-      // Update phone verified timestamp on safe test DBs
-      if (!isProductionDatabase()) {
-        await userDb.updatePhoneVerified(user.id).catch(() => null);
-      }
+      // Existing user: update phone verified timestamp
+      await userDb.updatePhoneVerified(user.id).catch(() => null);
       user.phoneVerifiedAt = new Date().toISOString();
     }
 
     dbUsersStore.set(canonicalPhone, user);
+    dbUsersStore.set(user.id, user);
 
     // 2. Check Owner capability (matching owners.id == users.id)
     let ownerRecord: OwnerRecord | null = await ownerDb.getById(user.id).catch(() => null);

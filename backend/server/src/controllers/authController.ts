@@ -23,11 +23,14 @@ export class AuthController {
         timestamp: new Date().toISOString(),
       };
     } catch (err: any) {
+      const isRateLimit = err.message?.includes('RATE_LIMIT') || err.message?.includes('MAX_3_OTP');
       return {
         success: false,
         error: {
-          code: err.message || 'INTERNAL_SERVER_ERROR',
-          message: err.message || 'حدث خطأ غير متوقع',
+          code: isRateLimit ? 'RATE_LIMIT_EXCEEDED' : (err.message || 'INTERNAL_SERVER_ERROR'),
+          message: isRateLimit
+            ? 'تم طلب رمز الدخول عدة مرات. يرجى المحاولة مرة أخرى بعد قليل.'
+            : (err.message || 'حدث خطأ غير متوقع'),
         },
         timestamp: new Date().toISOString(),
       };

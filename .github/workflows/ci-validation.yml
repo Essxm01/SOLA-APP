@@ -50,7 +50,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: 'npm'
       - name: Install & Build Admin App
         run: |
           cd admin-app
@@ -70,7 +69,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: 'npm'
       - name: Install & Build Owner App
         run: |
           cd owner-app
@@ -90,7 +88,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: 'npm'
       - name: Install & Build Customer App
         run: |
           cd customer-app
@@ -110,7 +107,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: 'npm'
       - name: Install & Check Backend
         run: |
           cd backend

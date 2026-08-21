@@ -391,72 +391,58 @@ export class AuthService {
 
     // CUSTOMER Surface Flow
     if (surface === 'CUSTOMER') {
-      if (!user) {
-        // Genuinely new user
+      if (!user || !user.fullName || user.fullName.trim().length === 0) {
+        // User does not exist, or exists but is missing full_name
         if (!fullName || fullName.trim().length === 0) {
-          // Tell frontend to ask for full name
+          // Tell frontend to prompt for full name
           return {
             tokens: null,
-            user: null,
-            isOwner: false,
-            ownerOnboardingRequired: false,
-            requiresNameOnboarding: true,
-          };
-        }
-
-        // Create new canonical user with provided fullName
-        const newUserId = crypto.randomUUID();
-        const createdDbUser = await userDb.create({
-          id: newUserId,
-          phoneNumber: canonicalPhone,
-          fullName: fullName.trim(),
-          status: 'ACTIVE',
-        }).catch(() => null);
-
-        if (createdDbUser) {
-          user = createdDbUser;
-        } else {
-          user = {
-            id: newUserId,
-            phoneNumber: canonicalPhone,
-            phoneVerifiedAt: null,
-            fullName: fullName.trim(),
-            email: null,
-            avatarUrl: null,
-            status: 'ACTIVE',
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-          };
-        }
-      } else {
-        // User exists
-        if ((!user.fullName || user.fullName.trim().length === 0) && (!fullName || fullName.trim().length === 0)) {
-          // Existing user but missing fullName
-          return {
-            tokens: null,
-            user: {
+            user: user ? {
               id: user.id,
               phoneNumber: user.phoneNumber,
               fullName: null,
               status: user.status,
               createdAt: user.createdAt,
               updatedAt: user.updatedAt,
-            },
+            } : null,
             isOwner: false,
             ownerOnboardingRequired: false,
             requiresNameOnboarding: true,
           };
         }
 
-        if (fullName && fullName.trim().length > 0 && (!user.fullName || user.fullName.trim().length === 0)) {
-          // Update profile with the new fullName
-          const updated = await userDb.updateProfile(user.id, { fullName: fullName.trim() }).catch(() => null);
-          if (updated) {
-            user = updated;
-          } else {
-            user.fullName = fullName.trim();
+        // Customer provided fullName: persist to canonical database
+        const trimmedName = fullName.trim();
+        if (user) {
+          // Update existing canonical user row
+          const updated = await userDb.updateProfile(user.id, { fullName: trimmedName });
+          if (!updated) {
+            throw new Error('FAILED_TO_PERSIST_CUSTOMER_NAME');
+          }
+        } else {
+          // Create new canonical user row
+          const newUserId = crypto.randomUUID();
+          const created = await userDb.create({
+            id: newUserId,
+            phoneNumber: canonicalPhone,
+            fullName: trimmedName,
+            status: 'ACTIVE',
+          });
+          if (!created) {
+            throw new Error('FAILED_TO_CREATE_CUSTOMER_USER');
           }
         }
+
+        // Read-After-Write Verification: Query canonical DB by phone to confirm persistence
+        const persistedUser = await userDb.getByPhone(canonicalPhone);
+        if (!persistedUser || !persistedUser.fullName || persistedUser.fullName.trim() !== trimmedName) {
+          throw new Error('DATABASE_PERSISTENCE_VERIFICATION_FAILED');
+        }
+        user = persistedUser;
+      }
+
+      if (!user) {
+        throw new Error('FAILED_TO_RESOLVE_CUSTOMER_IDENTITY');
       }
 
       dbUsersStore.set(canonicalPhone, user);

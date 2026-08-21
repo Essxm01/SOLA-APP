@@ -38,11 +38,17 @@ export const userDb = {
     const id = user.id || crypto.randomUUID();
     const res = await queryDb(
       `INSERT INTO users (id, phone_number, phone_verified_at, full_name, email, avatar_url, status, created_at, updated_at)
-       VALUES ($1, $2, NOW(), $3, $4, $5, COALESCE($6, 'ACTIVE'), NOW(), NOW())
+       VALUES ($1, $2, NULL, $3, $4, $5, COALESCE($6, 'ACTIVE'), NOW(), NOW())
+       ON CONFLICT (phone_number)
+       DO UPDATE SET
+         full_name = CASE WHEN EXCLUDED.full_name IS NOT NULL AND EXCLUDED.full_name <> '' THEN EXCLUDED.full_name ELSE users.full_name END,
+         email = CASE WHEN EXCLUDED.email IS NOT NULL THEN EXCLUDED.email ELSE users.email END,
+         avatar_url = CASE WHEN EXCLUDED.avatar_url IS NOT NULL THEN EXCLUDED.avatar_url ELSE users.avatar_url END,
+         updated_at = NOW()
        RETURNING id, phone_number AS "phoneNumber", phone_verified_at AS "phoneVerifiedAt", full_name AS "fullName", email, avatar_url AS "avatarUrl", status, created_at AS "createdAt", updated_at AS "updatedAt"`,
       [id, user.phoneNumber, user.fullName || null, user.email || null, user.avatarUrl || null, user.status || 'ACTIVE']
     );
-    return res.rows[0];
+    return res.rows[0] || null;
   },
 
   async updatePhoneVerified(userId: string) {
@@ -58,7 +64,7 @@ export const userDb = {
   async updateProfile(userId: string, data: { fullName?: string | null; email?: string | null; avatarUrl?: string | null }) {
     const res = await queryDb(
       `UPDATE users
-       SET full_name = COALESCE($2, full_name),
+       SET full_name = CASE WHEN $2 IS NOT NULL AND $2 <> '' THEN $2 ELSE full_name END,
            email = CASE WHEN $3::text = '__NULL__' THEN NULL WHEN $3 IS NOT NULL THEN $3 ELSE email END,
            avatar_url = COALESCE($4, avatar_url),
            updated_at = NOW()

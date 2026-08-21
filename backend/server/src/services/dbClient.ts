@@ -34,7 +34,7 @@ export function getDbPool(): pg.Pool {
 }
 
 export const dbPool = {
-  query: <T = any>(text: string, params?: any[]) => queryDb<T>(text, params)
+  query: <T extends pg.QueryResultRow = any>(text: string, params?: any[]) => queryDb<T>(text, params)
 };
 
 async function queryViaSupabaseRest(text: string, params: any[] | undefined, url: string, key: string): Promise<pg.QueryResult<any> | null> {
@@ -180,10 +180,44 @@ async function queryViaSupabaseRest(text: string, params: any[] | undefined, url
     const status = params?.[5] || 'ACTIVE';
     const nowIso = new Date().toISOString();
 
+    // Check if user already exists by phone_number first to avoid 409 conflict
+    const checkRes = await fetch(`${url}/rest/v1/users?phone_number=eq.${encodeURIComponent(phoneNumber)}`, { headers });
+    const checkRaw: any = await checkRes.json().catch(() => []);
+    const existingUsers: any[] = Array.isArray(checkRaw) ? checkRaw : [];
+
+    if (existingUsers.length > 0) {
+      const existingUser = existingUsers[0];
+      const patchBody: any = { updated_at: nowIso };
+      if (fullName) patchBody.full_name = fullName;
+      if (email) patchBody.email = email;
+      if (avatarUrl) patchBody.avatar_url = avatarUrl;
+      if (status) patchBody.status = status;
+
+      const patchRes = await fetch(`${url}/rest/v1/users?id=eq.${encodeURIComponent(existingUser.id)}`, {
+        method: 'PATCH',
+        headers: { ...headers, 'Prefer': 'return=representation' },
+        body: JSON.stringify(patchBody),
+      });
+      const patchRaw: any = await patchRes.json().catch(() => []);
+      const patchRows: any[] = Array.isArray(patchRaw) && patchRaw.length > 0 ? patchRaw : [{ ...existingUser, ...patchBody }];
+      const mapped = patchRows.map(u => ({
+        id: u.id,
+        phoneNumber: u.phone_number,
+        phoneVerifiedAt: u.phone_verified_at,
+        fullName: u.full_name,
+        email: u.email,
+        avatarUrl: u.avatar_url,
+        status: u.status,
+        createdAt: u.created_at,
+        updatedAt: u.updated_at,
+      }));
+      return { rows: mapped, command: 'INSERT', rowCount: mapped.length, oid: 0, fields: [] };
+    }
+
     const payload: any = {
       id,
       phone_number: phoneNumber,
-      phone_verified_at: nowIso,
+      phone_verified_at: null,
       status,
       created_at: nowIso,
       updated_at: nowIso,
@@ -192,17 +226,17 @@ async function queryViaSupabaseRest(text: string, params: any[] | undefined, url
     if (email) payload.email = email;
     if (avatarUrl) payload.avatar_url = avatarUrl;
 
-    const res = await fetch(`${url}/rest/v1/users?on_conflict=phone_number`, {
+    const res = await fetch(`${url}/rest/v1/users`, {
       method: 'POST',
-      headers: { ...headers, 'Prefer': 'resolution=merge-duplicates,return=representation' },
+      headers: { ...headers, 'Prefer': 'return=representation' },
       body: JSON.stringify(payload),
     });
     const raw: any = await res.json().catch(() => []);
-    const arr = Array.isArray(raw) ? raw : [raw];
+    const arr = Array.isArray(raw) ? raw : (raw && raw.id ? [raw] : []);
     const mapped = arr.map(u => ({
       id: u.id || id,
       phoneNumber: u.phone_number || phoneNumber,
-      phoneVerifiedAt: u.phone_verified_at || nowIso,
+      phoneVerifiedAt: u.phone_verified_at || null,
       fullName: u.full_name || fullName,
       email: u.email || email,
       avatarUrl: u.avatar_url || avatarUrl,
@@ -809,7 +843,7 @@ async function queryViaSupabaseRest(text: string, params: any[] | undefined, url
 /**
  * Execute parameterized SQL query against PostgreSQL sola_db
  */
-export async function queryDb<T = any>(text: string, params?: any[]): Promise<pg.QueryResult<T>> {
+export async function queryDb<T extends pg.QueryResultRow = any>(text: string, params?: any[]): Promise<pg.QueryResult<T>> {
   const supabaseUrl = process.env.SUPABASE_URL;
   const supabaseKey = process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
 

@@ -2351,27 +2351,25 @@ export class ExpressServerApp {
           }
         }
 
-        // 4.0 Customer Profile (Real Canonical Users Identity — AUTH-03)
+        // 4.0 Customer Profile (Authoritative Canonical DB Source of Truth — DATA-01)
         if (path === '/api/v1/customer/profile' && method === 'GET') {
           let user: any = await userDb.getById(customerId).catch(() => null);
           if (!user && customerPhone) {
             user = await userDb.getByPhone(customerPhone).catch(() => null);
           }
           if (!user) {
-            user = dbUsersStore.get(customerPhone) || dbUsersStore.get(customerId) || {
-              id: customerId,
-              phoneNumber: customerPhone,
-              fullName: null,
-              email: null,
-              avatarUrl: null,
-              status: 'ACTIVE',
-              createdAt: timestamp,
-              updatedAt: timestamp,
+            user = dbUsersStore.get(customerPhone) || dbUsersStore.get(customerId);
+          }
+          if (!user) {
+            return {
+              statusCode: 404,
+              body: {
+                success: false,
+                error: { code: 'USER_NOT_FOUND', message: 'المستخدم غير موجود' },
+                timestamp,
+              },
             };
           }
-
-          const cachedUser = dbUsersStore.get(customerPhone) || dbUsersStore.get(customerId);
-          const resolvedFullName = user.fullName || cachedUser?.fullName || null;
 
           return {
             statusCode: 200,
@@ -2380,11 +2378,11 @@ export class ExpressServerApp {
               data: {
                 id: user.id,
                 phoneNumber: user.phoneNumber,
-                phoneVerifiedAt: user.phoneVerifiedAt,
-                fullName: resolvedFullName,
-                email: user.email || cachedUser?.email || null,
-                avatarUrl: user.avatarUrl || cachedUser?.avatarUrl || null,
-                status: user.status,
+                phoneVerifiedAt: user.phoneVerifiedAt || null,
+                fullName: user.fullName || null,
+                email: user.email || null,
+                avatarUrl: user.avatarUrl || null,
+                status: user.status || 'ACTIVE',
                 createdAt: user.createdAt,
                 updatedAt: user.updatedAt,
               },
@@ -2443,39 +2441,25 @@ export class ExpressServerApp {
             avatarUrl: bodyPayload?.avatarUrl || null,
           }).catch(() => null);
 
-          if (!updatedUser) {
-            const existing = dbUsersStore.get(customerPhone) || dbUsersStore.get(customerId) || {
+          if (!updatedUser && customerPhone) {
+            // Attempt update/upsert by phone if ID lookup returned empty
+            await userDb.create({
               id: customerId,
               phoneNumber: customerPhone,
-              status: 'ACTIVE' as const,
-              createdAt: timestamp,
-              updatedAt: timestamp,
-            };
-            updatedUser = {
-              ...existing,
-              fullName: rawName !== undefined ? rawName : (existing as any).fullName,
-              email: emailVal !== undefined ? emailVal : (existing as any).email,
-              avatarUrl: bodyPayload?.avatarUrl !== undefined ? bodyPayload.avatarUrl : (existing as any).avatarUrl,
-              updatedAt: timestamp,
-            };
-            if (customerPhone && rawName) {
-              await userDb.create({
-                id: customerId,
-                phoneNumber: customerPhone,
-                fullName: rawName.trim(),
-                email: emailVal,
-                status: 'ACTIVE',
-              }).catch(() => null);
-            }
-          } else {
-            if (rawName !== undefined) updatedUser.fullName = rawName;
-            if (emailVal !== undefined) updatedUser.email = emailVal;
+              fullName: rawName,
+              email: emailVal,
+              avatarUrl: bodyPayload?.avatarUrl || null,
+              status: 'ACTIVE',
+            }).catch(() => null);
+            updatedUser = await userDb.getByPhone(customerPhone).catch(() => null);
           }
 
-          if (updatedUser) {
-            dbUsersStore.set(customerPhone, updatedUser);
-            dbUsersStore.set(customerId, updatedUser);
+          if (!updatedUser) {
+            throw new Error('FAILED_TO_PERSIST_PROFILE_UPDATE');
           }
+
+          dbUsersStore.set(customerPhone, updatedUser);
+          dbUsersStore.set(customerId, updatedUser);
 
           return {
             statusCode: 200,
@@ -2484,11 +2468,11 @@ export class ExpressServerApp {
               data: {
                 id: updatedUser.id,
                 phoneNumber: updatedUser.phoneNumber,
-                phoneVerifiedAt: updatedUser.phoneVerifiedAt,
+                phoneVerifiedAt: updatedUser.phoneVerifiedAt || null,
                 fullName: updatedUser.fullName || null,
                 email: updatedUser.email || null,
                 avatarUrl: updatedUser.avatarUrl || null,
-                status: updatedUser.status,
+                status: updatedUser.status || 'ACTIVE',
                 createdAt: updatedUser.createdAt,
                 updatedAt: updatedUser.updatedAt,
               },

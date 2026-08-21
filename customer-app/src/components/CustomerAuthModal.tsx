@@ -126,6 +126,33 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
         }
       }
 
+      // If remote profile returned empty, check device storage for matching canonical phone to avoid re-onboarding existing users
+      if (!user?.fullName || user.fullName.trim().length === 0) {
+        const localSavedProfile = localStorage.getItem('sola_customer_profile');
+        const localSavedPhone = localStorage.getItem('sola_customer_phone');
+        if (localSavedProfile && localSavedPhone === fullPhone) {
+          try {
+            const parsed = JSON.parse(localSavedProfile);
+            if (parsed?.fullName && parsed.fullName.trim().length >= 2) {
+              user = {
+                ...user,
+                fullName: parsed.fullName,
+                email: parsed.email || user.email || null,
+              };
+              // Resync to backend in background
+              fetch(getApiUrl('/customer/profile'), {
+                method: 'PATCH',
+                headers: {
+                  'Content-Type': 'application/json',
+                  Authorization: `Bearer ${token}`,
+                },
+                body: JSON.stringify({ fullName: parsed.fullName }),
+              }).catch(() => null);
+            }
+          } catch {}
+        }
+      }
+
       // If new user or profile name is still missing, proceed to name onboarding step
       if (!user?.fullName || user.fullName.trim().length === 0) {
         setPendingAuth({ token, phone: fullPhone, refreshToken, user });

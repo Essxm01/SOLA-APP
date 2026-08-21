@@ -53,6 +53,20 @@ export const userDb = {
       [userId]
     );
     return res.rows[0] || null;
+  },
+
+  async updateProfile(userId: string, data: { fullName?: string | null; email?: string | null; avatarUrl?: string | null }) {
+    const res = await queryDb(
+      `UPDATE users
+       SET full_name = COALESCE($2, full_name),
+           email = COALESCE($3, email),
+           avatar_url = COALESCE($4, avatar_url),
+           updated_at = NOW()
+       WHERE id = $1
+       RETURNING id, phone_number AS "phoneNumber", phone_verified_at AS "phoneVerifiedAt", full_name AS "fullName", email, avatar_url AS "avatarUrl", status, created_at AS "createdAt", updated_at AS "updatedAt"`,
+      [userId, data.fullName || null, data.email || null, data.avatarUrl || null]
+    );
+    return res.rows[0] || null;
   }
 };
 

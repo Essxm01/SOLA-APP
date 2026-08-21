@@ -3,17 +3,35 @@ import { CustomerHeader } from './components/CustomerHeader';
 import { CoastalSearchBar, SearchFilterState } from './components/CoastalSearchBar';
 import { PropertyCard, CustomerPropertyItem } from './components/PropertyCard';
 import { PropertyDetailModal } from './components/PropertyDetailModal';
-import { CustomerAuthModal } from './components/CustomerAuthModal';
+import { CustomerAuthModal, type CustomerUserProfile } from './components/CustomerAuthModal';
+import { CustomerEditProfileModal } from './components/CustomerEditProfileModal';
+import { CustomerSupportModal } from './components/CustomerSupportModal';
 import { CustomerCheckoutModal, BookingDetails } from './components/CustomerCheckoutModal';
 import { BookingSuccessModal } from './components/BookingSuccessModal';
 import { CustomerBottomNav, CustomerTabType } from './components/CustomerBottomNav';
 import { LoadingStateView, EmptyStateView, ErrorStateView } from './components/StateViews';
 import { getApiUrl } from './utils/api';
-import { Heart, CalendarCheck, ShieldCheck, UserCheck, Clock, CheckCircle2, AlertCircle } from 'lucide-react';
+import {
+  Heart,
+  CalendarCheck,
+  ShieldCheck,
+  User,
+  Clock,
+  CheckCircle2,
+  AlertCircle,
+  ChevronLeft,
+  Headphones,
+  Edit3,
+  LogOut,
+} from 'lucide-react';
 
 export function App() {
   const [authToken, setAuthToken] = useState<string | null>(localStorage.getItem('sola_customer_access_token'));
   const [customerPhone, setCustomerPhone] = useState<string | null>(localStorage.getItem('sola_customer_phone'));
+  const [userProfile, setUserProfile] = useState<CustomerUserProfile | null>(() => {
+    const saved = localStorage.getItem('sola_customer_profile');
+    return saved ? JSON.parse(saved) : null;
+  });
 
   // Data & Search States
   const [properties, setProperties] = useState<CustomerPropertyItem[]>([]);
@@ -27,6 +45,8 @@ export function App() {
   const [activeTab, setActiveTab] = useState<CustomerTabType>('EXPLORE');
   const [selectedProperty, setSelectedProperty] = useState<CustomerPropertyItem | null>(null);
   const [showAuthModal, setShowAuthModal] = useState<boolean>(false);
+  const [showEditProfileModal, setShowEditProfileModal] = useState<boolean>(false);
+  const [showSupportModal, setShowSupportModal] = useState<boolean>(false);
   const [showSuccessModal, setShowSuccessModal] = useState<boolean>(false);
 
   // Intercepted Guest Context
@@ -159,6 +179,24 @@ export function App() {
     }
   };
 
+  // Fetch Authenticated Customer Profile
+  const fetchCustomerProfile = async (token?: string | null) => {
+    const t = token || authToken || localStorage.getItem('sola_customer_access_token');
+    if (!t) return;
+    try {
+      const res = await fetch(getApiUrl('/customer/profile'), {
+        headers: {
+          Authorization: `Bearer ${t}`,
+        },
+      });
+      const json = await res.json();
+      if (res.ok && json.success && json.data) {
+        setUserProfile(json.data);
+        localStorage.setItem('sola_customer_profile', JSON.stringify(json.data));
+      }
+    } catch {}
+  };
+
   // Session Restoration & Token Refresh on Mount
   useEffect(() => {
     const restoreSession = async () => {
@@ -174,6 +212,7 @@ export function App() {
           if (res.ok && json.success && json.data?.accessToken) {
             localStorage.setItem('sola_customer_access_token', json.data.accessToken);
             setAuthToken(json.data.accessToken);
+            fetchCustomerProfile(json.data.accessToken);
           } else {
             // Revoked or expired refresh token -> clean logout
             handleLogout();
@@ -181,12 +220,23 @@ export function App() {
         } catch {
           // Network error: preserve existing state without fabricating demo credentials
         }
-      } else if (!authToken) {
+      } else if (authToken) {
+        fetchCustomerProfile(authToken);
+      } else {
         setAuthToken(null);
       }
     };
     restoreSession();
   }, []);
+
+  const getInitials = (name?: string | null): string => {
+    if (!name || name.trim().length === 0) return 'ن';
+    const parts = name.trim().split(/\s+/);
+    if (parts.length >= 2) {
+      return `${parts[0][0]}.${parts[1][0]}`;
+    }
+    return parts[0].slice(0, 2);
+  };
 
   // Favorite Toggle Handler (Protected Action)
   const handleToggleFavorite = (id: string, e?: React.MouseEvent) => {
@@ -204,7 +254,12 @@ export function App() {
   };
 
   // Auth Handlers
-  const handleAuthSuccess = (token: string, phone: string, refreshToken?: string) => {
+  const handleAuthSuccess = (
+    token: string,
+    phone: string,
+    refreshToken?: string,
+    user?: CustomerUserProfile
+  ) => {
     localStorage.setItem('sola_customer_access_token', token);
     if (refreshToken) {
       localStorage.setItem('sola_customer_refresh_token', refreshToken);
@@ -212,6 +267,13 @@ export function App() {
     localStorage.setItem('sola_customer_phone', phone);
     setAuthToken(token);
     setCustomerPhone(phone);
+
+    if (user) {
+      setUserProfile(user);
+      localStorage.setItem('sola_customer_profile', JSON.stringify(user));
+    } else {
+      fetchCustomerProfile(token);
+    }
     setShowAuthModal(false);
 
     // Context Preservation: Return to exact same property & dates post-login
@@ -238,8 +300,10 @@ export function App() {
     localStorage.removeItem('sola_customer_access_token');
     localStorage.removeItem('sola_customer_refresh_token');
     localStorage.removeItem('sola_customer_phone');
+    localStorage.removeItem('sola_customer_profile');
     setAuthToken(null);
     setCustomerPhone(null);
+    setUserProfile(null);
     setActiveTab('EXPLORE');
   };
 
@@ -496,38 +560,165 @@ export function App() {
         {/* Tab 4: ACCOUNT */}
         {activeTab === 'ACCOUNT' && (
           <div className="my-4 space-y-4">
-            <h2 className="text-base font-black text-slate-900 mb-3">حسابي</h2>
+            <div className="flex items-center justify-between">
+              <h2 className="text-base font-black text-slate-900">حسابي</h2>
+              {authToken && userProfile && (
+                <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200 flex items-center gap-1">
+                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>حساب موثق</span>
+                </span>
+              )}
+            </div>
+
             {authToken ? (
-              <div className="bg-slate-50 p-5 rounded-3xl border border-slate-200 space-y-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 bg-[#0059FF] text-white rounded-2xl flex items-center justify-center font-black text-lg">
-                    <UserCheck className="w-6 h-6" />
+              <div className="space-y-4 animate-fade-in">
+                {/* A. Identity Header Card */}
+                <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-xs relative overflow-hidden">
+                  <div className="flex items-center gap-4">
+                    {/* Initials Avatar */}
+                    <div className="w-14 h-14 bg-gradient-to-br from-[#0059FF] to-blue-700 text-white rounded-2xl flex items-center justify-center font-black text-lg shadow-md shadow-blue-500/20 shrink-0">
+                      {getInitials(userProfile?.fullName)}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      {userProfile?.fullName ? (
+                        <h3 className="font-black text-slate-900 text-base truncate">
+                          {userProfile.fullName}
+                        </h3>
+                      ) : (
+                        <div className="flex items-center gap-1.5 text-amber-800">
+                          <h3 className="font-black text-sm text-slate-800">نزيل صولا</h3>
+                          <span className="text-[10px] font-bold bg-amber-50 text-amber-700 px-2 py-0.5 rounded-md border border-amber-200">
+                            أكمل اسمك
+                          </span>
+                        </div>
+                      )}
+                      <p className="text-xs text-slate-500 font-bold dir-ltr mt-0.5 text-right">
+                        {userProfile?.phoneNumber || customerPhone}
+                      </p>
+                    </div>
+                    {/* Edit Profile Affordance */}
+                    <button
+                      onClick={() => setShowEditProfileModal(true)}
+                      className="px-3 py-1.5 bg-slate-50 hover:bg-slate-100 text-[#0059FF] font-black text-xs rounded-xl border border-slate-200 transition-colors flex items-center gap-1 shrink-0"
+                    >
+                      <Edit3 className="w-3.5 h-3.5" />
+                      <span>تعديل</span>
+                    </button>
                   </div>
-                  <div>
-                    <h3 className="font-black text-slate-900 text-sm">نزيل صولا المعتمد</h3>
-                    <p className="text-xs text-slate-500 font-bold dir-ltr">{customerPhone}</p>
+
+                  {/* Incomplete Profile Prompt Banner if name missing */}
+                  {(!userProfile?.fullName || userProfile.fullName.trim().length === 0) && (
+                    <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-2xl flex items-center justify-between gap-3 text-xs font-bold text-amber-900">
+                      <div className="flex items-center gap-2">
+                        <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+                        <span>لم تقم بإضافة اسمك بعد لتسهيل التواصل مع المالك.</span>
+                      </div>
+                      <button
+                        onClick={() => setShowEditProfileModal(true)}
+                        className="px-2.5 py-1 bg-amber-600 text-white font-black text-[11px] rounded-lg shrink-0"
+                      >
+                        إضافة الاسم
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {/* B. Useful Sections & Action Cards */}
+                <div className="bg-white rounded-3xl border border-slate-200 shadow-xs divide-y divide-slate-100 overflow-hidden">
+                  {/* 1. My Bookings Nav Card */}
+                  <button
+                    onClick={() => setActiveTab('BOOKINGS')}
+                    className="w-full p-4 flex items-center justify-between hover:bg-slate-50 transition-colors text-right"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 bg-blue-50 text-[#0059FF] rounded-xl flex items-center justify-center">
+                        <CalendarCheck className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <h4 className="font-black text-slate-900 text-xs">حجوزاتي وطلبات الإقامة</h4>
+                        <p className="text-[11px] text-slate-400 font-bold">متابعة حالة الحجوزات وتفاصيل الدفع</p>
+                      </div>
+                    </div>
+                    <ChevronLeft className="w-4 h-4 text-slate-400" />
+                  </button>
+
+                  {/* 2. Favorites Nav Card */}
+                  <button
+                    onClick={() => setActiveTab('FAVORITES')}
+                    className="w-full p-4 flex items-center justify-between hover:bg-slate-50 transition-colors text-right"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 bg-rose-50 text-rose-600 rounded-xl flex items-center justify-center">
+                        <Heart className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <h4 className="font-black text-slate-900 text-xs">الوحدات المفضلة</h4>
+                        <p className="text-[11px] text-slate-400 font-bold">الشاليهات والفيلات المحفوظة للرجوع إليها</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {favorites.length > 0 && (
+                        <span className="text-[11px] font-black text-white bg-rose-500 px-2 py-0.5 rounded-full">
+                          {favorites.length}
+                        </span>
+                      )}
+                      <ChevronLeft className="w-4 h-4 text-slate-400" />
+                    </div>
+                  </button>
+
+                  {/* 3. Help & Support */}
+                  <button
+                    onClick={() => setShowSupportModal(true)}
+                    className="w-full p-4 flex items-center justify-between hover:bg-slate-50 transition-colors text-right"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 bg-emerald-50 text-emerald-600 rounded-xl flex items-center justify-center">
+                        <Headphones className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <h4 className="font-black text-slate-900 text-xs">المساعدة والدعم</h4>
+                        <p className="text-[11px] text-slate-400 font-bold">فريق خدمة عملاء صولا متواجد لمساعدتك</p>
+                      </div>
+                    </div>
+                    <ChevronLeft className="w-4 h-4 text-slate-400" />
+                  </button>
+
+                  {/* 4. Trust & Safety Guarantee Banner */}
+                  <div className="p-4 bg-slate-50/70 flex items-start gap-3">
+                    <ShieldCheck className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
+                    <div className="text-right">
+                      <h5 className="font-black text-slate-900 text-xs">ضمان صولا للإقامات الموثوقة</h5>
+                      <p className="text-[11px] text-slate-500 font-bold leading-relaxed mt-0.5">
+                        جميع الوحدات معتمدة ومعاينة ميدانياً مع حماية كاملة لمقدم الحجز واسترداد فوري في حال تعذر الاستلام.
+                      </p>
+                    </div>
                   </div>
                 </div>
-                <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-2xl flex items-center gap-2 text-xs font-bold text-emerald-800">
-                  <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
-                  <span>حسابك موثق برقم الهاتف وجاهز لتقديم طلبات الحجز المباشرة.</span>
-                </div>
+
+                {/* Logout Button */}
                 <button
                   onClick={handleLogout}
-                  className="w-full py-3 bg-rose-50 hover:bg-rose-100 text-rose-600 font-black text-xs rounded-xl transition-all"
+                  className="w-full py-3.5 bg-rose-50 hover:bg-rose-100 text-rose-600 font-black text-xs rounded-2xl border border-rose-100 transition-all flex items-center justify-center gap-2"
                 >
-                  تسجيل الخروج
+                  <LogOut className="w-4 h-4" />
+                  <span>تسجيل الخروج من الحساب</span>
                 </button>
               </div>
             ) : (
-              <div className="bg-slate-50 p-6 rounded-3xl border border-slate-200 text-center space-y-3">
-                <h3 className="font-black text-slate-900 text-sm">تسجيل الدخول / إنشاء حساب</h3>
-                <p className="text-xs text-slate-500 font-bold">
-                  ادخل رقم هاتفك لتأكيد طلبات الحجز وحفظ الإقامات المفضلة لديك.
-                </p>
+              /* Logged-Out State */
+              <div className="bg-white p-6 rounded-3xl border border-slate-200 text-center space-y-4 shadow-xs">
+                <div className="w-16 h-16 bg-blue-50 text-[#0059FF] rounded-3xl flex items-center justify-center mx-auto mb-2 shadow-xs">
+                  <User className="w-8 h-8" />
+                </div>
+                <div>
+                  <h3 className="font-black text-slate-900 text-base mb-1">تسجيل الدخول / إنشاء حساب</h3>
+                  <p className="text-xs text-slate-500 font-bold max-w-xs mx-auto leading-relaxed">
+                    ادخل رقم هاتفك لتتمكن من تقديم طلبات الحجز المباشرة وحفظ شاليهاتك المفضلة ومتابعة التأكيدات.
+                  </p>
+                </div>
                 <button
                   onClick={() => setShowAuthModal(true)}
-                  className="w-full py-3 bg-[#0059FF] text-white font-black text-xs rounded-xl shadow-xs"
+                  className="w-full py-3.5 bg-[#0059FF] hover:bg-blue-600 active:scale-[0.99] text-white font-black text-xs rounded-xl shadow-lg shadow-blue-500/25 transition-all"
                 >
                   دخول برقم الجوال
                 </button>
@@ -560,6 +751,24 @@ export function App() {
           onSuccess={handleAuthSuccess}
           interceptedContext={interceptedContext}
         />
+      )}
+
+      {/* Customer Edit Profile Modal */}
+      {showEditProfileModal && userProfile && authToken && (
+        <CustomerEditProfileModal
+          user={userProfile}
+          authToken={authToken}
+          onClose={() => setShowEditProfileModal(false)}
+          onUpdated={(updated) => {
+            setUserProfile(updated);
+            localStorage.setItem('sola_customer_profile', JSON.stringify(updated));
+          }}
+        />
+      )}
+
+      {/* Customer Support Modal */}
+      {showSupportModal && (
+        <CustomerSupportModal onClose={() => setShowSupportModal(false)} />
       )}
 
       {/* Request Success Modal */}

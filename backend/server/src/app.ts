@@ -11,8 +11,8 @@ import { PropertyDomainController, BookingDomainController, DisputeDomainControl
 import { calculateBookingFinancials, validatePayoutRequest, roundHalfEvenInCents } from './services/financialEngine.js';
 import { verifyJwtToken, requireRole } from './middleware/auth.js';
 import { applyCorsHeaders } from './middleware/cors.js';
-import { dbOwnersStore, dbNotificationsStore, dbOwnerVerificationDocsStore, dbPropertyVerificationDocsStore, dbPropertiesStore, dbBookingsStore, dbPayoutRequestsStore, dbDisputesStore } from './services/authService.js';
-import { ownerDb, propertyDb, bookingDb, payoutDb, disputeDb, notificationDb, imageDb, uploadIntentDb, adminStatsDb, walletDb } from './services/dbRepository.js';
+import { dbUsersStore, dbOwnersStore, dbNotificationsStore, dbOwnerVerificationDocsStore, dbPropertyVerificationDocsStore, dbPropertiesStore, dbBookingsStore, dbPayoutRequestsStore, dbDisputesStore } from './services/authService.js';
+import { userDb, ownerDb, propertyDb, bookingDb, payoutDb, disputeDb, notificationDb, imageDb, uploadIntentDb, adminStatsDb, walletDb } from './services/dbRepository.js';
 import { paymentTxDb, PaymentService, MockPaymentGateway, PaymobGateway, verifyPaymobHmacSha512 } from './services/paymentService.js';
 import { createStorageProvider, IObjectStorageProvider, verifyMagicBytes, computeSha256 } from './services/storageProvider.js';
 import { GLOBAL_MIN_STAY_NIGHTS, GLOBAL_MAX_STAY_NIGHTS, hasDateRangeOverlap, validateStayLength } from './constants/bookingRules.js';
@@ -2318,6 +2318,111 @@ export class ExpressServerApp {
           } catch {
             // Public route: ignore optional invalid token gracefully
           }
+        }
+
+        // 4.0 Customer Profile (Real Canonical Users Identity — AUTH-03)
+        if (path === '/api/v1/customer/profile' && method === 'GET') {
+          let user: any = await userDb.getById(customerId).catch(() => null);
+          if (!user && customerPhone) {
+            user = await userDb.getByPhone(customerPhone).catch(() => null);
+          }
+          if (!user) {
+            user = dbUsersStore.get(customerPhone) || {
+              id: customerId,
+              phoneNumber: customerPhone,
+              fullName: null,
+              email: null,
+              avatarUrl: null,
+              status: 'ACTIVE',
+              createdAt: timestamp,
+              updatedAt: timestamp,
+            };
+          }
+
+          return {
+            statusCode: 200,
+            body: {
+              success: true,
+              data: {
+                id: user.id,
+                phoneNumber: user.phoneNumber,
+                phoneVerifiedAt: user.phoneVerifiedAt,
+                fullName: user.fullName || null,
+                email: user.email || null,
+                avatarUrl: user.avatarUrl || null,
+                status: user.status,
+                createdAt: user.createdAt,
+                updatedAt: user.updatedAt,
+              },
+              timestamp,
+            },
+          };
+        }
+
+        if (path === '/api/v1/customer/profile' && (method === 'PATCH' || method === 'PUT')) {
+          const rawName = bodyPayload?.fullName !== undefined ? String(bodyPayload.fullName).trim() : undefined;
+          if (rawName !== undefined && rawName.length < 2) {
+            return {
+              statusCode: 400,
+              body: {
+                success: false,
+                error: {
+                  code: 'INVALID_FULL_NAME',
+                  message: 'يرجى إدخال اسم صحيح يتكون من حرفين على الأقل',
+                },
+                timestamp,
+              },
+            };
+          }
+
+          let updatedUser = await userDb.updateProfile(customerId, {
+            fullName: rawName,
+            email: bodyPayload?.email?.trim() || null,
+            avatarUrl: bodyPayload?.avatarUrl || null,
+          }).catch(() => null);
+
+          if (!updatedUser) {
+            const existing = dbUsersStore.get(customerPhone) || dbUsersStore.get(customerId) || {
+              id: customerId,
+              phoneNumber: customerPhone,
+              status: 'ACTIVE' as const,
+              createdAt: timestamp,
+              updatedAt: timestamp,
+            };
+            updatedUser = {
+              ...existing,
+              fullName: rawName !== undefined ? rawName : existing.fullName,
+              email: bodyPayload?.email !== undefined ? bodyPayload.email : existing.email,
+              avatarUrl: bodyPayload?.avatarUrl !== undefined ? bodyPayload.avatarUrl : existing.avatarUrl,
+              updatedAt: timestamp,
+            };
+          } else if (rawName !== undefined) {
+            updatedUser.fullName = rawName;
+          }
+
+          if (updatedUser) {
+            dbUsersStore.set(customerPhone, updatedUser);
+            dbUsersStore.set(customerId, updatedUser);
+          }
+
+          return {
+            statusCode: 200,
+            body: {
+              success: true,
+              data: {
+                id: updatedUser.id,
+                phoneNumber: updatedUser.phoneNumber,
+                phoneVerifiedAt: updatedUser.phoneVerifiedAt,
+                fullName: updatedUser.fullName || null,
+                email: updatedUser.email || null,
+                avatarUrl: updatedUser.avatarUrl || null,
+                status: updatedUser.status,
+                createdAt: updatedUser.createdAt,
+                updatedAt: updatedUser.updatedAt,
+              },
+              timestamp,
+            },
+          };
         }
 
         // 4.1 Property Search (PUBLISHED ONLY — PostgreSQL Driven)

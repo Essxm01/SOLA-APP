@@ -1,10 +1,20 @@
 import React, { useState } from 'react';
 import { getApiUrl } from '../utils/api';
-import { X, Smartphone, KeyRound, ShieldCheck } from 'lucide-react';
+import { X, Smartphone, KeyRound, ShieldCheck, User, CheckCircle2 } from 'lucide-react';
+
+export interface CustomerUserProfile {
+  id: string;
+  phoneNumber: string;
+  fullName: string | null;
+  email?: string | null;
+  avatarUrl?: string | null;
+  phoneVerifiedAt?: string | null;
+  createdAt?: string;
+}
 
 interface CustomerAuthModalProps {
   onClose: () => void;
-  onSuccess: (token: string, phone: string, refreshToken?: string) => void;
+  onSuccess: (token: string, phone: string, refreshToken?: string, user?: CustomerUserProfile) => void;
   interceptedContext?: { propertyId: string; checkIn: string; checkOut: string; guests: number } | null;
 }
 
@@ -13,11 +23,20 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
   onSuccess,
   interceptedContext,
 }) => {
-  const [step, setStep] = useState<'PHONE' | 'OTP'>('PHONE');
+  const [step, setStep] = useState<'PHONE' | 'OTP' | 'NAME_ONBOARDING'>('PHONE');
   const [phone, setPhone] = useState<string>('');
   const [code, setCode] = useState<string>('');
+  const [fullName, setFullName] = useState<string>('');
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string>('');
+
+  // Pending Auth Credentials for New User Name Onboarding Step
+  const [pendingAuth, setPendingAuth] = useState<{
+    token: string;
+    phone: string;
+    refreshToken?: string;
+    user: CustomerUserProfile;
+  } | null>(null);
 
   const handleRequestOtp = async () => {
     if (!phone || phone.length < 10) {
@@ -73,12 +92,59 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
 
       const token = json.data?.tokens?.accessToken;
       const refreshToken = json.data?.tokens?.refreshToken;
+      const user = json.data?.user as CustomerUserProfile;
+
       if (!token) {
         throw new Error('لم يتم استلام رمز الدخول من الخادم');
       }
-      onSuccess(token, fullPhone, refreshToken);
+
+      // If new user or profile name is missing, proceed to name onboarding step
+      if (!user?.fullName || user.fullName.trim().length === 0) {
+        setPendingAuth({ token, phone: fullPhone, refreshToken, user });
+        setStep('NAME_ONBOARDING');
+      } else {
+        onSuccess(token, fullPhone, refreshToken, user);
+      }
     } catch (err: any) {
       setError(err.message || 'رمز التحقق غير صحيح أو منتهي الصلاحية.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSaveProfileName = async () => {
+    if (!fullName || fullName.trim().length < 2) {
+      setError('يرجى إدخال اسمك بالكامل (حرفين على الأقل)');
+      return;
+    }
+
+    if (!pendingAuth) {
+      setError('انتهت صلاحية الجلسة المؤقتة. يرجى المحاولة مرة أخرى.');
+      return;
+    }
+
+    setLoading(true);
+    setError('');
+
+    try {
+      const res = await fetch(getApiUrl('/customer/profile'), {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${pendingAuth.token}`,
+        },
+        body: JSON.stringify({ fullName: fullName.trim() }),
+      });
+
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        throw new Error(json.error?.message || 'تعذر حفظ الاسم');
+      }
+
+      const updatedUser = json.data as CustomerUserProfile;
+      onSuccess(pendingAuth.token, pendingAuth.phone, pendingAuth.refreshToken, updatedUser);
+    } catch (err: any) {
+      setError(err.message || 'حدث خطأ أثناء حفظ الاسم.');
     } finally {
       setLoading(false);
     }
@@ -94,29 +160,42 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
           <X className="w-4 h-4" />
         </button>
 
+        {/* Header Branding */}
         <div className="text-center mb-6">
-          <div className="w-12 h-12 bg-blue-50 text-[#0059FF] rounded-2xl flex items-center justify-center mx-auto mb-3">
-            <ShieldCheck className="w-6 h-6" />
+          <div className="w-12 h-12 bg-blue-50 text-[#0059FF] rounded-2xl flex items-center justify-center mx-auto mb-3 shadow-xs">
+            {step === 'NAME_ONBOARDING' ? <User className="w-6 h-6" /> : <ShieldCheck className="w-6 h-6" />}
           </div>
-          <h3 className="text-lg font-black text-slate-900">تسجيل الدخول / إنشاء حساب</h3>
+          <h3 className="text-lg font-black text-slate-900">
+            {step === 'NAME_ONBOARDING'
+              ? 'أهلاً بك في صولا! 🎉'
+              : step === 'OTP'
+              ? 'تأكيد رقم الهاتف'
+              : 'تسجيل الدخول / إنشاء حساب'}
+          </h3>
           <p className="text-xs text-slate-500 font-bold mt-1">
-            ادخل رقم هاتفك لتأكيد حجزك ومتابعة تفاصيل الإقامة
+            {step === 'NAME_ONBOARDING'
+              ? 'ادخل اسمك بالكامل لمتابعة حجزك وتوثيق حسابك'
+              : step === 'OTP'
+              ? `أدخل كود التحقق المرسل إلى هاتفك`
+              : 'ادخل رقم هاتفك لتأكيد حجزك ومتابعة تفاصيل الإقامة'}
           </p>
 
-          {interceptedContext && (
-            <div className="mt-3 p-2.5 bg-amber-50 border border-amber-200 rounded-xl text-[11px] font-bold text-amber-800">
-              📌 سيتم إعادتك لتأكيد حجز الوحدة مباشرة بعد إدخال كود التحقق.
+          {interceptedContext && step !== 'NAME_ONBOARDING' && (
+            <div className="mt-3 p-2.5 bg-amber-50 border border-amber-200 rounded-xl text-[11px] font-bold text-amber-800 flex items-center gap-2">
+              <span>📌</span>
+              <span>سيتم إعادتك لتأكيد حجز الوحدة مباشرة بعد إدخال كود التحقق.</span>
             </div>
           )}
         </div>
 
         {error && (
-          <div className="mb-4 p-3 bg-rose-50 border border-rose-200 text-rose-700 text-xs font-bold rounded-xl text-center">
+          <div className="mb-4 p-3 bg-rose-50 border border-rose-200 text-rose-700 text-xs font-bold rounded-xl text-center animate-fade-in">
             {error}
           </div>
         )}
 
-        {step === 'PHONE' ? (
+        {/* Step 1: PHONE */}
+        {step === 'PHONE' && (
           <div className="space-y-4">
             <div>
               <label className="block text-xs font-black text-slate-700 mb-1.5">رقم الجوال المصري</label>
@@ -126,7 +205,8 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
                   placeholder="01012345678"
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
-                  className="w-full pl-4 pr-10 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-900 focus:outline-none focus:border-[#0059FF]"
+                  onKeyDown={(e) => e.key === 'Enter' && handleRequestOtp()}
+                  className="w-full pl-4 pr-10 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-900 focus:outline-none focus:border-[#0059FF] transition-colors"
                 />
                 <Smartphone className="w-5 h-5 text-slate-400 absolute top-3.5 right-3" />
               </div>
@@ -135,12 +215,15 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
             <button
               onClick={handleRequestOtp}
               disabled={loading}
-              className="w-full py-3.5 bg-[#0059FF] hover:bg-blue-600 text-white font-black text-xs rounded-xl shadow-lg shadow-blue-500/25 transition-all flex items-center justify-center gap-2"
+              className="w-full py-3.5 bg-[#0059FF] hover:bg-blue-600 active:scale-[0.99] text-white font-black text-xs rounded-xl shadow-lg shadow-blue-500/25 transition-all flex items-center justify-center gap-2"
             >
               {loading ? 'جاري الإرسال...' : 'إرسال رمز التحقق عبر SMS'}
             </button>
           </div>
-        ) : (
+        )}
+
+        {/* Step 2: OTP */}
+        {step === 'OTP' && (
           <div className="space-y-4">
             <div>
               <label className="block text-xs font-black text-slate-700 mb-1.5">
@@ -153,7 +236,8 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
                   placeholder="1234"
                   value={code}
                   onChange={(e) => setCode(e.target.value)}
-                  className="w-full pl-4 pr-10 py-3 bg-slate-50 border border-slate-200 rounded-xl text-base font-black text-center tracking-widest text-slate-900 focus:outline-none focus:border-[#0059FF]"
+                  onKeyDown={(e) => e.key === 'Enter' && handleVerifyOtp()}
+                  className="w-full pl-4 pr-10 py-3 bg-slate-50 border border-slate-200 rounded-xl text-base font-black text-center tracking-widest text-slate-900 focus:outline-none focus:border-[#0059FF] transition-colors"
                 />
                 <KeyRound className="w-5 h-5 text-slate-400 absolute top-3.5 right-3" />
               </div>
@@ -165,9 +249,9 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
             <button
               onClick={handleVerifyOtp}
               disabled={loading}
-              className="w-full py-3.5 bg-[#0059FF] hover:bg-blue-600 text-white font-black text-xs rounded-xl shadow-lg shadow-blue-500/25 transition-all flex items-center justify-center gap-2"
+              className="w-full py-3.5 bg-[#0059FF] hover:bg-blue-600 active:scale-[0.99] text-white font-black text-xs rounded-xl shadow-lg shadow-blue-500/25 transition-all flex items-center justify-center gap-2"
             >
-              {loading ? 'جاري التأكيد...' : 'تأكيد ودخول الحساب'}
+              {loading ? 'جاري التأكيد...' : 'تأكيد ومتابعة'}
             </button>
 
             <button
@@ -175,6 +259,39 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
               className="w-full py-2 text-slate-400 hover:text-slate-600 text-xs font-bold text-center"
             >
               تغيير رقم الهاتف
+            </button>
+          </div>
+        )}
+
+        {/* Step 3: NAME ONBOARDING (New User Profile) */}
+        {step === 'NAME_ONBOARDING' && (
+          <div className="space-y-4">
+            <div className="p-3 bg-blue-50 border border-blue-100 rounded-2xl flex items-center gap-2 text-xs font-bold text-blue-900">
+              <CheckCircle2 className="w-4 h-4 text-[#0059FF] shrink-0" />
+              <span>تم التحقق من رقم هاتفك بنجاح. أدخل اسمك لإتمام تسجيل الحساب.</span>
+            </div>
+
+            <div>
+              <label className="block text-xs font-black text-slate-700 mb-1.5">الاسم بالكامل (ثلاثي أو ثنائي)</label>
+              <div className="relative">
+                <input
+                  type="text"
+                  placeholder="مثال: أحمد محمود علي"
+                  value={fullName}
+                  onChange={(e) => setFullName(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleSaveProfileName()}
+                  className="w-full pl-4 pr-10 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-900 focus:outline-none focus:border-[#0059FF] transition-colors"
+                />
+                <User className="w-5 h-5 text-slate-400 absolute top-3.5 right-3" />
+              </div>
+            </div>
+
+            <button
+              onClick={handleSaveProfileName}
+              disabled={loading}
+              className="w-full py-3.5 bg-[#0059FF] hover:bg-blue-600 active:scale-[0.99] text-white font-black text-xs rounded-xl shadow-lg shadow-blue-500/25 transition-all flex items-center justify-center gap-2"
+            >
+              {loading ? 'جاري الحفظ...' : 'حفظ والدخول إلى صولا'}
             </button>
           </div>
         )}

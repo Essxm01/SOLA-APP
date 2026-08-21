@@ -153,6 +153,40 @@ async function queryViaSupabaseRest(text: string, params: any[] | undefined, url
     return { rows: mapped, command: 'UPDATE', rowCount: mapped.length, oid: 0, fields: [] };
   }
 
+  // 0F. UPDATE users SET full_name = ... WHERE id = $1
+  if (lowerSql.startsWith('update users') && lowerSql.includes('full_name')) {
+    const userId = params?.[0];
+    const fullName = params?.[1];
+    const email = params?.[2] || null;
+    const avatarUrl = params?.[3] || null;
+    const nowIso = new Date().toISOString();
+
+    const patchBody: any = { updated_at: nowIso };
+    if (fullName !== undefined) patchBody.full_name = fullName;
+    if (email !== undefined) patchBody.email = email;
+    if (avatarUrl !== undefined) patchBody.avatar_url = avatarUrl;
+
+    const res = await fetch(`${url}/rest/v1/users?id=eq.${encodeURIComponent(userId)}`, {
+      method: 'PATCH',
+      headers,
+      body: JSON.stringify(patchBody),
+    });
+    const raw: any = await res.json().catch(() => []);
+    const rows: any[] = Array.isArray(raw) ? raw : [];
+    const mapped = rows.map(u => ({
+      id: u.id,
+      phoneNumber: u.phone_number,
+      phoneVerifiedAt: u.phone_verified_at,
+      fullName: u.full_name,
+      email: u.email,
+      avatarUrl: u.avatar_url,
+      status: u.status,
+      createdAt: u.created_at,
+      updatedAt: u.updated_at,
+    }));
+    return { rows: mapped, command: 'UPDATE', rowCount: mapped.length, oid: 0, fields: [] };
+  }
+
   // 1. SELECT properties WHERE id = $1 or p.id = $1
   if (lowerSql.startsWith('select') && lowerSql.includes('from properties') && (lowerSql.includes('where id =') || lowerSql.includes('where p.id =') || lowerSql.includes('p.id = $1') || lowerSql.includes('id = $1'))) {
     const propId = params?.[0];

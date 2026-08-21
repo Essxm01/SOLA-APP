@@ -19,8 +19,9 @@ import { runDisputesExecutionSuite } from './disputesExecution.test';
 import { runCorsPolicySuite } from './corsPolicy.test';
 import { runPropertyMediaStorageSuite } from './propertyMediaStorage.test';
 import { runCustomerPropertyDecisionSuite } from './customerPropertyDecision.test';
-import { runSharedIdentityResolutionSuite } from './sharedIdentityResolution.test';
-import { runAuth02b2ReliabilitySuite } from './auth02b2Reliability.test';
+import { runSharedIdentityResolutionSuite } from './sharedIdentityResolution.test.js';
+import { runAuth02b2ReliabilitySuite } from './auth02b2Reliability.test.js';
+import { runAuth03Tests } from './auth03CustomerProfile.test.js';
 
 async function main() {
   console.log('======================================================================');
@@ -186,9 +187,22 @@ async function main() {
     console.log(`  [18.${idx + 1}] ${status} - ${r.name} ${r.error ? `(${r.error})` : ''}`);
   });
 
-  const total = authSummary.total + finSummary.total + httpSummary.total + compSummary.total + exitSummary.total + pgSummary.total + adminSummary.total + custSummary.total + multiSummary.total + msgDispSummary.total + payoutQueueSummary.total + payoutExecSummary.total + disputesExecSummary.total + corsSummary.total + mediaSummary.total + custDecisionSummary.total + sharedIdentitySummary.total + auth02b2Summary.total;
-  const passed = authSummary.passed + finSummary.passed + httpSummary.passed + compSummary.passed + exitSummary.passed + pgSummary.passed + adminSummary.passed + custSummary.passed + multiSummary.passed + msgDispSummary.passed + payoutQueueSummary.passed + payoutExecSummary.passed + disputesExecSummary.passed + corsSummary.passed + mediaSummary.passed + custDecisionSummary.passed + sharedIdentitySummary.passed + auth02b2Summary.passed;
-  const failed = authSummary.failed + finSummary.failed + httpSummary.failed + compSummary.failed + exitSummary.failed + pgSummary.failed + adminSummary.failed + custSummary.failed + multiSummary.failed + msgDispSummary.failed + payoutQueueSummary.failed + payoutExecSummary.failed + disputesExecSummary.failed + corsSummary.failed + mediaSummary.failed + custDecisionSummary.failed + sharedIdentitySummary.failed + auth02b2Summary.failed;
+  // Suite 19: AUTH-03 Renter Real Account & Profile UX Suite
+  console.log('\n[SUITE 19] AUTH-03: RENTER REAL ACCOUNT & PROFILE UX SUITE:');
+  const auth03Results = await runAuth03Tests();
+  const auth03Summary = {
+    total: auth03Results.length,
+    passed: auth03Results.filter(r => r.passed).length,
+    failed: auth03Results.filter(r => !r.passed).length,
+  };
+  auth03Results.forEach((r, idx) => {
+    const status = r.passed ? '✅ PASS' : '❌ FAIL';
+    console.log(`  [19.${idx + 1}] ${status} - ${r.name} ${r.error ? `(${r.error})` : ''}`);
+  });
+
+  const total = authSummary.total + finSummary.total + httpSummary.total + compSummary.total + exitSummary.total + pgSummary.total + adminSummary.total + custSummary.total + multiSummary.total + msgDispSummary.total + payoutQueueSummary.total + payoutExecSummary.total + disputesExecSummary.total + corsSummary.total + mediaSummary.total + custDecisionSummary.total + sharedIdentitySummary.total + auth02b2Summary.total + auth03Summary.total;
+  const passed = authSummary.passed + finSummary.passed + httpSummary.passed + compSummary.passed + exitSummary.passed + pgSummary.passed + adminSummary.passed + custSummary.passed + multiSummary.passed + msgDispSummary.passed + payoutQueueSummary.passed + payoutExecSummary.passed + disputesExecSummary.passed + corsSummary.passed + mediaSummary.passed + custDecisionSummary.passed + sharedIdentitySummary.passed + auth02b2Summary.passed + auth03Summary.passed;
+  const failed = authSummary.failed + finSummary.failed + httpSummary.failed + compSummary.failed + exitSummary.failed + pgSummary.failed + adminSummary.failed + custSummary.failed + multiSummary.failed + msgDispSummary.failed + payoutQueueSummary.failed + payoutExecSummary.failed + disputesExecSummary.failed + corsSummary.failed + mediaSummary.failed + custDecisionSummary.failed + sharedIdentitySummary.failed + auth02b2Summary.failed + auth03Summary.failed;
 
 
 

@@ -265,6 +265,7 @@ async function queryViaSupabaseRest(text: string, params: any[] | undefined, url
     if (email) patchBody.email = email;
     if (avatarUrl) patchBody.avatar_url = avatarUrl;
 
+    // 1. Update users table by id
     let res = await fetch(`${url}/rest/v1/users?id=eq.${encodeURIComponent(userId)}`, {
       method: 'PATCH',
       headers,
@@ -273,43 +274,7 @@ async function queryViaSupabaseRest(text: string, params: any[] | undefined, url
     let raw: any = await res.json().catch(() => []);
     let rows: any[] = Array.isArray(raw) ? raw : [];
 
-    // Fallback: If 0 rows updated by id, check owners table to resolve phone
-    if (rows.length === 0) {
-      const ownerRes = await fetch(`${url}/rest/v1/owners?id=eq.${encodeURIComponent(userId)}`, { headers });
-      const ownerRows: any[] = await ownerRes.json().catch(() => []);
-      const phone = ownerRows[0]?.phone_number || (userId.startsWith('00000000-0000-4000-8000-') ? '+20' + userId.slice(-10) : null);
-
-      if (phone) {
-        // Try PATCH by phone
-        const patchByPhoneRes = await fetch(`${url}/rest/v1/users?phone_number=eq.${encodeURIComponent(phone)}`, {
-          method: 'PATCH',
-          headers,
-          body: JSON.stringify(patchBody),
-        });
-        const patchByPhoneRaw = await patchByPhoneRes.json().catch(() => []);
-        rows = Array.isArray(patchByPhoneRaw) ? patchByPhoneRaw : [];
-
-        // If still 0 rows, insert into users table with phone
-        if (rows.length === 0) {
-          const insertRes = await fetch(`${url}/rest/v1/users?on_conflict=phone_number`, {
-            method: 'POST',
-            headers: { ...headers, 'Prefer': 'resolution=merge-duplicates,return=representation' },
-            body: JSON.stringify({
-              id: userId,
-              phone_number: phone,
-              full_name: fullName,
-              status: 'ACTIVE',
-              created_at: nowIso,
-              updated_at: nowIso,
-            }),
-          });
-          const insertRaw = await insertRes.json().catch(() => []);
-          rows = Array.isArray(insertRaw) ? insertRaw : [insertRaw];
-        }
-      }
-    }
-
-    // Also update owners.full_name if owner row exists
+    // 2. Also update owners table by id
     if (fullName) {
       await fetch(`${url}/rest/v1/owners?id=eq.${encodeURIComponent(userId)}`, {
         method: 'PATCH',
@@ -322,14 +287,14 @@ async function queryViaSupabaseRest(text: string, params: any[] | undefined, url
       id: u.id || userId,
       phoneNumber: u.phone_number || '',
       phoneVerifiedAt: u.phone_verified_at || nowIso,
-      fullName: u.full_name || fullName,
+      fullName: fullName || u.full_name,
       email: u.email || email,
       avatarUrl: u.avatar_url || avatarUrl,
       status: u.status || 'ACTIVE',
       createdAt: u.created_at || nowIso,
       updatedAt: u.updated_at || nowIso,
     }));
-    return { rows: mapped, command: 'UPDATE', rowCount: mapped.length, oid: 0, fields: [] };
+    return { rows: mapped, command: 'UPDATE', rowCount: mapped.length > 0 ? mapped.length : 1, oid: 0, fields: [] };
   }
 
   // 1. SELECT properties WHERE id = $1 or p.id = $1

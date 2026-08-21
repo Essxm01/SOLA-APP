@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowRight, User, Phone, Mail, ShieldCheck, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { ArrowRight, User, Phone, Mail, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { getApiUrl } from '../utils/api';
 import type { CustomerUserProfile } from './CustomerAuthModal';
 
@@ -53,7 +53,6 @@ export const CustomerEditAccountPage: React.FC<CustomerEditAccountPageProps> = (
   }, [user, authToken]);
 
   const resolvedPhone = currentUser?.phoneNumber || customerPhone || '';
-  const isPhoneVerified = !!currentUser?.phoneVerifiedAt;
 
   // Derive initials from full name
   const getInitials = (name?: string | null) => {
@@ -269,12 +268,6 @@ export const CustomerEditAccountPage: React.FC<CustomerEditAccountPageProps> = (
               <label className="block text-xs font-black text-slate-800">
                 رقم الهاتف
               </label>
-              {isPhoneVerified && (
-                <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200 flex items-center gap-1">
-                  <ShieldCheck className="w-3 h-3 text-emerald-600" />
-                  <span>موثق</span>
-                </span>
-              )}
             </div>
             <div className="relative">
               <input

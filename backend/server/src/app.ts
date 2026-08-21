@@ -198,6 +198,18 @@ export class ExpressServerApp {
         return { statusCode, body: response };
       }
 
+      if (path === '/api/v1/auth/prototype-login' && method === 'POST') {
+        const response = await this.authController.prototypeLogin(
+          bodyPayload?.phone,
+          bodyPayload?.surface,
+          bodyPayload?.fullName,
+          bodyPayload?.deviceInfo,
+          headers['x-forwarded-for'] || headers['cf-connecting-ip']
+        );
+        const statusCode = response.success ? 200 : (response.error?.code === 'MISSING_OR_INVALID_AUTH_SURFACE' ? 400 : 400);
+        return { statusCode, body: response };
+      }
+
       if (path === '/api/v1/auth/refresh' && method === 'POST') {
         const response = await this.authController.refreshSession(bodyPayload?.refreshToken);
         return { statusCode: response.success ? 200 : 401, body: response };

@@ -9,6 +9,7 @@ interface AuthContextType {
   phoneNumber: string;
   owner: Owner | null;
   setPhoneNumber: (phone: string) => void;
+  loginWithPhone: (phone: string) => Promise<{ success: boolean; ownerOnboardingRequired?: boolean; error?: string }>;
   sendOTP: (phone: string) => Promise<boolean>;
   verifyOTP: (code: string) => Promise<boolean>;
   logout: () => void;
@@ -87,6 +88,55 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     loadProfile();
   }, []);
 
+  const loginWithPhone = async (phone: string): Promise<{ success: boolean; ownerOnboardingRequired?: boolean; error?: string }> => {
+    setPhoneNumber(phone);
+    localStorage.setItem('sola_owner_phone', phone);
+    const repo = repositoryFactory;
+    if (!repo.useMockMode) {
+      try {
+        const res: any = await repo.auth.prototypeLogin({ phone, surface: 'OWNER' });
+        const token = res.data?.tokens?.accessToken || res.accessToken;
+        const refreshToken = res.data?.tokens?.refreshToken || res.refreshToken;
+        const ownerData = res.data?.owner || res.owner;
+        const ownerOnboardingRequired = res.data?.ownerOnboardingRequired ?? res.ownerOnboardingRequired;
+
+        if (token) {
+          localStorage.setItem('sola_access_token', token);
+          if (refreshToken) {
+            localStorage.setItem('sola_refresh_token', refreshToken);
+          }
+          localStorage.setItem('sola_owner_authenticated', 'true');
+          if (ownerData) {
+            setOwner(ownerData);
+          }
+          if (ownerOnboardingRequired) {
+            setHasCompletedOnboarding(false);
+            localStorage.setItem('sola_owner_onboarding', 'false');
+          } else {
+            setHasCompletedOnboarding(true);
+            localStorage.setItem('sola_owner_onboarding', 'true');
+          }
+          setIsAuthenticated(true);
+          return { success: true, ownerOnboardingRequired };
+        }
+
+        if (ownerOnboardingRequired) {
+          setHasCompletedOnboarding(false);
+          localStorage.setItem('sola_owner_onboarding', 'false');
+          return { success: false, ownerOnboardingRequired: true, error: 'هذا الحساب غير مسجل كمالك وحدات بعد.' };
+        }
+
+        return { success: false, error: res.error?.message || 'تعذر تسجيل الدخول كمالك' };
+      } catch (err: any) {
+        return { success: false, error: err.message || 'حدث خطأ في تسجيل الدخول' };
+      }
+    }
+
+    setIsAuthenticated(true);
+    localStorage.setItem('sola_owner_authenticated', 'true');
+    return { success: true };
+  };
+
   const sendOTP = async (phone: string): Promise<boolean> => {
     setPhoneNumber(phone);
     localStorage.setItem('sola_owner_phone', phone);
@@ -162,6 +212,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         phoneNumber,
         owner,
         setPhoneNumber,
+        loginWithPhone,
         sendOTP,
         verifyOTP,
         logout,

@@ -362,6 +362,249 @@ export class AuthService {
     };
   }
 
+  // 2B. Prototype Direct Login (OTP-Free for Prototype Validation)
+  async prototypeLogin(
+    rawPhone: string,
+    surface: AuthSurface,
+    fullName?: string | null,
+    deviceInfo?: string,
+    ipAddress?: string
+  ): Promise<{
+    tokens: AuthSessionTokens | null;
+    user: UserRecord | null;
+    owner?: OwnerRecord | null;
+    isOwner: boolean;
+    ownerOnboardingRequired?: boolean;
+    requiresNameOnboarding?: boolean;
+  }> {
+    if (!surface || (surface !== 'CUSTOMER' && surface !== 'OWNER')) {
+      throw new Error('MISSING_OR_INVALID_AUTH_SURFACE');
+    }
+
+    const canonicalPhone = normalizePhoneNumber(rawPhone);
+
+    // 1. Resolve Existing Canonical User
+    let user: UserRecord | null = await userDb.getByPhone(canonicalPhone).catch(() => null);
+    if (!user) {
+      user = dbUsersStore.get(canonicalPhone) || null;
+    }
+
+    // CUSTOMER Surface Flow
+    if (surface === 'CUSTOMER') {
+      if (!user) {
+        // Genuinely new user
+        if (!fullName || fullName.trim().length === 0) {
+          // Tell frontend to ask for full name
+          return {
+            tokens: null,
+            user: null,
+            isOwner: false,
+            ownerOnboardingRequired: false,
+            requiresNameOnboarding: true,
+          };
+        }
+
+        // Create new canonical user with provided fullName
+        const newUserId = crypto.randomUUID();
+        const createdDbUser = await userDb.create({
+          id: newUserId,
+          phoneNumber: canonicalPhone,
+          fullName: fullName.trim(),
+          status: 'ACTIVE',
+        }).catch(() => null);
+
+        if (createdDbUser) {
+          user = createdDbUser;
+        } else {
+          user = {
+            id: newUserId,
+            phoneNumber: canonicalPhone,
+            phoneVerifiedAt: null,
+            fullName: fullName.trim(),
+            email: null,
+            avatarUrl: null,
+            status: 'ACTIVE',
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          };
+        }
+      } else {
+        // User exists
+        if ((!user.fullName || user.fullName.trim().length === 0) && (!fullName || fullName.trim().length === 0)) {
+          // Existing user but missing fullName
+          return {
+            tokens: null,
+            user: {
+              id: user.id,
+              phoneNumber: user.phoneNumber,
+              fullName: null,
+              status: user.status,
+              createdAt: user.createdAt,
+              updatedAt: user.updatedAt,
+            },
+            isOwner: false,
+            ownerOnboardingRequired: false,
+            requiresNameOnboarding: true,
+          };
+        }
+
+        if (fullName && fullName.trim().length > 0 && (!user.fullName || user.fullName.trim().length === 0)) {
+          // Update profile with the new fullName
+          const updated = await userDb.updateProfile(user.id, { fullName: fullName.trim() }).catch(() => null);
+          if (updated) {
+            user = updated;
+          } else {
+            user.fullName = fullName.trim();
+          }
+        }
+      }
+
+      dbUsersStore.set(canonicalPhone, user);
+      dbUsersStore.set(user.id, user);
+
+      const role: UserRole = 'ROLE_CUSTOMER';
+      const accessToken = signAccessToken({ sub: user.id, role, phone: canonicalPhone });
+      const refreshToken = signRefreshToken({ sub: user.id, role });
+      const refreshTokenHash = this.hashToken(refreshToken);
+      const expiresAtIso = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+
+      const sessionRecord: UserSessionRecord = {
+        id: `session_${Date.now()}`,
+        userId: user.id,
+        ownerId: null,
+        surface: 'CUSTOMER',
+        role,
+        refreshTokenHash,
+        deviceInfo,
+        ipAddress,
+        isRevoked: false,
+        expiresAt: expiresAtIso,
+        createdAt: new Date().toISOString(),
+      };
+
+      await sessionDb.create({
+        id: crypto.randomUUID(),
+        userId: user.id,
+        ownerId: null,
+        surface: 'CUSTOMER',
+        role,
+        refreshTokenHash,
+        deviceInfo,
+        ipAddress,
+        expiresAt: expiresAtIso,
+      }).catch(() => null);
+
+      dbUserSessionsStore.set(refreshToken, sessionRecord);
+      dbUserSessionsStore.set(refreshTokenHash, sessionRecord);
+
+      return {
+        tokens: {
+          accessToken,
+          refreshToken,
+          expiresIn: 900,
+        },
+        user: {
+          id: user.id,
+          phoneNumber: user.phoneNumber,
+          fullName: user.fullName || null,
+          email: user.email || null,
+          avatarUrl: user.avatarUrl || null,
+          status: user.status,
+          phoneVerifiedAt: user.phoneVerifiedAt || null,
+          createdAt: user.createdAt,
+          updatedAt: user.updatedAt,
+        },
+        isOwner: false,
+        ownerOnboardingRequired: false,
+        requiresNameOnboarding: false,
+      };
+    }
+
+    // OWNER Surface Flow
+    if (!user) {
+      // Unknown phone trying to login to Owner app -> Do not create owner silently
+      return {
+        tokens: null,
+        user: null,
+        owner: null,
+        isOwner: false,
+        ownerOnboardingRequired: true,
+      };
+    }
+
+    // Check Owner capability
+    let ownerRecord: OwnerRecord | null = await ownerDb.getById(user.id).catch(() => null);
+    if (!ownerRecord) {
+      ownerRecord = dbOwnersStore.get(user.id) || null;
+    }
+
+    if (!ownerRecord) {
+      // User exists but has no owner record
+      const role: UserRole = 'ROLE_CUSTOMER';
+      const accessToken = signAccessToken({ sub: user.id, role, phone: canonicalPhone });
+      const refreshToken = signRefreshToken({ sub: user.id, role });
+      return {
+        tokens: {
+          accessToken,
+          refreshToken,
+          expiresIn: 900,
+        },
+        user,
+        owner: null,
+        isOwner: false,
+        ownerOnboardingRequired: true,
+      };
+    }
+
+    // Established owner
+    const role: UserRole = 'ROLE_OWNER';
+    const accessToken = signAccessToken({ sub: user.id, role, phone: canonicalPhone });
+    const refreshToken = signRefreshToken({ sub: user.id, role });
+    const refreshTokenHash = this.hashToken(refreshToken);
+    const expiresAtIso = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+
+    const sessionRecord: UserSessionRecord = {
+      id: `session_${Date.now()}`,
+      userId: user.id,
+      ownerId: user.id,
+      surface: 'OWNER',
+      role,
+      refreshTokenHash,
+      deviceInfo,
+      ipAddress,
+      isRevoked: false,
+      expiresAt: expiresAtIso,
+      createdAt: new Date().toISOString(),
+    };
+
+    await sessionDb.create({
+      id: crypto.randomUUID(),
+      userId: user.id,
+      ownerId: user.id,
+      surface: 'OWNER',
+      role,
+      refreshTokenHash,
+      deviceInfo,
+      ipAddress,
+      expiresAt: expiresAtIso,
+    }).catch(() => null);
+
+    dbUserSessionsStore.set(refreshToken, sessionRecord);
+    dbUserSessionsStore.set(refreshTokenHash, sessionRecord);
+
+    return {
+      tokens: {
+        accessToken,
+        refreshToken,
+        expiresIn: 900,
+      },
+      user,
+      owner: ownerRecord,
+      isOwner: true,
+      ownerOnboardingRequired: false,
+    };
+  }
+
   // 3. Admin Login (Email & Password)
   async adminLogin(email: string, password_raw: string): Promise<{
     tokens: AuthSessionTokens;

@@ -55,6 +55,7 @@ export interface AuthSessionResponse {
 export interface IAuthRepository {
   requestOtp(payload: RequestOtpPayload): Promise<{ success: boolean; message: string }>;
   verifyOtp(payload: VerifyOtpPayload): Promise<AuthSessionResponse>;
+  prototypeLogin(payload: { phone: string; surface: 'CUSTOMER' | 'OWNER'; fullName?: string }): Promise<any>;
   refreshSession(refreshToken: string): Promise<{ accessToken: string; expiresIn: number }>;
   revokeSession(refreshToken: string): Promise<void>;
 }

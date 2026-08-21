@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { getApiUrl } from '../utils/api';
-import { X, Smartphone, KeyRound, ShieldCheck, User, CheckCircle2 } from 'lucide-react';
+import { X, Smartphone, User, CheckCircle2 } from 'lucide-react';
 
 export interface CustomerUserProfile {
   id: string;
@@ -25,22 +25,13 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
   onSuccess,
   interceptedContext,
 }) => {
-  const [step, setStep] = useState<'PHONE' | 'OTP' | 'NAME_ONBOARDING'>('PHONE');
+  const [step, setStep] = useState<'PHONE' | 'NAME_ONBOARDING'>('PHONE');
   const [phone, setPhone] = useState<string>('');
-  const [code, setCode] = useState<string>('');
   const [fullName, setFullName] = useState<string>('');
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string>('');
 
-  // Pending Auth Credentials for New User Name Onboarding Step
-  const [pendingAuth, setPendingAuth] = useState<{
-    token: string;
-    phone: string;
-    refreshToken?: string;
-    user: CustomerUserProfile;
-  } | null>(null);
-
-  const handleRequestOtp = async () => {
+  const handlePhoneSubmit = async () => {
     if (!phone || phone.length < 10) {
       setError('يرجى كتابة رقم هاتف مصري صحيح (مثال: 01012345678)');
       return;
@@ -51,117 +42,34 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
 
     try {
       const fullPhone = phone.startsWith('+20') ? phone : `+20${phone.replace(/^0/, '')}`;
-      const res = await fetch(getApiUrl('/auth/request-otp'), {
+      const res = await fetch(getApiUrl('/auth/prototype-login'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone: fullPhone }),
+        body: JSON.stringify({ phone: fullPhone, surface: 'CUSTOMER' }),
       });
 
       const json = await res.json().catch(() => null);
       if (!res.ok || !json?.success) {
-        if (
-          json?.error?.code === 'RATE_LIMIT_EXCEEDED' ||
-          json?.error?.message?.includes('RATE_LIMIT') ||
-          json?.error?.message?.includes('MAX_3_OTP') ||
-          json?.error?.message?.includes('Rate limit exceeded')
-        ) {
-          throw new Error('تم طلب رمز الدخول عدة مرات. حاول مرة أخرى بعد قليل.');
-        }
-        throw new Error(json?.error?.message || 'تعذر إرسال رمز التحقق');
+        throw new Error(json?.error?.message || 'تعذر تسجيل الدخول، يرجى المحاولة مرة أخرى');
       }
 
-      setStep('OTP');
-    } catch (err: any) {
-      setError(err.message || 'حدث خطأ في الاتصال بالخادم.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleVerifyOtp = async () => {
-    if (!code || code.length < 4) {
-      setError('يرجى كتابة كود التحقق المكون من 4 أرقام');
-      return;
-    }
-
-    setLoading(true);
-    setError('');
-
-    try {
-      const fullPhone = phone.startsWith('+20') ? phone : `+20${phone.replace(/^0/, '')}`;
-      const res = await fetch(getApiUrl('/auth/verify-otp'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone: fullPhone, code, surface: 'CUSTOMER' }),
-      });
-
-      const json = await res.json().catch(() => null);
-      if (!res.ok || !json?.success) {
-        throw new Error(json?.error?.message || 'كود التحقق غير صحيح');
+      const data = json.data;
+      if (data?.requiresNameOnboarding || !data?.user?.fullName) {
+        setStep('NAME_ONBOARDING');
+        return;
       }
 
-      const token = json.data?.tokens?.accessToken;
-      const refreshToken = json.data?.tokens?.refreshToken;
-      let user = json.data?.user as CustomerUserProfile;
+      const token = data?.tokens?.accessToken;
+      const refreshToken = data?.tokens?.refreshToken;
+      const user = data?.user as CustomerUserProfile;
 
       if (!token) {
         throw new Error('لم يتم استلام رمز الدخول من الخادم');
       }
 
-      // Authoritatively resolve canonical customer profile before deciding whether name onboarding is needed
-      if (!user?.fullName || user.fullName.trim().length === 0) {
-        try {
-          const profileRes = await fetch(getApiUrl('/customer/profile'), {
-            headers: { Authorization: `Bearer ${token}` },
-          });
-          const profileJson = await profileRes.json().catch(() => null);
-          if (profileRes.ok && profileJson?.success && profileJson?.data?.fullName) {
-            user = {
-              ...user,
-              ...profileJson.data,
-            };
-          }
-        } catch {
-          // Continue with existing user record
-        }
-      }
-
-      // If remote profile returned empty, check device storage for matching canonical phone to avoid re-onboarding existing users
-      if (!user?.fullName || user.fullName.trim().length === 0) {
-        const localSavedProfile = localStorage.getItem('sola_customer_profile');
-        const localSavedPhone = localStorage.getItem('sola_customer_phone');
-        if (localSavedProfile && localSavedPhone === fullPhone) {
-          try {
-            const parsed = JSON.parse(localSavedProfile);
-            if (parsed?.fullName && parsed.fullName.trim().length >= 2) {
-              user = {
-                ...user,
-                fullName: parsed.fullName,
-                email: parsed.email || user.email || null,
-              };
-              // Resync to backend in background
-              fetch(getApiUrl('/customer/profile'), {
-                method: 'PATCH',
-                headers: {
-                  'Content-Type': 'application/json',
-                  Authorization: `Bearer ${token}`,
-                },
-                body: JSON.stringify({ fullName: parsed.fullName }),
-              }).catch(() => null);
-            }
-          } catch {}
-        }
-      }
-
-      // If new user or profile name is still missing, proceed to name onboarding step
-      if (!user?.fullName || user.fullName.trim().length === 0) {
-        setPendingAuth({ token, phone: fullPhone, refreshToken, user });
-        setStep('NAME_ONBOARDING');
-      } else {
-        onSuccess(token, fullPhone, refreshToken, user);
-      }
+      onSuccess(token, fullPhone, refreshToken, user);
     } catch (err: any) {
-      setError(err.message || 'رمز التحقق غير صحيح أو منتهي الصلاحية.');
+      setError(err.message || 'حدث خطأ في الاتصال بالخادم.');
     } finally {
       setLoading(false);
     }
@@ -173,33 +81,34 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
       return;
     }
 
-    if (!pendingAuth) {
-      setError('انتهت صلاحية الجلسة المؤقتة. يرجى المحاولة مرة أخرى.');
-      return;
-    }
-
     setLoading(true);
     setError('');
 
     try {
-      const res = await fetch(getApiUrl('/customer/profile'), {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${pendingAuth.token}`,
-        },
-        body: JSON.stringify({ fullName: fullName.trim() }),
+      const fullPhone = phone.startsWith('+20') ? phone : `+20${phone.replace(/^0/, '')}`;
+      const res = await fetch(getApiUrl('/auth/prototype-login'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone: fullPhone, surface: 'CUSTOMER', fullName: fullName.trim() }),
       });
 
-      const json = await res.json();
-      if (!res.ok || !json.success) {
-        throw new Error(json.error?.message || 'تعذر حفظ الاسم');
+      const json = await res.json().catch(() => null);
+      if (!res.ok || !json?.success) {
+        throw new Error(json?.error?.message || 'تعذر إتمام إنشاء الحساب');
       }
 
-      const updatedUser = json.data as CustomerUserProfile;
-      onSuccess(pendingAuth.token, pendingAuth.phone, pendingAuth.refreshToken, updatedUser);
+      const data = json.data;
+      const token = data?.tokens?.accessToken;
+      const refreshToken = data?.tokens?.refreshToken;
+      const user = data?.user as CustomerUserProfile;
+
+      if (!token) {
+        throw new Error('لم يتم استلام رمز الدخول من الخادم');
+      }
+
+      onSuccess(token, fullPhone, refreshToken, user);
     } catch (err: any) {
-      setError(err.message || 'حدث خطأ أثناء حفظ الاسم.');
+      setError(err.message || 'حدث خطأ أثناء حفظ البيانات.');
     } finally {
       setLoading(false);
     }
@@ -218,27 +127,23 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
         {/* Header Branding */}
         <div className="text-center mb-6">
           <div className="w-12 h-12 bg-blue-50 text-[#0059FF] rounded-2xl flex items-center justify-center mx-auto mb-3 shadow-xs">
-            {step === 'NAME_ONBOARDING' ? <User className="w-6 h-6" /> : <ShieldCheck className="w-6 h-6" />}
+            <User className="w-6 h-6" />
           </div>
           <h3 className="text-lg font-black text-slate-900">
             {step === 'NAME_ONBOARDING'
               ? 'أهلاً بك في كونفرم! 🎉'
-              : step === 'OTP'
-              ? 'تأكيد رقم الهاتف'
               : 'تسجيل الدخول / إنشاء حساب'}
           </h3>
           <p className="text-xs text-slate-500 font-bold mt-1">
             {step === 'NAME_ONBOARDING'
-              ? 'ادخل اسمك بالكامل لمتابعة حجزك وتوثيق حسابك'
-              : step === 'OTP'
-              ? `أدخل كود التحقق المرسل إلى هاتفك`
-              : 'ادخل رقم هاتفك لتأكيد حجزك ومتابعة تفاصيل الإقامة'}
+              ? 'ادخل اسمك بالكامل لإتمام إنشاء حسابك ومتابعة حجزك'
+              : 'ادخل رقم هاتفك لتسجيل الدخول والمتابعة'}
           </p>
 
           {interceptedContext && step !== 'NAME_ONBOARDING' && (
             <div className="mt-3 p-2.5 bg-amber-50 border border-amber-200 rounded-xl text-[11px] font-bold text-amber-800 flex items-center gap-2">
               <span>📌</span>
-              <span>سيتم إعادتك لتأكيد حجز الوحدة مباشرة بعد إدخال كود التحقق.</span>
+              <span>سيتم إعادتك لتأكيد حجز الوحدة مباشرة بعد تسجيل الدخول.</span>
             </div>
           )}
         </div>
@@ -260,7 +165,7 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
                   placeholder="01012345678"
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && handleRequestOtp()}
+                  onKeyDown={(e) => e.key === 'Enter' && handlePhoneSubmit()}
                   className="w-full pl-4 pr-10 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-900 focus:outline-none focus:border-[#0059FF] transition-colors"
                 />
                 <Smartphone className="w-5 h-5 text-slate-400 absolute top-3.5 right-3" />
@@ -268,62 +173,21 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
             </div>
 
             <button
-              onClick={handleRequestOtp}
+              onClick={handlePhoneSubmit}
               disabled={loading}
               className="w-full py-3.5 bg-[#0059FF] hover:bg-blue-600 active:scale-[0.99] text-white font-black text-xs rounded-xl shadow-lg shadow-blue-500/25 transition-all flex items-center justify-center gap-2"
             >
-              {loading ? 'جاري الإرسال...' : 'إرسال رمز التحقق عبر SMS'}
+              {loading ? 'جاري التحقق...' : 'متابعة'}
             </button>
           </div>
         )}
 
-        {/* Step 2: OTP */}
-        {step === 'OTP' && (
-          <div className="space-y-4">
-            <div>
-              <label className="block text-xs font-black text-slate-700 mb-1.5">
-                كود التحقق المرسل لـ ({phone})
-              </label>
-              <div className="relative">
-                <input
-                  type="text"
-                  maxLength={6}
-                  placeholder="1234"
-                  value={code}
-                  onChange={(e) => setCode(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && handleVerifyOtp()}
-                  className="w-full pl-4 pr-10 py-3 bg-slate-50 border border-slate-200 rounded-xl text-base font-black text-center tracking-widest text-slate-900 focus:outline-none focus:border-[#0059FF] transition-colors"
-                />
-                <KeyRound className="w-5 h-5 text-slate-400 absolute top-3.5 right-3" />
-              </div>
-              <p className="text-[10px] text-slate-400 font-bold mt-1 text-center">
-                الكود الافتراضي للتجربة هو: 1234
-              </p>
-            </div>
-
-            <button
-              onClick={handleVerifyOtp}
-              disabled={loading}
-              className="w-full py-3.5 bg-[#0059FF] hover:bg-blue-600 active:scale-[0.99] text-white font-black text-xs rounded-xl shadow-lg shadow-blue-500/25 transition-all flex items-center justify-center gap-2"
-            >
-              {loading ? 'جاري التأكيد...' : 'تأكيد ومتابعة'}
-            </button>
-
-            <button
-              onClick={() => setStep('PHONE')}
-              className="w-full py-2 text-slate-400 hover:text-slate-600 text-xs font-bold text-center"
-            >
-              تغيير رقم الهاتف
-            </button>
-          </div>
-        )}
-
-        {/* Step 3: NAME ONBOARDING (New User Profile) */}
+        {/* Step 2: NAME ONBOARDING (Only for new users) */}
         {step === 'NAME_ONBOARDING' && (
           <div className="space-y-4">
             <div className="p-3 bg-blue-50 border border-blue-100 rounded-2xl flex items-center gap-2 text-xs font-bold text-blue-900">
               <CheckCircle2 className="w-4 h-4 text-[#0059FF] shrink-0" />
-              <span>تم التحقق من رقم هاتفك بنجاح. أدخل اسمك لإتمام تسجيل الحساب.</span>
+              <span>حساب جديد: أدخل اسمك لإتمام تسجيل حسابك في المنصة.</span>
             </div>
 
             <div>

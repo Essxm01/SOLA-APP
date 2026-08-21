@@ -15,7 +15,6 @@ import { getApiUrl } from './utils/api';
 import {
   Heart,
   CalendarCheck,
-  ShieldCheck,
   User,
   Clock,
   CheckCircle2,
@@ -639,12 +638,6 @@ export function App() {
                         >
                           {userProfile?.phoneNumber || customerPhone}
                         </bdi>
-                        {userProfile?.phoneVerifiedAt && (
-                          <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 flex items-center gap-0.5">
-                            <ShieldCheck className="w-3 h-3 text-emerald-600" />
-                            <span>رقم موثق</span>
-                          </span>
-                        )}
                       </div>
                     </div>
 

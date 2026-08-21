@@ -4,7 +4,6 @@ import { AppProvider, useApp } from './context/AppContext';
 import { SplashScreen } from './components/auth/SplashScreen';
 import { OnboardingScreen } from './components/auth/OnboardingScreen';
 import { LoginScreen } from './components/auth/LoginScreen';
-import { OTPVerificationScreen } from './components/auth/OTPVerificationScreen';
 import { OwnerDashboardView } from './components/dashboard/OwnerDashboardView';
 import { BookingsFoundationView } from './components/bookings/BookingsFoundationView';
 import { PropertiesFoundationView } from './components/properties/PropertiesFoundationView';
@@ -24,7 +23,6 @@ const OwnerAppContent: React.FC = () => {
   const { activeTab } = useApp();
 
   const [showSplash, setShowSplash] = useState(true);
-  const [authStep, setAuthStep] = useState<'login' | 'otp'>('login');
 
   if (showSplash) {
     return <SplashScreen onContinue={() => setShowSplash(false)} />;
@@ -35,15 +33,7 @@ const OwnerAppContent: React.FC = () => {
   }
 
   if (!isAuthenticated) {
-    if (authStep === 'otp') {
-      return (
-        <OTPVerificationScreen
-          onBackToLogin={() => setAuthStep('login')}
-          onSuccess={() => setAuthStep('login')}
-        />
-      );
-    }
-    return <LoginScreen onOTPSent={() => setAuthStep('otp')} />;
+    return <LoginScreen />;
   }
 
   const renderTabContent = () => {

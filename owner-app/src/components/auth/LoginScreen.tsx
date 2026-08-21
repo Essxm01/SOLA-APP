@@ -5,11 +5,11 @@ import { useAuth } from '../../context/AuthContext';
 import { Palmtree, ShieldCheck, ArrowLeft, Lock } from 'lucide-react';
 
 interface LoginScreenProps {
-  onOTPSent: () => void;
+  onOTPSent?: () => void;
 }
 
-export const LoginScreen: React.FC<LoginScreenProps> = ({ onOTPSent }) => {
-  const { phoneNumber, sendOTP } = useAuth();
+export const LoginScreen: React.FC<LoginScreenProps> = () => {
+  const { phoneNumber, loginWithPhone } = useAuth();
   const [phone, setPhone] = useState(phoneNumber.replace('+20', ''));
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -33,10 +33,12 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onOTPSent }) => {
 
     try {
       const fullPhone = `+20${cleanDigits.startsWith('0') ? cleanDigits.slice(1) : cleanDigits}`;
-      await sendOTP(fullPhone);
-      onOTPSent();
-    } catch (err) {
-      setError('تعذر إرسال رمز التحقق، يرجى المحاولة مرة أخرى.');
+      const result = await loginWithPhone(fullPhone);
+      if (!result.success) {
+        setError(result.error || 'تعذر تسجيل الدخول، يرجى التأكد من رقم المالك.');
+      }
+    } catch (err: any) {
+      setError(err?.message || 'تعذر تسجيل الدخول، يرجى المحاولة مرة أخرى.');
     } finally {
       setIsLoading(false);
     }
@@ -52,7 +54,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onOTPSent }) => {
           </div>
           <div>
             <span className="text-base font-extrabold text-slate-900 block leading-tight">Sola</span>
-            <span className="text-[10px] font-bold text-[#0059FF] tracking-wider block">VACATION RENTALS</span>
+            <span className="text-[10px] font-bold text-[#0059FF] tracking-wider block">لوحة تحكم المالك</span>
           </div>
         </div>
         <div className="flex items-center gap-1 bg-blue-50 border border-blue-200 px-2.5 py-1 rounded-full text-[#0059FF] text-xs font-semibold">
@@ -64,9 +66,9 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onOTPSent }) => {
       {/* Main Form Content */}
       <div className="my-auto py-8 animate-fade-in max-w-md w-full mx-auto">
         <div className="mb-8 text-right">
-          <h2 className="text-2xl font-black text-slate-900 mb-2">تسجيل الدخول / إنشاء حساب</h2>
+          <h2 className="text-2xl font-black text-slate-900 mb-2">تسجيل دخول المالك</h2>
           <p className="text-sm text-slate-500 leading-relaxed">
-            أدخل رقم الهاتف المسجل لديك لتلقي رمز التأكيد (OTP) عبر SMS.
+            أدخل رقم الهاتف المسجل لديك للوصول المباشر إلى لوحة إدارة وحداتك وحجوزاتك.
           </p>
         </div>
 
@@ -89,18 +91,18 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onOTPSent }) => {
             icon={<ArrowLeft className="w-5 h-5" />}
             className="py-4 text-base font-bold shadow-xl shadow-blue-500/20"
           >
-            إرسال رمز التحقق (OTP)
+            دخول إلى لوحة التحكم
           </Button>
         </form>
 
-        {/* Security badge note */}
+        {/* Security note */}
         <div className="mt-8 p-4 bg-white rounded-2xl border border-slate-200/80 flex items-start gap-3">
           <div className="w-8 h-8 rounded-full bg-blue-50 flex items-center justify-center text-[#0059FF] shrink-0 mt-0.5">
             <Lock className="w-4 h-4" />
           </div>
           <div className="text-xs text-slate-600 leading-relaxed">
-            <p className="font-semibold text-slate-800 mb-0.5">أمان وتشفير البيانات</p>
-            تصلك رسالة SMS آمنة تحتوي على رمز تأكيد الهوية. لا تشارك الرمز مع أي شخص.
+            <p className="font-semibold text-slate-800 mb-0.5">إدارة آمنة ومباشرة</p>
+            حسابك مخصص لمالكي ومؤجري الشاليهات المعتمدين في الساحل الشمالي.
           </div>
         </div>
       </div>

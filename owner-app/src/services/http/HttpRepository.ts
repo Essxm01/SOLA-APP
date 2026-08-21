@@ -145,6 +145,13 @@ export class HttpRepository implements
     });
   }
 
+  async prototypeLogin(payload: { phone: string; surface: 'CUSTOMER' | 'OWNER'; fullName?: string }): Promise<any> {
+    return this.fetchJson('/auth/prototype-login', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  }
+
   async refreshSession(refreshToken: string): Promise<{ accessToken: string; expiresIn: number }> {
     return this.fetchJson('/auth/refresh', {
       method: 'POST',

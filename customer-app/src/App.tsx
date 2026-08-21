@@ -277,6 +277,17 @@ export function App() {
     restoreSession();
   }, []);
 
+  // Sync profile & summary whenever navigating to Account tab
+  useEffect(() => {
+    if (activeTab === 'ACCOUNT') {
+      const tok = authToken || localStorage.getItem('sola_customer_access_token');
+      if (tok) {
+        fetchCustomerProfile(tok);
+        fetchAccountSummary(tok);
+      }
+    }
+  }, [activeTab, authToken]);
+
   const getInitials = (name?: string | null): string => {
     if (!name || name.trim().length === 0) return 'ن';
     const parts = name.trim().split(/\s+/);
@@ -647,7 +658,7 @@ export function App() {
                     <div className="flex-1 min-w-0">
                       {userProfile?.fullName && userProfile.fullName.trim().length > 0 ? (
                         <h3 className="font-black text-slate-900 text-base truncate">
-                          {userProfile.fullName}
+                          {userProfile.fullName.trim()}
                         </h3>
                       ) : (
                         <div className="flex items-center gap-1.5 text-amber-800">
@@ -659,9 +670,13 @@ export function App() {
                       )}
                       
                       <div className="flex items-center gap-2 mt-0.5">
-                        <p className="text-xs text-slate-500 font-bold dir-ltr text-right">
+                        <bdi
+                          dir="ltr"
+                          style={{ direction: 'ltr', unicodeBidi: 'isolate' }}
+                          className="text-xs text-slate-500 font-bold tracking-wide"
+                        >
                           {userProfile?.phoneNumber || customerPhone}
-                        </p>
+                        </bdi>
                         {userProfile?.phoneVerifiedAt && (
                           <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 flex items-center gap-0.5">
                             <ShieldCheck className="w-3 h-3 text-emerald-600" />
@@ -681,7 +696,7 @@ export function App() {
                     </button>
                   </div>
 
-                  {/* Clean Incomplete Profile Alert Prompt */}
+                  {/* Clean Incomplete Profile Alert Prompt (Only when full_name is genuinely empty) */}
                   {(!userProfile?.fullName || userProfile.fullName.trim().length === 0) && (
                     <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-2xl flex items-center justify-between gap-3 text-xs font-bold text-amber-900">
                       <div className="flex items-center gap-2">

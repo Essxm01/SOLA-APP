@@ -25,9 +25,18 @@ export const CustomerEditAccountPage: React.FC<CustomerEditAccountPageProps> = (
   const [successMsg, setSuccessMsg] = useState<string>('');
   const [currentUser, setCurrentUser] = useState<CustomerUserProfile | null>(user);
 
+  // Sync state if user prop updates
+  useEffect(() => {
+    if (user) {
+      setCurrentUser(user);
+      if (!fullName) setFullName(user.fullName || '');
+      if (!email) setEmail(user.email || '');
+    }
+  }, [user]);
+
   // If user profile is not provided or incomplete, fetch canonical profile from API
   useEffect(() => {
-    if (!user && authToken) {
+    if ((!user || !user.fullName) && authToken) {
       fetch(getApiUrl('/customer/profile'), {
         headers: { Authorization: `Bearer ${authToken}` },
       })
@@ -95,6 +104,44 @@ export const CustomerEditAccountPage: React.FC<CustomerEditAccountPageProps> = (
       }
 
       if (!res.ok || (json && json.success === false)) {
+        if (res.status === 401 || json?.error?.code === 'INVALID_TOKEN' || json?.error?.code === 'UNAUTHORIZED') {
+          // Token expired: attempt refresh
+          const refreshToken = localStorage.getItem('sola_customer_refresh_token');
+          if (refreshToken) {
+            const refreshRes = await fetch(getApiUrl('/auth/refresh'), {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ refreshToken }),
+            });
+            const refreshJson = await refreshRes.json();
+            if (refreshRes.ok && refreshJson.success && refreshJson.data?.accessToken) {
+              const newTok = refreshJson.data.accessToken;
+              localStorage.setItem('sola_customer_access_token', newTok);
+              // Retry PATCH with refreshed token
+              const retryRes = await fetch(getApiUrl('/customer/profile'), {
+                method: 'PATCH',
+                headers: {
+                  'Content-Type': 'application/json',
+                  Authorization: `Bearer ${newTok}`,
+                },
+                body: JSON.stringify({
+                  fullName: trimmedName,
+                  email: trimmedEmail.length > 0 ? trimmedEmail : null,
+                }),
+              });
+              const retryJson = await retryRes.json();
+              if (retryRes.ok && retryJson.success) {
+                const updatedData: CustomerUserProfile = retryJson.data;
+                setCurrentUser(updatedData);
+                onUpdated(updatedData);
+                setSuccessMsg('تم حفظ التغييرات بنجاح');
+                setTimeout(() => onBack(), 700);
+                return;
+              }
+            }
+          }
+          throw new Error('انتهت صلاحية الجلسة، يرجى تسجيل الدخول مجدداً.');
+        }
         throw new Error(json?.error?.message || 'تعذر حفظ البيانات. يرجى المحاولة مرة أخرى.');
       }
 
@@ -151,7 +198,15 @@ export const CustomerEditAccountPage: React.FC<CustomerEditAccountPageProps> = (
             <h2 className="font-black text-slate-900 text-base">
               {trimmedName || currentUser?.fullName || 'مستأجر'}
             </h2>
-            <p className="text-xs text-slate-400 font-bold dir-ltr mt-0.5">{resolvedPhone}</p>
+            <div className="mt-1 flex items-center justify-center">
+              <bdi
+                dir="ltr"
+                style={{ direction: 'ltr', unicodeBidi: 'isolate' }}
+                className="text-xs text-slate-400 font-bold tracking-wide"
+              >
+                {resolvedPhone}
+              </bdi>
+            </div>
           </div>
         </div>
 
@@ -181,7 +236,10 @@ export const CustomerEditAccountPage: React.FC<CustomerEditAccountPageProps> = (
               <input
                 type="text"
                 value={fullName}
-                onChange={(e) => setFullName(e.target.value)}
+                onChange={(e) => {
+                  setFullName(e.target.value);
+                  if (error) setError('');
+                }}
                 placeholder="الاسم الثلاثي أو الثنائي"
                 className={`w-full pl-4 pr-10 py-3 bg-slate-50 border ${
                   !isNameValid && trimmedName.length > 0 ? 'border-rose-300' : 'border-slate-200'
@@ -212,8 +270,10 @@ export const CustomerEditAccountPage: React.FC<CustomerEditAccountPageProps> = (
                 type="text"
                 readOnly
                 disabled
+                dir="ltr"
                 value={resolvedPhone}
-                className="w-full pl-4 pr-10 py-3 bg-slate-100 border border-slate-200 rounded-xl text-xs font-bold text-slate-600 dir-ltr cursor-not-allowed select-none"
+                style={{ direction: 'ltr', unicodeBidi: 'isolate', textAlign: 'left' }}
+                className="w-full pl-4 pr-10 py-3 bg-slate-100 border border-slate-200 rounded-xl text-xs font-bold text-slate-600 cursor-not-allowed select-none"
               />
               <Phone className="w-4 h-4 text-slate-400 absolute top-3.5 right-3.5" />
             </div>
@@ -236,7 +296,10 @@ export const CustomerEditAccountPage: React.FC<CustomerEditAccountPageProps> = (
               <input
                 type="email"
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                onChange={(e) => {
+                  setEmail(e.target.value);
+                  if (error) setError('');
+                }}
                 placeholder="name@example.com"
                 className={`w-full pl-4 pr-10 py-3 bg-slate-50 border ${
                   !isEmailValid ? 'border-rose-300' : 'border-slate-200'

@@ -128,6 +128,49 @@ async function queryViaSupabaseRest(text: string, params: any[] | undefined, url
     return { rows: mapped, command: 'SELECT', rowCount: mapped.length, oid: 0, fields: [] };
   }
 
+  // 00. INSERT INTO users
+  if (lowerSql.startsWith('insert into users')) {
+    const id = params?.[0] || crypto.randomUUID();
+    const phoneNumber = params?.[1];
+    const fullName = params?.[2] || null;
+    const email = params?.[3] || null;
+    const avatarUrl = params?.[4] || null;
+    const status = params?.[5] || 'ACTIVE';
+    const nowIso = new Date().toISOString();
+
+    const payload = {
+      id,
+      phone_number: phoneNumber,
+      phone_verified_at: nowIso,
+      full_name: fullName,
+      email,
+      avatar_url: avatarUrl,
+      status,
+      created_at: nowIso,
+      updated_at: nowIso,
+    };
+
+    const res = await fetch(`${url}/rest/v1/users`, {
+      method: 'POST',
+      headers: { ...headers, 'Prefer': 'resolution=merge-duplicates,return=representation' },
+      body: JSON.stringify(payload),
+    });
+    const raw: any = await res.json().catch(() => []);
+    const arr = Array.isArray(raw) ? raw : [raw];
+    const mapped = arr.map(u => ({
+      id: u.id || id,
+      phoneNumber: u.phone_number || phoneNumber,
+      phoneVerifiedAt: u.phone_verified_at || nowIso,
+      fullName: u.full_name || fullName,
+      email: u.email || email,
+      avatarUrl: u.avatar_url || avatarUrl,
+      status: u.status || status,
+      createdAt: u.created_at || nowIso,
+      updatedAt: u.updated_at || nowIso,
+    }));
+    return { rows: mapped, command: 'INSERT', rowCount: mapped.length, oid: 0, fields: [] };
+  }
+
   // 0E. UPDATE users SET phone_verified_at = NOW(), updated_at = NOW() WHERE id = $1
   if (lowerSql.startsWith('update users') && lowerSql.includes('phone_verified_at')) {
     const userId = params?.[0];
@@ -162,27 +205,54 @@ async function queryViaSupabaseRest(text: string, params: any[] | undefined, url
     const nowIso = new Date().toISOString();
 
     const patchBody: any = { updated_at: nowIso };
-    if (fullName !== undefined) patchBody.full_name = fullName;
-    if (email !== undefined) patchBody.email = email;
-    if (avatarUrl !== undefined) patchBody.avatar_url = avatarUrl;
+    if (fullName !== undefined && fullName !== null) patchBody.full_name = fullName;
+    if (email !== undefined && email !== null) patchBody.email = email;
+    if (avatarUrl !== undefined && avatarUrl !== null) patchBody.avatar_url = avatarUrl;
 
-    const res = await fetch(`${url}/rest/v1/users?id=eq.${encodeURIComponent(userId)}`, {
+    let res = await fetch(`${url}/rest/v1/users?id=eq.${encodeURIComponent(userId)}`, {
       method: 'PATCH',
       headers,
       body: JSON.stringify(patchBody),
     });
-    const raw: any = await res.json().catch(() => []);
-    const rows: any[] = Array.isArray(raw) ? raw : [];
+    let raw: any = await res.json().catch(() => []);
+    let rows: any[] = Array.isArray(raw) ? raw : [];
+
+    // If 0 rows updated (user record didn't exist in users table yet), upsert it!
+    if (rows.length === 0) {
+      const upsertPayload: any = {
+        id: userId,
+        full_name: fullName,
+        status: 'ACTIVE',
+        updated_at: nowIso,
+      };
+      const upRes = await fetch(`${url}/rest/v1/users`, {
+        method: 'POST',
+        headers: { ...headers, 'Prefer': 'resolution=merge-duplicates,return=representation' },
+        body: JSON.stringify(upsertPayload),
+      });
+      raw = await upRes.json().catch(() => []);
+      rows = Array.isArray(raw) ? raw : [raw];
+    }
+
+    // Also update owners.full_name if owner row exists
+    if (fullName) {
+      await fetch(`${url}/rest/v1/owners?id=eq.${encodeURIComponent(userId)}`, {
+        method: 'PATCH',
+        headers,
+        body: JSON.stringify({ full_name: fullName, updated_at: nowIso }),
+      }).catch(() => {});
+    }
+
     const mapped = rows.map(u => ({
-      id: u.id,
-      phoneNumber: u.phone_number,
-      phoneVerifiedAt: u.phone_verified_at,
-      fullName: u.full_name,
-      email: u.email,
-      avatarUrl: u.avatar_url,
-      status: u.status,
-      createdAt: u.created_at,
-      updatedAt: u.updated_at,
+      id: u.id || userId,
+      phoneNumber: u.phone_number || '',
+      phoneVerifiedAt: u.phone_verified_at || nowIso,
+      fullName: u.full_name || fullName,
+      email: u.email || email,
+      avatarUrl: u.avatar_url || avatarUrl,
+      status: u.status || 'ACTIVE',
+      createdAt: u.created_at || nowIso,
+      updatedAt: u.updated_at || nowIso,
     }));
     return { rows: mapped, command: 'UPDATE', rowCount: mapped.length, oid: 0, fields: [] };
   }

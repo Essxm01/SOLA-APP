@@ -180,17 +180,17 @@ async function queryViaSupabaseRest(text: string, params: any[] | undefined, url
     const status = params?.[5] || 'ACTIVE';
     const nowIso = new Date().toISOString();
 
-    const payload = {
+    const payload: any = {
       id,
       phone_number: phoneNumber,
       phone_verified_at: nowIso,
-      full_name: fullName,
-      email,
-      avatar_url: avatarUrl,
       status,
       created_at: nowIso,
       updated_at: nowIso,
     };
+    if (fullName) payload.full_name = fullName;
+    if (email) payload.email = email;
+    if (avatarUrl) payload.avatar_url = avatarUrl;
 
     const res = await fetch(`${url}/rest/v1/users?on_conflict=phone_number`, {
       method: 'POST',
@@ -247,9 +247,9 @@ async function queryViaSupabaseRest(text: string, params: any[] | undefined, url
     const nowIso = new Date().toISOString();
 
     const patchBody: any = { updated_at: nowIso };
-    if (fullName !== undefined && fullName !== null) patchBody.full_name = fullName;
-    if (email !== undefined && email !== null) patchBody.email = email;
-    if (avatarUrl !== undefined && avatarUrl !== null) patchBody.avatar_url = avatarUrl;
+    if (fullName !== undefined && fullName !== null && fullName !== '') patchBody.full_name = fullName;
+    if (email) patchBody.email = email;
+    if (avatarUrl) patchBody.avatar_url = avatarUrl;
 
     let res = await fetch(`${url}/rest/v1/users?id=eq.${encodeURIComponent(userId)}`, {
       method: 'PATCH',

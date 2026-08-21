@@ -40,12 +40,19 @@ export const CustomerEditProfileModal: React.FC<CustomerEditProfileModalProps> =
         body: JSON.stringify({ fullName: fullName.trim() }),
       });
 
-      const json = await res.json();
-      if (!res.ok || !json.success) {
-        throw new Error(json.error?.message || 'تعذر تعديل البيانات');
+      let json: any = null;
+      try {
+        json = await res.json();
+      } catch {
+        json = null;
       }
 
-      onUpdated(json.data as CustomerUserProfile);
+      if (!res.ok || (json && json.success === false)) {
+        throw new Error(json?.error?.message || 'تعذر تعديل البيانات');
+      }
+
+      const updatedUser: CustomerUserProfile = (json?.data || { ...user, fullName: fullName.trim() }) as CustomerUserProfile;
+      onUpdated(updatedUser);
       onClose();
     } catch (err: any) {
       setError(err.message || 'حدث خطأ في الاتصال بالخادم.');

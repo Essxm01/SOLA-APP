@@ -136,7 +136,7 @@ export function App() {
     }
   };
 
-  // Fetch Authenticated Customer Profile
+  // Fetch Real Customer Profile (AUTH-03)
   const fetchCustomerProfile = async (token?: string | null) => {
     const t = token || authToken || localStorage.getItem('sola_customer_access_token');
     if (!t) return;
@@ -148,8 +148,15 @@ export function App() {
       });
       const json = await res.json();
       if (res.ok && json.success && json.data) {
-        setUserProfile(json.data);
-        localStorage.setItem('sola_customer_profile', JSON.stringify(json.data));
+        const savedProfile = localStorage.getItem('sola_customer_profile');
+        const parsedSaved = savedProfile ? JSON.parse(savedProfile) : null;
+        const mergedProfile = {
+          ...json.data,
+          fullName: json.data.fullName || parsedSaved?.fullName || null,
+          email: json.data.email || parsedSaved?.email || null,
+        };
+        setUserProfile(mergedProfile);
+        localStorage.setItem('sola_customer_profile', JSON.stringify(mergedProfile));
       }
     } catch {}
   };
@@ -185,8 +192,15 @@ export function App() {
           });
           const profileJson = await profileRes.json();
           if (profileRes.ok && profileJson.success && profileJson.data) {
-            setUserProfile(profileJson.data);
-            localStorage.setItem('sola_customer_profile', JSON.stringify(profileJson.data));
+            const savedProfile = localStorage.getItem('sola_customer_profile');
+            const parsedSaved = savedProfile ? JSON.parse(savedProfile) : null;
+            const mergedProfile = {
+              ...profileJson.data,
+              fullName: profileJson.data.fullName || parsedSaved?.fullName || null,
+              email: profileJson.data.email || parsedSaved?.email || null,
+            };
+            setUserProfile(mergedProfile);
+            localStorage.setItem('sola_customer_profile', JSON.stringify(mergedProfile));
             fetchAccountSummary(storedToken);
             return;
           }

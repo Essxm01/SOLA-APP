@@ -186,20 +186,6 @@ export class ExpressServerApp {
         };
       }
 
-            success: true,
-            data: {
-              SUPABASE_URL_SET: !!su,
-              SUPABASE_URL_PREFIX: su ? su.substring(0, 30) : null,
-              SUPABASE_SECRET_KEY_SET: !!sk,
-              SUPABASE_SECRET_KEY_PREFIX: sk ? sk.substring(0, 20) : null,
-              SUPABASE_SECRET_KEY_LENGTH: sk ? sk.length : 0,
-              SUPABASE_SERVICE_ROLE_KEY_SET: !!srk,
-              SUPABASE_SERVICE_ROLE_KEY_PREFIX: srk ? srk.substring(0, 20) : null,
-            },
-            timestamp,
-          },
-        };
-      }
 
       if (path === '/api/v1/auth/request-otp' && method === 'POST') {
         const response = await this.authController.requestOtp(bodyPayload?.phone);

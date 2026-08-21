@@ -1,10 +1,7 @@
 /**
  * Sola Vacation Rentals — Cloudflare Worker Fetch Adapter
  * Location: server/src/worker.ts
- * Master Source of Truth: SOLA Infrastructure Migration Plan
- * 
- * Thin Web Standard Fetch Adapter connecting Cloudflare Workers Edge Runtime
- * directly to the existing platform-agnostic business controllers & PostgreSQL repositories.
+ * Deployment: SEC-01.1 Secret Key Binding Activation
  */
 
 import { ExpressServerApp } from './app.js';

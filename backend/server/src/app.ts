@@ -186,6 +186,29 @@ export class ExpressServerApp {
         };
       }
 
+      // TEMP DIAGNOSTIC: Safe key prefix check (SEC-01.1 — remove after verification)
+      if (path === '/api/v1/health/env-check' && method === 'GET') {
+        const sk = process.env.SUPABASE_SECRET_KEY;
+        const srk = process.env.SUPABASE_SERVICE_ROLE_KEY;
+        const su = process.env.SUPABASE_URL;
+        return {
+          statusCode: 200,
+          body: {
+            success: true,
+            data: {
+              SUPABASE_URL_SET: !!su,
+              SUPABASE_URL_PREFIX: su ? su.substring(0, 30) : null,
+              SUPABASE_SECRET_KEY_SET: !!sk,
+              SUPABASE_SECRET_KEY_PREFIX: sk ? sk.substring(0, 20) : null,
+              SUPABASE_SECRET_KEY_LENGTH: sk ? sk.length : 0,
+              SUPABASE_SERVICE_ROLE_KEY_SET: !!srk,
+              SUPABASE_SERVICE_ROLE_KEY_PREFIX: srk ? srk.substring(0, 20) : null,
+            },
+            timestamp,
+          },
+        };
+      }
+
       if (path === '/api/v1/auth/request-otp' && method === 'POST') {
         const response = await this.authController.requestOtp(bodyPayload?.phone);
         return { statusCode: response.success ? 200 : 400, body: response };

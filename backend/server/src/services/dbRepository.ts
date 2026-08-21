@@ -82,6 +82,14 @@ export const ownerDb = {
     return res.rows[0] || null;
   },
 
+  async getByPhone(phoneNumber: string) {
+    const res = await queryDb(
+      'SELECT id, phone_number AS "phoneNumber", full_name AS "fullName", email, avatar_url AS "avatarUrl", status, verification_status AS "verificationStatus", created_at AS "createdAt", updated_at AS "updatedAt" FROM owners WHERE phone_number = $1',
+      [phoneNumber]
+    );
+    return res.rows[0] || null;
+  },
+
   async upsert(owner: { id: string; phoneNumber: string; fullName: string; email?: string; avatarUrl?: string; status?: string; verificationStatus?: string }) {
     // 1. Ensure parent users identity record exists (1:1 Identity Invariant - AUTH-02A)
     await queryDb(

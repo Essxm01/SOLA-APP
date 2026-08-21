@@ -9,9 +9,9 @@ export default defineConfig({
     strictPort: true,
     proxy: {
       '/api': {
-        target: 'https://sola-backend-api.essxm01.workers.dev',
+        target: 'http://localhost:4000',
         changeOrigin: true,
-        secure: true,
+        secure: false,
       },
     },
   },
@@ -20,9 +20,9 @@ export default defineConfig({
     strictPort: true,
     proxy: {
       '/api': {
-        target: 'https://sola-backend-api.essxm01.workers.dev',
+        target: 'http://localhost:4000',
         changeOrigin: true,
-        secure: true,
+        secure: false,
       },
     },
   },

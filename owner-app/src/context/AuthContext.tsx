@@ -95,10 +95,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (!repo.useMockMode) {
       try {
         const res: any = await repo.auth.prototypeLogin({ phone, surface: 'OWNER' });
-        const token = res.data?.tokens?.accessToken || res.accessToken;
-        const refreshToken = res.data?.tokens?.refreshToken || res.refreshToken;
-        const ownerData = res.data?.owner || res.owner;
-        const ownerOnboardingRequired = res.data?.ownerOnboardingRequired ?? res.ownerOnboardingRequired;
+        const token = res.tokens?.accessToken || res.data?.tokens?.accessToken || res.accessToken;
+        const refreshToken = res.tokens?.refreshToken || res.data?.tokens?.refreshToken || res.refreshToken;
+        const ownerData = res.owner || res.data?.owner;
+        const ownerOnboardingRequired = res.ownerOnboardingRequired ?? res.data?.ownerOnboardingRequired;
 
         if (token) {
           localStorage.setItem('sola_access_token', token);

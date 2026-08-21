@@ -8,7 +8,7 @@ export function getApiBaseUrl(): string {
   if (envUrl && typeof envUrl === 'string' && envUrl.trim().length > 0) {
     return envUrl.trim().replace(/\/+$/, '');
   }
-  return 'https://sola-backend-api.essxm01.workers.dev/api/v1';
+  return '/api/v1';
 }
 
 export function getApiUrl(path: string): string {

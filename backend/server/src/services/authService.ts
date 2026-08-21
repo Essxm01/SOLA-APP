@@ -521,35 +521,39 @@ export class AuthService {
     }
 
     // OWNER Surface Flow
-    if (!user) {
-      // Unknown phone trying to login to Owner app -> Do not create owner silently
-      return {
-        tokens: null,
-        user: null,
-        owner: null,
-        isOwner: false,
-        ownerOnboardingRequired: true,
-      };
+    let ownerRecord: OwnerRecord | null = null;
+    if (user) {
+      ownerRecord = await ownerDb.getById(user.id).catch(() => null);
+      if (!ownerRecord) {
+        ownerRecord = await ownerDb.getByPhone(canonicalPhone).catch(() => null);
+      }
+      if (!ownerRecord) {
+        ownerRecord = dbOwnersStore.get(user.id) || null;
+      }
+    } else {
+      ownerRecord = await ownerDb.getByPhone(canonicalPhone).catch(() => null);
+      if (ownerRecord) {
+        user = {
+          id: ownerRecord.id,
+          phoneNumber: canonicalPhone,
+          phoneVerifiedAt: null,
+          fullName: ownerRecord.fullName,
+          status: 'ACTIVE',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
+      }
     }
 
-    // Check Owner capability
-    let ownerRecord: OwnerRecord | null = await ownerDb.getById(user.id).catch(() => null);
-    if (!ownerRecord) {
-      ownerRecord = dbOwnersStore.get(user.id) || null;
-    }
-
-    if (!ownerRecord) {
-      // User exists but has no owner record
-      const role: UserRole = 'ROLE_CUSTOMER';
-      const accessToken = signAccessToken({ sub: user.id, role, phone: canonicalPhone });
-      const refreshToken = signRefreshToken({ sub: user.id, role });
+    if (!user || !ownerRecord) {
+      // Unknown phone or pure customer trying to login to Owner app -> Do not create owner silently
       return {
-        tokens: {
-          accessToken,
-          refreshToken,
+        tokens: user ? {
+          accessToken: signAccessToken({ sub: user.id, role: 'ROLE_CUSTOMER', phone: canonicalPhone }),
+          refreshToken: signRefreshToken({ sub: user.id, role: 'ROLE_CUSTOMER' }),
           expiresIn: 900,
-        },
-        user,
+        } : null,
+        user: user || null,
         owner: null,
         isOwner: false,
         ownerOnboardingRequired: true,

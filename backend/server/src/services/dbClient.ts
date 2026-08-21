@@ -254,7 +254,7 @@ async function queryViaSupabaseRest(text: string, params: any[] | undefined, url
     // 1. Update users table by id
     let res = await fetch(`${url}/rest/v1/users?id=eq.${encodeURIComponent(userId)}`, {
       method: 'PATCH',
-      headers,
+      headers: { ...headers, 'Prefer': 'return=representation' },
       body: JSON.stringify(patchBody),
     });
     let raw: any = await res.json().catch(() => []);
@@ -269,7 +269,7 @@ async function queryViaSupabaseRest(text: string, params: any[] | undefined, url
       if (phone) {
         const patchByPhoneRes = await fetch(`${url}/rest/v1/users?phone_number=eq.${encodeURIComponent(phone)}`, {
           method: 'PATCH',
-          headers,
+          headers: { ...headers, 'Prefer': 'return=representation' },
           body: JSON.stringify(patchBody),
         });
         const patchByPhoneRaw = await patchByPhoneRes.json().catch(() => []);

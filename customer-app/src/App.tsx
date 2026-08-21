@@ -230,7 +230,27 @@ export function App() {
   // Session Restoration & Token Refresh on Mount
   useEffect(() => {
     const restoreSession = async () => {
+      const storedToken = localStorage.getItem('sola_customer_access_token');
       const refreshToken = localStorage.getItem('sola_customer_refresh_token');
+
+      if (storedToken) {
+        setAuthToken(storedToken);
+        try {
+          const profileRes = await fetch(getApiUrl('/customer/profile'), {
+            headers: { Authorization: `Bearer ${storedToken}` },
+          });
+          const profileJson = await profileRes.json();
+          if (profileRes.ok && profileJson.success && profileJson.data) {
+            setUserProfile(profileJson.data);
+            localStorage.setItem('sola_customer_profile', JSON.stringify(profileJson.data));
+            fetchAccountSummary(storedToken);
+            return;
+          }
+        } catch {
+          // Fall through to refresh if token expired or network failed
+        }
+      }
+
       if (refreshToken) {
         try {
           const res = await fetch(getApiUrl('/auth/refresh'), {
@@ -245,16 +265,12 @@ export function App() {
             fetchCustomerProfile(json.data.accessToken);
             fetchAccountSummary(json.data.accessToken);
           } else {
-            // Revoked or expired refresh token -> clean logout
             handleLogout();
           }
         } catch {
-          // Network error: preserve existing state without fabricating demo credentials
+          // Network error: preserve existing state
         }
-      } else if (authToken) {
-        fetchCustomerProfile(authToken);
-        fetchAccountSummary(authToken);
-      } else {
+      } else if (!storedToken) {
         setAuthToken(null);
       }
     };

@@ -8,9 +8,6 @@ export function getApiBaseUrl(): string {
   if (envUrl && typeof envUrl === 'string' && envUrl.trim().length > 0) {
     return envUrl.trim().replace(/\/+$/, '');
   }
-  if (import.meta.env.DEV) {
-    return '/api/v1';
-  }
   return 'https://sola-backend-api.essxm01.workers.dev/api/v1';
 }
 

@@ -73,13 +73,6 @@ async function queryViaSupabaseRest(text: string, params: any[] | undefined, url
           updated_at: ownerRows[0].updated_at,
         }];
       }
-    } else if (!rows[0].full_name) {
-      const ownerRes = await fetch(`${url}/rest/v1/owners?phone_number=eq.${encodeURIComponent(phone)}`, { headers });
-      const ownerRaw: any = await ownerRes.json().catch(() => []);
-      const ownerRows: any[] = Array.isArray(ownerRaw) ? ownerRaw : [];
-      if (ownerRows.length > 0 && ownerRows[0].full_name) {
-        rows[0].full_name = ownerRows[0].full_name;
-      }
     }
 
     const mapped = rows.map(u => ({
@@ -120,13 +113,6 @@ async function queryViaSupabaseRest(text: string, params: any[] | undefined, url
           created_at: ownerRows[0].created_at,
           updated_at: ownerRows[0].updated_at,
         }];
-      }
-    } else if (!rows[0].full_name) {
-      const ownerRes = await fetch(`${url}/rest/v1/owners?id=eq.${encodeURIComponent(userId)}`, { headers });
-      const ownerRaw: any = await ownerRes.json().catch(() => []);
-      const ownerRows: any[] = Array.isArray(ownerRaw) ? ownerRaw : [];
-      if (ownerRows.length > 0 && ownerRows[0].full_name) {
-        rows[0].full_name = ownerRows[0].full_name;
       }
     }
 
@@ -274,7 +260,24 @@ async function queryViaSupabaseRest(text: string, params: any[] | undefined, url
     let raw: any = await res.json().catch(() => []);
     let rows: any[] = Array.isArray(raw) ? raw : [];
 
-    // 2. Also update owners table by id
+    // Fallback: If 0 rows updated by id, check owners table to resolve phone and update users by phone
+    if (rows.length === 0) {
+      const ownerRes = await fetch(`${url}/rest/v1/owners?id=eq.${encodeURIComponent(userId)}`, { headers });
+      const ownerRows: any[] = await ownerRes.json().catch(() => []);
+      const phone = ownerRows[0]?.phone_number;
+
+      if (phone) {
+        const patchByPhoneRes = await fetch(`${url}/rest/v1/users?phone_number=eq.${encodeURIComponent(phone)}`, {
+          method: 'PATCH',
+          headers,
+          body: JSON.stringify(patchBody),
+        });
+        const patchByPhoneRaw = await patchByPhoneRes.json().catch(() => []);
+        rows = Array.isArray(patchByPhoneRaw) ? patchByPhoneRaw : [];
+      }
+    }
+
+    // 2. Also update owners table by id and phone
     if (fullName) {
       await fetch(`${url}/rest/v1/owners?id=eq.${encodeURIComponent(userId)}`, {
         method: 'PATCH',

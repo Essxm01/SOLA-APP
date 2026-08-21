@@ -2441,11 +2441,20 @@ export class ExpressServerApp {
             };
             updatedUser = {
               ...existing,
-              fullName: rawName !== undefined ? rawName : existing.fullName,
-              email: emailVal !== undefined ? emailVal : existing.email,
-              avatarUrl: bodyPayload?.avatarUrl !== undefined ? bodyPayload.avatarUrl : existing.avatarUrl,
+              fullName: rawName !== undefined ? rawName : (existing as any).fullName,
+              email: emailVal !== undefined ? emailVal : (existing as any).email,
+              avatarUrl: bodyPayload?.avatarUrl !== undefined ? bodyPayload.avatarUrl : (existing as any).avatarUrl,
               updatedAt: timestamp,
             };
+            if (customerPhone && rawName) {
+              await userDb.create({
+                id: customerId,
+                phoneNumber: customerPhone,
+                fullName: rawName.trim(),
+                email: emailVal,
+                status: 'ACTIVE',
+              }).catch(() => null);
+            }
           } else {
             if (rawName !== undefined) updatedUser.fullName = rawName;
             if (emailVal !== undefined) updatedUser.email = emailVal;

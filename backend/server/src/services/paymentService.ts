@@ -246,6 +246,14 @@ export const paymentTxDb = {
     return res.rows;
   },
 
+  async getByCustomerId(customerId: string) {
+    const res = await queryDb(
+      'SELECT * FROM payment_transactions WHERE customer_id = $1 ORDER BY created_at DESC',
+      [customerId]
+    );
+    return res.rows;
+  },
+
   /**
    * Atomic Webhook Processor with PostgreSQL Transaction & Row Locking (`SELECT ... FOR UPDATE`)
    */

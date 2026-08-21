@@ -6,6 +6,7 @@ import { PropertyDetailModal } from './components/PropertyDetailModal';
 import { CustomerAuthModal, type CustomerUserProfile } from './components/CustomerAuthModal';
 import { CustomerEditProfileModal } from './components/CustomerEditProfileModal';
 import { CustomerSupportModal } from './components/CustomerSupportModal';
+import { CustomerWalletModal } from './components/CustomerWalletModal';
 import { CustomerCheckoutModal, BookingDetails } from './components/CustomerCheckoutModal';
 import { BookingSuccessModal } from './components/BookingSuccessModal';
 import { CustomerBottomNav, CustomerTabType } from './components/CustomerBottomNav';
@@ -20,7 +21,8 @@ import {
   CheckCircle2,
   AlertCircle,
   ChevronLeft,
-  Headphones,
+  HelpCircle,
+  Wallet,
   Edit3,
   LogOut,
 } from 'lucide-react';
@@ -32,6 +34,14 @@ export function App() {
     const saved = localStorage.getItem('sola_customer_profile');
     return saved ? JSON.parse(saved) : null;
   });
+
+  // Account Hub Summary State
+  const [accountSummary, setAccountSummary] = useState<{
+    confirmedBookingsCount: number;
+    upcomingStaysCount: number;
+    totalBookingsCount: number;
+    totalDepositsPaidEgp: number;
+  } | null>(null);
 
   // Data & Search States
   const [properties, setProperties] = useState<CustomerPropertyItem[]>([]);
@@ -47,6 +57,7 @@ export function App() {
   const [showAuthModal, setShowAuthModal] = useState<boolean>(false);
   const [showEditProfileModal, setShowEditProfileModal] = useState<boolean>(false);
   const [showSupportModal, setShowSupportModal] = useState<boolean>(false);
+  const [showWalletModal, setShowWalletModal] = useState<boolean>(false);
   const [showSuccessModal, setShowSuccessModal] = useState<boolean>(false);
 
   // Intercepted Guest Context
@@ -197,6 +208,23 @@ export function App() {
     } catch {}
   };
 
+  // Fetch Real Account Hub Summary Metrics
+  const fetchAccountSummary = async (token?: string | null) => {
+    const t = token || authToken || localStorage.getItem('sola_customer_access_token');
+    if (!t) return;
+    try {
+      const res = await fetch(getApiUrl('/customer/account/summary'), {
+        headers: {
+          Authorization: `Bearer ${t}`,
+        },
+      });
+      const json = await res.json();
+      if (res.ok && json.success && json.data) {
+        setAccountSummary(json.data);
+      }
+    } catch {}
+  };
+
   // Session Restoration & Token Refresh on Mount
   useEffect(() => {
     const restoreSession = async () => {
@@ -213,6 +241,7 @@ export function App() {
             localStorage.setItem('sola_customer_access_token', json.data.accessToken);
             setAuthToken(json.data.accessToken);
             fetchCustomerProfile(json.data.accessToken);
+            fetchAccountSummary(json.data.accessToken);
           } else {
             // Revoked or expired refresh token -> clean logout
             handleLogout();
@@ -222,6 +251,7 @@ export function App() {
         }
       } else if (authToken) {
         fetchCustomerProfile(authToken);
+        fetchAccountSummary(authToken);
       } else {
         setAuthToken(null);
       }
@@ -274,6 +304,7 @@ export function App() {
     } else {
       fetchCustomerProfile(token);
     }
+    fetchAccountSummary(token);
     setShowAuthModal(false);
 
     // Context Preservation: Return to exact same property & dates post-login
@@ -304,6 +335,7 @@ export function App() {
     setAuthToken(null);
     setCustomerPhone(null);
     setUserProfile(null);
+    setAccountSummary(null);
     setActiveTab('EXPLORE');
   };
 
@@ -408,7 +440,7 @@ export function App() {
                 الوحدات الساحلية المتاحة ({filteredProperties.length})
               </h2>
               <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
-                ضمان صولا للإقامات ⭐️
+                ضمان كونفرم للإقامات ⭐️
               </span>
             </div>
 
@@ -560,149 +592,216 @@ export function App() {
         {/* Tab 4: ACCOUNT */}
         {activeTab === 'ACCOUNT' && (
           <div className="my-4 space-y-4">
-            <div className="flex items-center justify-between">
-              <h2 className="text-base font-black text-slate-900">حسابي</h2>
-              {authToken && userProfile && (
-                <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200 flex items-center gap-1">
-                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-                  <span>حساب موثق</span>
-                </span>
-              )}
+            {/* A. Top App Bar */}
+            <div className="flex items-center justify-between pb-1">
+              <h2 className="text-lg font-black text-slate-900">حسابي</h2>
             </div>
 
             {authToken ? (
               <div className="space-y-4 animate-fade-in">
-                {/* A. Identity Header Card */}
+                {/* B. Profile Header Card */}
                 <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-xs relative overflow-hidden">
                   <div className="flex items-center gap-4">
-                    {/* Initials Avatar */}
-                    <div className="w-14 h-14 bg-gradient-to-br from-[#0059FF] to-blue-700 text-white rounded-2xl flex items-center justify-center font-black text-lg shadow-md shadow-blue-500/20 shrink-0">
+                    {/* Neutral Initials Avatar */}
+                    <div className="w-14 h-14 bg-slate-900 text-white rounded-2xl flex items-center justify-center font-black text-lg shadow-sm shrink-0">
                       {getInitials(userProfile?.fullName)}
                     </div>
+
                     <div className="flex-1 min-w-0">
-                      {userProfile?.fullName ? (
+                      {userProfile?.fullName && userProfile.fullName.trim().length > 0 ? (
                         <h3 className="font-black text-slate-900 text-base truncate">
                           {userProfile.fullName}
                         </h3>
                       ) : (
                         <div className="flex items-center gap-1.5 text-amber-800">
-                          <h3 className="font-black text-sm text-slate-800">نزيل صولا</h3>
+                          <h3 className="font-black text-sm text-slate-800">مستخدم جديد</h3>
                           <span className="text-[10px] font-bold bg-amber-50 text-amber-700 px-2 py-0.5 rounded-md border border-amber-200">
-                            أكمل اسمك
+                            أكمل بيانات حسابك
                           </span>
                         </div>
                       )}
-                      <p className="text-xs text-slate-500 font-bold dir-ltr mt-0.5 text-right">
-                        {userProfile?.phoneNumber || customerPhone}
-                      </p>
+                      
+                      <div className="flex items-center gap-2 mt-0.5">
+                        <p className="text-xs text-slate-500 font-bold dir-ltr text-right">
+                          {userProfile?.phoneNumber || customerPhone}
+                        </p>
+                        {userProfile?.phoneVerifiedAt && (
+                          <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 flex items-center gap-0.5">
+                            <ShieldCheck className="w-3 h-3 text-emerald-600" />
+                            <span>رقم موثق</span>
+                          </span>
+                        )}
+                      </div>
                     </div>
-                    {/* Edit Profile Affordance */}
+
+                    {/* Clear Working Edit Profile Affordance */}
                     <button
                       onClick={() => setShowEditProfileModal(true)}
-                      className="px-3 py-1.5 bg-slate-50 hover:bg-slate-100 text-[#0059FF] font-black text-xs rounded-xl border border-slate-200 transition-colors flex items-center gap-1 shrink-0"
+                      className="px-3 py-1.5 bg-slate-50 hover:bg-slate-100 text-slate-700 font-black text-xs rounded-xl border border-slate-200 transition-colors flex items-center gap-1 shrink-0"
                     >
                       <Edit3 className="w-3.5 h-3.5" />
                       <span>تعديل</span>
                     </button>
                   </div>
 
-                  {/* Incomplete Profile Prompt Banner if name missing */}
+                  {/* Clean Incomplete Profile Alert Prompt */}
                   {(!userProfile?.fullName || userProfile.fullName.trim().length === 0) && (
                     <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-2xl flex items-center justify-between gap-3 text-xs font-bold text-amber-900">
                       <div className="flex items-center gap-2">
                         <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
-                        <span>لم تقم بإضافة اسمك بعد لتسهيل التواصل مع المالك.</span>
+                        <span>يرجى إضافة اسمك بالكامل لإتمام الملف الشخصي.</span>
                       </div>
                       <button
                         onClick={() => setShowEditProfileModal(true)}
-                        className="px-2.5 py-1 bg-amber-600 text-white font-black text-[11px] rounded-lg shrink-0"
+                        className="px-3 py-1 bg-amber-600 hover:bg-amber-700 text-white font-black text-[11px] rounded-lg shrink-0 transition-colors"
                       >
-                        إضافة الاسم
+                        أكمل بيانات حسابك
                       </button>
                     </div>
                   )}
                 </div>
 
-                {/* B. Useful Sections & Action Cards */}
-                <div className="bg-white rounded-3xl border border-slate-200 shadow-xs divide-y divide-slate-100 overflow-hidden">
-                  {/* 1. My Bookings Nav Card */}
-                  <button
-                    onClick={() => setActiveTab('BOOKINGS')}
-                    className="w-full p-4 flex items-center justify-between hover:bg-slate-50 transition-colors text-right"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 bg-blue-50 text-[#0059FF] rounded-xl flex items-center justify-center">
-                        <CalendarCheck className="w-5 h-5" />
-                      </div>
-                      <div>
-                        <h4 className="font-black text-slate-900 text-xs">حجوزاتي وطلبات الإقامة</h4>
-                        <p className="text-[11px] text-slate-400 font-bold">متابعة حالة الحجوزات وتفاصيل الدفع</p>
-                      </div>
-                    </div>
-                    <ChevronLeft className="w-4 h-4 text-slate-400" />
-                  </button>
-
-                  {/* 2. Favorites Nav Card */}
-                  <button
-                    onClick={() => setActiveTab('FAVORITES')}
-                    className="w-full p-4 flex items-center justify-between hover:bg-slate-50 transition-colors text-right"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 bg-rose-50 text-rose-600 rounded-xl flex items-center justify-center">
-                        <Heart className="w-5 h-5" />
-                      </div>
-                      <div>
-                        <h4 className="font-black text-slate-900 text-xs">الوحدات المفضلة</h4>
-                        <p className="text-[11px] text-slate-400 font-bold">الشاليهات والفيلات المحفوظة للرجوع إليها</p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {favorites.length > 0 && (
-                        <span className="text-[11px] font-black text-white bg-rose-500 px-2 py-0.5 rounded-full">
-                          {favorites.length}
-                        </span>
-                      )}
-                      <ChevronLeft className="w-4 h-4 text-slate-400" />
-                    </div>
-                  </button>
-
-                  {/* 3. Help & Support */}
-                  <button
-                    onClick={() => setShowSupportModal(true)}
-                    className="w-full p-4 flex items-center justify-between hover:bg-slate-50 transition-colors text-right"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 bg-emerald-50 text-emerald-600 rounded-xl flex items-center justify-center">
-                        <Headphones className="w-5 h-5" />
-                      </div>
-                      <div>
-                        <h4 className="font-black text-slate-900 text-xs">المساعدة والدعم</h4>
-                        <p className="text-[11px] text-slate-400 font-bold">فريق خدمة عملاء صولا متواجد لمساعدتك</p>
-                      </div>
-                    </div>
-                    <ChevronLeft className="w-4 h-4 text-slate-400" />
-                  </button>
-
-                  {/* 4. Trust & Safety Guarantee Banner */}
-                  <div className="p-4 bg-slate-50/70 flex items-start gap-3">
-                    <ShieldCheck className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
-                    <div className="text-right">
-                      <h5 className="font-black text-slate-900 text-xs">ضمان صولا للإقامات الموثوقة</h5>
-                      <p className="text-[11px] text-slate-500 font-bold leading-relaxed mt-0.5">
-                        جميع الوحدات معتمدة ومعاينة ميدانياً مع حماية كاملة لمقدم الحجز واسترداد فوري في حال تعذر الاستلام.
-                      </p>
-                    </div>
+                {/* C. Real Account Summary Metrics */}
+                <div className="grid grid-cols-3 gap-2.5">
+                  <div className="bg-white p-3.5 rounded-2xl border border-slate-200 text-center shadow-xs">
+                    <p className="text-[11px] font-bold text-slate-400">الحجوزات المؤكدة</p>
+                    <p className="text-lg font-black text-slate-900 mt-0.5">
+                      {accountSummary?.confirmedBookingsCount ?? 0}
+                    </p>
+                  </div>
+                  <div className="bg-white p-3.5 rounded-2xl border border-slate-200 text-center shadow-xs">
+                    <p className="text-[11px] font-bold text-slate-400">الإقامة القادمة</p>
+                    <p className="text-lg font-black text-slate-900 mt-0.5">
+                      {accountSummary?.upcomingStaysCount ?? 0}
+                    </p>
+                  </div>
+                  <div className="bg-white p-3.5 rounded-2xl border border-slate-200 text-center shadow-xs">
+                    <p className="text-[11px] font-bold text-slate-400">المفضلة</p>
+                    <p className="text-lg font-black text-slate-900 mt-0.5">
+                      {favorites.length}
+                    </p>
                   </div>
                 </div>
 
-                {/* Logout Button */}
-                <button
-                  onClick={handleLogout}
-                  className="w-full py-3.5 bg-rose-50 hover:bg-rose-100 text-rose-600 font-black text-xs rounded-2xl border border-rose-100 transition-all flex items-center justify-center gap-2"
-                >
-                  <LogOut className="w-4 h-4" />
-                  <span>تسجيل الخروج من الحساب</span>
-                </button>
+                {/* D. SECTION: رحلاتي */}
+                <div className="space-y-1.5">
+                  <h4 className="text-xs font-black text-slate-400 px-1">رحلاتي</h4>
+                  <div className="bg-white rounded-2xl border border-slate-200 shadow-xs divide-y divide-slate-100 overflow-hidden">
+                    {/* Row 1: حجوزاتي */}
+                    <button
+                      onClick={() => setActiveTab('BOOKINGS')}
+                      className="w-full p-3.5 flex items-center justify-between hover:bg-slate-50 transition-colors text-right"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 bg-blue-50 text-[#0059FF] rounded-xl flex items-center justify-center shrink-0">
+                          <CalendarCheck className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <h5 className="font-black text-slate-900 text-xs">حجوزاتي</h5>
+                          <p className="text-[11px] text-slate-400 font-bold">تابع حجوزاتك الحالية والسابقة</p>
+                        </div>
+                      </div>
+                      <ChevronLeft className="w-4 h-4 text-slate-400" />
+                    </button>
+
+                    {/* Row 2: المفضلة */}
+                    <button
+                      onClick={() => setActiveTab('FAVORITES')}
+                      className="w-full p-3.5 flex items-center justify-between hover:bg-slate-50 transition-colors text-right"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 bg-rose-50 text-rose-600 rounded-xl flex items-center justify-center shrink-0">
+                          <Heart className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <h5 className="font-black text-slate-900 text-xs">المفضلة</h5>
+                          <p className="text-[11px] text-slate-400 font-bold">الوحدات التي حفظتها للرجوع إليها</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {favorites.length > 0 && (
+                          <span className="text-[10px] font-black text-rose-600 bg-rose-50 px-2 py-0.5 rounded-full border border-rose-100">
+                            {favorites.length}
+                          </span>
+                        )}
+                        <ChevronLeft className="w-4 h-4 text-slate-400" />
+                      </div>
+                    </button>
+                  </div>
+                </div>
+
+                {/* E. SECTION: المحفظة والمدفوعات */}
+                <div className="space-y-1.5">
+                  <h4 className="text-xs font-black text-slate-400 px-1">المحفظة والمدفوعات</h4>
+                  <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+                    <button
+                      onClick={() => setShowWalletModal(true)}
+                      className="w-full p-3.5 flex items-center justify-between hover:bg-slate-50 transition-colors text-right"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 bg-emerald-50 text-emerald-600 rounded-xl flex items-center justify-center shrink-0">
+                          <Wallet className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <h5 className="font-black text-slate-900 text-xs">المحفظة والمدفوعات</h5>
+                          <p className="text-[11px] text-slate-400 font-bold">العربون والمدفوعات والمبالغ المتعلقة بحجوزاتك</p>
+                        </div>
+                      </div>
+                      <ChevronLeft className="w-4 h-4 text-slate-400" />
+                    </button>
+                  </div>
+                </div>
+
+                {/* F. SECTION: الحساب */}
+                <div className="space-y-1.5">
+                  <h4 className="text-xs font-black text-slate-400 px-1">الحساب</h4>
+                  <div className="bg-white rounded-2xl border border-slate-200 shadow-xs divide-y divide-slate-100 overflow-hidden">
+                    {/* Row 1: البيانات الشخصية */}
+                    <button
+                      onClick={() => setShowEditProfileModal(true)}
+                      className="w-full p-3.5 flex items-center justify-between hover:bg-slate-50 transition-colors text-right"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 bg-slate-100 text-slate-700 rounded-xl flex items-center justify-center shrink-0">
+                          <User className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <h5 className="font-black text-slate-900 text-xs">البيانات الشخصية</h5>
+                          <p className="text-[11px] text-slate-400 font-bold">تعديل الاسم وتحديث بيانات الحساب</p>
+                        </div>
+                      </div>
+                      <ChevronLeft className="w-4 h-4 text-slate-400" />
+                    </button>
+
+                    {/* Row 2: المساعدة والدعم */}
+                    <button
+                      onClick={() => setShowSupportModal(true)}
+                      className="w-full p-3.5 flex items-center justify-between hover:bg-slate-50 transition-colors text-right"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 bg-amber-50 text-amber-600 rounded-xl flex items-center justify-center shrink-0">
+                          <HelpCircle className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <h5 className="font-black text-slate-900 text-xs">المساعدة والدعم</h5>
+                          <p className="text-[11px] text-slate-400 font-bold">الأسئلة الشائعة وإرشادات الحجز</p>
+                        </div>
+                      </div>
+                      <ChevronLeft className="w-4 h-4 text-slate-400" />
+                    </button>
+                  </div>
+                </div>
+
+                {/* G. LOGOUT */}
+                <div className="pt-2">
+                  <button
+                    onClick={handleLogout}
+                    className="w-full py-3 bg-slate-50 hover:bg-rose-50 text-slate-500 hover:text-rose-600 font-black text-xs rounded-xl border border-slate-200 hover:border-rose-200 transition-colors flex items-center justify-center gap-2"
+                  >
+                    <LogOut className="w-4 h-4" />
+                    <span>تسجيل الخروج</span>
+                  </button>
+                </div>
               </div>
             ) : (
               /* Logged-Out State */
@@ -769,6 +868,14 @@ export function App() {
       {/* Customer Support Modal */}
       {showSupportModal && (
         <CustomerSupportModal onClose={() => setShowSupportModal(false)} />
+      )}
+
+      {/* Customer Wallet & Payments Modal */}
+      {showWalletModal && authToken && (
+        <CustomerWalletModal
+          authToken={authToken}
+          onClose={() => setShowWalletModal(false)}
+        />
       )}
 
       {/* Request Success Modal */}

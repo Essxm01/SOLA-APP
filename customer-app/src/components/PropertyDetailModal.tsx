@@ -279,7 +279,7 @@ export const PropertyDetailModal: React.FC<PropertyDetailModalProps> = ({
           <div className="absolute bottom-3 left-4 right-4 flex items-center justify-between z-10 pointer-events-none">
             <div className="flex items-center gap-1.5 bg-white/95 backdrop-blur-md text-[#0059FF] text-[11px] font-black px-3 py-1 rounded-full shadow-sm">
               <ShieldCheck className="w-3.5 h-3.5" />
-              <span>إقامة موثقة من صولا</span>
+              <span>إقامة موثقة من كونفرم</span>
             </div>
 
             {images.length > 1 && (

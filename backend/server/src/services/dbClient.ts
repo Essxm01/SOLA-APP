@@ -277,15 +277,7 @@ async function queryViaSupabaseRest(text: string, params: any[] | undefined, url
       }
     }
 
-    // 2. Also update owners table by id and phone
-    if (fullName) {
-      await fetch(`${url}/rest/v1/owners?id=eq.${encodeURIComponent(userId)}`, {
-        method: 'PATCH',
-        headers,
-        body: JSON.stringify({ full_name: fullName, updated_at: nowIso }),
-      }).catch(() => {});
-    }
-
+    // Only canonical users table is updated
     const mapped = rows.map(u => ({
       id: u.id || userId,
       phoneNumber: u.phone_number || '',
@@ -474,7 +466,7 @@ async function queryViaSupabaseRest(text: string, params: any[] | undefined, url
   }
 
   // 7. SELECT bookings for Property Availability & Overlap Checks (Canonical Blocking Statuses)
-  if (lowerSql.includes('from bookings') && lowerSql.includes('property_id')) {
+  if (lowerSql.includes('from bookings') && lowerSql.includes('property_id = $1') && !lowerSql.includes('customer_id')) {
     const propId = params?.[0];
     const res = await fetch(`${url}/rest/v1/bookings?property_id=eq.${encodeURIComponent(propId)}&select=check_in,check_out,status`, { headers });
     const raw: any = await res.json().catch(() => []);
@@ -486,6 +478,67 @@ async function queryViaSupabaseRest(text: string, params: any[] | undefined, url
         checkOut: b.check_out,
         status: b.status,
       }));
+    return { rows: mapped, command: 'SELECT', rowCount: mapped.length, oid: 0, fields: [] };
+  }
+
+  // 7B. SELECT bookings for Customer App (Customer ID or Phone)
+  if (lowerSql.includes('from bookings') && (lowerSql.includes('customer_id') || lowerSql.includes('guest_phone'))) {
+    const customerId = params?.[0];
+    const phone = params?.[1];
+    let queryUrl = `${url}/rest/v1/bookings?order=created_at.desc`;
+    if (customerId && phone) {
+      queryUrl += `&or=(customer_id.eq.${encodeURIComponent(customerId)},guest_phone.eq.${encodeURIComponent(phone)})`;
+    } else if (customerId) {
+      queryUrl += `&customer_id=eq.${encodeURIComponent(customerId)}`;
+    } else if (phone) {
+      queryUrl += `&guest_phone=eq.${encodeURIComponent(phone)}`;
+    }
+
+    const res = await fetch(queryUrl, { headers });
+    const raw: any = await res.json().catch(() => []);
+    const rows: any[] = Array.isArray(raw) ? raw : [];
+    const mapped = rows.map(b => ({
+      id: b.id,
+      bookingNumber: b.booking_number,
+      propertyId: b.property_id,
+      ownerId: b.owner_id,
+      customerId: b.customer_id,
+      guestName: b.guest_name,
+      guestPhone: b.guest_phone,
+      checkIn: b.check_in,
+      checkOut: b.check_out,
+      nights: b.nights,
+      totalGuests: b.total_guests,
+      status: b.status,
+      createdAt: b.created_at,
+      confirmedAt: b.confirmed_at,
+      pricePerNight: 5000,
+    }));
+    return { rows: mapped, command: 'SELECT', rowCount: mapped.length, oid: 0, fields: [] };
+  }
+
+  // 17. SELECT payment_transactions for Customer
+  if (lowerSql.includes('from payment_transactions') && lowerSql.includes('customer_id = $1')) {
+    const customerId = params?.[0];
+    const res = await fetch(`${url}/rest/v1/payment_transactions?customer_id=eq.${encodeURIComponent(customerId)}&order=created_at.desc`, { headers });
+    const raw: any = await res.json().catch(() => []);
+    const rows: any[] = Array.isArray(raw) ? raw : [];
+    const mapped = rows.map(t => ({
+      id: t.id,
+      bookingId: t.booking_id,
+      customerId: t.customer_id,
+      ownerId: t.owner_id,
+      provider: t.provider,
+      merchantOrderId: t.merchant_order_id,
+      providerTransactionId: t.provider_transaction_id,
+      amountCents: t.amount_cents,
+      amountEgp: Number(t.amount_cents) / 100,
+      currency: t.currency,
+      paymentMethod: t.payment_method,
+      status: t.status,
+      createdAt: t.created_at,
+      updatedAt: t.updated_at,
+    }));
     return { rows: mapped, command: 'SELECT', rowCount: mapped.length, oid: 0, fields: [] };
   }
 

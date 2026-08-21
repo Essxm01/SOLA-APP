@@ -22,6 +22,7 @@ import { runCustomerPropertyDecisionSuite } from './customerPropertyDecision.tes
 import { runSharedIdentityResolutionSuite } from './sharedIdentityResolution.test.js';
 import { runAuth02b2ReliabilitySuite } from './auth02b2Reliability.test.js';
 import { runAuth03Tests } from './auth03CustomerProfile.test.js';
+import { runCustomerAccount01Suite } from './customerAccount01.test.js';
 
 async function main() {
   console.log('======================================================================');
@@ -200,11 +201,17 @@ async function main() {
     console.log(`  [19.${idx + 1}] ${status} - ${r.name} ${r.error ? `(${r.error})` : ''}`);
   });
 
-  const total = authSummary.total + finSummary.total + httpSummary.total + compSummary.total + exitSummary.total + pgSummary.total + adminSummary.total + custSummary.total + multiSummary.total + msgDispSummary.total + payoutQueueSummary.total + payoutExecSummary.total + disputesExecSummary.total + corsSummary.total + mediaSummary.total + custDecisionSummary.total + sharedIdentitySummary.total + auth02b2Summary.total + auth03Summary.total;
-  const passed = authSummary.passed + finSummary.passed + httpSummary.passed + compSummary.passed + exitSummary.passed + pgSummary.passed + adminSummary.passed + custSummary.passed + multiSummary.passed + msgDispSummary.passed + payoutQueueSummary.passed + payoutExecSummary.passed + disputesExecSummary.passed + corsSummary.passed + mediaSummary.passed + custDecisionSummary.passed + sharedIdentitySummary.passed + auth02b2Summary.passed + auth03Summary.passed;
-  const failed = authSummary.failed + finSummary.failed + httpSummary.failed + compSummary.failed + exitSummary.failed + pgSummary.failed + adminSummary.failed + custSummary.failed + multiSummary.failed + msgDispSummary.failed + payoutQueueSummary.failed + payoutExecSummary.failed + disputesExecSummary.failed + corsSummary.failed + mediaSummary.failed + custDecisionSummary.failed + sharedIdentitySummary.failed + auth02b2Summary.failed + auth03Summary.failed;
+  // Suite 20: CUSTOMER ACCOUNT-01 Renter Account Hub & Ledger Suite
+  console.log('\n[SUITE 20] CUSTOMER ACCOUNT-01: RENTER ACCOUNT HUB & LEDGER SUITE:');
+  const account01Summary = await runCustomerAccount01Suite();
+  account01Summary.results.forEach((r, idx) => {
+    const status = r.passed ? '✅ PASS' : '❌ FAIL';
+    console.log(`  [20.${idx + 1}] ${status} - ${r.name} ${r.error ? `(${r.error})` : ''}`);
+  });
 
-
+  const total = authSummary.total + finSummary.total + httpSummary.total + compSummary.total + exitSummary.total + pgSummary.total + adminSummary.total + custSummary.total + multiSummary.total + msgDispSummary.total + payoutQueueSummary.total + payoutExecSummary.total + disputesExecSummary.total + corsSummary.total + mediaSummary.total + custDecisionSummary.total + sharedIdentitySummary.total + auth02b2Summary.total + auth03Summary.total + account01Summary.total;
+  const passed = authSummary.passed + finSummary.passed + httpSummary.passed + compSummary.passed + exitSummary.passed + pgSummary.passed + adminSummary.passed + custSummary.passed + multiSummary.passed + msgDispSummary.passed + payoutQueueSummary.passed + payoutExecSummary.passed + disputesExecSummary.passed + corsSummary.passed + mediaSummary.passed + custDecisionSummary.passed + sharedIdentitySummary.passed + auth02b2Summary.passed + auth03Summary.passed + account01Summary.passed;
+  const failed = authSummary.failed + finSummary.failed + httpSummary.failed + compSummary.failed + exitSummary.failed + pgSummary.failed + adminSummary.failed + custSummary.failed + multiSummary.failed + msgDispSummary.failed + payoutQueueSummary.failed + payoutExecSummary.failed + disputesExecSummary.failed + corsSummary.failed + mediaSummary.failed + custDecisionSummary.failed + sharedIdentitySummary.failed + auth02b2Summary.failed + auth03Summary.failed + account01Summary.failed;
 
   console.log('\n======================================================================');
   console.log(`MASTER HARNESS TOTAL: ${total} | PASSED: ${passed} | FAILED: ${failed}`);

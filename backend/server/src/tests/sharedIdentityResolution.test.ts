@@ -220,8 +220,9 @@ export async function runSharedIdentityResolutionSuite(): Promise<{ total: numbe
   // TEST 9: HTTP API: Customer Token Accepted on Protected Customer Route
   // --------------------------------------------------------------------------
   try {
-    await authService.requestOtp(existingOwnerPhone);
-    const custToken = (await authService.verifyOtp(existingOwnerPhone, '1234', 'CUSTOMER')).tokens.accessToken;
+    const custPhone = '+201099991001';
+    await authService.requestOtp(custPhone);
+    const custToken = (await authService.verifyOtp(custPhone, '1234', 'CUSTOMER')).tokens.accessToken;
     const resCust = await app.handleHttpRequest('GET', '/api/v1/customer/bookings', { authorization: `Bearer ${custToken}` });
     const isAllowed = resCust.statusCode === 200;
     results.push({
@@ -237,8 +238,9 @@ export async function runSharedIdentityResolutionSuite(): Promise<{ total: numbe
   // TEST 10: HTTP API: Customer Token Strictly REJECTED on Owner Protected Route (403 Forbidden)
   // --------------------------------------------------------------------------
   try {
-    await authService.requestOtp(existingOwnerPhone);
-    const custToken = (await authService.verifyOtp(existingOwnerPhone, '1234', 'CUSTOMER')).tokens.accessToken;
+    const custPhone = '+201099991002';
+    await authService.requestOtp(custPhone);
+    const custToken = (await authService.verifyOtp(custPhone, '1234', 'CUSTOMER')).tokens.accessToken;
     const resOwnerRoute = await app.handleHttpRequest('GET', '/api/v1/owner/properties', { authorization: `Bearer ${custToken}` });
     const isBlocked = resOwnerRoute.statusCode === 403;
     results.push({
@@ -254,8 +256,13 @@ export async function runSharedIdentityResolutionSuite(): Promise<{ total: numbe
   // TEST 11: HTTP API: Owner Token Accepted on Owner Protected Route
   // --------------------------------------------------------------------------
   try {
-    await authService.requestOtp(existingOwnerPhone);
-    const ownerToken = (await authService.verifyOtp(existingOwnerPhone, '1234', 'OWNER')).tokens.accessToken;
+    const ownerPhone = '+201099991003';
+    // Seed owner in DB
+    const ownerId = crypto.randomUUID();
+    dbUsersStore.set(ownerPhone, { id: ownerId, phoneNumber: ownerPhone, status: 'ACTIVE', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
+    dbOwnersStore.set(ownerId, { id: ownerId, phoneNumber: ownerPhone, fullName: 'مالك تجريبي', status: 'ACTIVE', verificationStatus: 'VERIFIED', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
+    await authService.requestOtp(ownerPhone);
+    const ownerToken = (await authService.verifyOtp(ownerPhone, '1234', 'OWNER')).tokens.accessToken;
     const resOwnerRoute = await app.handleHttpRequest('GET', '/api/v1/owner/properties', { authorization: `Bearer ${ownerToken}` });
     const isAllowed = resOwnerRoute.statusCode === 200;
     results.push({

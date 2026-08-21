@@ -68,7 +68,7 @@ export function formatBookingStatusHuman(status: string): HumanStatusInfo {
         label: 'تم إلغاء الحجز من قبل المالك',
         badgeBg: '#FEE2E2',
         badgeText: '#991B1B',
-        description: 'تم إلغاء الحجز واسترداد المبالغ المستحقة بالكامل طبقاً لضمان صولا.',
+        description: 'تم إلغاء الحجز واسترداد المبالغ المستحقة بالكامل طبقاً لضمان كونفرم.',
       };
 
     default:

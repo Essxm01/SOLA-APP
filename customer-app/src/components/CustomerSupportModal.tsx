@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, Headphones, MessageCircle, Phone, Mail, ShieldCheck } from 'lucide-react';
+import { X, HelpCircle, Shield, FileText, CheckCircle2 } from 'lucide-react';
 
 interface CustomerSupportModalProps {
   onClose: () => void;
@@ -8,7 +8,8 @@ interface CustomerSupportModalProps {
 export const CustomerSupportModal: React.FC<CustomerSupportModalProps> = ({ onClose }) => {
   return (
     <div className="fixed inset-0 z-50 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl border border-slate-200 p-6 animate-fade-in relative text-right">
+      <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl border border-slate-200 p-6 animate-fade-in relative text-right max-h-[90vh] flex flex-col">
+        {/* Close Button */}
         <button
           onClick={onClose}
           className="absolute top-4 left-4 w-8 h-8 bg-slate-100 text-slate-600 hover:bg-slate-200 rounded-full flex items-center justify-center transition-colors"
@@ -16,69 +17,68 @@ export const CustomerSupportModal: React.FC<CustomerSupportModalProps> = ({ onCl
           <X className="w-4 h-4" />
         </button>
 
-        <div className="text-center mb-6">
-          <div className="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-2xl flex items-center justify-center mx-auto mb-3 shadow-xs">
-            <Headphones className="w-6 h-6" />
+        {/* Header */}
+        <div className="text-center mb-5 shrink-0">
+          <div className="w-12 h-12 bg-blue-50 text-[#0059FF] rounded-2xl flex items-center justify-center mx-auto mb-2.5 shadow-xs">
+            <HelpCircle className="w-6 h-6" />
           </div>
-          <h3 className="text-lg font-black text-slate-900">مركز الدعم والمساعدة</h3>
-          <p className="text-xs text-slate-500 font-bold mt-1">
-            فريق خدمة عملاء صولا متواجد لمساعدتك طوال أيام الأسبوع
+          <h3 className="text-lg font-black text-slate-900">المساعدة وإرشادات الحجز</h3>
+          <p className="text-xs text-slate-500 font-bold mt-0.5">
+            دليلك لتأكيد وإدارة حجوزاتك على منصة كونفرم
           </p>
         </div>
 
-        <div className="space-y-3 mb-6">
-          <a
-            href="https://wa.me/201012345678"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="p-4 bg-emerald-50/60 hover:bg-emerald-50 border border-emerald-200/80 rounded-2xl flex items-center justify-between transition-colors"
-          >
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-emerald-600 text-white rounded-xl flex items-center justify-center shrink-0">
-                <MessageCircle className="w-5 h-5" />
-              </div>
-              <div>
-                <h4 className="font-black text-slate-900 text-xs">تواصل عبر واتساب</h4>
-                <p className="text-[11px] text-slate-500 font-bold">رد سريع ومباشر على مدار الساعة</p>
-              </div>
+        {/* FAQ Guide Sections */}
+        <div className="flex-1 overflow-y-auto pr-1 space-y-3">
+          <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-1 text-right">
+            <div className="flex items-center gap-2 text-slate-900 font-black text-xs">
+              <CheckCircle2 className="w-4 h-4 text-[#0059FF] shrink-0" />
+              <span>كيفية تأكيد الحجز</span>
             </div>
-            <span className="text-xs font-black text-emerald-700 bg-emerald-100/60 px-2.5 py-1 rounded-lg">
-              محادثة
-            </span>
-          </a>
+            <p className="text-[11px] text-slate-500 font-bold leading-relaxed pr-6">
+              بعد موافقة المالك على طلبك، يتم سداد العربون (قيمة الليلة الأولى) لتثبيت الحجز رسمياً وحظر التواريخ من أي طلبات أخرى.
+            </p>
+          </div>
 
-          <a
-            href="tel:+201012345678"
-            className="p-4 bg-blue-50/60 hover:bg-blue-50 border border-blue-200/80 rounded-2xl flex items-center justify-between transition-colors"
-          >
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-[#0059FF] text-white rounded-xl flex items-center justify-center shrink-0">
-                <Phone className="w-5 h-5" />
-              </div>
-              <div>
-                <h4 className="font-black text-slate-900 text-xs">الاتصال الهاتفي</h4>
-                <p className="text-[11px] text-slate-500 font-bold">متاح يومياً من 9:00 ص إلى 11:00 م</p>
-              </div>
+          <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-1 text-right">
+            <div className="flex items-center gap-2 text-slate-900 font-black text-xs">
+              <Shield className="w-4 h-4 text-emerald-600 shrink-0" />
+              <span>أمان وموثوقية الإقامة</span>
             </div>
-            <span className="text-xs font-black text-blue-700 bg-blue-100/60 px-2.5 py-1 rounded-lg">
-              اتصال
-            </span>
-          </a>
+            <p className="text-[11px] text-slate-500 font-bold leading-relaxed pr-6">
+              جميع الوحدات المعروضة تخضع للمراجعة الميدانية والتحقق من ملكية العقار لضمان استلامك للوحدة بنفس المواصفات المعلنة.
+            </p>
+          </div>
 
-          <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl flex items-center gap-3">
-            <div className="w-10 h-10 bg-slate-200 text-slate-700 rounded-xl flex items-center justify-center shrink-0">
-              <Mail className="w-5 h-5" />
+          <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-1 text-right">
+            <div className="flex items-center gap-2 text-slate-900 font-black text-xs">
+              <FileText className="w-4 h-4 text-blue-600 shrink-0" />
+              <span>طريقة سداد المتبقي</span>
             </div>
-            <div>
-              <h4 className="font-black text-slate-900 text-xs">البريد الإلكتروني للدعم</h4>
-              <p className="text-xs text-slate-600 font-bold dir-ltr text-right">support@sola.eg</p>
+            <p className="text-[11px] text-slate-500 font-bold leading-relaxed pr-6">
+              المبلغ المتبقي من قيمة الإقامة يتم سداده عند الوصول والاستلام المباشر للوحدة بالتنسيق مع المالك.
+            </p>
+          </div>
+
+          <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-1 text-right">
+            <div className="flex items-center gap-2 text-slate-900 font-black text-xs">
+              <HelpCircle className="w-4 h-4 text-amber-600 shrink-0" />
+              <span>التواصل والتنسيق</span>
             </div>
+            <p className="text-[11px] text-slate-500 font-bold leading-relaxed pr-6">
+              عند تأكيد الحجز، تظهر تفاصيل الحجز كاملة في تبويب «حجوزاتي» لمتابعة مواعيد الوصول والمغادرة.
+            </p>
           </div>
         </div>
 
-        <div className="p-3 bg-slate-50 border border-slate-200 rounded-2xl flex items-center gap-2 text-xs font-bold text-slate-600">
-          <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
-          <span>صولا تضمن حماية جميع حجوزاتك ومستحقاتك المالية بنسبة 100%.</span>
+        {/* Footer */}
+        <div className="mt-4 pt-3 border-t border-slate-100 text-center shrink-0">
+          <button
+            onClick={onClose}
+            className="w-full py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-black text-xs rounded-xl transition-colors"
+          >
+            إغلاق
+          </button>
         </div>
       </div>
     </div>

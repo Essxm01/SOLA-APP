@@ -22,9 +22,9 @@ export const CustomerHeader: React.FC<CustomerHeaderProps> = ({
           </div>
           <div>
             <div className="flex items-center gap-1.5">
-              <span className="font-black text-lg text-slate-900 tracking-tight">صولا</span>
+              <span className="font-black text-lg text-slate-900 tracking-tight">كونفرم</span>
               <span className="text-[10px] font-extrabold px-2 py-0.5 bg-[#FFD700]/20 text-slate-800 rounded-full border border-[#FFD700]/50">
-                صيفك ⭐️
+                KONFRM ⭐️
               </span>
             </div>
             <p className="text-[10px] text-slate-400 font-bold -mt-0.5">

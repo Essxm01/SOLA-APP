@@ -465,6 +465,37 @@ export const bookingDb = {
     }
 
     return [];
+  },
+
+  async getByCustomerId(customerId: string, phone?: string) {
+    const res = await queryDb(
+      `SELECT b.id, b.booking_number AS "bookingNumber", b.property_id AS "propertyId", b.owner_id AS "ownerId",
+              b.customer_id AS "customerId", b.guest_name AS "guestName", b.guest_phone AS "guestPhone",
+              b.check_in AS "checkIn", b.check_out AS "checkOut", b.nights, b.total_guests AS "guestsCount",
+              b.status, b.created_at AS "createdAt", b.confirmed_at AS "confirmedAt",
+              p.title AS "propertyTitle", p.address AS "locationName", p.base_price_per_night AS "pricePerNight"
+       FROM bookings b
+       LEFT JOIN properties p ON b.property_id = p.id
+       WHERE (b.customer_id = $1 OR b.guest_phone = $2)
+       ORDER BY b.created_at DESC`,
+      [customerId, phone || '']
+    );
+
+    return res.rows.map(b => {
+      const pricePerNight = Number(b.pricePerNight) || 5000;
+      const totalStay = (b.nights || 2) * pricePerNight;
+      const deposit = pricePerNight;
+      const remaining = totalStay - deposit;
+      return {
+        ...b,
+        pricePerNight,
+        totalStay,
+        depositAmount: deposit,
+        remainingAmount: remaining,
+        currency: 'EGP',
+        propertyImage: 'https://images.unsplash.com/photo-1512917774080-9991f1c4c750?w=800',
+      };
+    });
   }
 };
 

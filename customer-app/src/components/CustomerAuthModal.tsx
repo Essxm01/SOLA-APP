@@ -167,7 +167,7 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
           </div>
           <h3 className="text-lg font-black text-slate-900">
             {step === 'NAME_ONBOARDING'
-              ? 'أهلاً بك في صولا! 🎉'
+              ? 'أهلاً بك في كونفرم! 🎉'
               : step === 'OTP'
               ? 'تأكيد رقم الهاتف'
               : 'تسجيل الدخول / إنشاء حساب'}
@@ -291,7 +291,7 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
               disabled={loading}
               className="w-full py-3.5 bg-[#0059FF] hover:bg-blue-600 active:scale-[0.99] text-white font-black text-xs rounded-xl shadow-lg shadow-blue-500/25 transition-all flex items-center justify-center gap-2"
             >
-              {loading ? 'جاري الحفظ...' : 'حفظ والدخول إلى صولا'}
+              {loading ? 'جاري الحفظ...' : 'حفظ والدخول إلى كونفرم'}
             </button>
           </div>
         )}

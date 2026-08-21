@@ -997,7 +997,7 @@ export const sessionDb = {
 
   async revokeByRefreshTokenHash(hash: string): Promise<boolean> {
     const res = await queryDb(
-      `UPDATE user_sessions SET is_revoked = TRUE, updated_at = NOW() WHERE refresh_token_hash = $1`,
+      `UPDATE user_sessions SET is_revoked = TRUE WHERE refresh_token_hash = $1`,
       [hash]
     );
     return (res.rowCount || 0) > 0;
@@ -1005,8 +1005,8 @@ export const sessionDb = {
 
   async revokeAllForUser(userId: string, surface?: 'CUSTOMER' | 'OWNER'): Promise<boolean> {
     const query = surface
-      ? `UPDATE user_sessions SET is_revoked = TRUE, updated_at = NOW() WHERE user_id = $1 AND surface = $2`
-      : `UPDATE user_sessions SET is_revoked = TRUE, updated_at = NOW() WHERE user_id = $1`;
+      ? `UPDATE user_sessions SET is_revoked = TRUE WHERE user_id = $1 AND surface = $2`
+      : `UPDATE user_sessions SET is_revoked = TRUE WHERE user_id = $1`;
     const params = surface ? [userId, surface] : [userId];
     await queryDb(query, params);
     return true;

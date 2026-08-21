@@ -512,45 +512,23 @@ async function queryViaSupabaseRest(text: string, params: any[] | undefined, url
       clientInfo: clientDeviceInfo,
     });
 
-    // Try full schema first
+    const payload = {
+      id,
+      owner_id: ownerId,
+      refresh_token_hash: refreshTokenHash,
+      device_info: packedDeviceInfo,
+      ip_address: ipAddress,
+      is_revoked: false,
+      expires_at: expiresAt,
+    };
+
     let res = await fetch(`${url}/rest/v1/user_sessions`, {
       method: 'POST',
       headers: { ...headers, 'Prefer': 'return=representation' },
-      body: JSON.stringify({
-        id,
-        user_id: userId,
-        owner_id: ownerId,
-        surface,
-        role,
-        refresh_token_hash: refreshTokenHash,
-        device_info: packedDeviceInfo,
-        ip_address: ipAddress,
-        is_revoked: false,
-        expires_at: expiresAt,
-        created_at: new Date().toISOString(),
-      }),
+      body: JSON.stringify(payload),
     });
 
     let raw: any = await res.json().catch(() => []);
-
-    // Fallback if custom columns not in table
-    if (!res.ok) {
-      res = await fetch(`${url}/rest/v1/user_sessions`, {
-        method: 'POST',
-        headers: { ...headers, 'Prefer': 'return=representation' },
-        body: JSON.stringify({
-          id,
-          owner_id: ownerId,
-          refresh_token_hash: refreshTokenHash,
-          device_info: packedDeviceInfo,
-          ip_address: ipAddress,
-          is_revoked: false,
-          expires_at: expiresAt,
-        }),
-      });
-      raw = await res.json().catch(() => []);
-    }
-
     const rows = Array.isArray(raw) ? raw : [raw];
     const mapped = rows.map(s => ({
       id: s.id || id,
@@ -595,7 +573,7 @@ async function queryViaSupabaseRest(text: string, params: any[] | undefined, url
         refreshTokenHash: s.refresh_token_hash,
         deviceInfo: s.device_info,
         ipAddress: s.ip_address,
-        isRevoked: s.is_revoked,
+        isRevoked: s.is_revoked === true || s.is_revoked === 'true',
         expiresAt: s.expires_at,
         createdAt: s.created_at,
       };
@@ -606,11 +584,10 @@ async function queryViaSupabaseRest(text: string, params: any[] | undefined, url
   // 15. UPDATE user_sessions SET is_revoked = TRUE WHERE refresh_token_hash = $1
   if (lowerSql.startsWith('update user_sessions') && lowerSql.includes('is_revoked = true') && lowerSql.includes('refresh_token_hash = $1')) {
     const hash = params?.[0];
-    const nowIso = new Date().toISOString();
     const res = await fetch(`${url}/rest/v1/user_sessions?refresh_token_hash=eq.${encodeURIComponent(hash)}`, {
       method: 'PATCH',
       headers,
-      body: JSON.stringify({ is_revoked: true, updated_at: nowIso }),
+      body: JSON.stringify({ is_revoked: true }),
     });
     return { rows: [], command: 'UPDATE', rowCount: res.ok ? 1 : 0, oid: 0, fields: [] };
   }
@@ -618,11 +595,10 @@ async function queryViaSupabaseRest(text: string, params: any[] | undefined, url
   // 16. UPDATE user_sessions SET is_revoked = TRUE WHERE user_id = $1
   if (lowerSql.startsWith('update user_sessions') && lowerSql.includes('is_revoked = true') && lowerSql.includes('user_id = $1')) {
     const userId = params?.[0];
-    const nowIso = new Date().toISOString();
-    const res = await fetch(`${url}/rest/v1/user_sessions?user_id=eq.${encodeURIComponent(userId)}`, {
+    const res = await fetch(`${url}/rest/v1/user_sessions?owner_id=eq.${encodeURIComponent(userId)}`, {
       method: 'PATCH',
       headers,
-      body: JSON.stringify({ is_revoked: true, updated_at: nowIso }),
+      body: JSON.stringify({ is_revoked: true }),
     });
     return { rows: [], command: 'UPDATE', rowCount: res.ok ? 1 : 0, oid: 0, fields: [] };
   }

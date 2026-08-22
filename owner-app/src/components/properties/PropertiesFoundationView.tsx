@@ -35,7 +35,6 @@ import {
 export const PropertiesFoundationView: React.FC = () => {
   const {
     properties,
-    metrics,
     propertyViewMode,
     selectedPropertyId,
     openAddPropertyWizard,
@@ -49,7 +48,6 @@ export const PropertiesFoundationView: React.FC = () => {
     submitOwnerVerificationDocuments,
     setDailyPricing,
     getPropertyAuditLogs,
-    isEmptyDashboard,
   } = useApp();
 
   const [activeFilter, setActiveFilter] = useState<'all' | PropertyStatus>('all');
@@ -123,17 +121,24 @@ export const PropertiesFoundationView: React.FC = () => {
     return <AddPropertyWizard />;
   }
 
+  // Dynamic counts directly from canonical properties
+  const totalUnits = properties.length;
+  const pendingUnits = properties.filter((p) => p.status === 'PENDING_REVIEW').length;
+  const publishedUnits = properties.filter((p) => p.status === 'PUBLISHED').length;
+  const draftUnits = properties.filter((p) => p.status === 'DRAFT').length;
+  const archivedUnits = properties.filter((p) => p.status === 'ARCHIVED').length;
+
   return (
     <div className="p-4 space-y-4 dir-rtl text-right min-h-full pb-20">
       {/* Header Bar */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-3">
         <div>
           <h2 className="text-xl font-black text-slate-900 flex items-center gap-2">
-            <Building className="w-6 h-6 text-[#0059FF]" />
-            <span>وحداتي العقارية (الوحدات والأسعار)</span>
+            <Building className="w-5 h-5 text-[#0059FF]" />
+            <span>وحداتي</span>
           </h2>
-          <p className="text-xs text-slate-500">
-            إدارة الوحدات الساحلية، متابعة حالات النشر والتوثيق، وتحديد الأسعار اليومية
+          <p className="text-xs text-slate-500 mt-0.5">
+            إدارة ومتابعة الوحدات الساحلية والأسعار وحالات الاعتماد
           </p>
         </div>
 
@@ -142,104 +147,137 @@ export const PropertiesFoundationView: React.FC = () => {
           size="sm"
           onClick={() => openAddPropertyWizard()}
           icon={<Plus className="w-4 h-4" />}
-          className="bg-[#0059FF] font-bold shadow-xs text-xs py-2 px-3 shrink-0"
+          className="bg-[#0059FF] hover:bg-blue-700 font-extrabold shadow-xs text-xs py-2.5 px-3.5 shrink-0 rounded-xl"
         >
-          إضافة وحدة ➕
+          + إضافة وحدة
         </Button>
       </div>
 
-      {/* Property Metrics Dashboard Summary Bar */}
-      <div className="grid grid-cols-4 gap-2 bg-slate-900 text-white p-3 rounded-2xl text-center shadow-md">
-        <div className="space-y-0.5">
-          <span className="text-[10px] text-slate-400 block font-bold">إجمالي الوحدات</span>
-          <span className="text-base font-black text-amber-400 font-mono">
-            {metrics.totalPropertiesCount}
-          </span>
+      {/* Mobile-First Status Summary Grid (2x2 Compact Cards) */}
+      <div className="grid grid-cols-2 gap-2.5">
+        {/* Card 1: All */}
+        <div 
+          onClick={() => setActiveFilter('all')}
+          className={`bg-white p-3 rounded-2xl border transition-all cursor-pointer ${
+            activeFilter === 'all' ? 'border-[#0059FF] ring-2 ring-blue-100 shadow-xs' : 'border-slate-200/80 hover:border-slate-300'
+          }`}
+        >
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-[11px] font-bold text-slate-600">كل الوحدات</span>
+            <span className="w-2 h-2 rounded-full bg-[#0059FF]" />
+          </div>
+          <div className="text-2xl font-black text-slate-900 font-mono">{totalUnits}</div>
         </div>
-        <div className="space-y-0.5 border-r border-slate-800">
-          <span className="text-[10px] text-slate-400 block font-bold">المنشورة</span>
-          <span className="text-base font-black text-emerald-400 font-mono">
-            {metrics.publishedPropertiesCount}
-          </span>
+
+        {/* Card 2: Pending Review */}
+        <div 
+          onClick={() => setActiveFilter('PENDING_REVIEW')}
+          className={`bg-white p-3 rounded-2xl border transition-all cursor-pointer ${
+            activeFilter === 'PENDING_REVIEW' ? 'border-amber-500 ring-2 ring-amber-100 shadow-xs' : 'border-slate-200/80 hover:border-slate-300'
+          }`}
+        >
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-[11px] font-bold text-amber-800">قيد المراجعة</span>
+            <span className="w-2 h-2 rounded-full bg-amber-500" />
+          </div>
+          <div className="text-2xl font-black text-amber-700 font-mono">{pendingUnits}</div>
         </div>
-        <div className="space-y-0.5 border-r border-slate-800">
-          <span className="text-[10px] text-slate-400 block font-bold">قيد المراجعة</span>
-          <span className="text-base font-black text-amber-300 font-mono">
-            {metrics.underReviewPropertiesCount}
-          </span>
+
+        {/* Card 3: Published */}
+        <div 
+          onClick={() => setActiveFilter('PUBLISHED')}
+          className={`bg-white p-3 rounded-2xl border transition-all cursor-pointer ${
+            activeFilter === 'PUBLISHED' ? 'border-emerald-500 ring-2 ring-emerald-100 shadow-xs' : 'border-slate-200/80 hover:border-slate-300'
+          }`}
+        >
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-[11px] font-bold text-emerald-800">المنشورة</span>
+            <span className="w-2 h-2 rounded-full bg-emerald-500" />
+          </div>
+          <div className="text-2xl font-black text-emerald-700 font-mono">{publishedUnits}</div>
         </div>
-        <div className="space-y-0.5 border-r border-slate-800">
-          <span className="text-[10px] text-slate-400 block font-bold">الموقوفة مؤقتاً</span>
-          <span className="text-base font-black text-blue-400 font-mono">
-            {metrics.pausedPropertiesCount}
-          </span>
+
+        {/* Card 4: Drafts */}
+        <div 
+          onClick={() => setActiveFilter('DRAFT')}
+          className={`bg-white p-3 rounded-2xl border transition-all cursor-pointer ${
+            activeFilter === 'DRAFT' ? 'border-slate-600 ring-2 ring-slate-200 shadow-xs' : 'border-slate-200/80 hover:border-slate-300'
+          }`}
+        >
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-[11px] font-bold text-slate-700">المسودات</span>
+            <span className="w-2 h-2 rounded-full bg-slate-400" />
+          </div>
+          <div className="text-2xl font-black text-slate-700 font-mono">{draftUnits}</div>
         </div>
       </div>
 
       {/* Filter Tabs */}
-      <div className="bg-slate-100 p-1 rounded-2xl flex items-center justify-between text-xs font-bold overflow-x-auto">
+      <div className="bg-slate-100 p-1 rounded-2xl flex items-center justify-between text-xs font-bold overflow-x-auto gap-1">
         <button
           onClick={() => setActiveFilter('all')}
-          className={`px-3 py-2 rounded-xl transition-all whitespace-nowrap ${
+          className={`px-3 py-1.5 rounded-xl transition-all whitespace-nowrap text-xs ${
             activeFilter === 'all'
               ? 'bg-white text-[#0059FF] shadow-xs'
               : 'text-slate-600 hover:text-slate-900'
           }`}
         >
-          الكل ({properties.length})
-        </button>
-
-        <button
-          onClick={() => setActiveFilter('PUBLISHED')}
-          className={`px-3 py-2 rounded-xl transition-all whitespace-nowrap ${
-            activeFilter === 'PUBLISHED'
-              ? 'bg-white text-emerald-700 shadow-xs'
-              : 'text-slate-600 hover:text-slate-900'
-          }`}
-        >
-          المنشورة ({properties.filter((p) => p.status === 'PUBLISHED').length})
+          الكل ({totalUnits})
         </button>
 
         <button
           onClick={() => setActiveFilter('PENDING_REVIEW')}
-          className={`px-3 py-2 rounded-xl transition-all whitespace-nowrap ${
+          className={`px-3 py-1.5 rounded-xl transition-all whitespace-nowrap text-xs ${
             activeFilter === 'PENDING_REVIEW'
               ? 'bg-white text-amber-700 shadow-xs'
               : 'text-slate-600 hover:text-slate-900'
           }`}
         >
-          قيد المراجعة ({properties.filter((p) => p.status === 'PENDING_REVIEW').length})
+          قيد المراجعة ({pendingUnits})
+        </button>
+
+        <button
+          onClick={() => setActiveFilter('PUBLISHED')}
+          className={`px-3 py-1.5 rounded-xl transition-all whitespace-nowrap text-xs ${
+            activeFilter === 'PUBLISHED'
+              ? 'bg-white text-emerald-700 shadow-xs'
+              : 'text-slate-600 hover:text-slate-900'
+          }`}
+        >
+          المنشورة ({publishedUnits})
         </button>
 
         <button
           onClick={() => setActiveFilter('DRAFT')}
-          className={`px-3 py-2 rounded-xl transition-all whitespace-nowrap ${
+          className={`px-3 py-1.5 rounded-xl transition-all whitespace-nowrap text-xs ${
             activeFilter === 'DRAFT'
               ? 'bg-white text-slate-900 shadow-xs'
               : 'text-slate-600 hover:text-slate-900'
           }`}
         >
-          مسودة ({properties.filter((p) => p.status === 'DRAFT').length})
+          مسودة ({draftUnits})
         </button>
 
-        <button
-          onClick={() => setActiveFilter('ARCHIVED')}
-          className={`px-3 py-2 rounded-xl transition-all whitespace-nowrap ${
-            activeFilter === 'ARCHIVED'
-              ? 'bg-white text-slate-600 shadow-xs'
-              : 'text-slate-600 hover:text-slate-900'
-          }`}
-        >
-          المؤرشفة ({properties.filter((p) => p.status === 'ARCHIVED').length})
-        </button>
+        {archivedUnits > 0 && (
+          <button
+            onClick={() => setActiveFilter('ARCHIVED')}
+            className={`px-3 py-1.5 rounded-xl transition-all whitespace-nowrap text-xs ${
+              activeFilter === 'ARCHIVED'
+                ? 'bg-white text-slate-600 shadow-xs'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            المؤرشفة ({archivedUnits})
+          </button>
+        )}
       </div>
 
       {/* Property Stream List */}
-      {isEmptyDashboard || filteredProperties.length === 0 ? (
+      {filteredProperties.length === 0 ? (
         <EmptyState
           type="properties"
-          title="لا توجد وحدات عقارية في هذه الفئة"
-          description="يمكنك إضافة وحدات ساحلية جديدة أو تحرير المسودات الحالية بسهولة."
+          title="لا توجد وحدات في هذا القسم"
+          description="يمكنك إضافة وحدات ساحلية جديدة أو استكمال المسودات المحفوظة."
           actionText="إضافة وحدة جديدة 🚀"
           onAction={() => openAddPropertyWizard()}
         />
@@ -253,7 +291,7 @@ export const PropertiesFoundationView: React.FC = () => {
             return (
               <div
                 key={property.id}
-                className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden hover:shadow-md transition-all space-y-3 p-4"
+                className="bg-white rounded-2xl border border-slate-200/90 shadow-xs overflow-hidden hover:shadow-md transition-all space-y-3 p-4"
               >
                 {/* Top Badge & Status Bar */}
                 <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
@@ -278,17 +316,24 @@ export const PropertiesFoundationView: React.FC = () => {
 
                 {/* Property Content */}
                 <div className="flex gap-3">
-                  <img
-                    src={property.images[0] || 'https://images.unsplash.com/photo-1512917774080-9991f1c4c750?auto=format&fit=crop&w=400&q=80'}
-                    alt={property.title}
-                    className="w-20 h-20 rounded-xl object-cover shrink-0"
-                  />
+                  {property.images && property.images.length > 0 && property.images[0] ? (
+                    <img
+                      src={property.images[0]}
+                      alt={property.title}
+                      className="w-20 h-20 rounded-xl object-cover shrink-0 border border-slate-100"
+                    />
+                  ) : (
+                    <div className="w-20 h-20 rounded-xl bg-slate-50 border border-slate-200 flex flex-col items-center justify-center text-slate-400 shrink-0">
+                      <Building className="w-6 h-6 text-slate-400" />
+                      <span className="text-[9px] mt-0.5 font-bold text-slate-400">بدون صورة</span>
+                    </div>
+                  )}
 
-                  <div className="min-w-0 space-y-1 text-xs">
+                  <div className="min-w-0 space-y-1 text-xs flex-1">
                     <h3 className="font-extrabold text-slate-900 truncate text-xs">{property.title}</h3>
                     <p className="text-slate-500 flex items-center gap-1">
                       <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                      <span className="truncate">{property.locationName}</span>
+                      <span className="truncate">{property.locationName || property.address || property.region || 'الساحل الشمالي'}</span>
                     </p>
 
                     <div className="flex items-center gap-3 text-slate-600 pt-1 text-[11px]">

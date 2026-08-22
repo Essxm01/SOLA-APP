@@ -324,8 +324,48 @@ async function queryViaSupabaseRest(text: string, params: any[] | undefined, url
     return { rows: mapped, command: 'UPDATE', rowCount: mapped.length, oid: 0, fields: [] };
   }
 
-  // 1. SELECT properties WHERE id = $1 or p.id = $1
-  if (lowerSql.startsWith('select') && lowerSql.includes('from properties') && (lowerSql.includes('where id =') || lowerSql.includes('where p.id =') || lowerSql.includes('p.id = $1') || lowerSql.includes('id = $1'))) {
+  // 1A. SELECT properties WHERE owner_id = $1 (Strict regex matching)
+  if (lowerSql.startsWith('select') && lowerSql.includes('from properties') && (/\b(p\.)?owner_id\s*=\s*\$1\b/i.test(text))) {
+    const ownerId = params?.[0];
+    const res = await fetch(`${url}/rest/v1/properties?owner_id=eq.${encodeURIComponent(ownerId)}&deleted_at=is.null&order=created_at.desc`, { headers });
+    if (!res.ok) {
+      throw new Error(`REST_PROPERTIES_SELECT_BY_OWNER_FAILED: HTTP ${res.status}`);
+    }
+    const rows: any[] = await res.json().catch(() => []);
+    const mapped = rows.map(p => ({
+      id: p.id,
+      ownerId: p.owner_id,
+      title: p.title,
+      unitType: p.unit_type,
+      propertyType: p.property_type,
+      address: p.address,
+      bedrooms: p.bedrooms,
+      bathrooms: p.bathrooms,
+      maxGuests: p.max_guests,
+      pricePerNight: p.base_price_per_night,
+      basePricePerNight: p.base_price_per_night,
+      description: p.description || null,
+      region: p.region || null,
+      resortName: p.resort_name || null,
+      areaSqM: p.area_sq_m || null,
+      bedsCount: p.beds_count || null,
+      amenities: p.amenities || [],
+      houseRules: p.house_rules || {},
+      status: p.status,
+      verificationStatus: p.verification_status,
+      createdAt: p.created_at,
+      updatedAt: p.updated_at,
+      ownerName: 'مالك صولا',
+      ownerPhone: '',
+      ownerEmail: 'owner@sola.eg',
+      ownerVerificationStatus: 'UNVERIFIED',
+      ownerStatus: 'ACTIVE'
+    }));
+    return { rows: mapped, command: 'SELECT', rowCount: mapped.length, oid: 0, fields: [] };
+  }
+
+  // 1B. SELECT properties WHERE id = $1 (Single Property - Strict regex matching)
+  if (lowerSql.startsWith('select') && lowerSql.includes('from properties') && (/\b(p\.)?id\s*=\s*\$1\b/i.test(text)) && !(/\b(p\.)?owner_id\s*=\s*\$1\b/i.test(text))) {
     const propId = params?.[0];
     const res = await fetch(`${url}/rest/v1/properties?id=eq.${encodeURIComponent(propId)}&deleted_at=is.null`, { headers });
     if (!res.ok) {
@@ -572,40 +612,6 @@ async function queryViaSupabaseRest(text: string, params: any[] | undefined, url
     return { rows: mapped, command: 'INSERT', rowCount: mapped.length, oid: 0, fields: [] };
   }
 
-  // 5. SELECT FROM properties WHERE owner_id = $1
-  if (lowerSql.includes('from properties') && lowerSql.includes('owner_id = $1')) {
-    const ownerId = params?.[0];
-    const res = await fetch(`${url}/rest/v1/properties?owner_id=eq.${encodeURIComponent(ownerId)}&deleted_at=is.null&order=created_at.desc`, { headers });
-    if (!res.ok) {
-      throw new Error(`REST_PROPERTIES_SELECT_BY_OWNER_FAILED: HTTP ${res.status}`);
-    }
-    const rows: any[] = await res.json().catch(() => []);
-    const mapped = rows.map(p => ({
-      id: p.id,
-      ownerId: p.owner_id,
-      title: p.title,
-      unitType: p.unit_type,
-      propertyType: p.property_type,
-      address: p.address,
-      bedrooms: p.bedrooms,
-      bathrooms: p.bathrooms,
-      maxGuests: p.max_guests,
-      pricePerNight: p.base_price_per_night,
-      basePricePerNight: p.base_price_per_night,
-      description: p.description || null,
-      region: p.region || null,
-      resortName: p.resort_name || null,
-      areaSqM: p.area_sq_m || null,
-      bedsCount: p.beds_count || null,
-      amenities: p.amenities || [],
-      houseRules: p.house_rules || {},
-      status: p.status,
-      verificationStatus: p.verification_status,
-      createdAt: p.created_at,
-      updatedAt: p.updated_at
-    }));
-    return { rows: mapped, command: 'SELECT', rowCount: mapped.length, oid: 0, fields: [] };
-  }
 
   // 6. Admin Pending Properties Queue
   if (lowerSql.includes('from properties') && (lowerSql.includes('pending_review') || lowerSql.includes('rejected'))) {

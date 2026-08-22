@@ -7,7 +7,8 @@ import {
   ArrowUpRight,
   MapPin,
   CheckCircle2,
-  XCircle
+  XCircle,
+  ArrowUpDown
 } from 'lucide-react';
 import { Card } from './ui/Card';
 import { Button } from './ui/Button';
@@ -34,14 +35,16 @@ export interface PropertyItem {
 export interface PropertyReviewQueueProps {
   onSelectProperty: (id: string) => void;
   onStatusChange?: () => void;
+  onSessionExpired?: () => void;
 }
 
-export function PropertyReviewQueue({ onSelectProperty, onStatusChange }: PropertyReviewQueueProps) {
+export function PropertyReviewQueue({ onSelectProperty, onStatusChange, onSessionExpired }: PropertyReviewQueueProps) {
   const [items, setItems] = useState<PropertyItem[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'PENDING_REVIEW' | 'PUBLISHED' | 'REJECTED'>('ALL');
+  const [sortOrder, setSortOrder] = useState<'OLDEST_FIRST' | 'NEWEST_FIRST'>('OLDEST_FIRST');
 
   const fetchQueue = async () => {
     setLoading(true);
@@ -62,6 +65,12 @@ export function PropertyReviewQueue({ onSelectProperty, onStatusChange }: Proper
       });
 
       if (response.status === 401 || response.status === 403) {
+        localStorage.removeItem('sola_admin_access_token');
+        localStorage.removeItem('sola_admin_user');
+        if (onSessionExpired) {
+          onSessionExpired();
+          return;
+        }
         throw new Error('انتهت جلسة الدخول. يرجى تسجيل الدخول مجدداً لبوابة الإدارة.');
       }
 
@@ -118,6 +127,16 @@ export function PropertyReviewQueue({ onSelectProperty, onStatusChange }: Proper
     
     const matchesStatus = statusFilter === 'ALL' || item.status === statusFilter;
     return matchesSearch && matchesStatus;
+  });
+
+  const sortedItems = [...filteredItems].sort((a, b) => {
+    const dateA = new Date(a.createdAt || 0).getTime();
+    const dateB = new Date(b.createdAt || 0).getTime();
+    if (sortOrder === 'NEWEST_FIRST') {
+      return dateB - dateA;
+    }
+    // Default FIFO: Oldest First
+    return dateA - dateB;
   });
 
   const pendingCount = items.filter(item => item.status === 'PENDING_REVIEW').length;
@@ -260,6 +279,20 @@ export function PropertyReviewQueue({ onSelectProperty, onStatusChange }: Proper
             </button>
           </div>
 
+          {/* Sort Control */}
+          <div className="flex items-center gap-1.5 bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-200 text-xs font-bold shrink-0">
+            <ArrowUpDown className="w-3.5 h-3.5 text-slate-500" />
+            <span className="text-slate-500 text-[11px]">الترتيب:</span>
+            <select
+              value={sortOrder}
+              onChange={(e) => setSortOrder(e.target.value as any)}
+              className="bg-transparent text-slate-800 font-extrabold focus:outline-none cursor-pointer text-xs"
+            >
+              <option value="OLDEST_FIRST">الأقدم أولاً (افتراضي)</option>
+              <option value="NEWEST_FIRST">الأحدث أولاً</option>
+            </select>
+          </div>
+
         </div>
       </Card>
 
@@ -272,7 +305,7 @@ export function PropertyReviewQueue({ onSelectProperty, onStatusChange }: Proper
       <Card className="bg-white border border-slate-200 shadow-xs rounded-2xl overflow-hidden p-0">
         {loading ? (
           <TableSkeleton />
-        ) : filteredItems.length === 0 ? (
+        ) : sortedItems.length === 0 ? (
           <EmptyState
             title="لا توجد وحدات عقارية بانتظار المراجعة حالياً 🎉"
             subtext="جميع العقارات والوحدات المقدمة تم البت فيها واعتتماد نشرها بالكامل بالمنصة."
@@ -293,7 +326,7 @@ export function PropertyReviewQueue({ onSelectProperty, onStatusChange }: Proper
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 bg-white font-medium text-slate-800">
-                {filteredItems.map((item) => (
+                {sortedItems.map((item) => (
                   <tr key={item.id} className="hover:bg-blue-50/30 transition-colors">
                     <td className="px-5 py-4 font-bold text-slate-900">
                       {item.title}

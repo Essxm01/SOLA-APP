@@ -21,9 +21,10 @@ import { getApiUrl } from '../utils/api';
 export interface PropertyReviewDetailProps {
   propertyId: string;
   onBack: () => void;
+  onSessionExpired?: () => void;
 }
 
-export function PropertyReviewDetail({ propertyId, onBack }: PropertyReviewDetailProps) {
+export function PropertyReviewDetail({ propertyId, onBack, onSessionExpired }: PropertyReviewDetailProps) {
   const [detail, setDetail] = useState<any>(null);
   const [images, setImages] = useState<any[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
@@ -40,7 +41,7 @@ export function PropertyReviewDetail({ propertyId, onBack }: PropertyReviewDetai
     setLoading(true);
     setError(null);
     try {
-      const token = localStorage.getItem('sola_admin_access_token') || 'admin_token_valid';
+      const token = localStorage.getItem('sola_admin_access_token') || '';
       
       const [detailRes, imagesRes] = await Promise.all([
         fetch(getApiUrl(`/admin/properties/${propertyId}`), {
@@ -50,6 +51,16 @@ export function PropertyReviewDetail({ propertyId, onBack }: PropertyReviewDetai
           headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/json' },
         })
       ]);
+
+      if (detailRes.status === 401 || detailRes.status === 403) {
+        localStorage.removeItem('sola_admin_access_token');
+        localStorage.removeItem('sola_admin_user');
+        if (onSessionExpired) {
+          onSessionExpired();
+          return;
+        }
+        throw new Error('انتهت جلسة الدخول. يرجى تسجيل الدخول مجدداً لبوابة الإدارة.');
+      }
 
       if (!detailRes.ok) throw new Error('فشل استرجاع تفاصيل الوحدة');
       

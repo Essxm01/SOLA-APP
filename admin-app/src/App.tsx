@@ -350,11 +350,13 @@ export function App() {
             <PropertyReviewDetail
               propertyId={selectedPropertyId}
               onBack={() => setSelectedPropertyId(null)}
+              onSessionExpired={handleLogout}
             />
           ) : (
             <PropertyReviewQueue
               onSelectProperty={(id) => setSelectedPropertyId(id)}
               onStatusChange={fetchAdminNotifications}
+              onSessionExpired={handleLogout}
             />
           )
         )}

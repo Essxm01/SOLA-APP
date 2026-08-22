@@ -271,7 +271,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           analyticsData,
           advAnalyticsData,
         ] = await Promise.all([
-          repo.property.getProperties().catch(() => []),
+          repo.property.getProperties(),
           repo.booking.getBookings().catch(() => []),
           repo.notification.getNotifications().catch(() => []),
           repo.messaging.getConversations().catch(() => []),
@@ -449,11 +449,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (!repo.useMockMode && savedProperty.id) {
           await repo.property.submitPropertyForReview(savedProperty.id);
         }
-        showToast('تم إرسال الوحدة الساحلية للمراجعة بنجاح! 🚀', 'success');
+        showToast('تم إرسال الوحدة للمراجعة', 'success');
         setCurrentDraft(null);
         localStorage.removeItem('sola_owner_property_draft');
       } else {
-        showToast('تم حفظ مسودة الوحدة بنجاح 💾', 'info');
+        showToast('تم حفظ مسودة الوحدة بنجاح', 'info');
         setCurrentDraft(prev => ({ ...(prev || {}), ...savedProperty, id: savedProperty.id }));
         localStorage.setItem('sola_owner_property_draft', JSON.stringify({ ...(currentDraft || {}), ...savedProperty, id: savedProperty.id }));
       }
@@ -473,7 +473,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       } else {
         await mockRepository.submitPropertyForReview(propertyId);
       }
-      showToast('تم إرسال الوحدة إلى إدارة Sola للمراجعة 📋', 'success');
+      showToast('تم إرسال الوحدة للمراجعة', 'success');
       await refreshData();
     } catch (err: any) {
       showToast(err.message || 'تعذر إرسال الوحدة للمراجعة', 'error');

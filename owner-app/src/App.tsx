@@ -24,18 +24,6 @@ const OwnerAppContent: React.FC = () => {
 
   const [showSplash, setShowSplash] = useState(true);
 
-  if (showSplash) {
-    return <SplashScreen onContinue={() => setShowSplash(false)} />;
-  }
-
-  if (!hasCompletedOnboarding) {
-    return <OnboardingScreen onComplete={() => completeOnboarding()} />;
-  }
-
-  if (!isAuthenticated) {
-    return <LoginScreen />;
-  }
-
   const renderTabContent = () => {
     switch (activeTab) {
       case 'home':
@@ -59,8 +47,20 @@ const OwnerAppContent: React.FC = () => {
     }
   };
 
-  return (
-    <MobileContainer>
+  const renderScreen = () => {
+    if (showSplash) {
+      return <SplashScreen onContinue={() => setShowSplash(false)} />;
+    }
+
+    if (!hasCompletedOnboarding) {
+      return <OnboardingScreen onComplete={() => completeOnboarding()} />;
+    }
+
+    if (!isAuthenticated) {
+      return <LoginScreen />;
+    }
+
+    return (
       <div className="w-full min-h-full pb-16 relative">
         <ErrorBoundary key={activeTab}>
           {renderTabContent()}
@@ -69,6 +69,12 @@ const OwnerAppContent: React.FC = () => {
         <NotificationsModal />
         <Toast />
       </div>
+    );
+  };
+
+  return (
+    <MobileContainer>
+      {renderScreen()}
     </MobileContainer>
   );
 };

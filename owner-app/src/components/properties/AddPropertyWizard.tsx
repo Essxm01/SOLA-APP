@@ -175,7 +175,9 @@ export const AddPropertyWizard: React.FC = () => {
       setIsSubmitting(true);
       const effectiveId = formData.id || draftIdRef.current || currentDraft?.id;
       await createOrUpdateProperty({ ...formData, id: effectiveId }, true);
-      setWizardStep(8); // Step 8 is Confirmation screen
+      // Auto-return immediately to Property Hub
+      setWizardStep(1);
+      setPropertyViewMode('list');
     } catch (err) {
       console.error(err);
     } finally {

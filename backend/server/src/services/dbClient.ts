@@ -241,7 +241,7 @@ async function queryViaSupabaseRest(text: string, params: any[] | undefined, url
   }
 
   // 0E. UPDATE users SET phone_verified_at = NOW(), updated_at = NOW() WHERE id = $1
-  if (lowerSql.startsWith('update users') && lowerSql.includes('phone_verified_at')) {
+  if (lowerSql.startsWith('update users') && lowerSql.includes('set phone_verified_at =')) {
     const userId = params?.[0];
     const nowIso = new Date().toISOString();
     const res = await fetch(`${url}/rest/v1/users?id=eq.${encodeURIComponent(userId)}`, {

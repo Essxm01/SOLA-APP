@@ -2435,27 +2435,26 @@ export class ExpressServerApp {
             }
           }
 
-          let updatedUser = await userDb.updateProfile(customerId, {
+          // 1. Write: PATCH canonical users row
+          await userDb.updateProfile(customerId, {
             fullName: rawName,
             email: emailVal,
             avatarUrl: bodyPayload?.avatarUrl || null,
-          }).catch(() => null);
+          });
 
-          if (!updatedUser && customerPhone) {
-            // Attempt update/upsert by phone if ID lookup returned empty
-            await userDb.create({
-              id: customerId,
-              phoneNumber: customerPhone,
-              fullName: rawName,
-              email: emailVal,
-              avatarUrl: bodyPayload?.avatarUrl || null,
-              status: 'ACTIVE',
-            }).catch(() => null);
-            updatedUser = await userDb.getByPhone(customerPhone).catch(() => null);
+          // 2. Read: GET canonical users row again
+          const updatedUser = await userDb.getById(customerId);
+          
+          if (!updatedUser) {
+            throw new Error('DATABASE_PERSISTENCE_VERIFICATION_FAILED: User not found after update');
           }
 
-          if (!updatedUser) {
-            throw new Error('FAILED_TO_PERSIST_PROFILE_UPDATE');
+          // 3. Compare requested fields
+          if (rawName !== undefined && updatedUser.fullName !== rawName) {
+            throw new Error('DATABASE_PERSISTENCE_VERIFICATION_FAILED: fullName did not persist');
+          }
+          if (emailVal !== undefined && updatedUser.email !== emailVal) {
+            throw new Error('DATABASE_PERSISTENCE_VERIFICATION_FAILED: email did not persist');
           }
 
           dbUsersStore.set(customerPhone, updatedUser);

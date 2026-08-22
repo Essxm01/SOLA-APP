@@ -155,12 +155,24 @@ export const CustomerEditAccountPage: React.FC<CustomerEditAccountPageProps> = (
         throw new Error(json?.error?.message || 'تعذر حفظ البيانات. يرجى المحاولة مرة أخرى.');
       }
 
-      // Strict canonical success: API must return success=true and valid data.id
-      if (!json?.data?.id) {
-        throw new Error('تعذر التحقق من حفظ البيانات في قاعدة البيانات. يرجى المحاولة مرة أخرى.');
+      // Strict canonical success: API must return success=true
+      if (!json?.success) {
+        throw new Error('حدث خطأ أثناء حفظ البيانات.');
       }
 
-      const updatedData: CustomerUserProfile = json.data as CustomerUserProfile;
+      // Explicit Canonical Read-After-Write Verification
+      const getRes = await fetch(getApiUrl('/customer/profile'), {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${authToken}`,
+        },
+      });
+      const getJson = await getRes.json();
+      if (!getRes.ok || !getJson.success || !getJson.data?.id) {
+        throw new Error('تعذر جلب البيانات المحدثة من قاعدة البيانات.');
+      }
+
+      const updatedData: CustomerUserProfile = getJson.data as CustomerUserProfile;
 
       setCurrentUser(updatedData);
       onUpdated(updatedData);

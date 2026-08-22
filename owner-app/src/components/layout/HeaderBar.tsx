@@ -2,7 +2,7 @@ import React from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useApp } from '../../context/AppContext';
 import { VerificationBadge } from '../ui/Badge';
-import { Bell } from 'lucide-react';
+import { Bell, User } from 'lucide-react';
 
 export const HeaderBar: React.FC = () => {
   const { owner } = useAuth();
@@ -21,20 +21,27 @@ export const HeaderBar: React.FC = () => {
           title="فتح تفاصيل حساب المالك"
         >
           <div className="relative">
-            <img
-              src={
-                owner?.avatar ||
-                'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80'
-              }
-              alt={ownerDisplayName}
-              className="w-11 h-11 rounded-2xl object-cover ring-2 ring-[#0059FF]/20 shadow-xs group-hover:ring-[#0059FF]"
-            />
-            <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-emerald-500 rounded-full border-2 border-white" />
+            {owner?.avatar ? (
+              <img
+                src={owner.avatar}
+                alt={ownerDisplayName}
+                className="w-11 h-11 rounded-2xl object-cover ring-2 ring-[#0059FF]/20 shadow-xs group-hover:ring-[#0059FF]"
+              />
+            ) : (
+              <div className="w-11 h-11 rounded-2xl bg-blue-50 text-[#0059FF] font-black flex items-center justify-center text-base ring-2 ring-[#0059FF]/20 shadow-xs group-hover:ring-[#0059FF]">
+                {ownerDisplayName && ownerDisplayName !== 'لم يتم إضافة الاسم بعد' ? (
+                  ownerDisplayName.trim().charAt(0)
+                ) : (
+                  <User className="w-5 h-5 text-[#0059FF]" />
+                )}
+              </div>
+            )}
+            <div className="absolute -bottom-1 -right-1 w-3.5 h-3.5 bg-emerald-500 rounded-full border-2 border-white" />
           </div>
 
           <div className="flex flex-col text-right">
             <div className="flex items-center gap-1.5">
-              <h1 className="text-base font-extrabold text-slate-900 leading-tight group-hover:text-[#0059FF] transition-colors">
+              <h1 className="text-sm font-extrabold text-slate-900 leading-tight group-hover:text-[#0059FF] transition-colors">
                 {ownerDisplayName}
               </h1>
             </div>
@@ -53,8 +60,9 @@ export const HeaderBar: React.FC = () => {
           </div>
         </div>
 
-        {/* Right Actions: Notifications Button */}
-        <div className="flex items-center gap-2">
+        {/* Right Actions: Standalone Brand Mark & Notifications Button */}
+        <div className="flex items-center gap-2.5">
+          <img src="/konfrm-mark.svg" alt="Brand Mark" className="w-7 h-7 object-contain" />
           <button
             onClick={() => setIsNotificationsOpen(true)}
             className="relative w-10 h-10 rounded-2xl bg-slate-100 flex items-center justify-center text-slate-700 hover:bg-blue-50 hover:text-[#0059FF] transition-all border border-slate-200/80 active:scale-95"
@@ -72,3 +80,4 @@ export const HeaderBar: React.FC = () => {
     </header>
   );
 };
+

@@ -78,8 +78,13 @@ export const AddPropertyWizard: React.FC = () => {
   const [newImageUrl, setNewImageUrl] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const draftIdRef = useRef<string | undefined>(formData.id || currentDraft?.id);
+
   // Sync formData with draft in context
   useEffect(() => {
+    if (formData.id) {
+      draftIdRef.current = formData.id;
+    }
     setCurrentDraft(formData);
   }, [formData, setCurrentDraft]);
 
@@ -144,9 +149,13 @@ export const AddPropertyWizard: React.FC = () => {
   const handleSaveDraft = async () => {
     try {
       setIsSubmitting(true);
-      const saved = await createOrUpdateProperty({ ...formData, status: 'DRAFT' }, false);
-      if (saved && saved.id && !formData.id) {
-        updateField('id', saved.id);
+      const effectiveId = formData.id || draftIdRef.current || currentDraft?.id;
+      const saved = await createOrUpdateProperty({ ...formData, id: effectiveId, status: 'DRAFT' }, false);
+      if (saved && saved.id) {
+        draftIdRef.current = saved.id;
+        const updated = { ...formData, id: saved.id };
+        setFormData(updated);
+        setCurrentDraft(updated);
       }
     } catch (err) {
       console.error(err);
@@ -164,7 +173,8 @@ export const AddPropertyWizard: React.FC = () => {
 
     try {
       setIsSubmitting(true);
-      await createOrUpdateProperty(formData, true);
+      const effectiveId = formData.id || draftIdRef.current || currentDraft?.id;
+      await createOrUpdateProperty({ ...formData, id: effectiveId }, true);
       setWizardStep(8); // Step 8 is Confirmation screen
     } catch (err) {
       console.error(err);
@@ -181,11 +191,14 @@ export const AddPropertyWizard: React.FC = () => {
     setUploadProgress('جارِ تهيئة مسودة الوحدة للرفع...');
 
     try {
-      let currentPropId = formData.id;
+      let currentPropId = formData.id || draftIdRef.current || currentDraft?.id;
       if (!currentPropId) {
         const saved = await createOrUpdateProperty({ ...formData, status: 'DRAFT' }, false);
         currentPropId = saved.id;
-        updateField('id', saved.id);
+        draftIdRef.current = saved.id;
+        const updated = { ...formData, id: saved.id };
+        setFormData(updated);
+        setCurrentDraft(updated);
       }
 
       const validFiles: File[] = [];

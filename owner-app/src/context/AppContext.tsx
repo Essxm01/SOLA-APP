@@ -454,6 +454,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         localStorage.removeItem('sola_owner_property_draft');
       } else {
         showToast('تم حفظ مسودة الوحدة بنجاح 💾', 'info');
+        setCurrentDraft(prev => ({ ...(prev || {}), ...savedProperty, id: savedProperty.id }));
+        localStorage.setItem('sola_owner_property_draft', JSON.stringify({ ...(currentDraft || {}), ...savedProperty, id: savedProperty.id }));
       }
       await refreshData();
       return savedProperty as Property;

@@ -37,6 +37,16 @@ export const dbPool = {
   query: <T extends pg.QueryResultRow = any>(text: string, params?: any[]) => queryDb<T>(text, params)
 };
 
+function safeParse<T>(val: any, fallback: T): T {
+  if (val === null || val === undefined) return fallback;
+  if (typeof val !== 'string') return val;
+  try {
+    return JSON.parse(val);
+  } catch {
+    return fallback;
+  }
+}
+
 async function queryViaSupabaseRest(text: string, params: any[] | undefined, url: string, key: string): Promise<pg.QueryResult<any> | null> {
   const headers: Record<string, string> = {
     'apikey': key,
@@ -428,25 +438,74 @@ async function queryViaSupabaseRest(text: string, params: any[] | undefined, url
     return { rows: mapped, command: 'INSERT', rowCount: mapped.length, oid: 0, fields: [] };
   }
 
-  // 3A. UPDATE properties WHERE id = $1 AND owner_id = $2
+  // 3A. UPDATE properties WHERE id = $1 AND owner_id = $2 (Strict M03 Dynamic REST PATCH)
   if (lowerSql.startsWith('update properties') && lowerSql.includes('where id = $1 and owner_id = $2')) {
     const propId = params?.[0];
     const ownerId = params?.[1];
     const patchBody: any = { updated_at: new Date().toISOString() };
 
-    // Parse SET clauses dynamically or map parameter values based on index
-    // For standard parameterized update from propertyDb.update:
-    for (let i = 2; i < (params?.length || 0); i++) {
-      const val = params![i];
-      // Match column based on SQL text
+    // Extract SET clause tokens e.g. "title = $3, unit_type = $4, updated_at = NOW()"
+    const setMatch = text.match(/SET\s+([\s\S]+?)\s+WHERE/i);
+    if (setMatch) {
+      const assignments = setMatch[1].split(',');
+      for (const assignment of assignments) {
+        const trimmed = assignment.trim();
+        const colMatch = trimmed.match(/^([a-z0-9_]+)\s*=\s*\$(\d+)/i);
+        if (colMatch) {
+          const colName = colMatch[1].toLowerCase();
+          const paramNum = parseInt(colMatch[2], 10);
+          const rawVal = params?.[paramNum - 1];
+          if (colName === 'amenities' || colName === 'house_rules') {
+            patchBody[colName] = safeParse(rawVal, colName === 'amenities' ? [] : {});
+          } else {
+            patchBody[colName] = rawVal;
+          }
+        }
+      }
     }
 
-    // Direct PATCH to Supabase REST
     const res = await fetch(`${url}/rest/v1/properties?id=eq.${encodeURIComponent(propId)}&owner_id=eq.${encodeURIComponent(ownerId)}&deleted_at=is.null`, {
-      headers
+      method: 'PATCH',
+      headers: { ...headers, 'Prefer': 'return=representation' },
+      body: JSON.stringify(patchBody)
     });
-    // Fallback to direct pg query via return null so pg handles dynamic SET queries safely
-    return null;
+
+    if (!res.ok) {
+      const errBody = await res.text().catch(() => '');
+      throw new Error(`REST_PROPERTIES_UPDATE_FAILED: HTTP ${res.status} — ${errBody.slice(0, 200)}`);
+    }
+
+    const rows: any = await res.json().catch(() => []);
+    const arr = Array.isArray(rows) ? rows : [rows];
+    if (arr.length === 0) {
+      throw new Error(`REST_PROPERTIES_UPDATE_ZERO_ROWS: No row returned after update for property id=${propId}`);
+    }
+
+    const mapped = arr.map((p: any) => ({
+      id: p.id,
+      ownerId: p.owner_id,
+      title: p.title,
+      unitType: p.unit_type,
+      propertyType: p.property_type,
+      address: p.address,
+      bedrooms: p.bedrooms,
+      bathrooms: p.bathrooms,
+      maxGuests: p.max_guests,
+      pricePerNight: p.base_price_per_night,
+      basePricePerNight: p.base_price_per_night,
+      description: p.description,
+      region: p.region,
+      resortName: p.resort_name,
+      areaSqM: p.area_sq_m,
+      bedsCount: p.beds_count,
+      amenities: p.amenities,
+      houseRules: p.house_rules,
+      status: p.status,
+      verificationStatus: p.verification_status,
+      createdAt: p.created_at,
+      updatedAt: p.updated_at,
+    }));
+    return { rows: mapped, command: 'UPDATE', rowCount: mapped.length, oid: 0, fields: [] };
   }
 
   // 3B. UPDATE properties SET status = ...
@@ -608,6 +667,215 @@ async function queryViaSupabaseRest(text: string, params: any[] | undefined, url
       uploadedAt: img.uploaded_at,
     }));
     return { rows: mapped, command: 'SELECT', rowCount: mapped.length, oid: 0, fields: [] };
+  }
+
+  // 6C. INSERT INTO upload_intents (M03 Upload Intent Creation & Conflict Handling)
+  if (lowerSql.startsWith('insert into upload_intents')) {
+    const intentNumber = params?.[0];
+    const ownerId = params?.[1];
+    const propertyId = params?.[2];
+    const objectKey = params?.[3];
+    const expectedMimeType = params?.[4];
+    const expectedSizeBytes = params?.[5] ? Number(params[5]) : null;
+    const idempotencyKey = params?.[6];
+    const expiresAt = params?.[7];
+
+    const payload = {
+      intent_number: intentNumber,
+      owner_id: ownerId,
+      property_id: propertyId,
+      object_key: objectKey,
+      expected_mime_type: expectedMimeType,
+      expected_size_bytes: expectedSizeBytes,
+      idempotency_key: idempotencyKey,
+      expires_at: expiresAt,
+      status: 'PENDING_UPLOAD',
+    };
+
+    const res = await fetch(`${url}/rest/v1/upload_intents`, {
+      method: 'POST',
+      headers: { ...headers, 'Prefer': 'resolution=merge-duplicates,return=representation' },
+      body: JSON.stringify(payload)
+    });
+
+    if (!res.ok) {
+      const errBody = await res.text().catch(() => '');
+      throw new Error(`REST_UPLOAD_INTENT_INSERT_FAILED: HTTP ${res.status} — ${errBody.slice(0, 200)}`);
+    }
+
+    const rows: any = await res.json().catch(() => []);
+    const arr = Array.isArray(rows) ? rows : [rows];
+    if (arr.length === 0) {
+      throw new Error('REST_UPLOAD_INTENT_INSERT_ZERO_ROWS: No row returned after intent insert');
+    }
+
+    const mapped = arr.map((r: any) => ({
+      id: r.id,
+      intentNumber: r.intent_number,
+      ownerId: r.owner_id,
+      propertyId: r.property_id,
+      objectKey: r.object_key,
+      expectedMimeType: r.expected_mime_type,
+      expectedSizeBytes: r.expected_size_bytes ? Number(r.expected_size_bytes) : null,
+      idempotencyKey: r.idempotency_key,
+      status: r.status,
+      expiresAt: r.expires_at,
+      createdAt: r.created_at,
+    }));
+    return { rows: mapped, command: 'INSERT', rowCount: mapped.length, oid: 0, fields: [] };
+  }
+
+  // 6D. SELECT FROM upload_intents WHERE id = $1
+  if (lowerSql.includes('from upload_intents') && lowerSql.includes('where id = $1')) {
+    const id = params?.[0];
+    const res = await fetch(`${url}/rest/v1/upload_intents?id=eq.${encodeURIComponent(id)}`, { headers });
+    if (!res.ok) {
+      throw new Error(`REST_UPLOAD_INTENT_SELECT_FAILED: HTTP ${res.status}`);
+    }
+    const rows: any[] = await res.json().catch(() => []);
+    const mapped = rows.map((r: any) => ({
+      id: r.id,
+      intentNumber: r.intent_number,
+      ownerId: r.owner_id,
+      propertyId: r.property_id,
+      objectKey: r.object_key,
+      expectedMimeType: r.expected_mime_type,
+      expectedSizeBytes: r.expected_size_bytes ? Number(r.expected_size_bytes) : null,
+      idempotencyKey: r.idempotency_key,
+      status: r.status,
+      expiresAt: r.expires_at,
+      createdAt: r.created_at,
+    }));
+    return { rows: mapped, command: 'SELECT', rowCount: mapped.length, oid: 0, fields: [] };
+  }
+
+  // 6E. UPDATE upload_intents SET status = 'COMMITTED' WHERE id = $1
+  if (lowerSql.startsWith('update upload_intents') && lowerSql.includes('status = \'committed\'') && lowerSql.includes('where id = $1')) {
+    const id = params?.[0];
+    const res = await fetch(`${url}/rest/v1/upload_intents?id=eq.${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      headers: { ...headers, 'Prefer': 'return=representation' },
+      body: JSON.stringify({ status: 'COMMITTED' }),
+    });
+
+    if (!res.ok) {
+      const errBody = await res.text().catch(() => '');
+      throw new Error(`REST_UPLOAD_INTENT_COMMIT_FAILED: HTTP ${res.status} — ${errBody.slice(0, 200)}`);
+    }
+
+    const rows: any = await res.json().catch(() => []);
+    const arr = Array.isArray(rows) ? rows : [rows];
+    if (arr.length === 0) {
+      throw new Error(`REST_UPLOAD_INTENT_COMMIT_ZERO_ROWS: No row returned for intent commit id=${id}`);
+    }
+
+    const mapped = arr.map((r: any) => ({
+      id: r.id,
+      status: r.status,
+    }));
+    return { rows: mapped, command: 'UPDATE', rowCount: mapped.length, oid: 0, fields: [] };
+  }
+
+  // 6F. SELECT expired upload_intents
+  if (lowerSql.includes('from upload_intents') && lowerSql.includes('status = \'pending_upload\'')) {
+    const res = await fetch(`${url}/rest/v1/upload_intents?status=eq.PENDING_UPLOAD&expires_at=lt.${encodeURIComponent(new Date().toISOString())}&select=id,object_key`, { headers });
+    if (!res.ok) {
+      throw new Error(`REST_UPLOAD_INTENTS_EXPIRED_FAILED: HTTP ${res.status}`);
+    }
+    const rows: any[] = await res.json().catch(() => []);
+    const mapped = rows.map((r: any) => ({
+      id: r.id,
+      objectKey: r.object_key,
+    }));
+    return { rows: mapped, command: 'SELECT', rowCount: mapped.length, oid: 0, fields: [] };
+  }
+
+  // 6G. INSERT INTO property_images (imageDb.addImage)
+  if (lowerSql.startsWith('insert into property_images')) {
+    const propertyId = params?.[0];
+    const ownerId = params?.[1];
+    const objectKey = params?.[2];
+    const fileUrl = params?.[3];
+    const fileName = params?.[4];
+    const mimeType = params?.[5];
+    const fileSize = params?.[6] ? Number(params[6]) : null;
+    const sortOrder = params?.[7] !== undefined ? Number(params[7]) : 0;
+    const uploadIntentId = params?.[8] || null;
+    const sha256Checksum = params?.[9] || null;
+
+    const payload = {
+      property_id: propertyId,
+      owner_id: ownerId,
+      object_key: objectKey,
+      file_url: fileUrl,
+      file_name: fileName,
+      mime_type: mimeType,
+      file_size_bytes: fileSize,
+      sort_order: sortOrder,
+      upload_intent_id: uploadIntentId,
+      sha256_checksum: sha256Checksum,
+      status: 'ACTIVE',
+    };
+
+    const res = await fetch(`${url}/rest/v1/property_images`, {
+      method: 'POST',
+      headers: { ...headers, 'Prefer': 'resolution=merge-duplicates,return=representation' },
+      body: JSON.stringify(payload)
+    });
+
+    if (!res.ok) {
+      const errBody = await res.text().catch(() => '');
+      throw new Error(`REST_PROPERTY_IMAGES_INSERT_FAILED: HTTP ${res.status} — ${errBody.slice(0, 200)}`);
+    }
+
+    const rows: any = await res.json().catch(() => []);
+    const arr = Array.isArray(rows) ? rows : [rows];
+    if (arr.length === 0) {
+      throw new Error('REST_PROPERTY_IMAGES_INSERT_ZERO_ROWS: No row returned after image insert');
+    }
+
+    const mapped = arr.map((img: any) => ({
+      id: img.id,
+      propertyId: img.property_id,
+      ownerId: img.owner_id,
+      objectKey: img.object_key,
+      fileUrl: img.file_url,
+      fileName: img.file_name,
+      mimeType: img.mime_type,
+      fileSize: img.file_size_bytes,
+      sortOrder: img.sort_order,
+      uploadIntentId: img.upload_intent_id,
+      sha256Checksum: img.sha256_checksum,
+      status: img.status,
+      uploadedAt: img.uploaded_at || img.created_at,
+    }));
+    return { rows: mapped, command: 'INSERT', rowCount: mapped.length, oid: 0, fields: [] };
+  }
+
+  // 6H. UPDATE property_images SET status = 'DELETED' (imageDb.deleteImage)
+  if (lowerSql.startsWith('update property_images') && lowerSql.includes('status = \'deleted\'')) {
+    const imageId = params?.[0];
+    const ownerId = params?.[1];
+
+    const res = await fetch(`${url}/rest/v1/property_images?id=eq.${encodeURIComponent(imageId)}&owner_id=eq.${encodeURIComponent(ownerId)}&status=eq.ACTIVE`, {
+      method: 'PATCH',
+      headers: { ...headers, 'Prefer': 'return=representation' },
+      body: JSON.stringify({ status: 'DELETED', deleted_at: new Date().toISOString() })
+    });
+
+    if (!res.ok) {
+      const errBody = await res.text().catch(() => '');
+      throw new Error(`REST_PROPERTY_IMAGE_DELETE_FAILED: HTTP ${res.status} — ${errBody.slice(0, 200)}`);
+    }
+
+    const rows: any = await res.json().catch(() => []);
+    const arr = Array.isArray(rows) ? rows : [rows];
+    const mapped = arr.map((r: any) => ({
+      id: r.id,
+      objectKey: r.object_key,
+      propertyId: r.property_id,
+    }));
+    return { rows: mapped, command: 'UPDATE', rowCount: mapped.length, oid: 0, fields: [] };
   }
 
   // 7. SELECT bookings for Property Availability & Overlap Checks (Canonical Blocking Statuses)

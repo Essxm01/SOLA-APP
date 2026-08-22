@@ -36,7 +36,7 @@ export const ProfileView: React.FC = () => {
   const [fullName, setFullName] = useState<string>((owner as any)?.fullName || owner?.name || '');
   const [email, setEmail] = useState<string>((owner as any)?.email || '');
   const [avatarUrl, setAvatarUrl] = useState<string>(
-    owner?.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=300&q=80'
+    owner?.avatar || ''
   );
   const [isSavingProfile, setIsSavingProfile] = useState<boolean>(false);
 
@@ -133,11 +133,21 @@ export const ProfileView: React.FC = () => {
         <div className="absolute -bottom-10 -left-10 w-40 h-40 bg-white/10 rounded-full blur-2xl pointer-events-none" />
 
         <div className="flex items-center gap-4 relative z-10">
-          <img
-            src={avatarUrl}
-            alt={ownerDisplayName}
-            className="w-16 h-16 rounded-2xl object-cover ring-4 ring-white/30 shadow-md shrink-0"
-          />
+          {avatarUrl ? (
+            <img
+              src={avatarUrl}
+              alt={ownerDisplayName}
+              className="w-16 h-16 rounded-2xl object-cover ring-4 ring-white/30 shadow-md shrink-0"
+            />
+          ) : (
+            <div className="w-16 h-16 rounded-2xl bg-white/20 text-white font-black flex items-center justify-center text-2xl ring-4 ring-white/30 shadow-md shrink-0">
+              {ownerDisplayName && ownerDisplayName !== 'لم يتم إضافة الاسم بعد' ? (
+                ownerDisplayName.trim().charAt(0)
+              ) : (
+                <User className="w-8 h-8 text-white" />
+              )}
+            </div>
+          )}
 
           <div className="flex-1 min-w-0">
             <h3 className="text-lg font-black truncate">{ownerDisplayName}</h3>

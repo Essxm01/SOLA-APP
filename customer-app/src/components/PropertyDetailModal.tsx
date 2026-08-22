@@ -81,7 +81,7 @@ export const PropertyDetailModal: React.FC<PropertyDetailModalProps> = ({
     if (property.images && Array.isArray(property.images) && property.images.length > 0) {
       return property.images;
     }
-    return ['https://images.unsplash.com/photo-1512917774080-9991f1c4c750?w=800'];
+    return [];
   }, [property.images]);
 
   const [activeImageIndex, setActiveImageIndex] = useState<number>(0);
@@ -244,11 +244,17 @@ export const PropertyDetailModal: React.FC<PropertyDetailModalProps> = ({
         
         {/* ── SECTION 1: MOBILE IMAGE GALLERY ── */}
         <div className="relative w-full h-72 bg-slate-900 shrink-0">
-          <img
-            src={images[activeImageIndex]}
-            alt={property.title}
-            className="w-full h-full object-cover transition-opacity duration-300"
-          />
+          {images.length > 0 ? (
+            <img
+              src={images[activeImageIndex]}
+              alt={property.title}
+              className="w-full h-full object-cover transition-opacity duration-300"
+            />
+          ) : (
+            <div className="w-full h-full bg-slate-700 flex items-center justify-center">
+              <div className="text-slate-400 text-sm font-bold text-center px-6">لا توجد صور لهذه الوحدة</div>
+            </div>
+          )}
 
           {/* Top Overlays: Back & Favorite */}
           <div className="absolute top-4 left-4 right-4 flex items-center justify-between z-10">

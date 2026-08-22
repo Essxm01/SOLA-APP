@@ -48,7 +48,7 @@ export const BookingReviewSheet: React.FC<BookingReviewSheetProps> = ({
   const propertyImage =
     property.images && property.images.length > 0
       ? property.images[0]
-      : 'https://images.unsplash.com/photo-1512917774080-9991f1c4c750?w=800';
+      : null;
 
   return (
     <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-end justify-center p-0 animate-fade-in" dir="rtl">
@@ -79,11 +79,17 @@ export const BookingReviewSheet: React.FC<BookingReviewSheetProps> = ({
 
         {/* Property Summary Card */}
         <div className="flex items-center gap-3 p-3 bg-slate-50/80 rounded-2xl border border-slate-200/80">
-          <img
-            src={propertyImage}
-            alt={property.title}
-            className="w-16 h-16 object-cover rounded-xl shrink-0 bg-slate-200"
-          />
+          {propertyImage ? (
+            <img
+              src={propertyImage}
+              alt={property.title}
+              className="w-16 h-16 object-cover rounded-xl shrink-0 bg-slate-200"
+            />
+          ) : (
+            <div className="w-16 h-16 rounded-xl shrink-0 bg-slate-200 flex items-center justify-center text-[10px] text-slate-400 font-bold text-center p-1">
+              لا توجد صورة
+            </div>
+          )}
           <div className="overflow-hidden flex-1">
             <h4 className="font-black text-slate-900 text-xs truncate leading-snug">
               {property.title}

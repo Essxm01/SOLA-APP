@@ -155,15 +155,12 @@ export const CustomerEditAccountPage: React.FC<CustomerEditAccountPageProps> = (
         throw new Error(json?.error?.message || 'تعذر حفظ البيانات. يرجى المحاولة مرة أخرى.');
       }
 
-      const updatedData: CustomerUserProfile = (json?.data || {
-        ...currentUser,
-        id: currentUser?.id || 'cust-user',
-        phoneNumber: resolvedPhone,
-        fullName: trimmedName,
-        email: trimmedEmail.length > 0 ? trimmedEmail : null,
-        phoneVerifiedAt: currentUser?.phoneVerifiedAt || null,
-        status: currentUser?.status || 'ACTIVE',
-      }) as CustomerUserProfile;
+      // Strict canonical success: API must return success=true and valid data.id
+      if (!json?.data?.id) {
+        throw new Error('تعذر التحقق من حفظ البيانات في قاعدة البيانات. يرجى المحاولة مرة أخرى.');
+      }
+
+      const updatedData: CustomerUserProfile = json.data as CustomerUserProfile;
 
       setCurrentUser(updatedData);
       onUpdated(updatedData);

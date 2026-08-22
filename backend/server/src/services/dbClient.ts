@@ -48,33 +48,18 @@ async function queryViaSupabaseRest(text: string, params: any[] | undefined, url
   const sql = text.trim();
   const lowerSql = sql.toLowerCase();
 
-  // 0A. SELECT users WHERE phone_number = $1
+  // 0A. SELECT users WHERE phone_number = $1 (canonical users table only — DATA-02)
   if (lowerSql.includes('from users') && lowerSql.includes('phone_number = $1')) {
     const phone = params?.[0];
-    const res = await fetch(`${url}/rest/v1/users?phone_number=eq.${encodeURIComponent(phone)}`, { headers });
-    let raw: any = await res.json().catch(() => []);
-    let rows: any[] = Array.isArray(raw) ? raw : [];
-
-    // Fallback: if not in users table, check owners table
-    if (rows.length === 0) {
-      const ownerRes = await fetch(`${url}/rest/v1/owners?phone_number=eq.${encodeURIComponent(phone)}`, { headers });
-      const ownerRaw: any = await ownerRes.json().catch(() => []);
-      const ownerRows: any[] = Array.isArray(ownerRaw) ? ownerRaw : [];
-      if (ownerRows.length > 0) {
-        rows = [{
-          id: ownerRows[0].id,
-          phone_number: ownerRows[0].phone_number,
-          phone_verified_at: ownerRows[0].created_at,
-          full_name: ownerRows[0].full_name,
-          email: ownerRows[0].email,
-          avatar_url: ownerRows[0].avatar_url,
-          status: ownerRows[0].status || 'ACTIVE',
-          created_at: ownerRows[0].created_at,
-          updated_at: ownerRows[0].updated_at,
-        }];
-      }
+    const res = await fetch(
+      `${url}/rest/v1/users?phone_number=eq.${encodeURIComponent(phone)}&select=id,phone_number,phone_verified_at,full_name,email,avatar_url,status,created_at,updated_at`,
+      { headers }
+    );
+    if (!res.ok) {
+      throw new Error(`REST_USERS_SELECT_BY_PHONE_FAILED: HTTP ${res.status}`);
     }
-
+    const raw: any = await res.json().catch(() => []);
+    const rows: any[] = Array.isArray(raw) ? raw : [];
     const mapped = rows.map(u => ({
       id: u.id,
       phoneNumber: u.phone_number,
@@ -89,33 +74,18 @@ async function queryViaSupabaseRest(text: string, params: any[] | undefined, url
     return { rows: mapped, command: 'SELECT', rowCount: mapped.length, oid: 0, fields: [] };
   }
 
-  // 0B. SELECT users WHERE id = $1
+  // 0B. SELECT users WHERE id = $1 (canonical users table only — DATA-02)
   if (lowerSql.includes('from users') && lowerSql.includes('where id = $1')) {
     const userId = params?.[0];
-    const res = await fetch(`${url}/rest/v1/users?id=eq.${encodeURIComponent(userId)}`, { headers });
-    let raw: any = await res.json().catch(() => []);
-    let rows: any[] = Array.isArray(raw) ? raw : [];
-
-    // Fallback: if not in users table, check owners table
-    if (rows.length === 0) {
-      const ownerRes = await fetch(`${url}/rest/v1/owners?id=eq.${encodeURIComponent(userId)}`, { headers });
-      const ownerRaw: any = await ownerRes.json().catch(() => []);
-      const ownerRows: any[] = Array.isArray(ownerRaw) ? ownerRaw : [];
-      if (ownerRows.length > 0) {
-        rows = [{
-          id: ownerRows[0].id,
-          phone_number: ownerRows[0].phone_number,
-          phone_verified_at: ownerRows[0].created_at,
-          full_name: ownerRows[0].full_name,
-          email: ownerRows[0].email,
-          avatar_url: ownerRows[0].avatar_url,
-          status: ownerRows[0].status || 'ACTIVE',
-          created_at: ownerRows[0].created_at,
-          updated_at: ownerRows[0].updated_at,
-        }];
-      }
+    const res = await fetch(
+      `${url}/rest/v1/users?id=eq.${encodeURIComponent(userId)}&select=id,phone_number,phone_verified_at,full_name,email,avatar_url,status,created_at,updated_at`,
+      { headers }
+    );
+    if (!res.ok) {
+      throw new Error(`REST_USERS_SELECT_BY_ID_FAILED: HTTP ${res.status}`);
     }
-
+    const raw: any = await res.json().catch(() => []);
+    const rows: any[] = Array.isArray(raw) ? raw : [];
     const mapped = rows.map(u => ({
       id: u.id,
       phoneNumber: u.phone_number,
@@ -170,7 +140,7 @@ async function queryViaSupabaseRest(text: string, params: any[] | undefined, url
     return { rows: mapped, command: 'SELECT', rowCount: mapped.length, oid: 0, fields: [] };
   }
 
-  // 00. INSERT INTO users
+  // 00. INSERT INTO users (strict, no synthetic fallbacks — DATA-02)
   if (lowerSql.startsWith('insert into users')) {
     const id = params?.[0] || crypto.randomUUID();
     const phoneNumber = params?.[1];
@@ -180,26 +150,41 @@ async function queryViaSupabaseRest(text: string, params: any[] | undefined, url
     const status = params?.[5] || 'ACTIVE';
     const nowIso = new Date().toISOString();
 
-    // Check if user already exists by phone_number first to avoid 409 conflict
-    const checkRes = await fetch(`${url}/rest/v1/users?phone_number=eq.${encodeURIComponent(phoneNumber)}`, { headers });
+    // Check if user already exists by phone_number to avoid 409 conflict
+    const checkRes = await fetch(
+      `${url}/rest/v1/users?phone_number=eq.${encodeURIComponent(phoneNumber)}&select=id,phone_number,phone_verified_at,full_name,email,avatar_url,status,created_at,updated_at`,
+      { headers }
+    );
+    if (!checkRes.ok) {
+      throw new Error(`REST_USERS_CHECK_PHONE_FAILED: HTTP ${checkRes.status}`);
+    }
     const checkRaw: any = await checkRes.json().catch(() => []);
     const existingUsers: any[] = Array.isArray(checkRaw) ? checkRaw : [];
 
     if (existingUsers.length > 0) {
+      // User exists: PATCH to update fields if provided (upsert semantics)
       const existingUser = existingUsers[0];
       const patchBody: any = { updated_at: nowIso };
       if (fullName) patchBody.full_name = fullName;
-      if (email) patchBody.email = email;
+      if (email !== null && email !== undefined) patchBody.email = email;
       if (avatarUrl) patchBody.avatar_url = avatarUrl;
-      if (status) patchBody.status = status;
 
-      const patchRes = await fetch(`${url}/rest/v1/users?id=eq.${encodeURIComponent(existingUser.id)}`, {
-        method: 'PATCH',
-        headers: { ...headers, 'Prefer': 'return=representation' },
-        body: JSON.stringify(patchBody),
-      });
+      const patchRes = await fetch(
+        `${url}/rest/v1/users?id=eq.${encodeURIComponent(existingUser.id)}`,
+        {
+          method: 'PATCH',
+          headers: { ...headers, 'Prefer': 'return=representation' },
+          body: JSON.stringify(patchBody),
+        }
+      );
+      if (!patchRes.ok) {
+        throw new Error(`REST_USERS_UPSERT_PATCH_FAILED: HTTP ${patchRes.status}`);
+      }
       const patchRaw: any = await patchRes.json().catch(() => []);
-      const patchRows: any[] = Array.isArray(patchRaw) && patchRaw.length > 0 ? patchRaw : [{ ...existingUser, ...patchBody }];
+      const patchRows: any[] = Array.isArray(patchRaw) ? patchRaw : [];
+      if (patchRows.length === 0) {
+        throw new Error('REST_USERS_UPSERT_PATCH_ZERO_ROWS: No row returned after PATCH');
+      }
       const mapped = patchRows.map(u => ({
         id: u.id,
         phoneNumber: u.phone_number,
@@ -214,6 +199,7 @@ async function queryViaSupabaseRest(text: string, params: any[] | undefined, url
       return { rows: mapped, command: 'INSERT', rowCount: mapped.length, oid: 0, fields: [] };
     }
 
+    // No existing user: INSERT a new canonical row
     const payload: any = {
       id,
       phone_number: phoneNumber,
@@ -223,26 +209,33 @@ async function queryViaSupabaseRest(text: string, params: any[] | undefined, url
       updated_at: nowIso,
     };
     if (fullName) payload.full_name = fullName;
-    if (email) payload.email = email;
+    if (email !== null && email !== undefined) payload.email = email;
     if (avatarUrl) payload.avatar_url = avatarUrl;
 
-    const res = await fetch(`${url}/rest/v1/users`, {
+    const insertRes = await fetch(`${url}/rest/v1/users`, {
       method: 'POST',
       headers: { ...headers, 'Prefer': 'return=representation' },
       body: JSON.stringify(payload),
     });
-    const raw: any = await res.json().catch(() => []);
+    if (!insertRes.ok) {
+      const errBody = await insertRes.text().catch(() => '');
+      throw new Error(`REST_USERS_INSERT_FAILED: HTTP ${insertRes.status} — ${errBody.slice(0, 200)}`);
+    }
+    const raw: any = await insertRes.json().catch(() => []);
     const arr = Array.isArray(raw) ? raw : (raw && raw.id ? [raw] : []);
+    if (arr.length === 0) {
+      throw new Error('REST_USERS_INSERT_ZERO_ROWS: No row returned after POST');
+    }
     const mapped = arr.map(u => ({
-      id: u.id || id,
-      phoneNumber: u.phone_number || phoneNumber,
-      phoneVerifiedAt: u.phone_verified_at || null,
-      fullName: u.full_name || fullName,
-      email: u.email || email,
-      avatarUrl: u.avatar_url || avatarUrl,
-      status: u.status || status,
-      createdAt: u.created_at || nowIso,
-      updatedAt: u.updated_at || nowIso,
+      id: u.id,
+      phoneNumber: u.phone_number,
+      phoneVerifiedAt: u.phone_verified_at,
+      fullName: u.full_name,
+      email: u.email,
+      avatarUrl: u.avatar_url,
+      status: u.status,
+      createdAt: u.created_at,
+      updatedAt: u.updated_at,
     }));
     return { rows: mapped, command: 'INSERT', rowCount: mapped.length, oid: 0, fields: [] };
   }
@@ -272,58 +265,53 @@ async function queryViaSupabaseRest(text: string, params: any[] | undefined, url
     return { rows: mapped, command: 'UPDATE', rowCount: mapped.length, oid: 0, fields: [] };
   }
 
-  // 0F. UPDATE users SET full_name = ... WHERE id = $1
+  // 0F. UPDATE users SET full_name = ... WHERE id = $1 (strict, no owner fallback, no synthetic rows — DATA-02)
   if (lowerSql.startsWith('update users') && lowerSql.includes('full_name')) {
     const userId = params?.[0];
     const fullName = params?.[1];
-    const email = params?.[2] || null;
+    // email param[2]: '__NULL__' sentinel means set to SQL NULL; undefined = don't change
+    const emailParam = params?.[2];
     const avatarUrl = params?.[3] || null;
     const nowIso = new Date().toISOString();
 
     const patchBody: any = { updated_at: nowIso };
     if (fullName !== undefined && fullName !== null && fullName !== '') patchBody.full_name = fullName;
-    if (email !== undefined) patchBody.email = email || null;
+    // Handle email null semantics: __NULL__ = set to NULL, string = set to value, undefined = omit
+    if (emailParam === '__NULL__') {
+      patchBody.email = null;
+    } else if (emailParam !== undefined && emailParam !== null && emailParam !== '') {
+      patchBody.email = emailParam;
+    }
     if (avatarUrl) patchBody.avatar_url = avatarUrl;
 
-    // 1. Update users table by id
-    let res = await fetch(`${url}/rest/v1/users?id=eq.${encodeURIComponent(userId)}`, {
-      method: 'PATCH',
-      headers: { ...headers, 'Prefer': 'return=representation' },
-      body: JSON.stringify(patchBody),
-    });
-    let raw: any = await res.json().catch(() => []);
-    let rows: any[] = Array.isArray(raw) ? raw : [];
-
-    // Fallback: If 0 rows updated by id, check owners table to resolve phone and update users by phone
-    if (rows.length === 0) {
-      const ownerRes = await fetch(`${url}/rest/v1/owners?id=eq.${encodeURIComponent(userId)}`, { headers });
-      const ownerRows: any[] = await ownerRes.json().catch(() => []);
-      const phone = ownerRows[0]?.phone_number;
-
-      if (phone) {
-        const patchByPhoneRes = await fetch(`${url}/rest/v1/users?phone_number=eq.${encodeURIComponent(phone)}`, {
-          method: 'PATCH',
-          headers: { ...headers, 'Prefer': 'return=representation' },
-          body: JSON.stringify(patchBody),
-        });
-        const patchByPhoneRaw = await patchByPhoneRes.json().catch(() => []);
-        rows = Array.isArray(patchByPhoneRaw) ? patchByPhoneRaw : [];
+    const patchRes = await fetch(
+      `${url}/rest/v1/users?id=eq.${encodeURIComponent(userId)}`,
+      {
+        method: 'PATCH',
+        headers: { ...headers, 'Prefer': 'return=representation' },
+        body: JSON.stringify(patchBody),
       }
+    );
+    if (!patchRes.ok) {
+      throw new Error(`REST_USERS_UPDATE_FAILED: HTTP ${patchRes.status}`);
     }
-
-    // Only canonical users table is updated
+    const raw: any = await patchRes.json().catch(() => []);
+    const rows: any[] = Array.isArray(raw) ? raw : [];
+    if (rows.length === 0) {
+      throw new Error(`REST_USERS_UPDATE_ZERO_ROWS: No row returned after PATCH for id=${userId}`);
+    }
     const mapped = rows.map(u => ({
-      id: u.id || userId,
-      phoneNumber: u.phone_number || '',
-      phoneVerifiedAt: u.phone_verified_at || nowIso,
-      fullName: fullName || u.full_name,
-      email: u.email || email,
-      avatarUrl: u.avatar_url || avatarUrl,
-      status: u.status || 'ACTIVE',
-      createdAt: u.created_at || nowIso,
-      updatedAt: u.updated_at || nowIso,
+      id: u.id,
+      phoneNumber: u.phone_number,
+      phoneVerifiedAt: u.phone_verified_at,
+      fullName: u.full_name,
+      email: u.email,
+      avatarUrl: u.avatar_url,
+      status: u.status,
+      createdAt: u.created_at,
+      updatedAt: u.updated_at,
     }));
-    return { rows: mapped, command: 'UPDATE', rowCount: mapped.length > 0 ? mapped.length : 1, oid: 0, fields: [] };
+    return { rows: mapped, command: 'UPDATE', rowCount: mapped.length, oid: 0, fields: [] };
   }
 
   // 1. SELECT properties WHERE id = $1 or p.id = $1

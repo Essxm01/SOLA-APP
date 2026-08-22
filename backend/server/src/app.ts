@@ -2490,7 +2490,7 @@ export class ExpressServerApp {
             return {
               ...p,
               basePricePerNight: Number(p.basePricePerNight || p.pricePerNight || 5000),
-              images: imageUrls.length > 0 ? imageUrls : ['https://images.unsplash.com/photo-1512917774080-9991f1c4c750?w=800'],
+              images: imageUrls,
             };
           }));
 

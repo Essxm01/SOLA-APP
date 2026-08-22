@@ -383,11 +383,8 @@ export class AuthService {
 
     const canonicalPhone = normalizePhoneNumber(rawPhone);
 
-    // 1. Resolve Existing Canonical User
-    let user: UserRecord | null = await userDb.getByPhone(canonicalPhone).catch(() => null);
-    if (!user) {
-      user = dbUsersStore.get(canonicalPhone) || null;
-    }
+    // 1. Resolve Existing Canonical User — canonical DB only, no memory fallback (DATA-02)
+    let user: UserRecord | null = await userDb.getByPhone(canonicalPhone);
 
     // CUSTOMER Surface Flow
     if (surface === 'CUSTOMER') {

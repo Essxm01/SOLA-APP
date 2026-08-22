@@ -31,8 +31,7 @@ export const PropertyCard: React.FC<PropertyCardProps> = ({
   isFavorite = false,
   onToggleFavorite,
 }) => {
-  const defaultImage = 'https://images.unsplash.com/photo-1512917774080-9991f1c4c750?w=800';
-  const coverImage = property.images && property.images.length > 0 ? property.images[0] : defaultImage;
+  const coverImage = property.images && property.images.length > 0 ? property.images[0] : null;
 
   const translateType = (type?: string) => {
     switch (type?.toUpperCase()) {
@@ -57,12 +56,18 @@ export const PropertyCard: React.FC<PropertyCardProps> = ({
     >
       {/* Cover Image Container */}
       <div className="relative w-full h-56 overflow-hidden bg-slate-100">
-        <img
-          src={coverImage}
-          alt={property.title}
-          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-          loading="lazy"
-        />
+        {coverImage ? (
+          <img
+            src={coverImage}
+            alt={property.title}
+            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+            loading="lazy"
+          />
+        ) : (
+          <div className="w-full h-full bg-slate-200 flex items-center justify-center">
+            <div className="text-slate-400 text-xs font-bold text-center px-4">لا توجد صور متاحة</div>
+          </div>
+        )}
 
         {/* Verified Badge */}
         <div className="absolute top-3 right-3 flex items-center gap-1 bg-white/95 backdrop-blur-md text-[#0059FF] font-black text-[10px] px-2.5 py-1 rounded-full shadow-sm border border-slate-100">

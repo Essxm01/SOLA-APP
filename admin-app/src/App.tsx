@@ -9,6 +9,7 @@ import { DisputeDetailExecution } from './components/DisputeDetailExecution';
 import { PropertyReviewQueue } from './components/PropertyReviewQueue';
 import { PropertyReviewDetail } from './components/PropertyReviewDetail';
 import { getApiUrl } from './utils/api';
+import { clearAdminSession } from './utils/adminSession';
 import {
   Scale,
   CreditCard,
@@ -74,8 +75,7 @@ export function App() {
   }, [adminUser]);
 
   const handleLogout = () => {
-    localStorage.removeItem('sola_admin_access_token');
-    localStorage.removeItem('sola_admin_user');
+    clearAdminSession(localStorage);
     setAdminUser(null);
   };
 

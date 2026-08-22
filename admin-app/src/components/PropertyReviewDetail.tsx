@@ -17,6 +17,7 @@ import { StatusBadge } from './ui/Badge';
 import { Modal } from './ui/Modal';
 import { AlertBanner, SkeletonBox } from './ui/StateViews';
 import { getApiUrl } from '../utils/api';
+import { clearAdminSession } from '../utils/adminSession';
 
 export interface PropertyReviewDetailProps {
   propertyId: string;
@@ -53,8 +54,7 @@ export function PropertyReviewDetail({ propertyId, onBack, onSessionExpired }: P
       ]);
 
       if (detailRes.status === 401 || detailRes.status === 403) {
-        localStorage.removeItem('sola_admin_access_token');
-        localStorage.removeItem('sola_admin_user');
+        clearAdminSession(localStorage);
         if (onSessionExpired) {
           onSessionExpired();
           return;

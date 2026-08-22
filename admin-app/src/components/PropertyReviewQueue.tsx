@@ -16,6 +16,8 @@ import { StatusBadge } from './ui/Badge';
 import { Input } from './ui/Input';
 import { TableSkeleton, EmptyState, AlertBanner } from './ui/StateViews';
 import { getApiUrl } from '../utils/api';
+import { clearAdminSession } from '../utils/adminSession';
+import { sortPropertyReviewItems, type PropertyReviewSortOrder } from '../utils/propertyReviewSort';
 
 export interface PropertyItem {
   id: string;
@@ -44,7 +46,7 @@ export function PropertyReviewQueue({ onSelectProperty, onStatusChange, onSessio
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'PENDING_REVIEW' | 'PUBLISHED' | 'REJECTED'>('ALL');
-  const [sortOrder, setSortOrder] = useState<'OLDEST_FIRST' | 'NEWEST_FIRST'>('OLDEST_FIRST');
+  const [sortOrder, setSortOrder] = useState<PropertyReviewSortOrder>('OLDEST_FIRST');
 
   const fetchQueue = async () => {
     setLoading(true);
@@ -65,8 +67,7 @@ export function PropertyReviewQueue({ onSelectProperty, onStatusChange, onSessio
       });
 
       if (response.status === 401 || response.status === 403) {
-        localStorage.removeItem('sola_admin_access_token');
-        localStorage.removeItem('sola_admin_user');
+        clearAdminSession(localStorage);
         if (onSessionExpired) {
           onSessionExpired();
           return;
@@ -129,15 +130,7 @@ export function PropertyReviewQueue({ onSelectProperty, onStatusChange, onSessio
     return matchesSearch && matchesStatus;
   });
 
-  const sortedItems = [...filteredItems].sort((a, b) => {
-    const dateA = new Date(a.createdAt || 0).getTime();
-    const dateB = new Date(b.createdAt || 0).getTime();
-    if (sortOrder === 'NEWEST_FIRST') {
-      return dateB - dateA;
-    }
-    // Default FIFO: Oldest First
-    return dateA - dateB;
-  });
+  const sortedItems = sortPropertyReviewItems(filteredItems, sortOrder);
 
   const pendingCount = items.filter(item => item.status === 'PENDING_REVIEW').length;
   const publishedCount = items.filter(item => item.status === 'PUBLISHED').length;
@@ -285,7 +278,7 @@ export function PropertyReviewQueue({ onSelectProperty, onStatusChange, onSessio
             <span className="text-slate-500 text-[11px]">الترتيب:</span>
             <select
               value={sortOrder}
-              onChange={(e) => setSortOrder(e.target.value as any)}
+              onChange={(e) => setSortOrder(e.target.value as PropertyReviewSortOrder)}
               className="bg-transparent text-slate-800 font-extrabold focus:outline-none cursor-pointer text-xs"
             >
               <option value="OLDEST_FIRST">الأقدم أولاً (افتراضي)</option>

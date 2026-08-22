@@ -35,6 +35,9 @@ import {
 export const PropertiesFoundationView: React.FC = () => {
   const {
     properties,
+    isLoading,
+    error,
+    refreshData,
     propertyViewMode,
     selectedPropertyId,
     openAddPropertyWizard,
@@ -119,6 +122,34 @@ export const PropertiesFoundationView: React.FC = () => {
   // Render Property Wizard if in wizard mode
   if (propertyViewMode === 'wizard') {
     return <AddPropertyWizard />;
+  }
+
+  // Canonical property data must fail visibly. An API error is never equivalent
+  // to an owner with zero properties.
+  if (isLoading) {
+    return (
+      <div className="p-4 space-y-4 dir-rtl text-right min-h-full pb-20">
+        <div className="bg-white border border-slate-200 rounded-2xl p-5 text-center text-sm font-bold text-slate-600">
+          جارِ تحميل وحداتك...
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="p-4 space-y-4 dir-rtl text-right min-h-full pb-20">
+        <div className="bg-rose-50 border border-rose-200 rounded-2xl p-5 space-y-3 text-center">
+          <h2 className="text-sm font-black text-rose-900">تعذر تحميل وحداتك</h2>
+          <p className="text-xs font-semibold text-rose-800 leading-relaxed">
+            لم نتمكن من تأكيد بيانات الوحدات من الخادم. لن نعرض أرقاماً أو قائمة فارغة بدلاً من البيانات الحقيقية.
+          </p>
+          <Button variant="primary" size="sm" onClick={() => void refreshData()} className="mx-auto">
+            إعادة المحاولة
+          </Button>
+        </div>
+      </div>
+    );
   }
 
   // Dynamic counts directly from canonical properties
@@ -330,10 +361,10 @@ export const PropertiesFoundationView: React.FC = () => {
                   )}
 
                   <div className="min-w-0 space-y-1 text-xs flex-1">
-                    <h3 className="font-extrabold text-slate-900 truncate text-xs">{property.title}</h3>
+                    <h3 className="font-extrabold text-slate-900 truncate text-xs">{property.title || 'وحدة بدون عنوان'}</h3>
                     <p className="text-slate-500 flex items-center gap-1">
                       <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                      <span className="truncate">{property.locationName || property.address || property.region || 'الساحل الشمالي'}</span>
+                      <span className="truncate">{property.locationName || property.address || property.region || 'الموقع غير محدد'}</span>
                     </p>
 
                     <div className="flex items-center gap-3 text-slate-600 pt-1 text-[11px]">

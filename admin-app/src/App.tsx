@@ -103,20 +103,9 @@ export function App() {
       <header className="bg-white sticky top-0 z-40 px-4 sm:px-6 py-3.5 border-b border-slate-200/90 shadow-xs">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4">
           
-          {/* Brand & Platform Identity */}
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-[#0059FF] flex items-center justify-center font-black text-[#FFD700] text-xl shadow-md border border-blue-400/20">
-              S
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h1 className="font-black text-lg text-slate-900 tracking-wide">SOLA VACATION RENTALS</h1>
-                <span className="text-[10px] font-extrabold bg-blue-50 text-[#0059FF] px-2.5 py-0.5 rounded-full border border-blue-200">
-                  بوابة الإدارة
-                </span>
-              </div>
-              <p className="text-[11px] text-slate-500 font-semibold">منظومة الإدارة والتشغيل والرقابة المالية</p>
-            </div>
+          {/* Standalone Brand Logo */}
+          <div className="flex items-center">
+            <img src="/favicon.svg" alt="Brand Logo" className="w-9 h-9 object-contain" />
           </div>
 
           {/* User Controls & Status Indicators */}

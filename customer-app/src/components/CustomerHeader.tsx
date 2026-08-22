@@ -1,5 +1,5 @@
 import React from 'react';
-import { Compass, User, PhoneCall } from 'lucide-react';
+import { User, PhoneCall } from 'lucide-react';
 
 interface CustomerHeaderProps {
   customerPhone?: string | null;
@@ -18,22 +18,9 @@ export const CustomerHeader: React.FC<CustomerHeaderProps> = ({
   return (
     <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-slate-100 shadow-xs">
       <div className="max-w-md mx-auto px-4 py-3 flex items-center justify-between">
-        {/* Brand Logo & Title */}
-        <div className="flex items-center gap-2.5">
-          <div className="w-9 h-9 bg-[#0059FF] text-white rounded-xl flex items-center justify-center shadow-md shadow-blue-500/20">
-            <Compass className="w-5 h-5" />
-          </div>
-          <div>
-            <div className="flex items-center gap-1.5">
-              <span className="font-black text-lg text-slate-900 tracking-tight">كونفرم</span>
-              <span className="text-[10px] font-extrabold px-2 py-0.5 bg-[#FFD700]/20 text-slate-800 rounded-full border border-[#FFD700]/50">
-                KONFRM ⭐️
-              </span>
-            </div>
-            <p className="text-[10px] text-slate-400 font-bold -mt-0.5">
-              إقامات الساحل الشمالي الموثقة
-            </p>
-          </div>
+        {/* Standalone Brand Logo */}
+        <div className="flex items-center">
+          <img src="/favicon.svg" alt="Brand Logo" className="w-8 h-8 object-contain" />
         </div>
 
         {/* User Account / Auth Entry */}

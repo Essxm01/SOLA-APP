@@ -413,20 +413,38 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   ): Promise<Property> => {
     try {
       const repo = repositoryFactory;
-      const savedProperty = repo.useMockMode
-        ? await mockRepository.createOrUpdateProperty(data, submitForReview)
-        : await repo.property.createProperty({
-            title: data.title || 'شاليه جديد',
-            unitType: (data.unitType as any) || 'CHALET',
-            propertyType: data.propertyType || 'CHALET',
-            address: data.address || 'الساحل الشمالي',
-            bedrooms: data.bedrooms || 2,
-            bathrooms: data.bathrooms || 1,
-            maxGuests: data.maxGuests || 4,
-            basePricePerNight: data.pricePerNight || 3000,
-            images: data.images || [],
-            amenities: data.amenities || [],
-          });
+      let savedProperty: Property;
+
+      if (repo.useMockMode) {
+        savedProperty = await mockRepository.createOrUpdateProperty(data, submitForReview);
+      } else {
+        const payload: any = {
+          title: data.title || 'شاليه جديد',
+          unitType: (data.unitType as any) || 'CHALET',
+          propertyType: data.propertyType || 'CHALET',
+          address: data.address || '',
+          bedrooms: data.bedrooms || 1,
+          bathrooms: data.bathrooms || 1,
+          maxGuests: data.maxGuests || 2,
+          basePricePerNight: data.pricePerNight || (data.pricing?.basePricePerNight) || 1000,
+          pricePerNight: data.pricePerNight || (data.pricing?.basePricePerNight) || 1000,
+          description: data.description,
+          region: data.region,
+          resortName: data.resortName,
+          areaSqM: data.areaSqM,
+          bedsCount: data.bedsCount,
+          images: data.images || [],
+          amenities: data.amenities || [],
+          houseRules: data.houseRules,
+        };
+
+        if (data.id) {
+          savedProperty = await repo.property.updateProperty(data.id, payload);
+        } else {
+          savedProperty = await repo.property.createProperty(payload);
+        }
+      }
+
       if (submitForReview) {
         if (!repo.useMockMode && savedProperty.id) {
           await repo.property.submitPropertyForReview(savedProperty.id);
@@ -439,8 +457,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
       await refreshData();
       return savedProperty as Property;
-    } catch (err) {
-      showToast('حدث خطأ أثناء حفظ بيانات الوحدة', 'error');
+    } catch (err: any) {
+      showToast(err.message || 'حدث خطأ أثناء حفظ بيانات الوحدة', 'error');
       throw err;
     }
   };
@@ -608,9 +626,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         pricePerNight: 5000,
         currency: 'ج.م',
         amenities: ['pool', 'central_ac', 'wifi'],
-        images: [
-          'https://images.unsplash.com/photo-1512917774080-9991f1c4c750?auto=format&fit=crop&w=800&q=80',
-        ],
+        images: [],
         mainImageIndex: 0,
         houseRules: {
           minStay: 2,

@@ -244,6 +244,38 @@ export class HttpRepository implements
     });
   }
 
+  async getImagePresignedUrl(propertyId: string, payload: { fileName: string; mimeType: string; fileSize: number }): Promise<any> {
+    return this.fetchJson(`/owner/properties/${propertyId}/images/presigned-url`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  }
+
+  async commitPropertyImage(propertyId: string, payload: {
+    intentId?: string;
+    objectKey: string;
+    fileUrl: string;
+    fileName: string;
+    mimeType: string;
+    fileSize: number;
+    sortOrder?: number;
+  }): Promise<any> {
+    return this.fetchJson(`/owner/properties/${propertyId}/images`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  }
+
+  async deletePropertyImage(propertyId: string, imageId: string): Promise<void> {
+    return this.fetchJson(`/owner/properties/${propertyId}/images/${imageId}`, {
+      method: 'DELETE',
+    });
+  }
+
+  async getPropertyImages(propertyId: string): Promise<any[]> {
+    return this.fetchJson(`/owner/properties/${propertyId}/images`);
+  }
+
   // 4. Calendar Repository
   async getAvailabilityRecords(propertyId: string): Promise<AvailabilityRecord[]> {
     return this.fetchJson(`/owner/calendar/${propertyId}`);

@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { PhoneInput } from '../ui/Input';
 import { Button } from '../ui/Button';
 import { useAuth } from '../../context/AuthContext';
-import { Palmtree, ShieldCheck, ArrowLeft, Lock } from 'lucide-react';
+import { ShieldCheck, ArrowLeft, Lock } from 'lucide-react';
 
 interface LoginScreenProps {
   onOTPSent?: () => void;
@@ -48,14 +48,8 @@ export const LoginScreen: React.FC<LoginScreenProps> = () => {
     <div className="min-h-screen w-full bg-slate-50 flex flex-col justify-between p-6 dir-rtl">
       {/* Top Header */}
       <div className="pt-6 flex justify-between items-center">
-        <div className="flex items-center gap-2">
-          <div className="w-10 h-10 rounded-xl bg-[#0059FF] flex items-center justify-center text-white shadow-md shadow-blue-500/20">
-            <Palmtree className="w-6 h-6 text-[#FFD700]" />
-          </div>
-          <div>
-            <span className="text-base font-extrabold text-slate-900 block leading-tight">Sola</span>
-            <span className="text-[10px] font-bold text-[#0059FF] tracking-wider block">لوحة تحكم المالك</span>
-          </div>
+        <div className="flex items-center">
+          <img src="/favicon.svg" alt="Brand Logo" className="w-9 h-9 object-contain" />
         </div>
         <div className="flex items-center gap-1 bg-blue-50 border border-blue-200 px-2.5 py-1 rounded-full text-[#0059FF] text-xs font-semibold">
           <ShieldCheck className="w-3.5 h-3.5" />

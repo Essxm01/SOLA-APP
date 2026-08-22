@@ -49,12 +49,8 @@ export function AdminLogin({ onLoginSuccess }: AdminLoginProps) {
       <div className="max-w-md w-full space-y-6 animate-fade-in">
         
         {/* Header Logo */}
-        <div className="text-center space-y-2">
-          <div className="w-16 h-16 rounded-3xl bg-[#0059FF] flex items-center justify-center font-black text-[#FFD700] text-3xl shadow-xl mx-auto border border-blue-400/20">
-            S
-          </div>
-          <h1 className="text-2xl font-black text-slate-900 tracking-tight">SOLA VACATION RENTALS</h1>
-          <p className="text-xs text-slate-500 font-semibold">بوابة تسجيل دخول الإدارة والتشغيل</p>
+        <div className="text-center">
+          <img src="/favicon.svg" alt="Brand Logo" className="w-14 h-14 object-contain mx-auto" />
         </div>
 
         {/* Login Card */}

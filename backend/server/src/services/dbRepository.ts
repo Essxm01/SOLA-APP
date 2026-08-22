@@ -165,99 +165,99 @@ export const propertyDb = {
     const res = await queryDb(
       `SELECT id, owner_id AS "ownerId", title, unit_type AS "unitType", property_type AS "propertyType",
               address, bedrooms, bathrooms, max_guests AS "maxGuests", base_price_per_night AS "pricePerNight",
-              base_price_per_night AS "basePricePerNight", status, verification_status AS "verificationStatus",
+              base_price_per_night AS "basePricePerNight", description, region, resort_name AS "resortName",
+              area_sq_m AS "areaSqM", beds_count AS "bedsCount", amenities, house_rules AS "houseRules",
+              status, verification_status AS "verificationStatus",
               created_at AS "createdAt", updated_at AS "updatedAt"
        FROM properties WHERE owner_id = $1 AND deleted_at IS NULL ORDER BY created_at DESC`,
       [ownerId]
     );
-    return res.rows.map(p => ({
-      ...p,
-      pricePerNight: Number(p.pricePerNight),
-      basePricePerNight: Number(p.basePricePerNight),
-      images: [],
-      locationName: p.address || 'الساحل الشمالي',
-      pricing: { basePricePerNight: Number(p.pricePerNight), currency: 'EGP' },
-      location: { governorate: 'مطروح', city: 'الساحل الشمالي', district: 'رأس الحكمة', address: p.address },
-      capacity: { baseGuests: p.maxGuests, maxGuests: p.maxGuests, bedrooms: p.bedrooms, beds: p.bedrooms, bathrooms: p.bathrooms },
-      houseRules: { minStay: 1, maxStay: 30, smokingAllowed: false, partiesAllowed: false, petsAllowed: false, checkInTime: '14:00', checkOutTime: '12:00' },
-      amenities: ['شاطئ خاص', 'حمام سباحة', 'تكييف central', 'واي فاي']
+
+    const properties = await Promise.all(res.rows.map(async p => {
+      const dbImages = await imageDb.getImagesByPropertyId(p.id).catch(() => []);
+      const images = dbImages.map(img => img.fileUrl);
+      return {
+        ...p,
+        pricePerNight: Number(p.pricePerNight),
+        basePricePerNight: Number(p.basePricePerNight),
+        images,
+        amenities: Array.isArray(p.amenities) ? p.amenities : [],
+        houseRules: p.houseRules && typeof p.houseRules === 'object' ? p.houseRules : {},
+        locationName: p.resortName ? `${p.resortName} — ${p.region || p.address}` : (p.address || p.region || 'الساحل الشمالي'),
+        pricing: { basePricePerNight: Number(p.pricePerNight), currency: 'EGP' },
+        location: { governorate: 'مطروح', city: p.region || 'الساحل الشمالي', district: p.resortName || '', address: p.address || '' },
+        capacity: { baseGuests: p.maxGuests, maxGuests: p.maxGuests, bedrooms: p.bedrooms, beds: p.bedsCount || p.bedrooms, bathrooms: p.bathrooms },
+      };
     }));
+
+    return properties;
   },
 
   async getById(id: string) {
-    if (id.startsWith('prop-pub-')) {
-      const price = id === 'prop-pub-002' ? 12000 : id === 'prop-pub-003' ? 5500 : 7500;
-      return {
-        id,
-        ownerId: 'owner-pub-001',
-        title: id === 'prop-pub-002' ? 'فيلا مراسي بصف أول — حمام سباحة خاص 🏊‍♂️' : 'شاليه فاخر رأس الحكمة — مطل مباشر على البحر',
-        unitType: id === 'prop-pub-002' ? 'VILLA' : 'CHALET',
-        propertyType: id === 'prop-pub-002' ? 'VILLA' : 'CHALET',
-        address: id === 'prop-pub-002' ? 'مراسي — الساحل الشمالي' : 'رأس الحكمة — الساحل الشمالي',
-        bedrooms: id === 'prop-pub-002' ? 4 : 3,
-        bathrooms: id === 'prop-pub-002' ? 3 : 2,
-        maxGuests: id === 'prop-pub-002' ? 8 : 6,
-        basePricePerNight: price,
-        pricePerNight: price,
-        status: 'PUBLISHED',
-        verificationStatus: 'VERIFIED',
-        images: [
-          'https://images.unsplash.com/photo-1512917774080-9991f1c4c750?w=800',
-          'https://images.unsplash.com/photo-1613977257363-707ba9348227?w=800',
-        ],
-        houseRules: { minStay: GLOBAL_MIN_STAY_NIGHTS, maxStay: GLOBAL_MAX_STAY_NIGHTS },
-        amenities: ['شاطئ خاص', 'حمام سباحة']
-      };
+    const res = await queryDb(
+      `SELECT id, owner_id AS "ownerId", title, unit_type AS "unitType", property_type AS "propertyType",
+              address, bedrooms, bathrooms, max_guests AS "maxGuests", base_price_per_night AS "pricePerNight",
+              base_price_per_night AS "basePricePerNight", description, region, resort_name AS "resortName",
+              area_sq_m AS "areaSqM", beds_count AS "bedsCount", amenities, house_rules AS "houseRules",
+              status, verification_status AS "verificationStatus", created_at AS "createdAt", updated_at AS "updatedAt"
+       FROM properties WHERE id = $1 AND deleted_at IS NULL`,
+      [id]
+    );
+
+    if (!res || !res.rows || !res.rows[0]) {
+      return null;
     }
 
-    try {
-      const res = await queryDb(
-        `SELECT id, owner_id AS "ownerId", title, unit_type AS "unitType", property_type AS "propertyType",
-                address, bedrooms, bathrooms, max_guests AS "maxGuests", base_price_per_night AS "pricePerNight",
-                status, verification_status AS "verificationStatus", created_at AS "createdAt", updated_at AS "updatedAt"
-         FROM properties WHERE id = $1 AND deleted_at IS NULL`,
-        [id]
-      );
-      if (res && res.rows && res.rows[0]) {
-        const p = res.rows[0];
-        return {
-          ...p,
-          pricePerNight: Number(p.pricePerNight),
-          basePricePerNight: Number(p.pricePerNight),
-          images: [],
-          locationName: p.address || 'الساحل الشمالي',
-          pricing: { basePricePerNight: Number(p.pricePerNight), currency: 'EGP' },
-          location: { governorate: 'مطروح', city: 'الساحل الشمالي', district: 'رأس الحكمة', address: p.address },
-          capacity: { baseGuests: p.maxGuests, maxGuests: p.maxGuests, bedrooms: p.bedrooms, beds: p.bedrooms, bathrooms: p.bathrooms },
-          houseRules: { minStay: GLOBAL_MIN_STAY_NIGHTS, maxStay: GLOBAL_MAX_STAY_NIGHTS, smokingAllowed: false, partiesAllowed: false, petsAllowed: false, checkInTime: '14:00', checkOutTime: '12:00' },
-          amenities: ['شاطئ خاص', 'حمام سباحة']
-        };
-      }
-    } catch {
-      // fallback
-    }
+    const p = res.rows[0];
+    const dbImages = await imageDb.getImagesByPropertyId(p.id).catch(() => []);
+    const images = dbImages.map(img => img.fileUrl);
 
-    return null;
+    return {
+      ...p,
+      pricePerNight: Number(p.pricePerNight),
+      basePricePerNight: Number(p.basePricePerNight),
+      images,
+      amenities: Array.isArray(p.amenities) ? p.amenities : [],
+      houseRules: p.houseRules && typeof p.houseRules === 'object' ? p.houseRules : {},
+      locationName: p.resortName ? `${p.resortName} — ${p.region || p.address}` : (p.address || p.region || 'الساحل الشمالي'),
+      pricing: { basePricePerNight: Number(p.pricePerNight), currency: 'EGP' },
+      location: { governorate: 'مطروح', city: p.region || 'الساحل الشمالي', district: p.resortName || '', address: p.address || '' },
+      capacity: { baseGuests: p.maxGuests, maxGuests: p.maxGuests, bedrooms: p.bedrooms, beds: p.bedsCount || p.bedrooms, bathrooms: p.bathrooms },
+    };
   },
 
   async create(prop: any) {
     const res = await queryDb(
-      `INSERT INTO properties (id, owner_id, title, unit_type, property_type, address, bedrooms, bathrooms, max_guests, base_price_per_night, status, verification_status)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-       RETURNING id, owner_id AS "ownerId", title, unit_type AS "unitType", property_type AS "propertyType", address, bedrooms, bathrooms, max_guests AS "maxGuests", base_price_per_night AS "pricePerNight", status, verification_status AS "verificationStatus", created_at AS "createdAt"`,
+      `INSERT INTO properties (
+        id, owner_id, title, unit_type, property_type, address, bedrooms, bathrooms, max_guests, base_price_per_night,
+        description, region, resort_name, area_sq_m, beds_count, amenities, house_rules, status, verification_status
+       )
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
+       RETURNING id, owner_id AS "ownerId", title, unit_type AS "unitType", property_type AS "propertyType",
+                 address, bedrooms, bathrooms, max_guests AS "maxGuests", base_price_per_night AS "pricePerNight",
+                 description, region, resort_name AS "resortName", area_sq_m AS "areaSqM", beds_count AS "bedsCount",
+                 amenities, house_rules AS "houseRules", status, verification_status AS "verificationStatus",
+                 created_at AS "createdAt", updated_at AS "updatedAt"`,
       [
         prop.id,
         prop.ownerId,
         prop.title,
         prop.unitType || 'CHALET',
         prop.propertyType || prop.unitType || 'CHALET',
-        prop.address || 'الساحل الشمالي',
-        prop.bedrooms || 2,
-        prop.bathrooms || 1,
-        prop.maxGuests || 4,
-        prop.basePricePerNight || prop.pricePerNight || 3000,
-        prop.status || 'PENDING_REVIEW',
-        prop.verificationStatus || 'PENDING_VERIFICATION'
+        prop.address || '',
+        Number(prop.bedrooms) || 1,
+        Number(prop.bathrooms) || 1,
+        Number(prop.maxGuests) || 2,
+        Number(prop.basePricePerNight || prop.pricePerNight) || 1000,
+        prop.description || null,
+        prop.region || null,
+        prop.resortName || null,
+        prop.areaSqM ? Number(prop.areaSqM) : null,
+        prop.bedsCount ? Number(prop.bedsCount) : null,
+        JSON.stringify(prop.amenities || []),
+        JSON.stringify(prop.houseRules || {}),
+        prop.status || 'DRAFT',
+        prop.verificationStatus || 'UNVERIFIED',
       ]
     );
     return res.rows[0];
@@ -269,11 +269,11 @@ export const propertyDb = {
        SET status = COALESCE($2, status),
            verification_status = COALESCE($3, verification_status),
            updated_at = NOW()
-       WHERE id = $1
+       WHERE id = $1 AND deleted_at IS NULL
        RETURNING id, owner_id AS "ownerId", title, status, verification_status AS "verificationStatus", updated_at AS "updatedAt"`,
       [id, status, verificationStatus || null]
     );
-    return res.rows[0];
+    return res.rows[0] || null;
   },
 
   async getAllForAdmin(statusFilter?: string) {
@@ -287,6 +287,9 @@ export const propertyDb = {
       `SELECT p.id, p.title, p.unit_type AS "unitType", p.property_type AS "propertyType",
               p.address, p.bedrooms, p.bathrooms, p.max_guests AS "maxGuests",
               p.base_price_per_night AS "pricePerNight",
+              p.description, p.region, p.resort_name AS "resortName",
+              p.area_sq_m AS "areaSqM", p.beds_count AS "bedsCount",
+              p.amenities, p.house_rules AS "houseRules",
               p.status, p.verification_status AS "verificationStatus",
               p.created_at AS "createdAt", p.updated_at AS "updatedAt",
               COALESCE(o.id, p.owner_id) AS "ownerId", COALESCE(o.full_name, 'مالك صولا') AS "ownerName", COALESCE(o.phone_number, '') AS "ownerPhone",
@@ -307,6 +310,9 @@ export const propertyDb = {
       `SELECT p.id, p.title, p.unit_type AS "unitType", p.property_type AS "propertyType",
               p.address, p.bedrooms, p.bathrooms, p.max_guests AS "maxGuests",
               p.base_price_per_night AS "pricePerNight",
+              p.description, p.region, p.resort_name AS "resortName",
+              p.area_sq_m AS "areaSqM", p.beds_count AS "bedsCount",
+              p.amenities, p.house_rules AS "houseRules",
               p.status, p.verification_status AS "verificationStatus",
               p.created_at AS "createdAt", p.updated_at AS "updatedAt",
               COALESCE(o.id, p.owner_id) AS "ownerId", COALESCE(o.full_name, 'مالك صولا') AS "ownerName", COALESCE(o.phone_number, '') AS "ownerPhone",
@@ -327,6 +333,9 @@ export const propertyDb = {
       `SELECT p.id, p.owner_id AS "ownerId", p.title, p.unit_type AS "unitType", p.property_type AS "propertyType",
               p.address, p.bedrooms, p.bathrooms, p.max_guests AS "maxGuests",
               p.base_price_per_night AS "pricePerNight",
+              p.description, p.region, p.resort_name AS "resortName",
+              p.area_sq_m AS "areaSqM", p.beds_count AS "bedsCount",
+              p.amenities, p.house_rules AS "houseRules",
               p.status, p.verification_status AS "verificationStatus",
               p.created_at AS "createdAt", p.updated_at AS "updatedAt",
               COALESCE(o.full_name, 'مالك صولا') AS "ownerName", COALESCE(o.phone_number, '') AS "ownerPhone", o.email AS "ownerEmail",
@@ -348,6 +357,9 @@ export const propertyDb = {
   async update(id: string, ownerId: string, updates: {
     title?: string; unitType?: string; propertyType?: string; address?: string;
     bedrooms?: number; bathrooms?: number; maxGuests?: number; basePricePerNight?: number;
+    description?: string | null; region?: string | null; resortName?: string | null;
+    areaSqM?: number | null; bedsCount?: number | null;
+    amenities?: string[] | null; houseRules?: any | null;
     status?: string; verificationStatus?: string;
   }) {
     const fields: string[] = [];
@@ -358,10 +370,17 @@ export const propertyDb = {
     if (updates.unitType !== undefined) { fields.push(`unit_type = $${paramIdx++}`); values.push(updates.unitType); }
     if (updates.propertyType !== undefined) { fields.push(`property_type = $${paramIdx++}`); values.push(updates.propertyType); }
     if (updates.address !== undefined) { fields.push(`address = $${paramIdx++}`); values.push(updates.address); }
-    if (updates.bedrooms !== undefined) { fields.push(`bedrooms = $${paramIdx++}`); values.push(updates.bedrooms); }
-    if (updates.bathrooms !== undefined) { fields.push(`bathrooms = $${paramIdx++}`); values.push(updates.bathrooms); }
-    if (updates.maxGuests !== undefined) { fields.push(`max_guests = $${paramIdx++}`); values.push(updates.maxGuests); }
-    if (updates.basePricePerNight !== undefined) { fields.push(`base_price_per_night = $${paramIdx++}`); values.push(updates.basePricePerNight); }
+    if (updates.bedrooms !== undefined) { fields.push(`bedrooms = $${paramIdx++}`); values.push(Number(updates.bedrooms)); }
+    if (updates.bathrooms !== undefined) { fields.push(`bathrooms = $${paramIdx++}`); values.push(Number(updates.bathrooms)); }
+    if (updates.maxGuests !== undefined) { fields.push(`max_guests = $${paramIdx++}`); values.push(Number(updates.maxGuests)); }
+    if (updates.basePricePerNight !== undefined) { fields.push(`base_price_per_night = $${paramIdx++}`); values.push(Number(updates.basePricePerNight)); }
+    if (updates.description !== undefined) { fields.push(`description = $${paramIdx++}`); values.push(updates.description); }
+    if (updates.region !== undefined) { fields.push(`region = $${paramIdx++}`); values.push(updates.region); }
+    if (updates.resortName !== undefined) { fields.push(`resort_name = $${paramIdx++}`); values.push(updates.resortName); }
+    if (updates.areaSqM !== undefined) { fields.push(`area_sq_m = $${paramIdx++}`); values.push(updates.areaSqM ? Number(updates.areaSqM) : null); }
+    if (updates.bedsCount !== undefined) { fields.push(`beds_count = $${paramIdx++}`); values.push(updates.bedsCount ? Number(updates.bedsCount) : null); }
+    if (updates.amenities !== undefined) { fields.push(`amenities = $${paramIdx++}`); values.push(JSON.stringify(updates.amenities || [])); }
+    if (updates.houseRules !== undefined) { fields.push(`house_rules = $${paramIdx++}`); values.push(JSON.stringify(updates.houseRules || {})); }
     if (updates.status !== undefined) { fields.push(`status = $${paramIdx++}`); values.push(updates.status); }
     if (updates.verificationStatus !== undefined) { fields.push(`verification_status = $${paramIdx++}`); values.push(updates.verificationStatus); }
 
@@ -372,7 +391,11 @@ export const propertyDb = {
       `UPDATE properties SET ${fields.join(', ')} WHERE id = $1 AND owner_id = $2 AND deleted_at IS NULL
        RETURNING id, owner_id AS "ownerId", title, unit_type AS "unitType", property_type AS "propertyType",
                  address, bedrooms, bathrooms, max_guests AS "maxGuests",
-                 base_price_per_night AS "pricePerNight", status, verification_status AS "verificationStatus",
+                 base_price_per_night AS "pricePerNight",
+                 description, region, resort_name AS "resortName",
+                 area_sq_m AS "areaSqM", beds_count AS "bedsCount",
+                 amenities, house_rules AS "houseRules",
+                 status, verification_status AS "verificationStatus",
                  created_at AS "createdAt", updated_at AS "updatedAt"`,
       values
     );

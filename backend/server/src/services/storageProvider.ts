@@ -269,15 +269,17 @@ export class SupabaseStorageProvider implements IObjectStorageProvider {
     return {
       uploadUrl: data.signedUrl,
       downloadUrl,
-      headers: { 'content-type': params.mimeType, 'x-sola-upload-intent': params.intentId },
+      headers: { 'content-type': params.mimeType },
       objectKey: params.objectKey,
       expiresInSeconds: 300,
     };
   }
 
   async verifyObjectExists(objectKey: string): Promise<ObjectVerificationResult> {
-    const dir = path.dirname(objectKey);
-    const fileName = path.basename(objectKey);
+    const normalizedKey = objectKey.replace(/\\/g, '/');
+    const lastSlash = normalizedKey.lastIndexOf('/');
+    const dir = lastSlash !== -1 ? normalizedKey.substring(0, lastSlash) : '';
+    const fileName = lastSlash !== -1 ? normalizedKey.substring(lastSlash + 1) : normalizedKey;
     const { data, error } = await this.client.storage.from(this.bucketName).list(dir, { search: fileName });
 
     if (error || !data || data.length === 0) {

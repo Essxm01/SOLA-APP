@@ -7,7 +7,8 @@
     "nodejs_compat"
   ],
   "vars": {
-    "SUPABASE_URL": "https://zrbmbjgcsowfqklmxbyn.supabase.co"
+    "SUPABASE_URL": "https://zrbmbjgcsowfqklmxbyn.supabase.co",
+    "OBJECT_STORAGE_PROVIDER": "supabase"
   },
   "observability": {
     "enabled": true

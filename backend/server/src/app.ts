@@ -747,76 +747,75 @@ export class ExpressServerApp {
           };
         }
 
-        // --- E. Property Domain Endpoints (PostgreSQL Driven) ---
+        // --- E. Property Domain Endpoints (PostgreSQL Authoritative Driven — M03) ---
         if (path === '/api/v1/owner/properties' && method === 'POST') {
+          // Verify canonical authenticated owner exists
+          const canonicalOwner = await ownerDb.getById(ownerId).catch(() => null);
+          if (!canonicalOwner) {
+            return {
+              statusCode: 403,
+              body: {
+                success: false,
+                error: { code: 'OWNER_NOT_FOUND', message: 'حساب المالك غير مسجل في قاعدة البيانات' },
+                timestamp,
+              },
+            };
+          }
+
           const isValidUuid = (val?: string) => val && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val);
           const propId = isValidUuid(bodyPayload?.id) ? bodyPayload.id : crypto.randomUUID();
 
-          // Ensure owner record exists in PostgreSQL DB before inserting property
-          await ownerDb.upsert({
-            id: ownerId,
-            phoneNumber: formatOwnerPhone(ownerId),
-            fullName: 'مالك صولا',
-            status: 'ACTIVE',
-            verificationStatus: 'UNVERIFIED',
-          }).catch((err) => console.error('❌ [ownerDb.upsert DB ERROR]:', err));
-
-          const newProperty = await propertyDb.create({
+          const createdProperty = await propertyDb.create({
             id: propId,
             ownerId,
             title: bodyPayload?.title || 'شاليه جديد',
             unitType: bodyPayload?.unitType || 'CHALET',
             propertyType: bodyPayload?.propertyType || bodyPayload?.unitType || 'CHALET',
-            address: bodyPayload?.address || 'الساحل الشمالي',
-            bedrooms: bodyPayload?.bedrooms || 2,
+            address: bodyPayload?.address || '',
+            bedrooms: bodyPayload?.bedrooms || 1,
             bathrooms: bodyPayload?.bathrooms || 1,
-            maxGuests: bodyPayload?.maxGuests || 4,
-            basePricePerNight: bodyPayload?.pricePerNight || bodyPayload?.basePricePerNight || 3000,
-            status: 'PENDING_REVIEW',
-            verificationStatus: 'PENDING_VERIFICATION',
+            maxGuests: bodyPayload?.maxGuests || 2,
+            basePricePerNight: bodyPayload?.pricePerNight || bodyPayload?.basePricePerNight || 1000,
+            description: bodyPayload?.description || null,
+            region: bodyPayload?.region || null,
+            resortName: bodyPayload?.resortName || null,
+            areaSqM: bodyPayload?.areaSqM || null,
+            bedsCount: bodyPayload?.bedsCount || null,
+            amenities: bodyPayload?.amenities || [],
+            houseRules: bodyPayload?.houseRules || {},
+            status: 'DRAFT',
+            verificationStatus: 'UNVERIFIED',
           }).catch((err) => {
             console.error('❌ [propertyDb.create DB ERROR]:', err);
             return null;
-          }) || {
-            id: propId,
-            ownerId,
-            title: bodyPayload?.title || 'شاليه جديد',
-            unitType: bodyPayload?.unitType || 'CHALET',
-            propertyType: bodyPayload?.propertyType || bodyPayload?.unitType || 'CHALET',
-            address: bodyPayload?.address || 'الساحل الشمالي',
-            bedrooms: bodyPayload?.bedrooms || 2,
-            bathrooms: bodyPayload?.bathrooms || 1,
-            maxGuests: bodyPayload?.maxGuests || 4,
-            basePricePerNight: bodyPayload?.pricePerNight || bodyPayload?.basePricePerNight || 3000,
-            verificationStatus: 'PENDING_VERIFICATION',
-            status: 'PENDING_REVIEW',
-            createdAt: timestamp,
-            updatedAt: timestamp,
-          };
+          });
 
-          dbPropertiesStore.set(propId, newProperty);
+          if (!createdProperty) {
+            return {
+              statusCode: 500,
+              body: {
+                success: false,
+                error: { code: 'PROPERTY_CREATION_FAILED', message: 'فشل إنشاء الوحدة في قاعدة البيانات' },
+                timestamp,
+              },
+            };
+          }
 
-          await notificationDb.create({
-            ownerId: 'admin',
-            title: 'طلب مراجعة وحدة جديدة 🏠',
-            message: `قام المالك بإضافة وحدة جديدة (${newProperty.title}) بحاجة للمراجعة والاعتماد`,
-            type: 'PROPERTY_REVIEW_PENDING',
-            actionRoute: '/verifications',
-          }).catch(() => null);
+          // Canonical Read-After-Write Verification
+          const persistedProperty = await propertyDb.getById(createdProperty.id).catch(() => null);
 
           return {
             statusCode: 201,
             body: {
               success: true,
-              data: newProperty,
+              data: persistedProperty || createdProperty,
               timestamp,
             },
           };
         }
 
         if (path.startsWith('/api/v1/owner/properties') && method === 'GET') {
-          const dbProps = await propertyDb.getByOwnerId(ownerId).catch(() => []);
-          const ownerProperties: any[] = dbProps.length > 0 ? dbProps : Array.from(dbPropertiesStore.values()).filter(p => p.ownerId === ownerId);
+          const ownerProperties = await propertyDb.getByOwnerId(ownerId).catch(() => []);
           return {
             statusCode: 200,
             body: {
@@ -833,16 +832,25 @@ export class ExpressServerApp {
 
           // Build update payload from request body
           const updates: any = {};
-          if (bodyPayload?.title) updates.title = bodyPayload.title;
-          if (bodyPayload?.unitType) updates.unitType = bodyPayload.unitType;
-          if (bodyPayload?.propertyType) updates.propertyType = bodyPayload.propertyType;
-          if (bodyPayload?.address) updates.address = bodyPayload.address;
+          if (bodyPayload?.title !== undefined) updates.title = bodyPayload.title;
+          if (bodyPayload?.unitType !== undefined) updates.unitType = bodyPayload.unitType;
+          if (bodyPayload?.propertyType !== undefined) updates.propertyType = bodyPayload.propertyType;
+          if (bodyPayload?.address !== undefined) updates.address = bodyPayload.address;
           if (bodyPayload?.bedrooms !== undefined) updates.bedrooms = bodyPayload.bedrooms;
           if (bodyPayload?.bathrooms !== undefined) updates.bathrooms = bodyPayload.bathrooms;
           if (bodyPayload?.maxGuests !== undefined) updates.maxGuests = bodyPayload.maxGuests;
           if (bodyPayload?.pricePerNight !== undefined || bodyPayload?.basePricePerNight !== undefined) {
             updates.basePricePerNight = bodyPayload.basePricePerNight || bodyPayload.pricePerNight;
           }
+          if (bodyPayload?.description !== undefined) updates.description = bodyPayload.description;
+          if (bodyPayload?.region !== undefined) updates.region = bodyPayload.region;
+          if (bodyPayload?.resortName !== undefined) updates.resortName = bodyPayload.resortName;
+          if (bodyPayload?.areaSqM !== undefined) updates.areaSqM = bodyPayload.areaSqM;
+          if (bodyPayload?.bedsCount !== undefined) updates.bedsCount = bodyPayload.bedsCount;
+          if (bodyPayload?.amenities !== undefined) updates.amenities = bodyPayload.amenities;
+          if (bodyPayload?.houseRules !== undefined) updates.houseRules = bodyPayload.houseRules;
+          if (bodyPayload?.status !== undefined) updates.status = bodyPayload.status;
+          if (bodyPayload?.verificationStatus !== undefined) updates.verificationStatus = bodyPayload.verificationStatus;
 
           // If resubmitting, set status back to PENDING_REVIEW
           if (bodyPayload?.resubmit === true) {
@@ -858,12 +866,15 @@ export class ExpressServerApp {
             };
           }
 
+          // Canonical Read-After-Write Verification
+          const persistedProperty = await propertyDb.getById(propertyId).catch(() => null);
+
           // If resubmitting, notify admin
           if (bodyPayload?.resubmit === true) {
             await notificationDb.create({
               ownerId: 'admin',
               title: 'إعادة تقديم وحدة للمراجعة 🔄',
-              message: `قام المالك بتعديل وإعادة تقديم وحدة (${updated.title}) للمراجعة`,
+              message: `قام المالك بتعديل وإعادة تقديم وحدة (${persistedProperty?.title || updated.title}) للمراجعة`,
               type: 'PROPERTY_REVIEW_PENDING',
               actionRoute: '/properties',
             }).catch(() => null);
@@ -873,21 +884,18 @@ export class ExpressServerApp {
             statusCode: 200,
             body: {
               success: true,
-              data: updated,
+              data: persistedProperty || updated,
               timestamp,
             },
           };
         }
 
-        // --- E0.6. Owner Property Submit For Review Endpoint — PostgreSQL Driven ---
+        // --- E0.6. Owner Property Submit For Review Endpoint — PostgreSQL Driven (M03) ---
         if (path.startsWith('/api/v1/owner/properties/') && path.endsWith('/submit') && method === 'POST') {
           const parts = path.split('/');
           const propertyId = parts[5];
 
-          let prop = await propertyDb.getById(propertyId).catch(() => null);
-          if (!prop) {
-            prop = dbPropertiesStore.get(propertyId) || null;
-          }
+          const prop = await propertyDb.getById(propertyId).catch(() => null);
 
           if (!prop) {
             return {
@@ -900,7 +908,7 @@ export class ExpressServerApp {
             };
           }
 
-          if (prop.ownerId && prop.ownerId !== ownerId && !propertyId.includes('prop-pub-')) {
+          if (prop.ownerId && prop.ownerId !== ownerId) {
             return {
               statusCode: 403,
               body: {
@@ -911,24 +919,51 @@ export class ExpressServerApp {
             };
           }
 
-          let updated = await propertyDb.updateStatus(propertyId, 'PENDING_REVIEW', 'PENDING_VERIFICATION').catch(() => null);
-          if (!updated) {
-            updated = await propertyDb.update(propertyId, ownerId, {
-              status: 'PENDING_REVIEW',
-              verificationStatus: 'PENDING_VERIFICATION',
-            }).catch(() => null);
+          // Validate submission criteria
+          if (!prop.title || prop.title.trim().length < 3) {
+            return {
+              statusCode: 400,
+              body: { success: false, error: { code: 'INVALID_TITLE', message: 'يرجى إدخال اسم صحيح للوحدة' }, timestamp },
+            };
+          }
+          if (!prop.pricePerNight || Number(prop.pricePerNight) <= 0) {
+            return {
+              statusCode: 400,
+              body: { success: false, error: { code: 'INVALID_PRICE', message: 'يرجى إدخال سعر إيجار لليلة' }, timestamp },
+            };
           }
 
-          const finalProp = updated
-            ? { ...prop, ...updated, status: 'PENDING_REVIEW', verificationStatus: 'PENDING_VERIFICATION' }
-            : { ...prop, status: 'PENDING_REVIEW', verificationStatus: 'PENDING_VERIFICATION' };
+          // At least ONE committed image required
+          const committedImages = await imageDb.getImagesByPropertyId(propertyId).catch(() => []);
+          if (committedImages.length === 0) {
+            return {
+              statusCode: 400,
+              body: {
+                success: false,
+                error: { code: 'MISSING_PROPERTY_IMAGES', message: 'يجب رفع وتأكيد صورة واحدة على الأقل للوحدة قبل إرسالها للمراجعة' },
+                timestamp,
+              },
+            };
+          }
 
-          dbPropertiesStore.set(propertyId, finalProp);
+          const updated = await propertyDb.updateStatus(propertyId, 'PENDING_REVIEW', 'PENDING_VERIFICATION').catch(() => null);
+          if (!updated) {
+            return {
+              statusCode: 500,
+              body: {
+                success: false,
+                error: { code: 'SUBMIT_FAILED', message: 'فشل إرسال الوحدة للمراجعة' },
+                timestamp,
+              },
+            };
+          }
+
+          const finalProp = await propertyDb.getById(propertyId).catch(() => null);
 
           await notificationDb.create({
             ownerId: 'admin',
             title: 'طلب مراجعة وحدة جديدة 🏠',
-            message: `قام المالك بإرسال وحدة (${finalProp.title || 'شاليه'}) للمراجعة والاعتماد`,
+            message: `قام المالك بإرسال وحدة (${finalProp?.title || prop.title}) للمراجعة والاعتماد`,
             type: 'PROPERTY_REVIEW_PENDING',
             actionRoute: '/properties',
           }).catch(() => null);
@@ -937,7 +972,7 @@ export class ExpressServerApp {
             statusCode: 200,
             body: {
               success: true,
-              data: finalProp,
+              data: finalProp || updated,
               timestamp,
             },
           };
@@ -1388,7 +1423,14 @@ export class ExpressServerApp {
             statusCode: 200,
             body: {
               success: true,
-              data: { propertyId, status: 'PUBLISHED', title: updated.title, ownerId: updated.ownerId },
+              data: {
+                id: propertyId,
+                propertyId,
+                status: 'PUBLISHED',
+                verificationStatus: 'VERIFIED',
+                title: updated.title,
+                ownerId: updated.ownerId,
+              },
               timestamp,
             },
           };
@@ -1512,6 +1554,7 @@ export class ExpressServerApp {
             },
           };
         }
+
 
         // B. Property Review Endpoint — PostgreSQL Driven
         if (path.startsWith('/api/v1/admin/properties/') && path.endsWith('/review') && method === 'POST') {
@@ -2480,12 +2523,12 @@ export class ExpressServerApp {
           };
         }
 
-        // 4.1 Property Search (PUBLISHED ONLY — PostgreSQL Driven)
+        // 4.1 Property Search (PUBLISHED ONLY — PostgreSQL Driven — M03)
         if (path === '/api/v1/customer/properties/search' && method === 'GET') {
           const realProps = await propertyDb.getAllForAdmin('PUBLISHED').catch(() => []);
           const formatted = await Promise.all(realProps.map(async (p: any) => {
             const images = await imageDb.getImagesByPropertyId(p.id).catch(() => []);
-            const imageUrls = images.map((img: any) => img.publicUrl || img.storagePath).filter(Boolean);
+            const imageUrls = images.map((img: any) => img.fileUrl).filter(Boolean);
             return {
               ...p,
               basePricePerNight: Number(p.basePricePerNight || p.pricePerNight || 5000),
@@ -2598,7 +2641,7 @@ export class ExpressServerApp {
           }
 
           const images = await imageDb.getImagesByPropertyId(propertyId).catch(() => []);
-          const imageUrls = images.map((img: any) => img.publicUrl || img.storagePath).filter(Boolean);
+          const imageUrls = images.map((img: any) => img.fileUrl).filter(Boolean);
           const propWithImages = {
             ...prop,
             basePricePerNight: Number(rawPrice),

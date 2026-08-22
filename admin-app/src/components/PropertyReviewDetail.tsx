@@ -285,7 +285,7 @@ export function PropertyReviewDetail({ propertyId, onBack }: PropertyReviewDetai
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                 {images.map((img: any, idx: number) => (
                   <div key={img.id || idx} className="rounded-xl overflow-hidden border border-slate-200 bg-slate-100 aspect-video relative group">
-                    <img src={img.url} alt={`صورة ${idx + 1}`} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
+                    <img src={img.fileUrl || img.url || (typeof img === 'string' ? img : '')} alt={`صورة ${idx + 1}`} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
                   </div>
                 ))}
               </div>

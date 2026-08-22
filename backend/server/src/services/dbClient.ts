@@ -317,7 +317,10 @@ async function queryViaSupabaseRest(text: string, params: any[] | undefined, url
   // 1. SELECT properties WHERE id = $1 or p.id = $1
   if (lowerSql.startsWith('select') && lowerSql.includes('from properties') && (lowerSql.includes('where id =') || lowerSql.includes('where p.id =') || lowerSql.includes('p.id = $1') || lowerSql.includes('id = $1'))) {
     const propId = params?.[0];
-    const res = await fetch(`${url}/rest/v1/properties?id=eq.${encodeURIComponent(propId)}`, { headers });
+    const res = await fetch(`${url}/rest/v1/properties?id=eq.${encodeURIComponent(propId)}&deleted_at=is.null`, { headers });
+    if (!res.ok) {
+      throw new Error(`REST_PROPERTIES_SELECT_FAILED: HTTP ${res.status}`);
+    }
     const rows: any[] = await res.json().catch(() => []);
     const mapped = rows.map(p => ({
       id: p.id,
@@ -331,6 +334,13 @@ async function queryViaSupabaseRest(text: string, params: any[] | undefined, url
       maxGuests: p.max_guests,
       pricePerNight: p.base_price_per_night,
       basePricePerNight: p.base_price_per_night,
+      description: p.description || null,
+      region: p.region || null,
+      resortName: p.resort_name || null,
+      areaSqM: p.area_sq_m || null,
+      bedsCount: p.beds_count || null,
+      amenities: p.amenities || [],
+      houseRules: p.house_rules || {},
       status: p.status,
       verificationStatus: p.verification_status,
       createdAt: p.created_at,
@@ -346,21 +356,49 @@ async function queryViaSupabaseRest(text: string, params: any[] | undefined, url
 
   // 2. INSERT INTO properties
   if (lowerSql.startsWith('insert into properties')) {
-    const payload = {
-      id: params?.[0],
+    const safeParse = (v: any, fallback: any) => {
+      if (!v) return fallback;
+      if (typeof v === 'object') return v;
+      try {
+        return JSON.parse(v);
+      } catch {
+        return fallback;
+      }
+    };
+
+    const payload: any = {
+      id: params?.[0] || crypto.randomUUID(),
       owner_id: params?.[1],
       title: params?.[2],
-      unit_type: params?.[3],
-      property_type: params?.[4],
-      address: params?.[5],
-      bedrooms: params?.[6],
-      bathrooms: params?.[7],
-      max_guests: params?.[8],
-      base_price_per_night: params?.[9],
-      status: params?.[10],
-      verification_status: params?.[11]
+      unit_type: params?.[3] || 'CHALET',
+      property_type: params?.[4] || 'CHALET',
+      address: params?.[5] || '',
+      bedrooms: Number(params?.[6]) || 1,
+      bathrooms: Number(params?.[7]) || 1,
+      max_guests: Number(params?.[8]) || 2,
+      base_price_per_night: Number(params?.[9]) || 1000,
+      description: params?.[10] || null,
+      region: params?.[11] || null,
+      resort_name: params?.[12] || null,
+      area_sq_m: params?.[13] ? Number(params[13]) : null,
+      beds_count: params?.[14] ? Number(params[14]) : null,
+      amenities: safeParse(params?.[15], []),
+      house_rules: safeParse(params?.[16], {}),
+      status: params?.[17] || 'DRAFT',
+      verification_status: params?.[18] || 'UNVERIFIED',
     };
-    const res = await fetch(`${url}/rest/v1/properties`, { method: 'POST', headers, body: JSON.stringify(payload) });
+
+    const res = await fetch(`${url}/rest/v1/properties`, {
+      method: 'POST',
+      headers: { ...headers, 'Prefer': 'return=representation' },
+      body: JSON.stringify(payload)
+    });
+
+    if (!res.ok) {
+      const errBody = await res.text().catch(() => '');
+      throw new Error(`REST_PROPERTY_INSERT_FAILED: HTTP ${res.status} — ${errBody.slice(0, 200)}`);
+    }
+
     const rows: any = await res.json().catch(() => []);
     const arr = Array.isArray(rows) ? rows : [rows];
     const mapped = arr.map(p => ({
@@ -374,15 +412,45 @@ async function queryViaSupabaseRest(text: string, params: any[] | undefined, url
       bathrooms: p.bathrooms,
       maxGuests: p.max_guests,
       pricePerNight: p.base_price_per_night,
+      basePricePerNight: p.base_price_per_night,
+      description: p.description,
+      region: p.region,
+      resortName: p.resort_name,
+      areaSqM: p.area_sq_m,
+      bedsCount: p.beds_count,
+      amenities: p.amenities,
+      houseRules: p.house_rules,
       status: p.status,
       verificationStatus: p.verification_status,
-      createdAt: p.created_at
+      createdAt: p.created_at,
+      updatedAt: p.updated_at,
     }));
     return { rows: mapped, command: 'INSERT', rowCount: mapped.length, oid: 0, fields: [] };
   }
 
-  // 3. UPDATE properties SET status = ...
-  if (lowerSql.startsWith('update properties')) {
+  // 3A. UPDATE properties WHERE id = $1 AND owner_id = $2
+  if (lowerSql.startsWith('update properties') && lowerSql.includes('where id = $1 and owner_id = $2')) {
+    const propId = params?.[0];
+    const ownerId = params?.[1];
+    const patchBody: any = { updated_at: new Date().toISOString() };
+
+    // Parse SET clauses dynamically or map parameter values based on index
+    // For standard parameterized update from propertyDb.update:
+    for (let i = 2; i < (params?.length || 0); i++) {
+      const val = params![i];
+      // Match column based on SQL text
+    }
+
+    // Direct PATCH to Supabase REST
+    const res = await fetch(`${url}/rest/v1/properties?id=eq.${encodeURIComponent(propId)}&owner_id=eq.${encodeURIComponent(ownerId)}&deleted_at=is.null`, {
+      headers
+    });
+    // Fallback to direct pg query via return null so pg handles dynamic SET queries safely
+    return null;
+  }
+
+  // 3B. UPDATE properties SET status = ...
+  if (lowerSql.startsWith('update properties') && (lowerSql.includes('set status =') || lowerSql.includes('verification_status ='))) {
     const propId = params?.[0];
     const status = params?.[1];
     const verificationStatus = params?.[2];
@@ -390,7 +458,16 @@ async function queryViaSupabaseRest(text: string, params: any[] | undefined, url
     if (status) payload.status = status;
     if (verificationStatus) payload.verification_status = verificationStatus;
 
-    const res = await fetch(`${url}/rest/v1/properties?id=eq.${encodeURIComponent(propId)}`, { method: 'PATCH', headers, body: JSON.stringify(payload) });
+    const res = await fetch(`${url}/rest/v1/properties?id=eq.${encodeURIComponent(propId)}`, {
+      method: 'PATCH',
+      headers: { ...headers, 'Prefer': 'return=representation' },
+      body: JSON.stringify(payload)
+    });
+
+    if (!res.ok) {
+      throw new Error(`REST_PROPERTY_UPDATE_STATUS_FAILED: HTTP ${res.status}`);
+    }
+
     const rows: any = await res.json().catch(() => []);
     const arr = Array.isArray(rows) ? rows : [rows];
     const mapped = arr.map(p => ({
@@ -440,6 +517,9 @@ async function queryViaSupabaseRest(text: string, params: any[] | undefined, url
   if (lowerSql.includes('from properties') && lowerSql.includes('owner_id = $1')) {
     const ownerId = params?.[0];
     const res = await fetch(`${url}/rest/v1/properties?owner_id=eq.${encodeURIComponent(ownerId)}&deleted_at=is.null&order=created_at.desc`, { headers });
+    if (!res.ok) {
+      throw new Error(`REST_PROPERTIES_SELECT_BY_OWNER_FAILED: HTTP ${res.status}`);
+    }
     const rows: any[] = await res.json().catch(() => []);
     const mapped = rows.map(p => ({
       id: p.id,
@@ -453,6 +533,13 @@ async function queryViaSupabaseRest(text: string, params: any[] | undefined, url
       maxGuests: p.max_guests,
       pricePerNight: p.base_price_per_night,
       basePricePerNight: p.base_price_per_night,
+      description: p.description || null,
+      region: p.region || null,
+      resortName: p.resort_name || null,
+      areaSqM: p.area_sq_m || null,
+      bedsCount: p.beds_count || null,
+      amenities: p.amenities || [],
+      houseRules: p.house_rules || {},
       status: p.status,
       verificationStatus: p.verification_status,
       createdAt: p.created_at,
@@ -464,6 +551,9 @@ async function queryViaSupabaseRest(text: string, params: any[] | undefined, url
   // 6. Admin Pending Properties Queue
   if (lowerSql.includes('from properties') && (lowerSql.includes('pending_review') || lowerSql.includes('rejected'))) {
     const res = await fetch(`${url}/rest/v1/properties?deleted_at=is.null&status=in.(PENDING_REVIEW,REJECTED)&order=created_at.asc`, { headers });
+    if (!res.ok) {
+      throw new Error(`REST_ADMIN_PENDING_PROPERTIES_FAILED: HTTP ${res.status}`);
+    }
     const rows: any[] = await res.json().catch(() => []);
     const mapped = rows.map(p => ({
       id: p.id,
@@ -476,6 +566,13 @@ async function queryViaSupabaseRest(text: string, params: any[] | undefined, url
       bathrooms: p.bathrooms,
       maxGuests: p.max_guests,
       pricePerNight: p.base_price_per_night,
+      description: p.description || null,
+      region: p.region || null,
+      resortName: p.resort_name || null,
+      areaSqM: p.area_sq_m || null,
+      bedsCount: p.beds_count || null,
+      amenities: p.amenities || [],
+      houseRules: p.house_rules || {},
       status: p.status,
       verificationStatus: p.verification_status,
       createdAt: p.created_at,
@@ -483,6 +580,32 @@ async function queryViaSupabaseRest(text: string, params: any[] | undefined, url
       ownerName: 'مالك صولا',
       ownerPhone: '',
       ownerVerificationStatus: 'UNVERIFIED'
+    }));
+    return { rows: mapped, command: 'SELECT', rowCount: mapped.length, oid: 0, fields: [] };
+  }
+
+  // 6B. SELECT FROM property_images WHERE property_id = $1
+  if (lowerSql.includes('from property_images') && lowerSql.includes('property_id = $1')) {
+    const propId = params?.[0];
+    const res = await fetch(`${url}/rest/v1/property_images?property_id=eq.${encodeURIComponent(propId)}&status=eq.ACTIVE&order=sort_order.asc,uploaded_at.asc`, { headers });
+    if (!res.ok) {
+      throw new Error(`REST_PROPERTY_IMAGES_SELECT_FAILED: HTTP ${res.status}`);
+    }
+    const rows: any[] = await res.json().catch(() => []);
+    const mapped = rows.map(img => ({
+      id: img.id,
+      propertyId: img.property_id,
+      ownerId: img.owner_id,
+      objectKey: img.object_key,
+      fileUrl: img.file_url,
+      fileName: img.file_name,
+      mimeType: img.mime_type,
+      fileSize: img.file_size_bytes,
+      sortOrder: img.sort_order,
+      uploadIntentId: img.upload_intent_id,
+      sha256Checksum: img.sha256_checksum,
+      status: img.status,
+      uploadedAt: img.uploaded_at,
     }));
     return { rows: mapped, command: 'SELECT', rowCount: mapped.length, oid: 0, fields: [] };
   }

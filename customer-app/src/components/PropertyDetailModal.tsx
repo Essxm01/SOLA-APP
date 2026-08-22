@@ -79,7 +79,7 @@ export const PropertyDetailModal: React.FC<PropertyDetailModalProps> = ({
   // Gallery State
   const images = useMemo(() => {
     if (property.images && Array.isArray(property.images) && property.images.length > 0) {
-      return property.images;
+      return property.images.map((img: any) => (typeof img === 'string' ? img : img?.fileUrl || '')).filter(Boolean);
     }
     return [];
   }, [property.images]);

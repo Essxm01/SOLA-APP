@@ -1157,6 +1157,32 @@ export const mockRepository = {
     return true;
   },
 
+  getImagePresignedUrl: async (propertyId: string, payload: any): Promise<any> => {
+    return {
+      intentId: `intent-${Date.now()}`,
+      intentNumber: `INT-${Date.now()}`,
+      uploadUrl: `https://storage.sola.eg/mock/${propertyId}/${payload.fileName}`,
+      downloadUrl: `https://storage.sola.eg/mock/${propertyId}/${payload.fileName}`,
+      objectKey: `properties/${propertyId}/${payload.fileName}`,
+      expiresInSeconds: 300,
+    };
+  },
+
+  commitPropertyImage: async (propertyId: string, payload: any): Promise<any> => {
+    return {
+      id: `img-${Date.now()}`,
+      propertyId,
+      fileUrl: payload.fileUrl || payload.downloadUrl,
+      fileName: payload.fileName,
+    };
+  },
+
+  deletePropertyImage: async (_propertyId: string, _imageId: string): Promise<void> => {},
+
+  getPropertyImages: async (_propertyId: string): Promise<any[]> => {
+    return [];
+  },
+
   getAvailability: async (
     propertyId: string,
     year: number,

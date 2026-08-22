@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useApp } from '../../context/AppContext';
 import type { Property, PropertyRules, PropertyType } from '../../types';
 import { Input } from '../ui/Input';
 import { Button } from '../ui/Button';
+import { repositoryFactory } from '../../services/repositoryFactory';
 import {
   EGYPTIAN_COASTAL_REGIONS,
   UNIT_TYPES,
@@ -23,6 +24,8 @@ import {
   Check,
   Plus,
   Trash2,
+  Upload,
+  Loader2,
 } from 'lucide-react';
 
 const DEFAULT_HOUSE_RULES: PropertyRules = {
@@ -61,9 +64,7 @@ export const AddPropertyWizard: React.FC = () => {
       pricePerNight: 5000,
       currency: 'ج.م',
       amenities: ['pool', 'central_ac', 'wifi'],
-      images: [
-        'https://images.unsplash.com/photo-1512917774080-9991f1c4c750?auto=format&fit=crop&w=800&q=80',
-      ],
+      images: [],
       mainImageIndex: 0,
       houseRules: DEFAULT_HOUSE_RULES,
       status: 'DRAFT',
@@ -72,7 +73,10 @@ export const AddPropertyWizard: React.FC = () => {
 
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<string | null>(null);
   const [newImageUrl, setNewImageUrl] = useState('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Sync formData with draft in context
   useEffect(() => {
@@ -114,6 +118,13 @@ export const AddPropertyWizard: React.FC = () => {
       }
     }
 
+    if (step === 6) {
+      if (!formData.images || formData.images.length === 0) {
+        errs.images = 'يجب إضافة صورة واحدة على الأقل للوحدة قبل المتابعة';
+        showToast('يجب إضافة صورة واحدة على الأقل للوحدة 📸', 'error');
+      }
+    }
+
     setErrors(errs);
     return Object.keys(errs).length === 0;
   };
@@ -133,7 +144,10 @@ export const AddPropertyWizard: React.FC = () => {
   const handleSaveDraft = async () => {
     try {
       setIsSubmitting(true);
-      await createOrUpdateProperty({ ...formData, status: 'DRAFT' }, false);
+      const saved = await createOrUpdateProperty({ ...formData, status: 'DRAFT' }, false);
+      if (saved && saved.id && !formData.id) {
+        updateField('id', saved.id);
+      }
     } catch (err) {
       console.error(err);
     } finally {
@@ -142,6 +156,12 @@ export const AddPropertyWizard: React.FC = () => {
   };
 
   const handleSubmitForReview = async () => {
+    if (!formData.images || formData.images.length === 0) {
+      showToast('يجب رفع وتأكيد صورة واحدة على الأقل قبل إرسال الوحدة للمراجعة', 'error');
+      setWizardStep(6);
+      return;
+    }
+
     try {
       setIsSubmitting(true);
       await createOrUpdateProperty(formData, true);
@@ -150,6 +170,96 @@ export const AddPropertyWizard: React.FC = () => {
       console.error(err);
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleDeviceFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    setIsUploadingImage(true);
+    setUploadProgress('جارِ تهيئة مسودة الوحدة للرفع...');
+
+    try {
+      let currentPropId = formData.id;
+      if (!currentPropId) {
+        const saved = await createOrUpdateProperty({ ...formData, status: 'DRAFT' }, false);
+        currentPropId = saved.id;
+        updateField('id', saved.id);
+      }
+
+      const validFiles: File[] = [];
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type.toLowerCase())) {
+          showToast(`الملف ${file.name} ليس بصيغة مدعومة (JPEG, PNG, WEBP فقط)`, 'error');
+          continue;
+        }
+        if (file.size > 10 * 1024 * 1024) {
+          showToast(`الملف ${file.name} يتجاوز الحجم الأقصى 10 ميجابايت`, 'error');
+          continue;
+        }
+        validFiles.push(file);
+      }
+
+      if (validFiles.length === 0) {
+        setIsUploadingImage(false);
+        setUploadProgress(null);
+        return;
+      }
+
+      const newUrls: string[] = [];
+
+      for (let i = 0; i < validFiles.length; i++) {
+        const file = validFiles[i];
+        setUploadProgress(`جارِ رفع صورة (${i + 1} من ${validFiles.length})...`);
+
+        // 1. Request Presigned Upload Intent
+        const presigned = await repositoryFactory.property.getImagePresignedUrl(currentPropId, {
+          fileName: file.name,
+          mimeType: file.type,
+          fileSize: file.size,
+        });
+
+        // 2. Direct Binary Upload to Storage
+        const uploadRes = await fetch(presigned.uploadUrl, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': file.type,
+          },
+          body: file,
+        });
+
+        if (!uploadRes.ok) {
+          throw new Error(`فشل رفع ملف ${file.name} إلى مساحة التخزين`);
+        }
+
+        // 3. Commit Metadata to PostgreSQL
+        const committed = await repositoryFactory.property.commitPropertyImage(currentPropId, {
+          intentId: presigned.intentId,
+          objectKey: presigned.objectKey,
+          fileUrl: presigned.downloadUrl,
+          fileName: file.name,
+          mimeType: file.type,
+          fileSize: file.size,
+          sortOrder: (formData.images?.length || 0) + i,
+        });
+
+        newUrls.push(committed.fileUrl || presigned.downloadUrl);
+      }
+
+      if (newUrls.length > 0) {
+        const updatedImages = [...(formData.images || []), ...newUrls];
+        updateField('images', updatedImages);
+        showToast(`تم رفع وتأكيد ${newUrls.length} صورة بنجاح 📸`, 'success');
+      }
+    } catch (err: any) {
+      console.error('Image upload failed:', err);
+      showToast(err.message || 'حدث خطأ أثناء رفع الصور', 'error');
+    } finally {
+      setIsUploadingImage(false);
+      setUploadProgress(null);
+      if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
 
@@ -166,10 +276,6 @@ export const AddPropertyWizard: React.FC = () => {
 
   const deletePhoto = (index: number) => {
     const images = formData.images || [];
-    if (images.length <= 1) {
-      showToast('يجب أن تحتوي الوحدة على صورة واحدة على الأقل', 'error');
-      return;
-    }
     const updated = images.filter((_, i) => i !== index);
     updateField('images', updated);
 
@@ -651,64 +757,114 @@ export const AddPropertyWizard: React.FC = () => {
             </p>
           </div>
 
-          {/* Add Image Link Input */}
-          <div className="p-3 bg-white rounded-2xl border border-slate-200 space-y-2">
-            <label className="text-xs font-bold text-slate-800 block">إضافة رابط صورة جديدة (Image URL)</label>
-            <div className="flex gap-2">
+          {/* Device File Picker Upload Box */}
+          <div className="p-4 bg-white rounded-2xl border-2 border-dashed border-blue-200 hover:border-[#0059FF] transition-all text-center space-y-3">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              multiple
+              onChange={handleDeviceFileUpload}
+              className="hidden"
+              id="property-file-picker"
+              disabled={isUploadingImage}
+            />
+
+            <div className="w-12 h-12 mx-auto rounded-2xl bg-blue-50 text-[#0059FF] flex items-center justify-center">
+              {isUploadingImage ? (
+                <Loader2 className="w-6 h-6 animate-spin" />
+              ) : (
+                <Upload className="w-6 h-6" />
+              )}
+            </div>
+
+            <div className="space-y-1">
+              <label
+                htmlFor="property-file-picker"
+                className={`inline-block px-4 py-2 bg-[#0059FF] text-white text-xs font-bold rounded-xl cursor-pointer hover:bg-blue-600 shadow-sm transition-all ${
+                  isUploadingImage ? 'opacity-50 pointer-events-none' : ''
+                }`}
+              >
+                {isUploadingImage ? 'جارِ رفع الصور...' : 'اختر صوراً من جهازك 📁'}
+              </label>
+              <p className="text-[11px] text-slate-500">
+                صيغ مدعومة: JPG, PNG, WEBP (الحد الأقصى: 10 ميجابايت للصورة)
+              </p>
+            </div>
+
+            {uploadProgress && (
+              <div className="p-2 bg-blue-50 text-[#0059FF] text-xs font-bold rounded-xl animate-pulse">
+                {uploadProgress}
+              </div>
+            )}
+          </div>
+
+          {/* Optional Direct URL Fallback Accordion */}
+          <details className="text-xs bg-slate-50 p-2.5 rounded-xl border border-slate-200">
+            <summary className="cursor-pointer font-bold text-slate-600 select-none">
+              أو إضافة رابط صورة خارجي (URL)...
+            </summary>
+            <div className="pt-2 flex gap-2">
               <input
                 type="url"
-                placeholder="https://images.unsplash.com/..."
+                placeholder="https://..."
                 value={newImageUrl}
                 onChange={(e) => setNewImageUrl(e.target.value)}
-                className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl dir-ltr text-left"
+                className="w-full px-3 py-1.5 text-xs bg-white border border-slate-200 rounded-xl dir-ltr text-left"
               />
-              <Button variant="primary" size="sm" onClick={addPhoto} icon={<Plus className="w-4 h-4" />}>
+              <Button variant="outline" size="sm" onClick={addPhoto} icon={<Plus className="w-4 h-4" />}>
                 إضافة
               </Button>
             </div>
-          </div>
+          </details>
 
           {/* Photos Grid */}
-          <div className="grid grid-cols-2 gap-3">
-            {(formData.images || []).map((img, idx) => {
-              const isMain = (formData.mainImageIndex || 0) === idx;
-              return (
-                <div
-                  key={idx}
-                  className={`relative h-36 rounded-2xl overflow-hidden border-2 transition-all ${
-                    isMain ? 'border-[#0059FF] ring-2 ring-blue-200' : 'border-slate-200'
-                  }`}
-                >
-                  <img src={img} alt={`صورة ${idx + 1}`} className="w-full h-full object-cover" />
+          {(formData.images || []).length === 0 ? (
+            <div className="p-8 text-center bg-slate-50 rounded-2xl border border-slate-200 text-slate-400 text-xs">
+              لم يتم إضافة أي صور بعد. يرجى اختيار صور من جهازك.
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 gap-3">
+              {(formData.images || []).map((img, idx) => {
+                const isMain = (formData.mainImageIndex || 0) === idx;
+                return (
+                  <div
+                    key={idx}
+                    className={`relative h-36 rounded-2xl overflow-hidden border-2 transition-all ${
+                      isMain ? 'border-[#0059FF] ring-2 ring-blue-200' : 'border-slate-200'
+                    }`}
+                  >
+                    <img src={img} alt={`صورة ${idx + 1}`} className="w-full h-full object-cover" />
 
-                  {isMain && (
-                    <span className="absolute top-2 right-2 bg-[#0059FF] text-white text-[10px] font-bold px-2 py-0.5 rounded-md shadow-sm">
-                      الصورة الرئيسية ★
-                    </span>
-                  )}
+                    {isMain && (
+                      <span className="absolute top-2 right-2 bg-[#0059FF] text-white text-[10px] font-bold px-2 py-0.5 rounded-md shadow-sm">
+                        الصورة الرئيسية ★
+                      </span>
+                    )}
 
-                  <div className="absolute bottom-2 left-2 right-2 flex items-center justify-between gap-1 bg-slate-900/80 backdrop-blur-md p-1.5 rounded-xl text-white">
-                    {!isMain && (
+                    <div className="absolute bottom-2 left-2 right-2 flex items-center justify-between gap-1 bg-slate-900/80 backdrop-blur-md p-1.5 rounded-xl text-white">
+                      {!isMain && (
+                        <button
+                          type="button"
+                          onClick={() => updateField('mainImageIndex', idx)}
+                          className="text-[10px] font-bold text-yellow-300 hover:underline"
+                        >
+                          جعلها رئيسية
+                        </button>
+                      )}
                       <button
                         type="button"
-                        onClick={() => updateField('mainImageIndex', idx)}
-                        className="text-[10px] font-bold text-yellow-300 hover:underline"
+                        onClick={() => deletePhoto(idx)}
+                        className="text-rose-400 hover:text-rose-200 p-1 mr-auto"
                       >
-                        جعلها رئيسية
+                        <Trash2 className="w-3.5 h-3.5" />
                       </button>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => deletePhoto(idx)}
-                      className="text-rose-400 hover:text-rose-200 p-1"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
+                    </div>
                   </div>
-                </div>
-              );
-            })}
-          </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
 

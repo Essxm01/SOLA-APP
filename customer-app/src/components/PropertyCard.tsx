@@ -31,7 +31,8 @@ export const PropertyCard: React.FC<PropertyCardProps> = ({
   isFavorite = false,
   onToggleFavorite,
 }) => {
-  const coverImage = property.images && property.images.length > 0 ? property.images[0] : null;
+  const rawFirst = property.images && property.images.length > 0 ? property.images[0] : null;
+  const coverImage = typeof rawFirst === 'string' ? rawFirst : (rawFirst as any)?.fileUrl || null;
 
   const translateType = (type?: string) => {
     switch (type?.toUpperCase()) {

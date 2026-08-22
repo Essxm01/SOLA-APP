@@ -89,8 +89,17 @@ export interface CreatePropertyPayload {
   bathrooms: number;
   maxGuests: number;
   basePricePerNight: number;
-  images: string[];
-  amenities: Property['amenities'];
+  pricePerNight?: number;
+  description?: string;
+  region?: string;
+  resortName?: string;
+  areaSqM?: number;
+  bedsCount?: number;
+  images?: string[];
+  amenities?: Property['amenities'];
+  houseRules?: Property['houseRules'];
+  status?: Property['status'];
+  verificationStatus?: Property['verificationStatus'];
 }
 
 export interface UpdatePropertyPayload extends Partial<CreatePropertyPayload> {}
@@ -106,6 +115,10 @@ export interface IPropertyRepository {
   archiveProperty(id: string): Promise<Property>;
   restoreProperty(id: string): Promise<Property>;
   deleteProperty(id: string): Promise<void>;
+  getImagePresignedUrl(propertyId: string, payload: { fileName: string; mimeType: string; fileSize: number }): Promise<any>;
+  commitPropertyImage(propertyId: string, payload: any): Promise<any>;
+  deletePropertyImage(propertyId: string, imageId: string): Promise<void>;
+  getPropertyImages(propertyId: string): Promise<any[]>;
 }
 
 // ==========================================

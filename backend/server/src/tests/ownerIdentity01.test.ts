@@ -82,7 +82,9 @@ async function run() {
     readFile(new URL('../../../../owner-app/src/context/AppContext.tsx', import.meta.url), 'utf8'),
     readFile(new URL('../../../../owner-app/src/components/profile/ProfileView.tsx', import.meta.url), 'utf8'),
   ]);
-  assert.match(appSource, /if \(isLoadingAuth\)/);
+  assert.match(appSource, /getOwnerAuthPresentation\(isLoadingAuth/);
+  assert.match(appSource, /authPresentation === 'NEUTRAL_LAUNCH'/);
+  assert.doesNotMatch(appSource, /جاري التحقق من الحساب|جاري تحميل بيانات حساب المالك/);
   assert.match(appSource, /<AppProvider key=\{owner\.id\} ownerId=\{owner\.id\}>/);
   assert.match(contextSource, /getOwnerDraftStorageKey\(ownerId\)/);
   assert.doesNotMatch(contextSource, /getItem\('sola_owner_property_draft'\)/);

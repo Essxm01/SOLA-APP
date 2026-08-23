@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "test:truthful-state": "npx tsx src/utils/customerTruthfulState.test.ts",
     "build": "tsc -b && vite build",
     "preview": "vite preview"
   },

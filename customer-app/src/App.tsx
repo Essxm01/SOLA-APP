@@ -13,6 +13,7 @@ import { BookingDetailModal, type CustomerBookingRecord } from './components/Boo
 import { CustomerBottomNav, CustomerTabType } from './components/CustomerBottomNav';
 import { LoadingStateView, EmptyStateView, ErrorStateView } from './components/StateViews';
 import { getApiUrl } from './utils/api';
+import { fetchCanonicalCollection } from './utils/customerTruthfulState';
 import {
   Heart,
   CalendarCheck,
@@ -52,8 +53,8 @@ export function App() {
   const [filteredProperties, setFilteredProperties] = useState<CustomerPropertyItem[]>([]);
   const [activeDestination, setActiveDestination] = useState<string>('الكل');
   const [favorites, setFavorites] = useState<string[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
-  const [error, setError] = useState<boolean>(false);
+  const [propertyLoadState, setPropertyLoadState] = useState<'LOADING' | 'SUCCESS' | 'ERROR'>('LOADING');
+  const [propertyLoadError, setPropertyLoadError] = useState<string | null>(null);
 
   // Navigation & Modals
   const [activeTab, setActiveTab] = useState<CustomerTabType>('EXPLORE');
@@ -84,23 +85,19 @@ export function App() {
 
   // Fetch Published Properties from API (Real PostgreSQL Records)
   const fetchProperties = async () => {
-    setLoading(true);
-    setError(false);
-    try {
-      const res = await fetch(getApiUrl('/customer/properties/search'));
-      const json = await res.json();
-      if (res.ok && json.success && Array.isArray(json.data)) {
-        setProperties(json.data);
-        setFilteredProperties(json.data);
-      } else {
-        setProperties([]);
-        setFilteredProperties([]);
-      }
-    } catch {
-      setError(true);
-    } finally {
-      setLoading(false);
+    setPropertyLoadState('LOADING');
+    setPropertyLoadError(null);
+    const result = await fetchCanonicalCollection<CustomerPropertyItem>('/customer/properties/search');
+    if (result.kind === 'success') {
+      setProperties(result.data);
+      setFilteredProperties(result.data);
+      setPropertyLoadState('SUCCESS');
+      return;
     }
+    setPropertyLoadError(result.kind === 'unauthorized'
+      ? 'تعذر تحميل أماكن الإقامة حالياً. حاول مرة أخرى.'
+      : result.message);
+    setPropertyLoadState('ERROR');
   };
 
   useEffect(() => {
@@ -492,12 +489,22 @@ export function App() {
             </div>
 
             {/* Viewport States */}
-            {loading ? (
+            {propertyLoadState === 'LOADING' ? (
               <LoadingStateView message="جاري استكشاف إقامات الساحل الشمالي..." />
-            ) : error ? (
-              <ErrorStateView onRetry={fetchProperties} />
+            ) : propertyLoadState === 'ERROR' ? (
+              <ErrorStateView
+                title="تعذر تحميل أماكن الإقامة"
+                message={propertyLoadError || 'تحقق من الاتصال وحاول مرة أخرى.'}
+                onRetry={fetchProperties}
+              />
             ) : filteredProperties.length === 0 ? (
-              <EmptyStateView onReset={() => setFilteredProperties(properties)} />
+              <EmptyStateView
+                title={properties.length === 0 ? 'لا توجد أماكن إقامة متاحة حالياً' : undefined}
+                description={properties.length === 0
+                  ? 'لم تتوفر وحدات منشورة حالياً. يمكنك المحاولة لاحقاً.'
+                  : undefined}
+                onReset={properties.length > 0 ? () => setFilteredProperties(properties) : undefined}
+              />
             ) : (
               /* Mobile Vertical Feed */
               <div className="space-y-4 my-3">

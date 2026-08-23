@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
-import { getApiUrl } from '../utils/api';
-import { X, Wallet, CreditCard, Clock, CheckCircle2 } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { X, Wallet, CreditCard, Clock, CheckCircle2, RefreshCw } from 'lucide-react';
+import { fetchCanonicalCollection } from '../utils/customerTruthfulState';
 
 interface PaymentItem {
   id: string;
@@ -23,35 +23,29 @@ interface CustomerWalletModalProps {
 
 export const CustomerWalletModal: React.FC<CustomerWalletModalProps> = ({ authToken, onClose }) => {
   const [payments, setPayments] = useState<PaymentItem[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
-  const [error, setError] = useState<string>('');
+  const [paymentLoadState, setPaymentLoadState] = useState<'LOADING' | 'SUCCESS' | 'ERROR'>('LOADING');
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchPayments = useCallback(async () => {
+    setPaymentLoadState('LOADING');
+    setError(null);
+    const result = await fetchCanonicalCollection<PaymentItem>('/customer/payments', {
+      headers: { Authorization: `Bearer ${authToken}` },
+    });
+    if (result.kind === 'success') {
+      setPayments(result.data);
+      setPaymentLoadState('SUCCESS');
+      return;
+    }
+    setError(result.kind === 'unauthorized'
+      ? 'تعذر التحقق من جلسة حسابك. أغلق النافذة وسجّل الدخول مرة أخرى ثم أعد المحاولة.'
+      : 'تعذر تحميل سجل المدفوعات. تحقق من الاتصال وحاول مرة أخرى.');
+    setPaymentLoadState('ERROR');
+  }, [authToken]);
 
   useEffect(() => {
-    const fetchPayments = async () => {
-      try {
-        setLoading(true);
-        const res = await fetch(getApiUrl('/customer/payments'), {
-          headers: { Authorization: `Bearer ${authToken}` },
-        });
-        const json = await res.json().catch(() => ({}));
-        if (res.ok && json.success && Array.isArray(json.data)) {
-          setPayments(json.data);
-          setError('');
-        } else if (res.status === 404 || !json.success) {
-          setPayments([]);
-          setError('');
-        } else {
-          setPayments([]);
-        }
-      } catch {
-        setPayments([]);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchPayments();
-  }, [authToken]);
+    void fetchPayments();
+  }, [fetchPayments]);
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4">
@@ -77,14 +71,22 @@ export const CustomerWalletModal: React.FC<CustomerWalletModalProps> = ({ authTo
 
         {/* Content Body */}
         <div className="flex-1 overflow-y-auto pr-1 space-y-3">
-          {loading ? (
+          {paymentLoadState === 'LOADING' ? (
             <div className="py-12 text-center text-slate-400">
               <div className="w-6 h-6 border-2 border-[#0059FF] border-t-transparent rounded-full animate-spin mx-auto mb-2" />
               <p className="text-xs font-bold">جاري تحميل سجل المدفوعات...</p>
             </div>
-          ) : error ? (
-            <div className="p-4 bg-rose-50 border border-rose-200 rounded-2xl text-center text-xs font-bold text-rose-700">
-              {error}
+          ) : paymentLoadState === 'ERROR' ? (
+            <div className="p-5 bg-rose-50 border border-rose-200 rounded-2xl text-center text-xs font-bold text-rose-700 space-y-3">
+              <p>{error}</p>
+              <button
+                type="button"
+                onClick={() => void fetchPayments()}
+                className="inline-flex items-center gap-2 px-4 py-2 bg-white border border-rose-300 rounded-xl text-rose-800 hover:bg-rose-100 transition-colors"
+              >
+                <RefreshCw className="w-4 h-4" />
+                <span>إعادة المحاولة</span>
+              </button>
             </div>
           ) : payments.length === 0 ? (
             /* Clean Zero-Data Empty State */

@@ -2645,7 +2645,19 @@ export class ExpressServerApp {
 
         // 4.1 Property Search (PUBLISHED ONLY — PostgreSQL Driven — M03)
         if (path === '/api/v1/customer/properties/search' && method === 'GET') {
-          const realProps = await propertyDb.getAllForAdmin('PUBLISHED').catch(() => []);
+          let realProps;
+          try {
+            realProps = await propertyDb.getAllForAdmin('PUBLISHED');
+          } catch {
+            return {
+              statusCode: 500,
+              body: {
+                success: false,
+                error: { code: 'CUSTOMER_PROPERTIES_QUERY_FAILED', message: 'تعذر تحميل أماكن الإقامة حالياً' },
+                timestamp,
+              },
+            };
+          }
           const formatted = await Promise.all(realProps.map(async (p: any) => {
             const images = await imageDb.getImagesByPropertyId(p.id).catch(() => []);
             const imageUrls = images.map((img: any) => img.fileUrl).filter(Boolean);
@@ -3144,8 +3156,23 @@ export class ExpressServerApp {
 
         // 4.4E Customer Payments & Deposits Ledger (Real Data Only — ACCOUNT-01)
         if (path === '/api/v1/customer/payments' && method === 'GET') {
-          const bookings = await bookingDb.getByCustomerId(customerId).catch(() => []);
-          const transactions = await paymentTxDb.getByCustomerId(customerId).catch(() => []);
+          let bookings;
+          let transactions;
+          try {
+            [bookings, transactions] = await Promise.all([
+              bookingDb.getByCustomerId(customerId),
+              paymentTxDb.getByCustomerId(customerId),
+            ]);
+          } catch {
+            return {
+              statusCode: 500,
+              body: {
+                success: false,
+                error: { code: 'CUSTOMER_PAYMENTS_QUERY_FAILED', message: 'تعذر تحميل سجل المدفوعات حالياً' },
+                timestamp,
+              },
+            };
+          }
 
           // Derive clean renter payment items from real bookings & payment records
           const paymentItems: any[] = [];

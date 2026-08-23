@@ -73,8 +73,8 @@ export const OwnerKycOnboarding: React.FC<{ onComplete: () => void; allowClose?:
         payload.push({ documentType: type, storageKey: signed.storageKey, mimeType: file.type, fileSizeBytes: file.size });
       }
       await repositoryFactory.owner.submitKycPackage(payload);
-      const canonicalOwner = await refreshCanonicalOwner();
-      if (!canonicalOwner) throw new Error('تعذر تحديث حالة حساب المالك.');
+      // Keep this local acknowledgement mounted until the Owner explicitly
+      // chooses to enter the workspace. Refreshing now would unmount it.
       setPendingSubmitted(true);
     } catch (err: any) {
       setError(err?.message || 'تعذر إرسال بيانات التوثيق للمراجعة.');
@@ -90,7 +90,13 @@ export const OwnerKycOnboarding: React.FC<{ onComplete: () => void; allowClose?:
         <CheckCircle2 className="mb-5 h-14 w-14 text-[var(--konfrm-semantic-success)]" />
         <h1 className="mb-3 text-xl font-extrabold text-[var(--konfrm-text-primary)]">تم إرسال بياناتك للمراجعة</h1>
         <p className="mb-7 leading-7 text-[var(--konfrm-text-secondary)]">سنوضح لك حالة التوثيق داخل حسابك بعد مراجعتها.</p>
-        <Button type="button" variant="primary" size="lg" fullWidth onClick={onComplete}>الدخول إلى حساب المالك</Button>
+        <Button type="button" variant="primary" size="lg" fullWidth onClick={async () => {
+          setError('');
+          const canonicalOwner = await refreshCanonicalOwner();
+          if (!canonicalOwner) { setError('تعذر تحديث حالة حساب المالك. حاول مرة أخرى.'); return; }
+          onComplete();
+        }}>الدخول إلى حساب المالك</Button>
+        {error && <p role="alert" className="mt-4 text-sm text-[var(--konfrm-semantic-danger)]">{error}</p>}
       </div>
     </main>
   );

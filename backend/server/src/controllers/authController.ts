@@ -56,6 +56,13 @@ export class AuthController {
         timestamp: new Date().toISOString(),
       };
     } catch (err: any) {
+      if (err?.message === 'OWNER_ALREADY_EXISTS') {
+        return {
+          success: false,
+          error: { code: 'OWNER_ALREADY_EXISTS', message: 'لديك حساب مالك بالفعل، سجّل الدخول للوصول إلى حسابك.' },
+          timestamp: new Date().toISOString(),
+        };
+      }
       return {
         success: false,
         error: {

@@ -28,7 +28,10 @@ export const CreateOwnerAccountScreen: React.FC<{ onBack: () => void }> = ({ onB
     const normalizedPhone = `+20${digits.startsWith('0') ? digits.slice(1) : digits}`;
     const result = await registerOwnerWithPhone(normalizedPhone, cleanName);
     setIsLoading(false);
-    if (!result.success) setError(result.error || 'تعذر إنشاء حساب المالك.');
+    if (!result.success) {
+      setError(result.error || 'تعذر إنشاء حساب المالك.');
+      if (result.error?.includes('لديك حساب مالك بالفعل')) window.setTimeout(onBack, 1200);
+    }
   };
 
   return (

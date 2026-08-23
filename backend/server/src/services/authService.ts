@@ -613,6 +613,9 @@ export class AuthService {
 
     const registration = await ownerDb.registerExplicit(canonicalPhone, normalizedName);
     if (!registration?.ownerId) throw new Error('OWNER_REGISTRATION_PERSISTENCE_FAILED');
+    // Registration is not a second login path. An existing Owner keeps its
+    // account/session untouched and returns to canonical Owner Login.
+    if (registration.createdOwner !== true) throw new Error('OWNER_ALREADY_EXISTS');
 
     const [user, owner] = await Promise.all([
       userDb.getById(registration.ownerId),

@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { queryDb } from '../services/dbClient.js';
+import { AuthService } from '../services/authService.js';
+import { ownerDb, sessionDb, userDb } from '../services/dbRepository.js';
 
 async function captureRpc(sql: string, params: unknown[]) {
   const originalFetch = globalThis.fetch;
@@ -71,6 +73,34 @@ async function run() {
   assert.doesNotMatch(modalSource, /29901011234567|storage\.sola\.eg|readAsDataURL/);
   assert.doesNotMatch(queueSource, /admin_token_valid|100%|\+201000000000/);
   assert.match(splashSource, /setTimeout\(onComplete, 2000\)/);
+
+  // Executable registration behavior with narrow repository stubs: a new
+  // human receives one shared user/owner UUID and one OWNER session.
+  const originalRegister = ownerDb.registerExplicit;
+  const originalOwner = ownerDb.getById;
+  const originalUser = userDb.getById;
+  const originalSession = sessionDb.create;
+  const sharedId = '00000000-0000-4000-8000-201000000123';
+  let sessionPayload: any = null;
+  (ownerDb as any).registerExplicit = async () => ({ ownerId: sharedId, createdOwner: true });
+  (userDb as any).getById = async () => ({ id: sharedId, phoneNumber: '+201000000123', fullName: 'مالك جديد', status: 'ACTIVE' });
+  (ownerDb as any).getById = async () => ({ id: sharedId, phoneNumber: '+201000000123', fullName: 'مالك جديد', verificationStatus: 'UNVERIFIED' });
+  (sessionDb as any).create = async (payload: any) => { sessionPayload = payload; return payload; };
+  try {
+    const result = await new AuthService().registerOwner('+201000000123', 'مالك جديد');
+    assert.equal(result.user.id, result.owner.id);
+    assert.equal(result.owner.id, sharedId);
+    assert.equal(result.isOwner, true);
+    assert.equal(sessionPayload.surface, 'OWNER');
+    assert.equal(sessionPayload.ownerId, sessionPayload.userId);
+    (ownerDb as any).registerExplicit = async () => ({ ownerId: sharedId, createdOwner: false });
+    await assert.rejects(() => new AuthService().registerOwner('+201000000123', 'مالك جديد'), /OWNER_ALREADY_EXISTS/);
+  } finally {
+    (ownerDb as any).registerExplicit = originalRegister;
+    (ownerDb as any).getById = originalOwner;
+    (userDb as any).getById = originalUser;
+    (sessionDb as any).create = originalSession;
+  }
   console.log('OWNER-REGISTRATION-KYC-01 focused contracts passed.');
 }
 

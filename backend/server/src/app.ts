@@ -219,7 +219,7 @@ export class ExpressServerApp {
           bodyPayload?.deviceInfo,
           headers['x-forwarded-for'] || headers['cf-connecting-ip']
         );
-        return { statusCode: response.success ? 201 : 400, body: response };
+        return { statusCode: response.success ? 201 : (response.error?.code === 'OWNER_ALREADY_EXISTS' ? 409 : 400), body: response };
       }
 
       if (path === '/api/v1/auth/refresh' && method === 'POST') {

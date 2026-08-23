@@ -116,6 +116,11 @@ jobs:
           cd backend
           npm ci || npm install
           npm run check
+      - name: Run critical Owner registration and identity tests
+        run: |
+          cd backend
+          npm run test:owner-registration-kyc-01
+          npm run test:owner-identity-01
       - name: Deploy to Cloudflare Workers
         if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
         uses: cloudflare/wrangler-action@v3

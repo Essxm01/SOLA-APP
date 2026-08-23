@@ -89,6 +89,23 @@ function mapBookingMessageRestRow(message: any) {
   };
 }
 
+function mapPaymentRestRow(transaction: any) {
+  return {
+    ...transaction,
+    id: transaction.id,
+    bookingId: transaction.booking_id,
+    customerId: transaction.customer_id,
+    ownerId: transaction.owner_id,
+    merchantOrderId: transaction.merchant_order_id,
+    providerTransactionId: transaction.provider_transaction_id,
+    amountCents: transaction.amount_cents,
+    amountEgp: Number(transaction.amount_cents || 0) / 100,
+    paymentMethod: transaction.payment_method,
+    createdAt: transaction.created_at,
+    updatedAt: transaction.updated_at,
+  };
+}
+
 async function queryViaSupabaseRest(text: string, params: any[] | undefined, url: string, key: string): Promise<pg.QueryResult<any> | null> {
   const headers: Record<string, string> = {
     'apikey': key,
@@ -99,6 +116,27 @@ async function queryViaSupabaseRest(text: string, params: any[] | undefined, url
 
   const sql = text.trim();
   const lowerSql = sql.toLowerCase();
+
+  // PAYMENT-01: the only Worker-safe finalization path is the narrow,
+  // atomic Postgres RPC. Never fall through to a pg transaction in Workers.
+  if (lowerSql.includes('konfrm_complete_deposit_payment')) {
+    const res = await fetch(`${url}/rest/v1/rpc/konfrm_complete_deposit_payment`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        p_payment_transaction_id: params?.[0],
+        p_booking_id: params?.[1],
+        p_customer_id: params?.[2],
+      }),
+    });
+    if (!res.ok) {
+      const body = await res.text().catch(() => '');
+      throw new Error(`REST_PAYMENT_FINALIZATION_RPC_FAILED: HTTP ${res.status} — ${body.slice(0, 240)}`);
+    }
+    const raw: any = await res.json().catch(() => []);
+    const rows = Array.isArray(raw) ? raw : [raw];
+    return { rows, command: 'SELECT', rowCount: rows.length, oid: 0, fields: [] };
+  }
 
   // 0A. SELECT users WHERE phone_number = $1 (canonical users table only — DATA-02)
   if (lowerSql.includes('from users') && lowerSql.includes('phone_number = $1')) {
@@ -1248,28 +1286,73 @@ async function queryViaSupabaseRest(text: string, params: any[] | undefined, url
     return { rows: mapped, command: 'SELECT', rowCount: mapped.length, oid: 0, fields: [] };
   }
 
+  // PAYMENT-01.1 INSERT payment transaction (prototype initiation).
+  if (lowerSql.startsWith('insert into payment_transactions')) {
+    const payload = {
+      booking_id: params?.[0],
+      customer_id: params?.[1],
+      owner_id: params?.[2],
+      provider: params?.[3],
+      merchant_order_id: params?.[4],
+      amount_cents: Number(params?.[5]),
+      currency: params?.[6],
+      payment_method: params?.[7],
+      status: 'INITIATED',
+      idempotency_key: params?.[8],
+      paymob_payment_token: params?.[9] || null,
+      paymob_checkout_url: params?.[10] || null,
+      raw_request_payload: params?.[11] ? safeParse(params[11], params[11]) : null,
+    };
+    const res = await fetch(`${url}/rest/v1/payment_transactions`, {
+      method: 'POST',
+      headers: { ...headers, Prefer: 'return=representation' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const body = await res.text().catch(() => '');
+      throw new Error(`REST_PAYMENT_TRANSACTION_INSERT_FAILED: HTTP ${res.status} — ${body.slice(0, 240)}`);
+    }
+    const raw: any = await res.json().catch(() => []);
+    const rows = (Array.isArray(raw) ? raw : [raw]).filter(Boolean).map(mapPaymentRestRow);
+    return { rows, command: 'INSERT', rowCount: rows.length, oid: 0, fields: [] };
+  }
+
+  // PAYMENT-01.2 strict payment transaction reads. Keep these predicates
+  // separate so booking/customer filters cannot collide with one another.
+  if (lowerSql.startsWith('select') && lowerSql.includes('from payment_transactions') && /\bidempotency_key\s*=\s*\$1\b/i.test(sql)) {
+    const keyValue = params?.[0];
+    const res = await fetch(`${url}/rest/v1/payment_transactions?idempotency_key=eq.${encodeURIComponent(keyValue)}`, { headers });
+    if (!res.ok) throw new Error(`REST_PAYMENT_TRANSACTION_SELECT_BY_IDEMPOTENCY_FAILED: HTTP ${res.status}`);
+    const raw: any = await res.json().catch(() => []);
+    const rows = (Array.isArray(raw) ? raw : []).map(mapPaymentRestRow);
+    return { rows, command: 'SELECT', rowCount: rows.length, oid: 0, fields: [] };
+  }
+
+  if (lowerSql.startsWith('select') && lowerSql.includes('from payment_transactions') && /\bmerchant_order_id\s*=\s*\$1\b/i.test(sql)) {
+    const orderId = params?.[0];
+    const res = await fetch(`${url}/rest/v1/payment_transactions?merchant_order_id=eq.${encodeURIComponent(orderId)}`, { headers });
+    if (!res.ok) throw new Error(`REST_PAYMENT_TRANSACTION_SELECT_BY_ORDER_FAILED: HTTP ${res.status}`);
+    const raw: any = await res.json().catch(() => []);
+    const rows = (Array.isArray(raw) ? raw : []).map(mapPaymentRestRow);
+    return { rows, command: 'SELECT', rowCount: rows.length, oid: 0, fields: [] };
+  }
+
+  if (lowerSql.startsWith('select') && lowerSql.includes('from payment_transactions') && /\bbooking_id\s*=\s*\$1\b/i.test(sql)) {
+    const bookingId = params?.[0];
+    const res = await fetch(`${url}/rest/v1/payment_transactions?booking_id=eq.${encodeURIComponent(bookingId)}&order=created_at.desc`, { headers });
+    if (!res.ok) throw new Error(`REST_PAYMENT_TRANSACTION_SELECT_BY_BOOKING_FAILED: HTTP ${res.status}`);
+    const raw: any = await res.json().catch(() => []);
+    const rows = (Array.isArray(raw) ? raw : []).map(mapPaymentRestRow);
+    return { rows, command: 'SELECT', rowCount: rows.length, oid: 0, fields: [] };
+  }
+
   // 17. SELECT payment_transactions for Customer
-  if (lowerSql.includes('from payment_transactions') && lowerSql.includes('customer_id = $1')) {
+  if (lowerSql.startsWith('select') && lowerSql.includes('from payment_transactions') && /\bcustomer_id\s*=\s*\$1\b/i.test(sql)) {
     const customerId = params?.[0];
     const res = await fetch(`${url}/rest/v1/payment_transactions?customer_id=eq.${encodeURIComponent(customerId)}&order=created_at.desc`, { headers });
     const raw: any = await res.json().catch(() => []);
     const rows: any[] = Array.isArray(raw) ? raw : [];
-    const mapped = rows.map(t => ({
-      id: t.id,
-      bookingId: t.booking_id,
-      customerId: t.customer_id,
-      ownerId: t.owner_id,
-      provider: t.provider,
-      merchantOrderId: t.merchant_order_id,
-      providerTransactionId: t.provider_transaction_id,
-      amountCents: t.amount_cents,
-      amountEgp: Number(t.amount_cents) / 100,
-      currency: t.currency,
-      paymentMethod: t.payment_method,
-      status: t.status,
-      createdAt: t.created_at,
-      updatedAt: t.updated_at,
-    }));
+    const mapped = rows.map(mapPaymentRestRow);
     return { rows: mapped, command: 'SELECT', rowCount: mapped.length, oid: 0, fields: [] };
   }
 

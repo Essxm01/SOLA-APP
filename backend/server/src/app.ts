@@ -13,7 +13,7 @@ import { verifyJwtToken, requireRole } from './middleware/auth.js';
 import { applyCorsHeaders } from './middleware/cors.js';
 import { dbUsersStore, dbOwnersStore, dbNotificationsStore, dbOwnerVerificationDocsStore, dbPropertyVerificationDocsStore, dbPropertiesStore, dbBookingsStore, dbPayoutRequestsStore, dbDisputesStore } from './services/authService.js';
 import { userDb, ownerDb, propertyDb, bookingDb, conversationDb, messageDb, isBookingChatEligible, payoutDb, disputeDb, notificationDb, imageDb, uploadIntentDb, adminStatsDb, walletDb } from './services/dbRepository.js';
-import { paymentTxDb, PaymentService, MockPaymentGateway, PaymobGateway, verifyPaymobHmacSha512 } from './services/paymentService.js';
+import { paymentTxDb, PaymentService, PaymobGateway, verifyPaymobHmacSha512, getPaymentMode } from './services/paymentService.js';
 import { createStorageProvider, IObjectStorageProvider, verifyMagicBytes, computeSha256 } from './services/storageProvider.js';
 import { GLOBAL_MIN_STAY_NIGHTS, GLOBAL_MAX_STAY_NIGHTS, hasDateRangeOverlap, validateStayLength } from './constants/bookingRules.js';
 import type { ApiSuccessResponse, ApiErrorResponse } from './types/server';
@@ -229,8 +229,28 @@ export class ExpressServerApp {
       // 1B. PUBLIC WEBHOOK LISTENER (/api/v1/webhooks/*, /api/v1/payments/webhook/paymob)
       // ----------------------------------------------------------------------
       if (path === '/api/v1/payments/webhook/paymob' && method === 'POST') {
+        if (String(process.env.PAYMENT_MODE || '').toUpperCase() !== 'LIVE' || !process.env.PAYMOB_API_KEY || !process.env.PAYMOB_INTEGRATION_ID_CARD) {
+          return {
+            statusCode: 503,
+            body: {
+              success: false,
+              error: { code: 'PAYMOB_LIVE_NOT_CONFIGURED', message: 'بوابة Paymob الحية غير مفعلة في النسخة الحالية' },
+              timestamp,
+            },
+          };
+        }
         const hmacHeader = (headers['hmac'] || headers['x-paymob-hmac'] || bodyPayload?.hmac || '') as string;
-        const hmacSecret = process.env.PAYMOB_HMAC_SECRET || 'sola_test_hmac_secret_2026';
+        const hmacSecret = process.env.PAYMOB_HMAC_SECRET;
+        if (!hmacSecret) {
+          return {
+            statusCode: 503,
+            body: {
+              success: false,
+              error: { code: 'PAYMOB_LIVE_NOT_CONFIGURED', message: 'إعدادات Paymob الحية غير متاحة' },
+              timestamp,
+            },
+          };
+        }
 
         const isHmacValid = verifyPaymobHmacSha512(bodyPayload, hmacSecret, hmacHeader);
 
@@ -3085,7 +3105,7 @@ export class ExpressServerApp {
                 propertyTitle: b.propertyTitle || 'وحدة ساحلية',
                 type: 'DEPOSIT_PAID',
                 title: 'عربون حجز مؤكد',
-                amountEgp: Number(b.depositAmount) || (Number(b.pricePerNight) || 5000),
+                amountEgp: Number(b.depositAmount) || 0,
                 currency: 'EGP',
                 status: 'PAID',
                 date: b.confirmedAt || b.createdAt,
@@ -3099,7 +3119,7 @@ export class ExpressServerApp {
                 propertyTitle: b.propertyTitle || 'وحدة ساحلية',
                 type: 'DEPOSIT_PENDING',
                 title: 'عربون مطلوب للسداد',
-                amountEgp: Number(b.depositAmount) || (Number(b.pricePerNight) || 5000),
+                amountEgp: Number(b.depositAmount) || 0,
                 currency: 'EGP',
                 status: 'PENDING',
                 date: b.createdAt,
@@ -3110,7 +3130,7 @@ export class ExpressServerApp {
 
           // Add raw successful transactions if not already represented
           for (const tx of transactions) {
-            if (tx.status === 'SUCCESS' && !paymentItems.some(p => p.bookingId === tx.bookingId)) {
+            if (tx.status === 'SUCCEEDED' && !paymentItems.some(p => p.bookingId === tx.bookingId)) {
               paymentItems.push({
                 id: tx.id,
                 bookingId: tx.bookingId,
@@ -3140,90 +3160,79 @@ export class ExpressServerApp {
         // 4.5 Customer Booking Payment Initiation
         if (path.startsWith('/api/v1/customer/bookings/') && path.endsWith('/pay') && method === 'POST') {
           const bookingId = path.split('/')[5];
-          const idempotencyKey = (headers['idempotency-key'] || headers['Idempotency-Key'] || bodyPayload?.idempotencyKey || `idemp_pay_${bookingId}_${Date.now()}`) as string;
+          const booking = await bookingDb.getById(bookingId).catch(() => null);
+          if (!booking) return { statusCode: 404, body: { success: false, error: { code: 'BOOKING_NOT_FOUND', message: 'طلب الحجز غير موجود' }, timestamp } };
+          if (booking.customerId !== customerId) return { statusCode: 403, body: { success: false, error: { code: 'FORBIDDEN_BOOKING_ACCESS', message: 'غير مصرح بالدفع لحجز يخص نزيلاً آخر' }, timestamp } };
+          if (booking.status === 'CONFIRMED') return { statusCode: 409, body: { success: false, error: { code: 'BOOKING_ALREADY_CONFIRMED', message: 'تم تأكيد هذا الحجز بالفعل' }, timestamp } };
+          if (booking.status !== 'APPROVED_PENDING_PAYMENT') return { statusCode: 409, body: { success: false, error: { code: 'BOOKING_NOT_APPROVED_FOR_PAYMENT', message: 'لا يمكن دفع العربون قبل موافقة المالك' }, timestamp } };
 
-          // IDOR Protection: Reject foreign customer access
-          if (bookingId.includes('cust002') || bookingId.includes('other_customer')) {
-            return {
-              statusCode: 403,
-              body: { success: false, error: { code: 'FORBIDDEN_BOOKING_ACCESS', message: 'غير مصرح بالدفع لحجز يخص نزيلاً آخر' }, timestamp },
-            };
+          const summary = await bookingDb.getFinancialSummary(bookingId).catch(() => null);
+          const depositEgp = Number(summary?.depositAmount);
+          if (!summary || !Number.isFinite(depositEgp) || depositEgp <= 0) {
+            return { statusCode: 500, body: { success: false, error: { code: 'BOOKING_FINANCIAL_SUMMARY_NOT_FOUND', message: 'تعذر قراءة ملخص الحجز المالي المعتمد' }, timestamp } };
           }
 
-          // Idempotency check: Return existing payment transaction if already created
-          const existingTx = await paymentTxDb.getByIdempotencyKey(idempotencyKey);
+          const idempotencyKey = String(headers['idempotency-key'] || bodyPayload?.idempotencyKey || `prototype_deposit_${bookingId}`);
+          const existingTx = await paymentTxDb.getByIdempotencyKey(idempotencyKey).catch(() => null);
           if (existingTx) {
-            return {
-              statusCode: 200,
-              body: {
-                success: true,
-                data: {
-                  paymentTransactionId: existingTx.id,
-                  merchantOrderId: existingTx.merchant_order_id,
-                  depositAmountEgp: Number(existingTx.amount_cents) / 100,
-                  depositAmountCents: existingTx.amount_cents,
-                  checkoutUrl: existingTx.paymob_checkout_url,
-                  expiresAt: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
-                },
-                timestamp,
-              },
-            };
+            if ((existingTx.booking_id || existingTx.bookingId) !== bookingId || (existingTx.customer_id || existingTx.customerId) !== customerId) {
+              return { statusCode: 409, body: { success: false, error: { code: 'PAYMENT_IDEMPOTENCY_SCOPE_MISMATCH', message: 'مفتاح المحاولة مرتبط بحجز آخر' }, timestamp } };
+            }
+            return { statusCode: 200, body: { success: true, data: { paymentTransactionId: existingTx.id, merchantOrderId: existingTx.merchant_order_id || existingTx.merchantOrderId, depositAmountEgp: Number(existingTx.amount_cents || existingTx.amountCents) / 100, depositAmountCents: Number(existingTx.amount_cents || existingTx.amountCents), mode: 'PROTOTYPE', requiresExternalCheckout: false }, timestamp } };
           }
 
-          const targetOwnerId = '00000000-0000-0000-0000-000000000001';
-          const depositEgp = 5000;
-          const depositCents = 500000;
-          const merchantOrderId = `SOLA-${bookingId.slice(0, 8)}-${Date.now()}`;
+          const activeBookingTx = (await paymentTxDb.getByBookingId(bookingId).catch(() => []))
+            .find((candidate: any) => ['INITIATED', 'PENDING'].includes(candidate.status));
+          if (activeBookingTx) {
+            return { statusCode: 200, body: { success: true, data: { paymentTransactionId: activeBookingTx.id, merchantOrderId: activeBookingTx.merchant_order_id || activeBookingTx.merchantOrderId, depositAmountEgp: Number(activeBookingTx.amount_cents || activeBookingTx.amountCents) / 100, depositAmountCents: Number(activeBookingTx.amount_cents || activeBookingTx.amountCents), mode: 'PROTOTYPE', requiresExternalCheckout: false }, timestamp } };
+          }
 
-          const paymentService = new PaymentService();
-          const gateway = paymentService.getGateway();
+          let mode: ReturnType<typeof getPaymentMode>;
+          try { mode = getPaymentMode(); } catch (err: any) {
+            return { statusCode: 503, body: { success: false, error: { code: err?.message || 'PAYMENT_MODE_NOT_CONFIGURED', message: 'إعداد الدفع غير متاح' }, timestamp } };
+          }
+          if (mode !== 'PROTOTYPE') return { statusCode: 503, body: { success: false, error: { code: 'PAYMOB_LIVE_NOT_CONFIGURED', message: 'الدفع الحي غير متاح في النسخة الحالية' }, timestamp } };
 
-          const initResult = await gateway.initiatePayment({
-            bookingId,
-            customerId,
-            ownerId: targetOwnerId,
-            merchantOrderId,
-            amountEgp: depositEgp,
-            currency: 'EGP',
-            paymentMethod: bodyPayload?.paymentMethod || 'CARD',
-            idempotencyKey,
+          const merchantOrderId = `KONFRM-DEP-${bookingId.slice(0, 8)}-${Date.now()}`;
+          const initResult = await new PaymentService().getGateway().initiatePayment({
+            bookingId, customerId, ownerId: booking.ownerId, merchantOrderId,
+            amountEgp: depositEgp, currency: 'EGP', paymentMethod: 'CARD', idempotencyKey,
           });
-
           const createdTx = await paymentTxDb.create({
-            bookingId,
-            customerId,
-            ownerId: targetOwnerId,
-            provider: 'PAYMOB',
-            merchantOrderId,
-            amountCents: depositCents,
-            currency: 'EGP',
-            paymentMethod: bodyPayload?.paymentMethod || 'CARD',
-            idempotencyKey,
-            paymobPaymentToken: initResult.paymentToken,
-            paymobCheckoutUrl: initResult.checkoutUrl,
-            rawRequestPayload: bodyPayload,
+            bookingId, customerId, ownerId: booking.ownerId, provider: 'MOCK', merchantOrderId,
+            amountCents: Math.round(depositEgp * 100), currency: 'EGP', paymentMethod: 'CARD', idempotencyKey,
+            rawRequestPayload: { mode: 'PROTOTYPE', paymentMethod: 'CARD' },
           });
+          return { statusCode: 200, body: { success: true, data: { paymentTransactionId: createdTx.id, merchantOrderId, depositAmountEgp: depositEgp, depositAmountCents: Math.round(depositEgp * 100), mode: initResult.mode, requiresExternalCheckout: false }, timestamp } };
+        }
 
-          return {
-            statusCode: 200,
-            body: {
-              success: true,
-              data: {
-                paymentTransactionId: createdTx.id,
-                merchantOrderId,
-                depositAmountEgp: depositEgp,
-                depositAmountCents: depositCents,
-                checkoutUrl: initResult.checkoutUrl,
-                expiresAt: initResult.expiresAt,
-              },
-              timestamp,
-            },
-          };
+        // 4.5A Prototype-only completion. The RPC is the sole authority for
+        // the payment, booking, wallet and ledger state transition.
+        if (path.startsWith('/api/v1/customer/bookings/') && path.endsWith('/pay/prototype-complete') && method === 'POST') {
+          const bookingId = path.split('/')[5];
+          if (String(process.env.PAYMENT_MODE || '').toUpperCase() !== 'PROTOTYPE') return { statusCode: 503, body: { success: false, error: { code: 'PAYMENT_MODE_NOT_PROTOTYPE', message: 'الدفع التجريبي غير مفعل' }, timestamp } };
+          const booking = await bookingDb.getById(bookingId).catch(() => null);
+          if (!booking) return { statusCode: 404, body: { success: false, error: { code: 'BOOKING_NOT_FOUND', message: 'طلب الحجز غير موجود' }, timestamp } };
+          if (booking.customerId !== customerId) return { statusCode: 403, body: { success: false, error: { code: 'FORBIDDEN_BOOKING_ACCESS', message: 'غير مصرح لك بهذا الحجز' }, timestamp } };
+          const txList = await paymentTxDb.getByBookingId(bookingId);
+          const requestedId = typeof bodyPayload?.paymentTransactionId === 'string' ? bodyPayload.paymentTransactionId : undefined;
+          const tx: any = requestedId ? txList.find((candidate: any) => candidate.id === requestedId) : txList[0];
+          if (!tx || (tx.booking_id || tx.bookingId) !== bookingId || (tx.customer_id || tx.customerId) !== customerId || (tx.owner_id || tx.ownerId) !== booking.ownerId) return { statusCode: 409, body: { success: false, error: { code: 'PAYMENT_TRANSACTION_NOT_FOUND', message: 'لم تبدأ محاولة دفع صالحة لهذا الحجز' }, timestamp } };
+          try {
+            const result: any = await paymentTxDb.completeDepositPayment({ paymentTransactionId: tx.id, bookingId, customerId });
+            return { statusCode: 200, body: { success: true, data: { bookingId, bookingStatus: result?.bookingStatus || 'CONFIRMED', paymentTransactionId: tx.id, paymentStatus: result?.paymentStatus || 'SUCCEEDED', amountEgp: Number(tx.amount_cents || tx.amountCents) / 100, currency: result?.currency || 'EGP', confirmedAt: result?.confirmedAt }, timestamp } };
+          } catch (err: any) {
+            const code = String(err?.message || 'PAYMENT_COMPLETION_FAILED').replace(/^REST_PAYMENT_FINALIZATION_RPC_FAILED: HTTP \d+ — /, '').split(/\s/)[0] || 'PAYMENT_COMPLETION_FAILED';
+            return { statusCode: 409, body: { success: false, error: { code, message: 'تعذر إتمام الدفع التجريبي، يمكنك المحاولة مرة أخرى' }, timestamp } };
+          }
         }
 
         // 4.5B Customer Payment Status Polling Fallback
         if (path.startsWith('/api/v1/customer/bookings/') && path.endsWith('/payment-status') && method === 'GET') {
           const bookingId = path.split('/')[5];
+          const booking = await bookingDb.getById(bookingId).catch(() => null);
+          if (!booking) return { statusCode: 404, body: { success: false, error: { code: 'BOOKING_NOT_FOUND', message: 'طلب الحجز غير موجود' }, timestamp } };
+          if (booking.customerId !== customerId) return { statusCode: 403, body: { success: false, error: { code: 'FORBIDDEN_BOOKING_ACCESS', message: 'غير مصرح لك بهذا الحجز' }, timestamp } };
           const txList = await paymentTxDb.getByBookingId(bookingId);
           const latestTx = txList[0];
 
@@ -3233,11 +3242,11 @@ export class ExpressServerApp {
               success: true,
               data: {
                 bookingId,
+                bookingStatus: booking.status,
                 hasPaymentTransaction: !!latestTx,
                 paymentStatus: latestTx ? latestTx.status : 'NO_PAYMENT_INITIATED',
-                merchantOrderId: latestTx?.merchant_order_id,
-                providerTransactionId: latestTx?.provider_transaction_id,
-                amountEgp: latestTx ? Number(latestTx.amount_cents) / 100 : 0,
+                amountEgp: latestTx ? Number(latestTx.amount_cents || latestTx.amountCents) / 100 : 0,
+                currency: latestTx?.currency || 'EGP',
               },
               timestamp,
             },

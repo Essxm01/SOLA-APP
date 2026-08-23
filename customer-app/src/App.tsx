@@ -572,7 +572,7 @@ export function App() {
                         {booking.propertyImage ? <img src={booking.propertyImage} alt={booking.propertyTitle} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-slate-400"><ImageOff className="w-5 h-5" /></div>}
                       </div>
                       <div className="min-w-0 flex-1 space-y-1.5">
-                        <div className="flex justify-between items-start gap-2"><h3 className="font-black text-sm text-slate-900 truncate">{booking.propertyTitle}</h3><span className={`text-[10px] font-black px-2 py-1 rounded-full shrink-0 ${booking.status === 'APPROVED_PENDING_PAYMENT' ? 'bg-blue-50 text-[#0059FF]' : booking.status === 'REJECTED' ? 'bg-rose-50 text-rose-700' : 'bg-amber-50 text-amber-800'}`}>{booking.status === 'PENDING_OWNER_APPROVAL' ? 'قيد المراجعة' : booking.status === 'APPROVED_PENDING_PAYMENT' ? 'وافق المالك' : booking.status === 'CONFIRMED' ? 'مؤكد' : 'مرفوض'}</span></div>
+                        <div className="flex justify-between items-start gap-2"><h3 className="font-black text-sm text-slate-900 truncate">{booking.propertyTitle}</h3><span className={`text-[10px] font-black px-2 py-1 rounded-full shrink-0 ${booking.status === 'APPROVED_PENDING_PAYMENT' ? 'bg-blue-50 text-[#0059FF]' : booking.status === 'REJECTED' ? 'bg-rose-50 text-rose-700' : 'bg-amber-50 text-amber-800'}`}>{booking.status === 'PENDING_OWNER_APPROVAL' ? 'قيد المراجعة' : booking.status === 'APPROVED_PENDING_PAYMENT' ? 'وافق المالك — العربون مطلوب' : booking.status === 'CONFIRMED' ? 'الحجز مؤكد' : 'مرفوض'}</span></div>
                         {booking.locationName && <p className="flex gap-1 text-[11px] text-slate-500 truncate"><MapPin className="w-3.5 h-3.5 shrink-0 text-[#0059FF]" />{booking.locationName}</p>}
                         <p className="text-[11px] font-bold text-slate-700" dir="ltr">{booking.checkIn} ← {booking.checkOut} · {booking.nights} ليالٍ</p>
                         <p className="flex gap-1 text-[11px] text-slate-500"><Users className="w-3.5 h-3.5" />{booking.guestsCount} ضيوف</p>
@@ -873,6 +873,7 @@ export function App() {
           bookingId={bookingDetailId}
           authToken={authToken}
           onClose={() => setBookingDetailId(null)}
+          onPaymentSuccess={() => { void fetchBookings(authToken); void fetchAccountSummary(authToken); }}
         />
       )}
 

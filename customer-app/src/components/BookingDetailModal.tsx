@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Bath, BedDouble, CalendarDays, ChevronRight, ImageOff, MapPin, MessageSquare, RefreshCw, Send, Users, X } from 'lucide-react';
 import { getApiUrl } from '../utils/api';
+import { CustomerPaymentService } from '../services/customerPaymentService';
 
 export interface CustomerBookingRecord {
   id: string;
@@ -47,8 +48,8 @@ const canChat = (status: string) => status === 'APPROVED_PENDING_PAYMENT' || sta
 
 const statusLabel = (status: string) => ({
   PENDING_OWNER_APPROVAL: 'قيد مراجعة المالك',
-  APPROVED_PENDING_PAYMENT: 'وافق المالك',
-  CONFIRMED: 'حجز مؤكد',
+  APPROVED_PENDING_PAYMENT: 'وافق المالك — العربون مطلوب',
+  CONFIRMED: 'الحجز مؤكد',
   REJECTED: 'تم الرفض',
 }[status] || status);
 
@@ -56,7 +57,8 @@ export const BookingDetailModal: React.FC<{
   bookingId: string;
   authToken: string;
   onClose: () => void;
-}> = ({ bookingId, authToken, onClose }) => {
+  onPaymentSuccess?: () => void;
+}> = ({ bookingId, authToken, onClose, onPaymentSuccess }) => {
   const [booking, setBooking] = useState<CustomerBookingRecord | null>(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
@@ -65,6 +67,10 @@ export const BookingDetailModal: React.FC<{
   const [messageText, setMessageText] = useState('');
   const [chatLoading, setChatLoading] = useState(false);
   const [chatError, setChatError] = useState('');
+  const [paymentSheetOpen, setPaymentSheetOpen] = useState(false);
+  const [paymentLoading, setPaymentLoading] = useState(false);
+  const [paymentError, setPaymentError] = useState('');
+  const [paymentSuccess, setPaymentSuccess] = useState('');
 
   const fetchDetail = useCallback(async () => {
     setLoading(true);
@@ -130,6 +136,25 @@ export const BookingDetailModal: React.FC<{
     }
   };
 
+  const completePrototypePayment = async () => {
+    if (!booking || booking.status !== 'APPROVED_PENDING_PAYMENT') return;
+    setPaymentLoading(true);
+    setPaymentError('');
+    try {
+      const idempotencyKey = `prototype_deposit_${booking.id}`;
+      const initiated = await CustomerPaymentService.initiatePayment(booking.id, idempotencyKey, authToken);
+      await CustomerPaymentService.completePrototypePayment(booking.id, initiated.paymentTransactionId, authToken);
+      await fetchDetail();
+      onPaymentSuccess?.();
+      setPaymentSheetOpen(false);
+      setPaymentSuccess('تم دفع العربون وتأكيد الحجز');
+    } catch (err: any) {
+      setPaymentError(err?.message || 'تعذر إتمام الدفع التجريبي، يمكنك المحاولة مرة أخرى');
+    } finally {
+      setPaymentLoading(false);
+    }
+  };
+
   const property = booking?.property;
   const images = property?.images?.filter(Boolean) || [];
 
@@ -161,13 +186,15 @@ export const BookingDetailModal: React.FC<{
               <section className="bg-white rounded-2xl border border-slate-200 p-4 space-y-2"><div className="flex justify-between gap-3"><h2 className="font-black text-slate-950">{property.title}</h2><span className="text-[10px] bg-blue-50 text-[#0059FF] font-black px-2 py-1 rounded-full h-fit">{statusLabel(booking.status)}</span></div><p className="text-xs text-slate-600 flex gap-1.5"><MapPin className="w-4 h-4 text-[#0059FF] shrink-0" />{[property.resortName, property.region, property.address].filter(Boolean).join(' — ') || 'الموقع غير مسجل'}</p>{property.description && <p className="text-xs text-slate-600 leading-relaxed pt-1">{property.description}</p>}</section>
               <section className="grid grid-cols-3 gap-2 text-center text-xs"><div className="bg-white rounded-xl border border-slate-200 py-3"><BedDouble className="w-4 h-4 mx-auto text-[#0059FF] mb-1" />{property.bedrooms} غرف</div><div className="bg-white rounded-xl border border-slate-200 py-3"><Bath className="w-4 h-4 mx-auto text-[#0059FF] mb-1" />{property.bathrooms} حمام</div><div className="bg-white rounded-xl border border-slate-200 py-3"><Users className="w-4 h-4 mx-auto text-[#0059FF] mb-1" />{property.maxGuests} ضيوف</div></section>
               <section className="bg-white rounded-2xl border border-slate-200 p-4 space-y-2 text-xs"><h3 className="font-black text-slate-900">معلومات الحجز</h3><div className="grid grid-cols-2 gap-2"><div className="bg-slate-50 p-2.5 rounded-xl"><CalendarDays className="w-4 h-4 text-[#0059FF] mb-1" /><p>الوصول</p><strong dir="ltr">{booking.checkIn}</strong></div><div className="bg-slate-50 p-2.5 rounded-xl"><CalendarDays className="w-4 h-4 text-[#0059FF] mb-1" /><p>المغادرة</p><strong dir="ltr">{booking.checkOut}</strong></div></div><div className="flex justify-between"><span>{booking.nights} ليالٍ · {booking.guestsCount} ضيوف</span><span>سعر الليلة {Number(property.pricePerNight).toLocaleString()} ج.م</span></div><div className="border-t pt-2 space-y-1"><div className="flex justify-between"><span>إجمالي الحجز</span><strong>{Number(booking.totalStay).toLocaleString()} ج.م</strong></div><div className="flex justify-between text-[#0059FF]"><span>العربون</span><strong>{Number(booking.depositAmount).toLocaleString()} ج.م</strong></div><div className="flex justify-between"><span>المتبقي</span><strong>{Number(booking.remainingAmount).toLocaleString()} ج.م</strong></div></div></section>
-              {(property.amenities.length > 0 || Object.keys(property.houseRules).length > 0) && <section className="bg-white rounded-2xl border border-slate-200 p-4 text-xs space-y-3">{property.amenities.length > 0 && <><h3 className="font-black text-slate-900">المرافق</h3><div className="flex flex-wrap gap-1.5">{property.amenities.map((amenity) => <span key={amenity} className="px-2 py-1 bg-slate-100 rounded-lg">{amenity}</span>)}</div></>}{Object.keys(property.houseRules).length > 0 && <><h3 className="font-black text-slate-900">قواعد الوحدة</h3><div className="space-y-1 text-slate-600">{Object.entries(property.houseRules).map(([key, value]) => <p key={key}>{key}: {typeof value === 'string' ? value : JSON.stringify(value)}</p>)}</div></>}</section>}
+              {paymentSuccess && <div className="rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 px-4 py-3 text-sm font-black text-center">{paymentSuccess}</div>}
+              {booking.status === 'APPROVED_PENDING_PAYMENT' && <button onClick={() => { setPaymentError(''); setPaymentSheetOpen(true); }} className="w-full bg-[#0059FF] text-white min-h-12 rounded-xl font-black text-sm shadow-lg shadow-blue-500/20">دفع العربون {Number(booking.depositAmount).toLocaleString()} ج.م</button>}
               {canChat(booking.status) ? <button onClick={() => void openChat()} disabled={chatLoading} className="w-full bg-[#0059FF] text-white min-h-12 rounded-xl font-black text-sm flex items-center justify-center gap-2 disabled:bg-slate-300"><MessageSquare className="w-4 h-4" />{chatLoading ? 'جاري فتح المحادثة...' : 'محادثة المالك'}</button> : <div className="p-3 rounded-xl bg-slate-100 text-slate-500 text-xs font-bold text-center">تتاح المحادثة بعد موافقة المالك على الطلب</div>}
               {chatError && <p className="text-xs text-rose-700 text-center">{chatError}</p>}
             </>}
           </div>
         ) : null}
       </div>
+      {paymentSheetOpen && booking && <div className="fixed inset-0 z-[100] bg-slate-950/45 flex items-end justify-center" onClick={() => !paymentLoading && setPaymentSheetOpen(false)}><div className="w-full max-w-[430px] bg-white rounded-t-[28px] p-5 space-y-4 shadow-2xl" onClick={(event) => event.stopPropagation()}><div className="flex items-center justify-between"><h3 className="font-black text-slate-950">تأكيد دفع العربون</h3><button onClick={() => setPaymentSheetOpen(false)} disabled={paymentLoading} className="w-9 h-9 rounded-xl bg-slate-100 flex items-center justify-center"><X className="w-4 h-4" /></button></div><div className="rounded-2xl bg-slate-50 p-4 space-y-2 text-xs"><p className="font-black text-sm text-slate-900">{property?.title}</p><p className="text-slate-500">رقم الحجز: {booking.bookingNumber}</p><div className="flex justify-between"><span>إجمالي الحجز</span><strong>{Number(booking.totalStay).toLocaleString()} ج.م</strong></div><div className="flex justify-between text-[#0059FF]"><span>المبلغ المدفوع الآن · العربون</span><strong>{Number(booking.depositAmount).toLocaleString()} ج.م</strong></div><div className="flex justify-between"><span>المتبقي بعد العربون</span><strong>{Number(booking.remainingAmount).toLocaleString()} ج.م</strong></div></div><p className="rounded-xl bg-blue-50 text-[#0059FF] px-3 py-2 text-[11px] font-bold">دفع تجريبي للنسخة الحالية — لن يتم خصم أموال حقيقية</p>{paymentError && <p className="text-xs font-bold text-rose-700 text-center">{paymentError}</p>}<button onClick={() => void completePrototypePayment()} disabled={paymentLoading} className="w-full min-h-12 rounded-xl bg-[#0059FF] text-white font-black disabled:bg-slate-300">{paymentLoading ? 'جاري تأكيد الدفع...' : 'إتمام الدفع التجريبي'}</button></div></div>}
     </div>
   );
 };

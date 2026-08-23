@@ -22,6 +22,7 @@ export interface Env {
   JWT_REFRESH_SECRET?: string;
   PAYMOB_API_KEY?: string;
   PAYMOB_HMAC_SECRET?: string;
+  PAYMENT_MODE?: string;
   [key: string]: string | undefined;
 }
 

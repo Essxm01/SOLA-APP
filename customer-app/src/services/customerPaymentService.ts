@@ -14,8 +14,10 @@ export interface InitiatePaymentResult {
   merchantOrderId: string;
   depositAmountEgp: number;
   depositAmountCents: number;
-  checkoutUrl: string;
-  expiresAt: string;
+  checkoutUrl?: string;
+  expiresAt?: string;
+  mode: 'PROTOTYPE' | 'LIVE';
+  requiresExternalCheckout: boolean;
 }
 
 export interface PaymentStatusResult {
@@ -25,6 +27,18 @@ export interface PaymentStatusResult {
   merchantOrderId?: string;
   providerTransactionId?: string;
   amountEgp: number;
+  currency: string;
+  bookingStatus: string;
+}
+
+export interface PrototypeCompletionResult {
+  bookingId: string;
+  bookingStatus: 'CONFIRMED';
+  paymentTransactionId: string;
+  paymentStatus: 'SUCCEEDED';
+  amountEgp: number;
+  currency: string;
+  confirmedAt?: string;
 }
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api/v1';
@@ -53,6 +67,21 @@ export class CustomerPaymentService {
       throw new Error(json.error?.code || json.error?.message || 'PAYMENT_INITIATION_FAILED');
     }
 
+    return json.data;
+  }
+
+  static async completePrototypePayment(
+    bookingId: string,
+    paymentTransactionId: string,
+    authToken: string
+  ): Promise<PrototypeCompletionResult> {
+    const res = await fetch(`${API_BASE_URL}/customer/bookings/${bookingId}/pay/prototype-complete`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
+      body: JSON.stringify({ paymentTransactionId }),
+    });
+    const json = await res.json();
+    if (!res.ok || !json.success) throw new Error(json.error?.code || json.error?.message || 'PAYMENT_COMPLETION_FAILED');
     return json.data;
   }
 

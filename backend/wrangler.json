@@ -8,6 +8,7 @@
   ],
   "vars": {
     "SUPABASE_URL": "https://zrbmbjgcsowfqklmxbyn.supabase.co",
+    "PAYMENT_MODE": "PROTOTYPE",
     "OBJECT_STORAGE_PROVIDER": "supabase"
   },
   "observability": {

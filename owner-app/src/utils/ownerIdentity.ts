@@ -13,6 +13,7 @@ type OwnerLoginResponse = {
   isOwner?: boolean;
   owner?: CanonicalOwner | null;
   ownerOnboardingRequired?: boolean;
+  createdOwner?: boolean;
   data?: OwnerLoginResponse;
 };
 

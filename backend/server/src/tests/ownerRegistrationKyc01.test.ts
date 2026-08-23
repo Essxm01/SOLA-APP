@@ -122,15 +122,23 @@ async function run() {
   let submitCalls: any[] = [];
   let reviewCalls: any[] = [];
   let signedReads = 0;
+  let reviewFailure = false;
   const storage = {
     generateSignedUploadUrl: async ({ objectKey }: any) => ({ uploadUrl: 'https://private-upload.test', objectKey, headers: {}, expiresInSeconds: 300 }),
-    getObject: async (key: string) => ({ buffer: key.includes('invalid') ? Buffer.from('invalid') : jpeg, mimeType: 'image/jpeg', sizeBytes: key.includes('oversized') ? 11 * 1024 * 1024 : jpeg.length }),
+    getObject: async (key: string) => {
+      if (key.includes('storage-failure')) throw new Error('PRIVATE_STORAGE_READ_FAILED');
+      return { buffer: key.includes('invalid') ? Buffer.from('invalid') : jpeg, mimeType: 'image/jpeg', sizeBytes: key.includes('oversized') ? 11 * 1024 * 1024 : jpeg.length };
+    },
     generateSignedReadUrl: async () => { signedReads += 1; return 'https://private-read.test/signed'; },
   };
   (app as any).verificationStorageService = storage;
   (ownerDb as any).getById = async (id: string) => id === ownerA || id === ownerB ? ({ id, phoneNumber: '+201000000201', verificationStatus: 'UNVERIFIED' }) : null;
   (ownerDb as any).submitKycPackage = async (...args: any[]) => { submitCalls.push(args); return { verificationStatus: 'PENDING_VERIFICATION' }; };
-  (ownerDb as any).reviewKycPackage = async (...args: any[]) => { reviewCalls.push(args); return { verificationStatus: args[1] === 'APPROVED' ? 'VERIFIED' : 'REJECTED' }; };
+  (ownerDb as any).reviewKycPackage = async (...args: any[]) => {
+    if (reviewFailure) throw new Error('KYC_REVIEW_PERSISTENCE_FAILED');
+    reviewCalls.push(args);
+    return { verificationStatus: args[1] === 'APPROVED' ? 'VERIFIED' : 'REJECTED' };
+  };
   (ownerDb as any).getDocuments = async (id: string) => id === ownerA ? [{ id: 'doc-a', storageKey: `owner-verification/${ownerA}/NATIONAL_ID_FRONT/a.jpg` }] : [];
   try {
     const unauth = await app.handleHttpRequest('POST', '/api/v1/owner/kyc/presigned-upload', {}, { documentType: 'NATIONAL_ID_FRONT' });
@@ -142,6 +150,12 @@ async function run() {
     assert.match((signed.body as any).data.storageKey, new RegExp(`^owner-verification/${ownerA}/NATIONAL_ID_FRONT/`));
     const incomplete = await app.handleHttpRequest('POST', '/api/v1/owner/kyc/submit', { authorization: `Bearer ${ownerToken}` }, { documents: [{ documentType: 'NATIONAL_ID_FRONT', storageKey: `owner-verification/${ownerA}/NATIONAL_ID_FRONT/a.jpg` }] });
     assert.equal(incomplete.statusCode, 400); assert.equal(submitCalls.length, 0);
+    const duplicate = await app.handleHttpRequest('POST', '/api/v1/owner/kyc/submit', { authorization: `Bearer ${ownerToken}` }, { documents: [
+      { documentType: 'NATIONAL_ID_FRONT', storageKey: `owner-verification/${ownerA}/NATIONAL_ID_FRONT/a.jpg` },
+      { documentType: 'NATIONAL_ID_FRONT', storageKey: `owner-verification/${ownerA}/NATIONAL_ID_FRONT/b.jpg` },
+      { documentType: 'LIVE_FACE', storageKey: `owner-verification/${ownerA}/LIVE_FACE/a.jpg` },
+    ] });
+    assert.equal(duplicate.statusCode, 400); assert.equal(submitCalls.length, 0);
     const crossOwner = await app.handleHttpRequest('POST', '/api/v1/owner/kyc/submit', { authorization: `Bearer ${ownerToken}` }, { documents: ['NATIONAL_ID_FRONT','NATIONAL_ID_BACK','LIVE_FACE'].map(documentType => ({ documentType, storageKey: `owner-verification/${ownerB}/${documentType}/a.jpg` })) });
     assert.equal(crossOwner.statusCode, 400);
     const validDocs = ['NATIONAL_ID_FRONT','NATIONAL_ID_BACK','LIVE_FACE'].map(documentType => ({ documentType, storageKey: `owner-verification/${ownerA}/${documentType}/a.jpg` }));
@@ -149,6 +163,10 @@ async function run() {
     assert.equal(valid.statusCode, 200); assert.equal(submitCalls.length, 1); assert.equal(submitCalls[0][1].length, 3);
     const invalidMagic = await app.handleHttpRequest('POST', '/api/v1/owner/kyc/submit', { authorization: `Bearer ${ownerToken}` }, { documents: validDocs.map((d: any) => ({ ...d, storageKey: d.storageKey.replace('/a.jpg', '/invalid.jpg') })) });
     assert.equal(invalidMagic.statusCode, 400); assert.equal(submitCalls.length, 1);
+    const oversized = await app.handleHttpRequest('POST', '/api/v1/owner/kyc/submit', { authorization: `Bearer ${ownerToken}` }, { documents: validDocs.map((d: any) => ({ ...d, storageKey: d.storageKey.replace('/a.jpg', '/oversized.jpg') })) });
+    assert.equal(oversized.statusCode, 400); assert.equal(submitCalls.length, 1);
+    const storageFailure = await app.handleHttpRequest('POST', '/api/v1/owner/kyc/submit', { authorization: `Bearer ${ownerToken}` }, { documents: validDocs.map((d: any) => ({ ...d, storageKey: d.storageKey.replace('/a.jpg', '/storage-failure.jpg') })) });
+    assert.ok(storageFailure.statusCode >= 400); assert.equal(submitCalls.length, 1);
     const noAdmin = await app.handleHttpRequest('GET', `/api/v1/admin/verifications/${ownerA}/documents/doc-a/access`, {});
     assert.equal(noAdmin.statusCode, 401);
     const adminDoc = await app.handleHttpRequest('GET', `/api/v1/admin/verifications/${ownerA}/documents/doc-a/access`, { authorization: `Bearer ${adminToken}` });
@@ -161,6 +179,9 @@ async function run() {
     assert.equal(approve.statusCode, 200); assert.deepEqual(reviewCalls[0], [ownerA, 'APPROVED', undefined]);
     const reject = await app.handleHttpRequest('POST', '/api/v1/admin/verifications/review', { authorization: `Bearer ${adminToken}` }, { ownerId: ownerA, decision: 'REJECTED', rejectionReason: 'الصورة غير واضحة' });
     assert.equal(reject.statusCode, 200); assert.deepEqual(reviewCalls[1], [ownerA, 'REJECTED', 'الصورة غير واضحة']);
+    reviewFailure = true;
+    const persistenceFailure = await app.handleHttpRequest('POST', '/api/v1/admin/verifications/review', { authorization: `Bearer ${adminToken}` }, { ownerId: ownerA, decision: 'APPROVED' });
+    assert.ok(persistenceFailure.statusCode >= 500); assert.equal(reviewCalls.length, 2);
   } finally {
     (ownerDb as any).getDocuments = originalDocs; (ownerDb as any).submitKycPackage = originalSubmit; (ownerDb as any).reviewKycPackage = originalReview; (ownerDb as any).getById = originalOwnerGet;
   }

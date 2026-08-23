@@ -18,7 +18,7 @@ const initialDocuments = (): Record<DocumentType, LocalDocument> => ({
 });
 
 export const OwnerKycOnboarding: React.FC<{ onComplete: () => void; allowClose?: boolean; onClose?: () => void }> = ({ onComplete, allowClose = false, onClose }) => {
-  const { owner, refreshCanonicalOwner } = useAuth();
+  const { refreshCanonicalOwner } = useAuth();
   const [current, setCurrent] = useState(0);
   const [documents, setDocuments] = useState(initialDocuments);
   const [loading, setLoading] = useState(true);

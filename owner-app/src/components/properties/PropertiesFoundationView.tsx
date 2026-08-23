@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
-import type { Property, PropertyStatus, VerificationDocumentType } from '../../types';
+import type { Property, PropertyStatus } from '../../types';
 import { Button } from '../ui/Button';
 import { EmptyState } from '../ui/EmptyState';
 import { BottomSheet } from '../ui/BottomSheet';
@@ -69,7 +69,7 @@ export const PropertiesFoundationView: React.FC = () => {
   const [customPrice, setCustomPrice] = useState<number>(9500);
 
   // Verification Document Sheet Form State
-  const [docType, setDocType] = useState<VerificationDocumentType>('NATIONAL_ID');
+  const [docType, setDocType] = useState<'NATIONAL_ID' | 'PROPERTY_DEED' | 'LEASE_CONTRACT' | 'OTHER'>('NATIONAL_ID');
   const [docTitle, setDocTitle] = useState<string>('صورة بطاقة الرقم القومي (الوجهان)');
   const [docUrl, setDocUrl] = useState<string>('https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=800&q=80');
 
@@ -570,7 +570,7 @@ export const PropertiesFoundationView: React.FC = () => {
                 <label className="font-bold text-slate-800 block">نوع المستند المرفوع:</label>
                 <select
                   value={docType}
-                  onChange={(e) => setDocType(e.target.value as VerificationDocumentType)}
+                  onChange={(e) => setDocType(e.target.value as 'NATIONAL_ID' | 'PROPERTY_DEED' | 'LEASE_CONTRACT' | 'OTHER')}
                   className="w-full p-2.5 bg-white border border-slate-300 rounded-xl text-xs"
                 >
                   <option value="NATIONAL_ID">بطاقة الرقم القومي (المالك)</option>

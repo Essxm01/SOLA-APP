@@ -26,10 +26,12 @@ export interface RouteHandlerResult {
 export class ExpressServerApp {
   private authController: AuthController;
   private storageService: IObjectStorageProvider;
+  private verificationStorageService: IObjectStorageProvider;
 
   constructor() {
     this.authController = new AuthController();
     this.storageService = createStorageProvider();
+    this.verificationStorageService = createStorageProvider({ bucketName: process.env.OWNER_VERIFICATION_BUCKET || 'owner-verification', public: false });
   }
 
   /**
@@ -208,6 +210,16 @@ export class ExpressServerApp {
         );
         const statusCode = response.success ? 200 : (response.error?.code === 'MISSING_OR_INVALID_AUTH_SURFACE' ? 400 : 400);
         return { statusCode, body: response };
+      }
+
+      if (path === '/api/v1/auth/register-owner' && method === 'POST') {
+        const response = await this.authController.registerOwner(
+          bodyPayload?.phone,
+          bodyPayload?.fullName,
+          bodyPayload?.deviceInfo,
+          headers['x-forwarded-for'] || headers['cf-connecting-ip']
+        );
+        return { statusCode: response.success ? 201 : 400, body: response };
       }
 
       if (path === '/api/v1/auth/refresh' && method === 'POST') {
@@ -468,59 +480,82 @@ export class ExpressServerApp {
           };
         }
 
-        // --- A1. Real Owner Identity Verification Submit Endpoint (PostgreSQL Driven) ---
-        if (path === '/api/v1/owner/verification/identity' && method === 'POST') {
-          const { documentType, documentUrl } = bodyPayload || {};
-          if (!documentUrl) {
-            return {
-              statusCode: 400,
-              body: {
-                success: false,
-                error: { code: 'DOCUMENT_URL_REQUIRED', message: 'مطلوب رابط المستند المرفوع' },
-                timestamp,
-              },
-            };
+        // --- A1. Canonical private Owner KYC package ---
+        if (path === '/api/v1/owner/kyc/status' && method === 'GET') {
+          const [owner, documents] = await Promise.all([
+            ownerDb.getById(ownerId),
+            ownerDb.getDocuments(ownerId),
+          ]);
+          if (!owner) {
+            return { statusCode: 404, body: { success: false, error: { code: 'OWNER_CAPABILITY_MISSING', message: 'حساب المالك غير موجود.' }, timestamp } };
           }
+          return { statusCode: 200, body: { success: true, data: {
+            verificationStatus: owner.verificationStatus,
+            ownerOnboardingCompletedAt: owner.ownerOnboardingCompletedAt || null,
+            documents,
+          }, timestamp } };
+        }
 
-          let owner = await ownerDb.upsert({
-            id: ownerId,
-            phoneNumber: formatOwnerPhone(ownerId),
-            fullName: 'Essam (المالك)',
-            verificationStatus: 'PENDING_VERIFICATION',
-          }).catch(() => null);
+        if (path === '/api/v1/owner/kyc/presigned-upload' && method === 'POST') {
+          const documentType = bodyPayload?.documentType;
+          const fileName = String(bodyPayload?.fileName || '');
+          const mimeType = String(bodyPayload?.mimeType || '').toLowerCase();
+          const fileSize = Number(bodyPayload?.fileSize || 0);
+          const allowedTypes = new Set(['NATIONAL_ID_FRONT', 'NATIONAL_ID_BACK', 'LIVE_FACE']);
+          const allowedMimes = new Set(['image/jpeg', 'image/png', 'image/webp']);
+          const extension = fileName.includes('.') ? fileName.slice(fileName.lastIndexOf('.')).toLowerCase() : '';
+          const allowedExtensions = new Set(['.jpg', '.jpeg', '.png', '.webp']);
+          if (!allowedTypes.has(documentType) || !allowedMimes.has(mimeType) || !allowedExtensions.has(extension) || !Number.isFinite(fileSize) || fileSize <= 0 || fileSize > 10 * 1024 * 1024) {
+            return { statusCode: 400, body: { success: false, error: { code: 'KYC_UPLOAD_METADATA_INVALID', message: 'يجب رفع صورة JPEG أو PNG أو WEBP بحجم لا يتجاوز 10 ميجابايت.' }, timestamp } };
+          }
+          const owner = await ownerDb.getById(ownerId);
+          if (!owner) return { statusCode: 404, body: { success: false, error: { code: 'OWNER_CAPABILITY_MISSING', message: 'حساب المالك غير موجود.' }, timestamp } };
+          const objectKey = `owner-verification/${ownerId}/${documentType}/${crypto.randomUUID()}${extension}`;
+          try {
+            const upload = await this.verificationStorageService.generateSignedUploadUrl({
+              intentId: crypto.randomUUID(), ownerId, propertyId: 'owner-kyc', objectKey,
+              mimeType, sizeBytes: fileSize, expiresAt: new Date(Date.now() + 5 * 60 * 1000),
+            });
+            return { statusCode: 200, body: { success: true, data: {
+              uploadUrl: upload.uploadUrl, headers: upload.headers, storageKey: upload.objectKey,
+              expiresInSeconds: upload.expiresInSeconds,
+            }, timestamp } };
+          } catch {
+            return { statusCode: 500, body: { success: false, error: { code: 'KYC_SIGNED_UPLOAD_FAILED', message: 'تعذر تجهيز رفع صورة التوثيق.' }, timestamp } };
+          }
+        }
 
-          const docRecord = await ownerDb.submitDocument({
-            ownerId,
-            documentType: documentType || 'NATIONAL_ID',
-            documentUrl,
-          }).catch(() => ({
-            id: `doc_${Date.now()}`,
-            ownerId,
-            documentType: documentType || 'NATIONAL_ID',
-            documentUrl,
-            status: 'PENDING',
-            uploadedAt: timestamp,
-          }));
+        if (path === '/api/v1/owner/kyc/submit' && method === 'POST') {
+          const documents = Array.isArray(bodyPayload?.documents) ? bodyPayload.documents : [];
+          const requiredTypes = new Set(['NATIONAL_ID_FRONT', 'NATIONAL_ID_BACK', 'LIVE_FACE']);
+          if (documents.length !== 3 || new Set(documents.map((doc: any) => doc?.documentType)).size !== 3 || documents.some((doc: any) => !requiredTypes.has(doc?.documentType))) {
+            return { statusCode: 400, body: { success: false, error: { code: 'KYC_PACKAGE_INCOMPLETE', message: 'يلزم رفع الوجه الأمامي والخلفي للبطاقة وصورة شخصية مباشرة.' }, timestamp } };
+          }
+          const verifiedDocuments: Array<{ documentType: string; storageKey: string; mimeType: string; fileSizeBytes: number }> = [];
+          try {
+            for (const doc of documents) {
+              const storageKey = String(doc?.storageKey || '');
+              if (!storageKey.startsWith(`owner-verification/${ownerId}/${doc.documentType}/`)) throw new Error('KYC_STORAGE_SCOPE_INVALID');
+              const object = await this.verificationStorageService.getObject(storageKey);
+              if (object.sizeBytes <= 0 || object.sizeBytes > 10 * 1024 * 1024) throw new Error('KYC_FILE_SIZE_INVALID');
+              const magic = verifyMagicBytes(object.buffer, object.mimeType);
+              if (!magic.isValid || !['image/jpeg', 'image/png', 'image/webp'].includes(object.mimeType)) throw new Error('KYC_FILE_TYPE_INVALID');
+              verifiedDocuments.push({ documentType: doc.documentType, storageKey, mimeType: object.mimeType, fileSizeBytes: object.sizeBytes });
+            }
+            const result = await ownerDb.submitKycPackage(ownerId, verifiedDocuments);
+            if (!result) throw new Error('KYC_PERSISTENCE_FAILED');
+            return { statusCode: 200, body: { success: true, data: result, timestamp } };
+          } catch (error: any) {
+            const code = error?.message || 'KYC_SUBMISSION_FAILED';
+            return { statusCode: code === 'KYC_STORAGE_SCOPE_INVALID' || code === 'KYC_FILE_SIZE_INVALID' || code === 'KYC_FILE_TYPE_INVALID' ? 400 : 500,
+              body: { success: false, error: { code, message: 'تعذر إرسال حزمة التوثيق. تحقق من الصور ثم حاول مرة أخرى.' }, timestamp } };
+          }
+        }
 
-          await notificationDb.create({
-            ownerId: 'admin',
-            title: 'طلب توثيق مالك جديد',
-            message: `قدم المالك ${owner?.fullName || ownerId} طلب توثيق جديد`,
-            type: 'OWNER_VERIFICATION_PENDING',
-            actionRoute: '/verifications',
-          }).catch(() => null);
-
-          return {
-            statusCode: 200,
-            body: {
-              success: true,
-              data: {
-                verificationStatus: owner?.verificationStatus || 'PENDING_VERIFICATION',
-                submittedDocument: docRecord,
-              },
-              timestamp,
-            },
-          };
+        // Retired unsafe legacy KYC endpoint. It accepted public/base64 document URLs
+        // and could fabricate an Owner identity; do not restore it.
+        if (path === '/api/v1/owner/verification/identity' && method === 'POST') {
+          return { statusCode: 410, body: { success: false, error: { code: 'LEGACY_KYC_ENDPOINT_RETIRED', message: 'استخدم مسار التحقق الجديد الآمن.' }, timestamp } };
         }
 
         if (path === '/api/v1/owner/verification/identity' && method === 'GET') {
@@ -554,18 +589,7 @@ export class ExpressServerApp {
 
         // --- A. Document Presigned Upload URL Endpoint (RULE-4B-01) ---
         if (path === '/api/v1/owner/documents/presigned-url' && method === 'POST') {
-          return {
-            statusCode: 200,
-            body: {
-              success: true,
-              data: {
-                uploadUrl: `https://storage.sola.eg/uploads/${ownerId}/${Date.now()}_${bodyPayload?.fileName || 'doc.pdf'}`,
-                fileKey: `uploads/${ownerId}/${Date.now()}_${bodyPayload?.fileName || 'doc.pdf'}`,
-                expiresInSeconds: 300,
-              },
-              timestamp,
-            },
-          };
+          return { statusCode: 410, body: { success: false, error: { code: 'LEGACY_KYC_UPLOAD_RETIRED', message: 'استخدم مسار رفع توثيق المالك الآمن.' }, timestamp } };
         }
 
         // --- B. Payout Creation Endpoint (RULE-5A-01, RULE-5A-03, RULE-5A-05) ---
@@ -1435,7 +1459,12 @@ export class ExpressServerApp {
 
         // A1. Admin Pending Verification Queue Endpoint — PostgreSQL Driven
         if (path === '/api/v1/admin/verifications/pending' && method === 'GET') {
-          const pendingRows = await ownerDb.getPendingVerifications().catch(() => []);
+          let pendingRows;
+          try {
+            pendingRows = await ownerDb.getPendingVerifications();
+          } catch {
+            return { statusCode: 500, body: { success: false, error: { code: 'ADMIN_KYC_QUEUE_QUERY_FAILED', message: 'تعذر تحميل طلبات التوثيق.' }, timestamp } };
+          }
           // Group by owner
           const ownerMap = new Map<string, any>();
           for (const row of pendingRows) {
@@ -1443,8 +1472,8 @@ export class ExpressServerApp {
               ownerMap.set(row.ownerId, {
                 requestId: `req_${row.ownerId}`,
                 ownerId: row.ownerId,
-                ownerName: row.fullName || 'مالك',
-                ownerPhone: formatOwnerPhone(row.phoneNumber, row.ownerId),
+                ownerName: row.fullName || null,
+                ownerPhone: row.phoneNumber || null,
                 status: row.verificationStatus,
                 documents: [],
                 submittedAt: row.uploadedAt,
@@ -1454,7 +1483,7 @@ export class ExpressServerApp {
               ownerMap.get(row.ownerId).documents.push({
                 id: row.documentId,
                 documentType: row.documentType,
-                fileUrl: row.fileUrl,
+                storageKey: row.storageKey,
                 status: row.docStatus,
                 uploadedAt: row.uploadedAt,
               });
@@ -1556,8 +1585,16 @@ export class ExpressServerApp {
           };
         }
 
-        // A2. Admin Verification Review Endpoint (Owner Identity) — PostgreSQL Driven
-        if (path.startsWith('/api/v1/admin/verifications/') && path.endsWith('/review') && method === 'POST') {
+        // Retired legacy owner-level verification path. It previously used an
+        // upsert and could overwrite/cross-create identity data. Admin review
+        // must use the canonical complete-package route below.
+        if (path.match(/^\/api\/v1\/admin\/verifications\/[^/]+\/review$/) && method === 'POST') {
+          return { statusCode: 410, body: { success: false, error: { code: 'LEGACY_KYC_REVIEW_ENDPOINT_RETIRED', message: 'استخدم مسار مراجعة حزمة التوثيق الآمن.' }, timestamp } };
+        }
+
+        // Legacy implementation retained below only as unreachable historical
+        // compatibility code; the route is retired by the guard above.
+        if (path.match(/^\/api\/v1\/admin\/verifications\/[^/]+\/review$/) && method === 'POST') {
           const parts = path.split('/');
           const targetOwnerId = parts[5];
           const { decision, reason } = bodyPayload || {};
@@ -2453,6 +2490,46 @@ export class ExpressServerApp {
           };
         }
 
+        // Private KYC images are accessed only after the verified ROLE_ADMIN
+        // boundary above. The database never stores this signed URL.
+        if (path.match(/^\/api\/v1\/admin\/verifications\/[^/]+\/documents\/[^/]+\/access$/) && method === 'GET') {
+          const parts = path.split('/');
+          const targetOwnerId = parts[5];
+          const documentId = parts[7];
+          const documents = await ownerDb.getDocuments(targetOwnerId).catch(() => null);
+          const document = documents?.find((doc: any) => doc.id === documentId && doc.storageKey);
+          if (!document) return { statusCode: 404, body: { success: false, error: { code: 'KYC_DOCUMENT_NOT_FOUND', message: 'مستند التوثيق غير موجود.' }, timestamp } };
+          try {
+            const signedUrl = await this.verificationStorageService.generateSignedReadUrl(document.storageKey, 300);
+            return { statusCode: 200, body: { success: true, data: { url: signedUrl, expiresInSeconds: 300 }, timestamp } };
+          } catch {
+            return { statusCode: 500, body: { success: false, error: { code: 'KYC_DOCUMENT_ACCESS_FAILED', message: 'تعذر تجهيز معاينة المستند.' }, timestamp } };
+          }
+        }
+
+        // Canonical package-level KYC review. The RPC refuses incomplete
+        // packages and atomically persists the Owner and document statuses.
+        if (path === '/api/v1/admin/verifications/review' && method === 'POST') {
+          const targetOwnerId = bodyPayload?.ownerId;
+          const decision = bodyPayload?.decision;
+          const rejectionReason = bodyPayload?.rejectionReason;
+          if (!targetOwnerId || !['APPROVED', 'REJECTED'].includes(decision)) {
+            return { statusCode: 400, body: { success: false, error: { code: 'INVALID_KYC_REVIEW_REQUEST', message: 'بيانات قرار التوثيق غير مكتملة.' }, timestamp } };
+          }
+          if (decision === 'REJECTED' && !String(rejectionReason || '').trim()) {
+            return { statusCode: 400, body: { success: false, error: { code: 'KYC_REJECTION_REASON_REQUIRED', message: 'سبب الرفض مطلوب.' }, timestamp } };
+          }
+          try {
+            const reviewed = await ownerDb.reviewKycPackage(targetOwnerId, decision, rejectionReason);
+            if (!reviewed) throw new Error('KYC_REVIEW_PERSISTENCE_FAILED');
+            return { statusCode: 200, body: { success: true, data: reviewed, timestamp } };
+          } catch (error: any) {
+            const code = error?.message || 'KYC_REVIEW_FAILED';
+            return { statusCode: code === 'KYC_PACKAGE_INCOMPLETE' || code === 'KYC_REJECTION_REASON_REQUIRED' ? 400 : 500,
+              body: { success: false, error: { code, message: 'تعذر حفظ قرار التوثيق.' }, timestamp } };
+          }
+        }
+
         // Generic Protected Admin Fallback
         return {
           statusCode: 200,
@@ -3117,6 +3194,44 @@ export class ExpressServerApp {
               timestamp,
             },
           };
+        }
+
+        if (path.match(/^\/api\/v1\/admin\/verifications\/[^/]+\/documents\/[^/]+\/access$/) && method === 'GET') {
+          const parts = path.split('/');
+          const targetOwnerId = parts[5];
+          const documentId = parts[7];
+          const documents = await ownerDb.getDocuments(targetOwnerId).catch(() => null);
+          const document = documents?.find((doc: any) => doc.id === documentId && doc.storageKey);
+          if (!document) return { statusCode: 404, body: { success: false, error: { code: 'KYC_DOCUMENT_NOT_FOUND', message: 'مستند التوثيق غير موجود.' }, timestamp } };
+          try {
+            const signedUrl = await this.verificationStorageService.generateSignedReadUrl(document.storageKey, 300);
+            return { statusCode: 200, body: { success: true, data: { url: signedUrl, expiresInSeconds: 300 }, timestamp } };
+          } catch {
+            return { statusCode: 500, body: { success: false, error: { code: 'KYC_DOCUMENT_ACCESS_FAILED', message: 'تعذر تجهيز معاينة المستند.' }, timestamp } };
+          }
+        }
+
+        // Canonical package-level KYC review. The server, not the Admin UI,
+        // verifies that all three required private documents are pending.
+        if (path === '/api/v1/admin/verifications/review' && method === 'POST') {
+          const targetOwnerId = bodyPayload?.ownerId;
+          const decision = bodyPayload?.decision;
+          const rejectionReason = bodyPayload?.rejectionReason;
+          if (!targetOwnerId || !['APPROVED', 'REJECTED'].includes(decision)) {
+            return { statusCode: 400, body: { success: false, error: { code: 'INVALID_KYC_REVIEW_REQUEST', message: 'بيانات قرار التوثيق غير مكتملة.' }, timestamp } };
+          }
+          if (decision === 'REJECTED' && !String(rejectionReason || '').trim()) {
+            return { statusCode: 400, body: { success: false, error: { code: 'KYC_REJECTION_REASON_REQUIRED', message: 'سبب الرفض مطلوب.' }, timestamp } };
+          }
+          try {
+            const reviewed = await ownerDb.reviewKycPackage(targetOwnerId, decision, rejectionReason);
+            if (!reviewed) throw new Error('KYC_REVIEW_PERSISTENCE_FAILED');
+            return { statusCode: 200, body: { success: true, data: reviewed, timestamp } };
+          } catch (error: any) {
+            const code = error?.message || 'KYC_REVIEW_FAILED';
+            return { statusCode: code === 'KYC_PACKAGE_INCOMPLETE' || code === 'KYC_REJECTION_REASON_REQUIRED' ? 400 : 500,
+              body: { success: false, error: { code, message: 'تعذر حفظ قرار التوثيق.' }, timestamp } };
+          }
         }
 
         // 4.4D Booking-scoped Customer Messaging (BOOKING-01.1)

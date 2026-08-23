@@ -4,14 +4,14 @@
 
 Supabase PostgreSQL is the canonical source of truth. Frontend memory, mock repositories, and API fallbacks must never manufacture production business success. Read the affected repository code and migrations before any persistence change.
 
-Migration history retained in this repository begins at `backend/database/migrations/008_*.sql` and runs through `019_konfrm_complete_deposit_payment.sql`. Earlier baseline table creation is not fully represented here; for pre-existing core-table details, inspect `dbRepository.ts` and, when authorized, the live schema. Do not infer missing constraints from names alone.
+Migration history retained in this repository begins at `backend/database/migrations/008_*.sql` and runs through `020_owner_registration_kyc.sql`. Earlier baseline table creation is not fully represented here; for pre-existing core-table details, inspect `dbRepository.ts` and, when authorized, the live schema. Do not infer missing constraints from names alone.
 
 ## Major canonical entities
 
 | Domain | Confirmed tables/entities | Notes |
 | --- | --- | --- |
-| Identity | `users`, `owners`, `user_sessions`, `otp_challenges` | `owners` is an optional extension of the same human UUID, not a replacement identity. |
-| Properties | `properties`, `property_images`, `upload_intents`, `owner_verification_documents` | Properties are owner-scoped; media persistence is canonical. |
+| Identity | `users`, `owners`, `user_sessions`, `otp_challenges` | `owners` is an optional extension of the same human UUID, not a replacement identity. Owner registration creates this extension only through its explicit route. |
+| Properties/KYC | `properties`, `property_images`, `upload_intents`, `owner_verification_documents` | Property media is public by its own established architecture. Owner identity KYC uses three private document types and must never use public property-media URLs. |
 | Booking | `bookings`, `booking_financial_summaries` | Financial summary is created for a booking and is authoritative for payment completion. |
 | Conversation | `booking_conversations`, `booking_messages` | Conversation access is scoped to its booking Customer/Owner. |
 | Payment/wallet | `payment_transactions`, `owner_wallets`, `wallet_ledger_entries` | Wallet/ledger reads must use their own canonical records, not property-price reconstruction. |
@@ -30,6 +30,7 @@ Migration history retained in this repository begins at `backend/database/migrat
 - The booking overlap exclusion constraint reserves dates only for `APPROVED_PENDING_PAYMENT` and `CONFIRMED`; pending owner review is intentionally non-blocking.
 - Payment finalization uses the narrowly scoped PostgreSQL RPC `public.konfrm_complete_deposit_payment(...)`, introduced in migration `019`. It locks/validates canonical records, makes the payment and booking transition, credits pending owner balance, and inserts its ledger entry atomically/idempotently.
 - Migration `019` is a security-definer function exposed only to `service_role`; do not broaden that grant without an explicit security decision.
+- Migration `020` adds `owners.owner_onboarding_completed_at`, explicit three-image KYC metadata, and the private `owner-verification` bucket. Existing Owners are backfilled as onboarding-complete without changing verification status. Its three KYC RPCs are service-role-only; private objects are opened for Admin through temporary signed access, never durable public URLs.
 
 ## Migration convention
 

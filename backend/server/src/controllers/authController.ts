@@ -113,6 +113,31 @@ export class AuthController {
     }
   }
 
+  async registerOwner(
+    phone: string,
+    fullName: string,
+    deviceInfo?: string,
+    ipAddress?: string
+  ): Promise<ApiSuccessResponse<any> | ApiErrorResponse> {
+    if (!phone || !fullName?.trim()) {
+      return {
+        success: false,
+        error: { code: 'OWNER_REGISTRATION_REQUIRED_FIELDS_MISSING', message: 'يرجى إدخال الاسم الكامل ورقم الهاتف المصري.' },
+        timestamp: new Date().toISOString(),
+      };
+    }
+    try {
+      const result = await this.authService.registerOwner(phone, fullName, deviceInfo, ipAddress);
+      return { success: true, data: result, timestamp: new Date().toISOString() };
+    } catch (err: any) {
+      return {
+        success: false,
+        error: { code: err.message || 'OWNER_REGISTRATION_FAILED', message: 'تعذر إنشاء حساب المالك. حاول مرة أخرى.' },
+        timestamp: new Date().toISOString(),
+      };
+    }
+  }
+
   async adminLogin(email: string, password_raw: string): Promise<ApiSuccessResponse<any> | ApiErrorResponse> {
     try {
       const result = await this.authService.adminLogin(email, password_raw);

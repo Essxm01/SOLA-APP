@@ -10,6 +10,8 @@ interface AuthContextType {
   owner: Owner | null;
   setPhoneNumber: (phone: string) => void;
   loginWithPhone: (phone: string) => Promise<{ success: boolean; ownerOnboardingRequired?: boolean; error?: string }>;
+  registerOwnerWithPhone: (phone: string, fullName: string) => Promise<{ success: boolean; createdOwner?: boolean; error?: string }>;
+  refreshCanonicalOwner: () => Promise<Owner | null>;
   sendOTP: (phone: string) => Promise<boolean>;
   verifyOTP: (code: string) => Promise<boolean>;
   logout: () => void;
@@ -143,6 +145,50 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return { success: true };
   };
 
+  const refreshCanonicalOwner = async (): Promise<Owner | null> => {
+    const repo = repositoryFactory;
+    try {
+      const canonicalOwner = repo.useMockMode
+        ? await mockRepository.getOwnerProfile()
+        : await repo.owner.getCurrentOwner();
+      applyCanonicalOwner(canonicalOwner as Owner);
+      return canonicalOwner as Owner;
+    } catch {
+      clearLocalOwnerSession();
+      return null;
+    }
+  };
+
+  const registerOwnerWithPhone = async (phone: string, fullName: string): Promise<{ success: boolean; createdOwner?: boolean; error?: string }> => {
+    const repo = repositoryFactory;
+    if (repo.useMockMode) {
+      return { success: false, error: 'تسجيل حساب مالك غير متاح في وضع العرض المحلي.' };
+    }
+
+    try {
+      const res: any = await repo.auth.registerOwner({ phone, fullName });
+      const result = unwrapOwnerLoginResponse(res);
+      const token = result.tokens?.accessToken || result.accessToken;
+      const refreshToken = result.tokens?.refreshToken || result.refreshToken;
+
+      if (!token || !refreshToken || !result.owner?.id || result.isOwner !== true) {
+        throw new Error('OWNER_REGISTRATION_INVALID_RESPONSE');
+      }
+
+      localStorage.setItem('sola_access_token', token);
+      localStorage.setItem('sola_refresh_token', refreshToken);
+      const canonicalOwner = await repo.owner.getCurrentOwner();
+      if (canonicalOwner.id !== result.owner.id) {
+        throw new Error('OWNER_PROFILE_ID_MISMATCH');
+      }
+      applyCanonicalOwner(canonicalOwner as Owner);
+      return { success: true, createdOwner: result.createdOwner === true };
+    } catch (err: any) {
+      clearLocalOwnerSession();
+      return { success: false, error: err?.message || 'تعذر إنشاء حساب المالك. حاول مرة أخرى.' };
+    }
+  };
+
   const sendOTP = async (phone: string): Promise<boolean> => {
     const repo = repositoryFactory;
     if (!repo.useMockMode) {
@@ -192,6 +238,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         owner,
         setPhoneNumber,
         loginWithPhone,
+        registerOwnerWithPhone,
+        refreshCanonicalOwner,
         sendOTP,
         verifyOTP,
         logout,

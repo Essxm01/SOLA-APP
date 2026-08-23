@@ -82,7 +82,7 @@ export const userDb = {
 export const ownerDb = {
   async getById(ownerId: string) {
     const res = await queryDb(
-      'SELECT id, phone_number AS "phoneNumber", full_name AS "fullName", email, avatar_url AS "avatarUrl", status, verification_status AS "verificationStatus", created_at AS "createdAt", updated_at AS "updatedAt" FROM owners WHERE id = $1',
+      'SELECT id, phone_number AS "phoneNumber", full_name AS "fullName", email, avatar_url AS "avatarUrl", status, verification_status AS "verificationStatus", owner_onboarding_completed_at AS "ownerOnboardingCompletedAt", created_at AS "createdAt", updated_at AS "updatedAt" FROM owners WHERE id = $1',
       [ownerId]
     );
     return res.rows[0] || null;
@@ -90,7 +90,7 @@ export const ownerDb = {
 
   async getByPhone(phoneNumber: string) {
     const res = await queryDb(
-      'SELECT id, phone_number AS "phoneNumber", full_name AS "fullName", email, avatar_url AS "avatarUrl", status, verification_status AS "verificationStatus", created_at AS "createdAt", updated_at AS "updatedAt" FROM owners WHERE phone_number = $1',
+      'SELECT id, phone_number AS "phoneNumber", full_name AS "fullName", email, avatar_url AS "avatarUrl", status, verification_status AS "verificationStatus", owner_onboarding_completed_at AS "ownerOnboardingCompletedAt", created_at AS "createdAt", updated_at AS "updatedAt" FROM owners WHERE phone_number = $1',
       [phoneNumber]
     );
     return res.rows[0] || null;
@@ -152,20 +152,35 @@ export const ownerDb = {
 
   async getDocuments(ownerId: string) {
     const res = await queryDb(
-      `SELECT id, owner_id AS "ownerId", document_type AS "documentType", document_url AS "fileUrl", document_type AS "title", status, uploaded_at AS "uploadedAt"
+      `SELECT id, owner_id AS "ownerId", document_type AS "documentType", storage_key AS "storageKey", mime_type AS "mimeType", file_size_bytes AS "fileSizeBytes", submission_id AS "submissionId", status, rejection_reason AS "rejectionReason", uploaded_at AS "uploadedAt", reviewed_at AS "reviewedAt"
        FROM owner_verification_documents WHERE owner_id = $1 ORDER BY uploaded_at DESC`,
       [ownerId]
     );
     return res.rows;
   },
 
+  async registerExplicit(phoneNumber: string, fullName: string) {
+    const res = await queryDb('SELECT * FROM konfrm_register_owner($1, $2)', [phoneNumber, fullName]);
+    return res.rows[0] || null;
+  },
+
+  async submitKycPackage(ownerId: string, documents: Array<{ documentType: string; storageKey: string; mimeType: string; fileSizeBytes: number }>) {
+    const res = await queryDb('SELECT * FROM konfrm_submit_owner_kyc($1, $2)', [ownerId, documents]);
+    return res.rows[0] || null;
+  },
+
+  async reviewKycPackage(ownerId: string, decision: 'APPROVED' | 'REJECTED', rejectionReason?: string) {
+    const res = await queryDb('SELECT * FROM konfrm_review_owner_kyc($1, $2, $3)', [ownerId, decision, rejectionReason || null]);
+    return res.rows[0] || null;
+  },
+
   async getPendingVerifications() {
     const res = await queryDb(
       `SELECT o.id AS "ownerId", o.full_name AS "fullName", o.phone_number AS "phoneNumber", o.verification_status AS "verificationStatus",
-              d.id AS "documentId", d.document_type AS "documentType", d.document_url AS "fileUrl", d.status AS "docStatus", d.uploaded_at AS "uploadedAt"
+              d.id AS "documentId", d.document_type AS "documentType", d.storage_key AS "storageKey", d.status AS "docStatus", d.uploaded_at AS "uploadedAt", d.submission_id AS "submissionId"
        FROM owners o
        LEFT JOIN owner_verification_documents d ON o.id = d.owner_id
-       WHERE o.verification_status = 'PENDING_VERIFICATION' OR d.status = 'PENDING'`
+       WHERE o.verification_status = 'PENDING_VERIFICATION' AND d.status = 'PENDING'`
     );
     return res.rows;
   }

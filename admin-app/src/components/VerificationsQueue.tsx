@@ -6,7 +6,6 @@ import {
   XCircle,
   RefreshCw,
   FileText,
-  Maximize2,
   X,
   ZoomIn,
   ZoomOut,
@@ -41,6 +40,7 @@ export function VerificationsQueue({ onStatusChange }: VerificationsQueueProps =
   const [reviewDecision, setReviewDecision] = useState<'APPROVED' | 'REJECTED'>('APPROVED');
   const [rejectionReason, setRejectionReason] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
+  const [isLoadingDocument, setIsLoadingDocument] = useState<string | null>(null);
 
   // Lightbox Modal State & Transforms for Full Screen Document Inspection
   const [lightboxDoc, setLightboxDoc] = useState<{ url: string; title: string } | null>(null);
@@ -100,7 +100,7 @@ export function VerificationsQueue({ onStatusChange }: VerificationsQueueProps =
       if (digits.startsWith('0')) return `+20${digits.slice(1)}`;
       return `+20${digits}`;
     }
-    return raw || '+201000000000';
+    return raw || 'غير متاح';
   };
 
   const formatDateLatin = (dateStr?: string) => {
@@ -124,8 +124,7 @@ export function VerificationsQueue({ onStatusChange }: VerificationsQueueProps =
     try {
       const token = localStorage.getItem('sola_admin_access_token') || '';
       if (!token) {
-        setItems([]);
-        setLoading(false);
+        setError('لا توجد جلسة إدارة صالحة لتحميل طلبات التوثيق.');
         return;
       }
 
@@ -174,7 +173,8 @@ export function VerificationsQueue({ onStatusChange }: VerificationsQueueProps =
         throw new Error('يرجى كتابة سبب الرفض بوضوح للمالك');
       }
 
-      const token = localStorage.getItem('sola_admin_access_token') || 'admin_token_valid';
+      const token = localStorage.getItem('sola_admin_access_token') || '';
+      if (!token) throw new Error('انتهت جلسة الإدارة. يرجى تسجيل الدخول مجدداً.');
       const response = await fetch(getApiUrl('/admin/verifications/review'), {
         method: 'POST',
         headers: {
@@ -204,6 +204,27 @@ export function VerificationsQueue({ onStatusChange }: VerificationsQueueProps =
       setError(err.message);
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const openPrivateDocument = async (document: any, title: string) => {
+    const token = localStorage.getItem('sola_admin_access_token') || '';
+    if (!token || !selectedRequest) {
+      setError('انتهت جلسة الإدارة. يرجى تسجيل الدخول مجدداً.');
+      return;
+    }
+    setIsLoadingDocument(document.id);
+    try {
+      const response = await fetch(getApiUrl(`/admin/verifications/${selectedRequest.ownerId}/documents/${document.id}/access`), {
+        headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+      });
+      const json = await response.json();
+      if (!response.ok || !json.success || !json.data?.url) throw new Error(json.error?.message || 'تعذر فتح المستند الخاص.');
+      openLightbox(json.data.url, title);
+    } catch (err: any) {
+      setError(err?.message || 'تعذر فتح المستند الخاص.');
+    } finally {
+      setIsLoadingDocument(null);
     }
   };
 
@@ -272,8 +293,8 @@ export function VerificationsQueue({ onStatusChange }: VerificationsQueueProps =
               <ShieldCheck className="w-4 h-4" />
             </div>
           </div>
-          <div className="text-3xl font-black text-emerald-700">100%</div>
-          <div className="text-[11px] font-bold text-emerald-700">مطابقة الوثائق للشروط والمعايير</div>
+          <div className="text-3xl font-black text-emerald-700">{items.filter((item) => new Set((item.documents || []).map((document: any) => document.documentType)).size >= 3).length}</div>
+          <div className="text-[11px] font-bold text-emerald-700">طلبات تحتوي على حزمة مستندات كاملة للمراجعة</div>
         </div>
 
         {/* KPI 3 */}
@@ -453,11 +474,13 @@ export function VerificationsQueue({ onStatusChange }: VerificationsQueueProps =
               ) : (
                 <div className="space-y-3">
                   {selectedRequest.documents.map((doc: any, idx: number) => {
-                    const typeTitle = doc.documentType === 'NATIONAL_ID'
-                      ? 'بطاقة رقم قومي'
-                      : doc.documentType === 'PASSPORT'
-                      ? 'جواز سفر'
-                      : 'سجل تجاري';
+                    const typeTitle = doc.documentType === 'NATIONAL_ID_FRONT'
+                      ? 'وجه بطاقة الرقم القومي'
+                      : doc.documentType === 'NATIONAL_ID_BACK'
+                      ? 'ظهر بطاقة الرقم القومي'
+                      : doc.documentType === 'LIVE_FACE'
+                      ? 'صورة شخصية مباشرة'
+                      : 'مستند توثيق';
 
                     return (
                       <div key={doc.id || idx} className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
@@ -468,27 +491,9 @@ export function VerificationsQueue({ onStatusChange }: VerificationsQueueProps =
                           </span>
                         </div>
 
-                        {doc.fileUrl ? (
-                          <div className="relative group rounded-lg overflow-hidden border border-slate-300 bg-slate-900 max-h-48 flex items-center justify-center">
-                            <img
-                              src={doc.fileUrl}
-                              alt={typeTitle}
-                              className="object-contain max-h-48 w-full group-hover:opacity-90 transition-opacity"
-                            />
-                            <button
-                              type="button"
-                              onClick={() => openLightbox(doc.fileUrl, `${selectedRequest.ownerName} - ${typeTitle}`)}
-                              className="absolute inset-0 bg-slate-900/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white font-extrabold gap-2 cursor-pointer"
-                            >
-                              <Maximize2 className="w-5 h-5 text-[#FFD700]" />
-                              <span>تكبير المستند ملء الشاشة 🔍</span>
-                            </button>
-                          </div>
-                        ) : (
-                          <div className="p-2 bg-slate-100 text-slate-500 rounded text-center">
-                            لا يوجد رابط صورة مباشر للمستند
-                          </div>
-                        )}
+                        <button type="button" onClick={() => void openPrivateDocument(doc, `${selectedRequest.ownerName || 'المالك'} - ${typeTitle}`)} disabled={isLoadingDocument === doc.id} className="w-full min-h-11 rounded-lg border border-blue-200 bg-blue-50 px-3 text-blue-700 font-bold disabled:opacity-60">
+                          {isLoadingDocument === doc.id ? 'جاري فتح المستند الخاص…' : 'فتح المستند للمراجعة'}
+                        </button>
                       </div>
                     );
                   })}

@@ -46,6 +46,7 @@ export interface ObjectVerificationResult {
 export interface IObjectStorageProvider {
   getProviderName(): string;
   generateSignedUploadUrl(params: SignedUploadParams): Promise<SignedUploadResult>;
+  generateSignedReadUrl(objectKey: string, expiresInSeconds?: number): Promise<string>;
   verifyObjectExists(objectKey: string): Promise<ObjectVerificationResult>;
   putObject(objectKey: string, buffer: Buffer, mimeType: string): Promise<{ success: boolean; objectKey: string; sizeBytes: number; sha256Checksum: string; downloadUrl: string }>;
   getObject(objectKey: string): Promise<{ buffer: Buffer; mimeType: string; sizeBytes: number }>;
@@ -150,6 +151,12 @@ export class LocalStorageEngineProvider implements IObjectStorageProvider {
     };
   }
 
+  async generateSignedReadUrl(objectKey: string): Promise<string> {
+    // Local development access is routed through the authenticated application;
+    // this value is not used as a public KYC URL in production.
+    return `${this.cdnHost}/files/${encodeURIComponent(objectKey)}`;
+  }
+
   async verifyObjectExists(objectKey: string): Promise<ObjectVerificationResult> {
     const target = this.getPhysicalPath(objectKey);
     if (!fs.existsSync(target)) {
@@ -223,10 +230,13 @@ export class SupabaseStorageProvider implements IObjectStorageProvider {
   private bucketName: string;
   private supabaseUrl: string;
 
-  constructor() {
+  private readonly isPublicBucket: boolean;
+
+  constructor(options: { bucketName?: string; public?: boolean } = {}) {
     const url = process.env.SUPABASE_URL;
     const key = process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
-    this.bucketName = process.env.SUPABASE_STORAGE_BUCKET || 'property-media';
+    this.bucketName = options.bucketName || process.env.SUPABASE_STORAGE_BUCKET || 'property-media';
+    this.isPublicBucket = options.public ?? true;
 
     if (!url || !key) {
       throw new Error('FATAL_MISSING_SUPABASE_STORAGE_CREDENTIALS: SUPABASE_URL and SUPABASE_SECRET_KEY (or SUPABASE_SERVICE_ROLE_KEY) environment variables are required when OBJECT_STORAGE_PROVIDER=supabase.');
@@ -247,7 +257,7 @@ export class SupabaseStorageProvider implements IObjectStorageProvider {
       const { data: buckets } = await this.client.storage.listBuckets();
       const exists = buckets?.some((b) => b.name === this.bucketName);
       if (!exists) {
-        await this.client.storage.createBucket(this.bucketName, { public: true });
+        await this.client.storage.createBucket(this.bucketName, { public: this.isPublicBucket });
       }
     } catch {
       // Ignore if already exists or permission restricted
@@ -265,7 +275,9 @@ export class SupabaseStorageProvider implements IObjectStorageProvider {
       throw new Error(`SUPABASE_SIGNED_URL_ERROR: ${error?.message || 'Failed to generate signed URL from Supabase Storage'}`);
     }
 
-    const downloadUrl = `${this.supabaseUrl}/storage/v1/object/public/${this.bucketName}/${params.objectKey}`;
+    const downloadUrl = this.isPublicBucket
+      ? `${this.supabaseUrl}/storage/v1/object/public/${this.bucketName}/${params.objectKey}`
+      : '';
     return {
       uploadUrl: data.signedUrl,
       downloadUrl,
@@ -273,6 +285,16 @@ export class SupabaseStorageProvider implements IObjectStorageProvider {
       objectKey: params.objectKey,
       expiresInSeconds: 300,
     };
+  }
+
+  async generateSignedReadUrl(objectKey: string, expiresInSeconds = 300): Promise<string> {
+    const { data, error } = await this.client.storage
+      .from(this.bucketName)
+      .createSignedUrl(objectKey, expiresInSeconds);
+    if (error || !data?.signedUrl) {
+      throw new Error(`SUPABASE_SIGNED_READ_URL_ERROR: ${error?.message || 'Failed to create signed read URL'}`);
+    }
+    return data.signedUrl;
   }
 
   async verifyObjectExists(objectKey: string): Promise<ObjectVerificationResult> {
@@ -307,7 +329,9 @@ export class SupabaseStorageProvider implements IObjectStorageProvider {
       throw new Error(`SUPABASE_UPLOAD_ERROR: ${error.message}`);
     }
 
-    const downloadUrl = `${this.supabaseUrl}/storage/v1/object/public/${this.bucketName}/${objectKey}`;
+    const downloadUrl = this.isPublicBucket
+      ? `${this.supabaseUrl}/storage/v1/object/public/${this.bucketName}/${objectKey}`
+      : '';
     return {
       success: true,
       objectKey,
@@ -341,12 +365,12 @@ export class SupabaseStorageProvider implements IObjectStorageProvider {
 /**
  * Storage Provider Factory (Strict Policy: No Silent Fallback)
  */
-export function createStorageProvider(): IObjectStorageProvider {
+export function createStorageProvider(options: { bucketName?: string; public?: boolean } = {}): IObjectStorageProvider {
   const defaultProvider = process.env.VERCEL ? 'supabase' : 'local';
   const providerType = (process.env.OBJECT_STORAGE_PROVIDER || defaultProvider).toLowerCase().trim();
 
   if (providerType === 'supabase') {
-    return new SupabaseStorageProvider();
+    return new SupabaseStorageProvider(options);
   }
 
   if (providerType === 'local') {

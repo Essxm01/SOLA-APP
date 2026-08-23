@@ -1,7 +1,7 @@
 # Current project state
 
-**Last updated:** 2026-08-23
-**Runtime-state commit reviewed:** `05e1fdbea5cbc3f6368fb587c0c428293e3c2f86` (`feat(owner): add approved first-run entry`)
+**Last updated:** 2026-08-24
+**Runtime-state baseline:** `05e1fdbea5cbc3f6368fb587c0c428293e3c2f86` plus the active Owner registration/KYC vertical slice.
 
 ## Current status
 
@@ -16,6 +16,7 @@ The repository contains working vertical slices for property operations, booking
 - **Identity:** Owner app authenticates against canonical Owner capability, scopes `AppProvider` to canonical Owner identity, and clears local state before best-effort revoke.
 - **Truthful states:** Admin validates sessions before shell render; Admin overview/notifications and Customer property/payment-history fetches distinguish loading, success/empty, and error.
 - **Owner entry:** first-ever device flow is a short KONFRM splash then one-time Owner onboarding; it is independent of authentication and does not change Owner capability rules.
+- **Owner registration/KYC:** explicit Owner registration is separate from login and preserves a Customer’s UUID when adding the Owner extension. New Owners submit National ID front, National ID back, and a fresh face image to the private `owner-verification` bucket; the package becomes pending Admin review only after all three files validate. Existing Owners are backfilled as onboarding-complete.
 - **Governance:** `DESIGN_SYSTEM/` is independent KONFRM visual/product-experience authority (v2.1.2).
 
 ## Active architecture
@@ -30,7 +31,6 @@ Read [ARCHITECTURE.md](./ARCHITECTURE.md), [DATABASE.md](./DATABASE.md), and [BU
 
 - `dbClient.ts` remains a strict SQL-to-Supabase REST/RPC compatibility layer, not a general Worker transaction/query solution. Matcher collisions are a known risk.
 - The repository’s retained migration history starts at 008; earlier core schema/RLS history is incomplete here.
-- Real Owner account creation/KYC onboarding is not implemented; current Owner first-run leads to canonical Login only.
 - Payment is intentionally `PROTOTYPE`; real Paymob credentials/networking are not implemented.
 - Customer Favorites is an approved capability but persistent canonical storage is not implemented.
 - Design-system legacy drift remains inventoried under `DESIGN_SYSTEM/`; the anti-drift baseline prevents new violations but does not migrate old screens.
@@ -44,7 +44,6 @@ Read [ARCHITECTURE.md](./ARCHITECTURE.md), [DATABASE.md](./DATABASE.md), and [BU
 
 ## Next likely areas (not active work)
 
-- Dedicated Owner account-creation/KYC flow
 - Canonical persistent Customer Favorites
 - Controlled migrations based on the Product Experience backlog (starting with approved, high-impact slices)
 

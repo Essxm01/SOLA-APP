@@ -592,6 +592,67 @@ export class AuthService {
     };
   }
 
+  // Explicit Owner registration is deliberately separate from Owner login.
+  // It may add the optional owners capability, but login never does.
+  async registerOwner(
+    rawPhone: string,
+    fullName: string,
+    deviceInfo?: string,
+    ipAddress?: string
+  ): Promise<{
+    tokens: AuthSessionTokens;
+    user: UserRecord;
+    owner: OwnerRecord;
+    createdOwner: boolean;
+    isOwner: true;
+    ownerOnboardingRequired: false;
+  }> {
+    const canonicalPhone = normalizePhoneNumber(rawPhone);
+    const normalizedName = (fullName || '').trim();
+    if (!normalizedName) throw new Error('OWNER_REGISTRATION_FULL_NAME_REQUIRED');
+
+    const registration = await ownerDb.registerExplicit(canonicalPhone, normalizedName);
+    if (!registration?.ownerId) throw new Error('OWNER_REGISTRATION_PERSISTENCE_FAILED');
+
+    const [user, owner] = await Promise.all([
+      userDb.getById(registration.ownerId),
+      ownerDb.getById(registration.ownerId),
+    ]);
+    if (!user || !owner || user.id !== owner.id || user.phoneNumber !== canonicalPhone) {
+      throw new Error('OWNER_REGISTRATION_IDENTITY_VERIFICATION_FAILED');
+    }
+
+    const role: UserRole = 'ROLE_OWNER';
+    const accessToken = signAccessToken({ sub: user.id, role, phone: canonicalPhone });
+    const refreshToken = signRefreshToken({ sub: user.id, role });
+    const refreshTokenHash = this.hashToken(refreshToken);
+    const expiresAtIso = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+
+    await sessionDb.create({
+      id: crypto.randomUUID(), userId: user.id, ownerId: owner.id, surface: 'OWNER', role,
+      refreshTokenHash, deviceInfo, ipAddress, expiresAt: expiresAtIso,
+    });
+
+    const sessionRecord: UserSessionRecord = {
+      id: `session_${Date.now()}`, userId: user.id, ownerId: owner.id, surface: 'OWNER', role,
+      refreshTokenHash, deviceInfo, ipAddress, isRevoked: false, expiresAt: expiresAtIso, createdAt: new Date().toISOString(),
+    };
+    dbUserSessionsStore.set(refreshToken, sessionRecord);
+    dbUserSessionsStore.set(refreshTokenHash, sessionRecord);
+    dbUsersStore.set(canonicalPhone, user);
+    dbUsersStore.set(user.id, user);
+    dbOwnersStore.set(owner.id, owner);
+
+    return {
+      tokens: { accessToken, refreshToken, expiresIn: 900 },
+      user,
+      owner,
+      createdOwner: registration.createdOwner === true,
+      isOwner: true,
+      ownerOnboardingRequired: false,
+    };
+  }
+
   // 3. Admin Login (Email & Password)
   async adminLogin(email: string, password_raw: string): Promise<{
     tokens: AuthSessionTokens;
@@ -683,4 +744,3 @@ export class AuthService {
     return { success: true };
   }
 }
-

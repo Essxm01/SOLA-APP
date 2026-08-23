@@ -138,6 +138,36 @@ async function queryViaSupabaseRest(text: string, params: any[] | undefined, url
     return { rows, command: 'SELECT', rowCount: rows.length, oid: 0, fields: [] };
   }
 
+  if (lowerSql.includes('konfrm_register_owner')) {
+    const res = await fetch(`${url}/rest/v1/rpc/konfrm_register_owner`, {
+      method: 'POST', headers, body: JSON.stringify({ p_phone_number: params?.[0], p_full_name: params?.[1] }),
+    });
+    if (!res.ok) throw new Error(`REST_OWNER_REGISTRATION_RPC_FAILED: HTTP ${res.status}`);
+    const raw: any = await res.json().catch(() => null);
+    const rows = Array.isArray(raw) ? raw : (raw ? [raw] : []);
+    return { rows, command: 'SELECT', rowCount: rows.length, oid: 0, fields: [] };
+  }
+
+  if (lowerSql.includes('konfrm_submit_owner_kyc')) {
+    const res = await fetch(`${url}/rest/v1/rpc/konfrm_submit_owner_kyc`, {
+      method: 'POST', headers, body: JSON.stringify({ p_owner_id: params?.[0], p_documents: params?.[1] }),
+    });
+    if (!res.ok) throw new Error(`REST_OWNER_KYC_SUBMISSION_RPC_FAILED: HTTP ${res.status}`);
+    const raw: any = await res.json().catch(() => null);
+    const rows = Array.isArray(raw) ? raw : (raw ? [raw] : []);
+    return { rows, command: 'SELECT', rowCount: rows.length, oid: 0, fields: [] };
+  }
+
+  if (lowerSql.includes('konfrm_review_owner_kyc')) {
+    const res = await fetch(`${url}/rest/v1/rpc/konfrm_review_owner_kyc`, {
+      method: 'POST', headers, body: JSON.stringify({ p_owner_id: params?.[0], p_decision: params?.[1], p_rejection_reason: params?.[2] ?? null }),
+    });
+    if (!res.ok) throw new Error(`REST_OWNER_KYC_REVIEW_RPC_FAILED: HTTP ${res.status}`);
+    const raw: any = await res.json().catch(() => null);
+    const rows = Array.isArray(raw) ? raw : (raw ? [raw] : []);
+    return { rows, command: 'SELECT', rowCount: rows.length, oid: 0, fields: [] };
+  }
+
   // OWNER-WALLET-01: canonical owner wallet, scoped solely by the verified
   // owner id supplied by the repository. Keep this strict to avoid pg fallback
   // in the deployed Worker.
@@ -324,6 +354,27 @@ async function queryViaSupabaseRest(text: string, params: any[] | undefined, url
     return { rows: mapped, command: 'SELECT', rowCount: mapped.length, oid: 0, fields: [] };
   }
 
+  // 0C0. Pending owner KYC queue. This is intentionally stricter than the
+  // generic owner matcher and only selects canonical PENDING package rows.
+  if (lowerSql.startsWith('select') && lowerSql.includes('from owners o') && lowerSql.includes('owner_verification_documents') && lowerSql.includes("pending_verification")) {
+    const ownersRes = await fetch(`${url}/rest/v1/owners?verification_status=eq.PENDING_VERIFICATION`, { headers });
+    if (!ownersRes.ok) throw new Error(`REST_PENDING_OWNER_KYC_SELECT_FAILED: HTTP ${ownersRes.status}`);
+    const owners: any[] = await ownersRes.json().catch(() => []);
+    const rows: any[] = [];
+    for (const owner of owners) {
+      const docsRes = await fetch(`${url}/rest/v1/owner_verification_documents?owner_id=eq.${encodeURIComponent(owner.id)}&status=eq.PENDING&order=uploaded_at.desc`, { headers });
+      if (!docsRes.ok) throw new Error(`REST_PENDING_OWNER_KYC_DOCUMENTS_FAILED: HTTP ${docsRes.status}`);
+      const docs: any[] = await docsRes.json().catch(() => []);
+      for (const doc of docs) rows.push({
+        ownerId: owner.id, fullName: owner.full_name, phoneNumber: owner.phone_number,
+        verificationStatus: owner.verification_status, documentId: doc.id,
+        documentType: doc.document_type, storageKey: doc.storage_key, docStatus: doc.status,
+        uploadedAt: doc.uploaded_at, submissionId: doc.submission_id,
+      });
+    }
+    return { rows, command: 'SELECT', rowCount: rows.length, oid: 0, fields: [] };
+  }
+
   // 0C. SELECT owners WHERE id = $1
   if (lowerSql.includes('from owners') && lowerSql.includes('where id = $1')) {
     const ownerId = params?.[0];
@@ -338,6 +389,7 @@ async function queryViaSupabaseRest(text: string, params: any[] | undefined, url
       avatarUrl: o.avatar_url,
       status: o.status,
       verificationStatus: o.verification_status,
+      ownerOnboardingCompletedAt: o.owner_onboarding_completed_at,
       createdAt: o.created_at,
       updatedAt: o.updated_at,
     }));
@@ -358,10 +410,24 @@ async function queryViaSupabaseRest(text: string, params: any[] | undefined, url
       avatarUrl: o.avatar_url,
       status: o.status,
       verificationStatus: o.verification_status,
+      ownerOnboardingCompletedAt: o.owner_onboarding_completed_at,
       createdAt: o.created_at,
       updatedAt: o.updated_at,
     }));
     return { rows: mapped, command: 'SELECT', rowCount: mapped.length, oid: 0, fields: [] };
+  }
+
+  if (lowerSql.startsWith('select') && lowerSql.includes('from owner_verification_documents') && /\bowner_id\s*=\s*\$1\b/i.test(sql)) {
+    const ownerId = params?.[0];
+    const res = await fetch(`${url}/rest/v1/owner_verification_documents?owner_id=eq.${encodeURIComponent(ownerId)}&order=uploaded_at.desc`, { headers });
+    if (!res.ok) throw new Error(`REST_OWNER_KYC_DOCUMENTS_SELECT_FAILED: HTTP ${res.status}`);
+    const raw: any[] = await res.json().catch(() => []);
+    const rows = raw.map((doc: any) => ({
+      id: doc.id, ownerId: doc.owner_id, documentType: doc.document_type, storageKey: doc.storage_key,
+      mimeType: doc.mime_type, fileSizeBytes: doc.file_size_bytes, submissionId: doc.submission_id,
+      status: doc.status, rejectionReason: doc.rejection_reason, uploadedAt: doc.uploaded_at, reviewedAt: doc.reviewed_at,
+    }));
+    return { rows, command: 'SELECT', rowCount: rows.length, oid: 0, fields: [] };
   }
 
   // 0E. UPDATE an existing canonical owner profile. This route deliberately

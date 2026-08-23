@@ -134,7 +134,14 @@ export type UnitType = 'شاليه' | 'فيلا' | 'شقة' | 'استوديو' |
 export type AvailabilityStatus = 'AVAILABLE' | 'BOOKED' | 'BLOCKED' | 'PENDING';
 
 // Phase 4 Gap 4B: Property Owner Verification Documents
-export type VerificationDocumentType = 'NATIONAL_ID' | 'PROPERTY_DEED' | 'LEASE_CONTRACT' | 'OTHER';
+export type VerificationDocumentType =
+  | 'NATIONAL_ID'
+  | 'NATIONAL_ID_FRONT'
+  | 'NATIONAL_ID_BACK'
+  | 'LIVE_FACE'
+  | 'PROPERTY_DEED'
+  | 'LEASE_CONTRACT'
+  | 'OTHER';
 
 export interface OwnerVerificationDocument {
   id: string;
@@ -468,6 +475,7 @@ export interface Owner {
   avatar: string;
   verificationStatus: VerificationStatus;
   verificationBadgeText: string;
+  ownerOnboardingCompletedAt?: string | null;
   createdAt: string;
 }
 

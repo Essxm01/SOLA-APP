@@ -4,6 +4,8 @@ import { AppProvider, useApp } from './context/AppContext';
 import { SplashScreen } from './components/auth/SplashScreen';
 import { OnboardingScreen } from './components/auth/OnboardingScreen';
 import { LoginScreen } from './components/auth/LoginScreen';
+import { CreateOwnerAccountScreen } from './components/auth/CreateOwnerAccountScreen';
+import { OwnerKycOnboarding } from './components/auth/OwnerKycOnboarding';
 import { completeOwnerFirstRunOnboarding, resolveOwnerFirstRunPhase, type OwnerFirstRunPhase } from './utils/ownerFirstRun';
 import { OwnerDashboardView } from './components/dashboard/OwnerDashboardView';
 import { BookingsFoundationView } from './components/bookings/BookingsFoundationView';
@@ -70,8 +72,12 @@ const OwnerFirstRunGate: React.FC<{ children: React.ReactNode }> = ({ children }
 
 const OwnerAuthGate: React.FC = () => {
   const { isLoadingAuth, isAuthenticated, owner } = useAuth();
+  const [showRegistration, setShowRegistration] = useState(false);
   if (isLoadingAuth) return <MobileContainer><div className="min-h-screen flex items-center justify-center text-slate-600 dir-rtl">جاري التحقق من الحساب…</div></MobileContainer>;
-  if (!isAuthenticated || !owner?.id) return <MobileContainer><LoginScreen /></MobileContainer>;
+  if (!isAuthenticated || !owner?.id) {
+    return <MobileContainer>{showRegistration ? <CreateOwnerAccountScreen onBack={() => setShowRegistration(false)} /> : <LoginScreen onCreateOwnerAccount={() => setShowRegistration(true)} />}</MobileContainer>;
+  }
+  if (!owner.ownerOnboardingCompletedAt) return <MobileContainer><OwnerKycOnboarding onComplete={() => undefined} /></MobileContainer>;
   return <MobileContainer><AppProvider key={owner.id} ownerId={owner.id}><OwnerAppContent /></AppProvider></MobileContainer>;
 };
 

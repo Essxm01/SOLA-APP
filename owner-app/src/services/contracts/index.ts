@@ -56,8 +56,28 @@ export interface IAuthRepository {
   requestOtp(payload: RequestOtpPayload): Promise<{ success: boolean; message: string }>;
   verifyOtp(payload: VerifyOtpPayload): Promise<AuthSessionResponse>;
   prototypeLogin(payload: { phone: string; surface: 'CUSTOMER' | 'OWNER'; fullName?: string }): Promise<any>;
+  registerOwner(payload: { phone: string; fullName: string }): Promise<any>;
   refreshSession(refreshToken: string): Promise<{ accessToken: string; expiresIn: number }>;
   revokeSession(refreshToken: string): Promise<void>;
+}
+
+export interface OwnerKycDocumentUpload {
+  documentType: 'NATIONAL_ID_FRONT' | 'NATIONAL_ID_BACK' | 'LIVE_FACE';
+  storageKey: string;
+  mimeType: string;
+  fileSizeBytes: number;
+}
+
+export interface OwnerKycStatus {
+  verificationStatus: 'UNVERIFIED' | 'PENDING_VERIFICATION' | 'VERIFIED' | 'REJECTED';
+  ownerOnboardingCompletedAt: string | null;
+  documents: Array<{
+    id: string;
+    documentType: string;
+    status: string;
+    uploadedAt: string;
+    rejectionReason?: string | null;
+  }>;
 }
 
 // ==========================================
@@ -75,6 +95,9 @@ export interface IOwnerRepository {
   getCurrentOwner(): Promise<Owner>;
   updateOwnerProfile(updates: UpdateOwnerProfilePayload): Promise<Owner>;
   uploadOwnerDocument(document: OwnerVerificationDocument): Promise<Owner>;
+  getKycStatus(): Promise<OwnerKycStatus>;
+  getKycPresignedUpload(payload: { documentType: OwnerKycDocumentUpload['documentType']; fileName: string; mimeType: string; fileSize: number }): Promise<{ uploadUrl: string; storageKey: string; headers?: Record<string, string> }>;
+  submitKycPackage(documents: OwnerKycDocumentUpload[]): Promise<OwnerKycStatus>;
 }
 
 // ==========================================

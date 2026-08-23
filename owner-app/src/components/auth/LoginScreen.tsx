@@ -5,10 +5,10 @@ import { Button } from '../ui/Button';
 import { PhoneInput } from '../ui/Input';
 
 interface LoginScreenProps {
-  onOTPSent?: () => void;
+  onCreateOwnerAccount?: () => void;
 }
 
-export const LoginScreen: React.FC<LoginScreenProps> = () => {
+export const LoginScreen: React.FC<LoginScreenProps> = ({ onCreateOwnerAccount }) => {
   const { phoneNumber, loginWithPhone } = useAuth();
   const [phone, setPhone] = useState(phoneNumber.replace('+20', ''));
   const [error, setError] = useState('');
@@ -65,6 +65,11 @@ export const LoginScreen: React.FC<LoginScreenProps> = () => {
           <Button type="submit" variant="primary" size="lg" fullWidth isLoading={isLoading} icon={<ArrowLeft className="h-5 w-5" />} className="min-h-12 py-3 text-base font-bold">
             دخول إلى لوحة التحكم
           </Button>
+          {onCreateOwnerAccount && (
+            <Button type="button" variant="outline" size="lg" fullWidth onClick={onCreateOwnerAccount} className="min-h-12 py-3 text-base font-bold">
+              إنشاء حساب مالك
+            </Button>
+          )}
         </form>
 
         <div className="mt-8 flex items-start gap-3 rounded-[var(--konfrm-radius-card)] border border-[var(--konfrm-border-default)] bg-[var(--konfrm-surface-primary)] p-4">
@@ -73,7 +78,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = () => {
           </div>
           <div className="text-sm leading-6 text-[var(--konfrm-text-secondary)]">
             <p className="mb-0.5 font-semibold text-[var(--konfrm-text-primary)]">دخول مخصص للمالكين</p>
-            إذا لم يكن رقمك مسجلًا كحساب مالك، فلن تتمكن من الدخول من هذه الشاشة.
+            إذا لم يكن رقمك مسجلًا كحساب مالك، يمكنك إنشاء حساب مالك جديد بشكل صريح من الزر أعلاه.
           </div>
         </div>
       </div>

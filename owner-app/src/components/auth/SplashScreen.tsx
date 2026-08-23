@@ -6,7 +6,7 @@ interface SplashScreenProps {
 
 export const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
   useEffect(() => {
-    const timeoutId = window.setTimeout(onComplete, 1300);
+    const timeoutId = window.setTimeout(onComplete, 2000);
     return () => window.clearTimeout(timeoutId);
   }, [onComplete]);
 

@@ -152,6 +152,13 @@ export class HttpRepository implements
     });
   }
 
+  async registerOwner(payload: { phone: string; fullName: string }): Promise<any> {
+    return this.fetchJson('/auth/register-owner', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  }
+
   async refreshSession(refreshToken: string): Promise<{ accessToken: string; expiresIn: number }> {
     return this.fetchJson('/auth/refresh', {
       method: 'POST',
@@ -182,6 +189,24 @@ export class HttpRepository implements
     return this.fetchJson('/owner/profile/documents', {
       method: 'POST',
       body: JSON.stringify(document),
+    });
+  }
+
+  async getKycStatus(): Promise<any> {
+    return this.fetchJson('/owner/kyc/status');
+  }
+
+  async getKycPresignedUpload(payload: { documentType: 'NATIONAL_ID_FRONT' | 'NATIONAL_ID_BACK' | 'LIVE_FACE'; fileName: string; mimeType: string; fileSize: number }): Promise<any> {
+    return this.fetchJson('/owner/kyc/presigned-upload', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  }
+
+  async submitKycPackage(documents: any[]): Promise<any> {
+    return this.fetchJson('/owner/kyc/submit', {
+      method: 'POST',
+      body: JSON.stringify({ documents }),
     });
   }
 

@@ -8,7 +8,7 @@
     "build": "tsc -b && vite build",
     "check": "tsc --noEmit",
     "test:first-run": "node ../backend/node_modules/tsx/dist/cli.mjs src/utils/ownerFirstRun.test.ts",
-    "test:home": "node ../backend/node_modules/tsx/dist/cli.mjs src/utils/ownerHome.test.ts",
+    "test:home": "tsx src/utils/ownerHome.test.ts",
     "lint": "oxlint",
     "preview": "vite preview"
   },
@@ -29,6 +29,7 @@
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.4",
     "oxlint": "^1.75.0",
+    "tsx": "^4.20.0",
     "typescript": "~6.0.2",
     "vite": "^8.2.0"
   }

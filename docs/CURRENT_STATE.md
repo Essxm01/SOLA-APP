@@ -1,7 +1,7 @@
 # Current project state
 
 **Last updated:** 2026-08-24
-**Runtime-state baseline:** `0d401095c2dee35387c51c989d47d0ab4226aa38` plus the Owner Home action-first migration awaiting Founder visual acceptance.
+**Runtime-state baseline:** current `main` plus the Owner Home action-first migration awaiting Founder visual acceptance.
 
 ## Current status
 

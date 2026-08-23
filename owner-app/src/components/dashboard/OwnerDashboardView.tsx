@@ -5,6 +5,7 @@ import { ActionCards } from './ActionCards';
 import { QuickActions } from './QuickActions';
 import { RecentBookingsSection } from './RecentBookingsSection';
 import { PropertiesSummarySection } from './PropertiesSummarySection';
+import { WalletSummarySection } from './WalletSummarySection';
 import { DashboardSkeleton } from '../ui/LoadingSkeleton';
 import { EmptyState } from '../ui/EmptyState';
 import { Button } from '../ui/Button';
@@ -52,9 +53,10 @@ export const OwnerDashboardView: React.FC = () => {
           /* Populated Dashboard Content */
           <>
             <ActionCards />
-            <QuickActions />
             <RecentBookingsSection />
             <PropertiesSummarySection />
+            <WalletSummarySection />
+            <QuickActions />
           </>
         )}
       </div>

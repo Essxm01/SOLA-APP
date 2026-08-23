@@ -2,6 +2,12 @@
 
 Customer is a leisure/travel booking user. Their journey is **discover → evaluate → trust → choose dates → request → wait → pay deposit → confirmed → communicate → stay**.
 
+## Approved first-run entry
+
+On the first-ever run only, Customer receives a brief automatic KONFRM Splash followed by concise, Arabic-first Customer onboarding. It may be skipped, appears only once, and ends in public Explore/Home—not a forced Login/Create Account screen. A returning Customer sees neither Splash nor onboarding; public browsing opens directly while any valid session restores normally.
+
+Customer may continue to explore, search, view properties, prices, availability and dates without authentication wherever existing product rules allow. Authentication begins only when a protected action requires it; the relevant action context must be preserved so the Customer can return to it after successful authentication.
+
 ## Information priority
 
 | Screen/domain | Primary user question | First information | Primary action | Keep secondary/hidden |

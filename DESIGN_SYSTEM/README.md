@@ -1,6 +1,6 @@
 # KONFRM Design System
 
-**Version:** `2.1.1`
+**Version:** `2.1.2`
 **Authority:** `DESIGN_SYSTEM/` is the independent visual and product-experience source of truth for KONFRM / كونفرم.
 
 ```

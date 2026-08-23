@@ -35,7 +35,7 @@ const validateTokens = async () => {
     } catch (error) {
       throw new Error(`Invalid experience JSON file ${name}: ${error.message}`);
     }
-    if (experience[name].version !== '2.1.1') throw new Error(`${name} must declare version 2.1.1`);
+    if (experience[name].version !== '2.1.2') throw new Error(`${name} must declare version 2.1.2`);
   }
   const allowedDecisionStatuses = new Set(['APPROVED_EXISTING', 'RECOMMENDED', 'NEEDS_FOUNDER_DECISION']);
   for (const decision of experience['DECISIONS.json'].decisions ?? []) {

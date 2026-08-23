@@ -1,5 +1,13 @@
 # KONFRM Design System Changelog
 
+## 2.1.2 — 2026-08-23
+
+### Founder entry and Owner UX decision sync
+
+- Recorded approval for first-run-only Customer and Owner Splash/onboarding policy (`UX-ENTRY-01`), Owner action-first Home (`UX-OWNER-01`) and role-specific navigation (`UX-NAV-01`).
+- Separated first-run branded introduction from technical bootstrap/session loading and reconfirmed that Admin has no consumer Splash/onboarding model.
+- No runtime UI, business logic, backend or database changes.
+
 ## 2.1.1 — 2026-08-23
 
 ### Founder decision-state sync

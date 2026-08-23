@@ -1,5 +1,5 @@
 {
-  "version": "2.1.1",
+  "version": "2.1.2",
   "legend": ["VISIBLE", "SUMMARY", "CONTEXTUAL", "HIDDEN", "NEEDS_PRODUCT_DECISION"],
   "domains": {
     "property": { "customer": "VISIBLE", "owner": "VISIBLE", "admin": "CONTEXTUAL" },

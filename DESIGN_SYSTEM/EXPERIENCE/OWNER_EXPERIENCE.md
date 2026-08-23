@@ -10,9 +10,15 @@ Owner is an operational business user. Their central question is: **“ما ال
 4. Understand pending/available money and request a payout when eligible.
 5. Maintain account and verification status.
 
-## Home target philosophy — RECOMMENDED / FOUNDER REVIEW
+## Home target philosophy — APPROVED EXISTING (`UX-OWNER-01`)
 
 Home answers, in order: (1) what waits for action, (2) upcoming/current booking context, (3) property health, (4) meaningful financial position, and (5) messages/alerts. Analytics supports those answers; it is not the page’s primary job. Avoid generic metric-card walls, tiny dense grids, finance-terminal language and dark dashboards.
+
+## Approved first-run entry
+
+On the first-ever run only, Owner receives a brief automatic KONFRM Splash followed by concise Owner onboarding. It is swipeable, Arabic-first, skippable, includes progress, appears once only, and describes Owner operations such as requests, properties/availability, money and relevant communication. It then leads to Login/Create Account and existing Owner onboarding/verification where required.
+
+Returning Owners never see the Splash or first-run onboarding again: a valid canonical Owner session opens Owner Home directly; no valid session opens Login/Create Account. Logout does not reset first-run completion, and it does not alter canonical Owner identity/capability rules.
 
 ## Owner financial language
 

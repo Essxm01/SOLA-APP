@@ -1,6 +1,6 @@
 # Navigation authority
 
-Navigation follows destination frequency and user job—not visual symmetry.
+Navigation follows destination frequency and user job—not visual symmetry. `UX-NAV-01` is approved: Customer, Owner and Admin do not need identical navigation, tab counts, headers or information density. They remain one KONFRM family through the central Design System, while each role’s navigation serves its frequent jobs.
 
 | Role | Current navigation | Destination authority — RECOMMENDED |
 |---|---|---|

@@ -10,7 +10,7 @@ ONE KONFRM Design System governs Customer, Owner and Admin. They share the brand
 
 ## Approval boundary
 
-Only established project rules are `APPROVED_EXISTING`. Navigation changes, exact entry behavior, screen priorities and new interaction patterns are `RECOMMENDED` or `NEEDS_FOUNDER_DECISION` until Founder review. Recommendations never alter business rules.
+Only established project rules are `APPROVED_EXISTING`. New navigation changes, entry behavior, screen priorities and interaction patterns remain `RECOMMENDED` or `NEEDS_FOUNDER_DECISION` until Founder review. Approved decisions are recorded in `DECISIONS.json`; they define future implementation direction and never alter business rules by themselves.
 
 ## Required sequence
 

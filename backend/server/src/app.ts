@@ -12,7 +12,7 @@ import { calculateBookingFinancials, validatePayoutRequest, roundHalfEvenInCents
 import { verifyJwtToken, requireRole } from './middleware/auth.js';
 import { applyCorsHeaders } from './middleware/cors.js';
 import { dbUsersStore, dbOwnersStore, dbNotificationsStore, dbOwnerVerificationDocsStore, dbPropertyVerificationDocsStore, dbPropertiesStore, dbBookingsStore, dbPayoutRequestsStore, dbDisputesStore } from './services/authService.js';
-import { userDb, ownerDb, propertyDb, bookingDb, payoutDb, disputeDb, notificationDb, imageDb, uploadIntentDb, adminStatsDb, walletDb } from './services/dbRepository.js';
+import { userDb, ownerDb, propertyDb, bookingDb, conversationDb, messageDb, isBookingChatEligible, payoutDb, disputeDb, notificationDb, imageDb, uploadIntentDb, adminStatsDb, walletDb } from './services/dbRepository.js';
 import { paymentTxDb, PaymentService, MockPaymentGateway, PaymobGateway, verifyPaymobHmacSha512 } from './services/paymentService.js';
 import { createStorageProvider, IObjectStorageProvider, verifyMagicBytes, computeSha256 } from './services/storageProvider.js';
 import { GLOBAL_MIN_STAY_NIGHTS, GLOBAL_MAX_STAY_NIGHTS, hasDateRangeOverlap, validateStayLength } from './constants/bookingRules.js';
@@ -739,6 +739,50 @@ export class ExpressServerApp {
               timestamp,
             },
           };
+        }
+
+        // --- C3. Booking-scoped Owner Messaging (BOOKING-01.1) ---
+        if (path === '/api/v1/owner/conversations' && method === 'GET') {
+          try {
+            const conversations = await conversationDb.getByOwnerId(ownerId);
+            return { statusCode: 200, body: { success: true, data: conversations, timestamp } };
+          } catch {
+            return { statusCode: 500, body: { success: false, error: { code: 'OWNER_CONVERSATIONS_QUERY_FAILED', message: 'تعذر جلب المحادثات من قاعدة البيانات' }, timestamp } };
+          }
+        }
+
+        if (path.match(/^\/api\/v1\/owner\/bookings\/[^/]+\/conversation$/) && method === 'POST') {
+          const bookingId = path.split('/')[5];
+          const booking = await bookingDb.getById(bookingId).catch(() => null);
+          if (!booking) return { statusCode: 404, body: { success: false, error: { code: 'BOOKING_NOT_FOUND', message: 'طلب الحجز غير موجود' }, timestamp } };
+          if (booking.ownerId !== ownerId) return { statusCode: 403, body: { success: false, error: { code: 'FORBIDDEN_BOOKING_ACCESS', message: 'غير مصرح لك بفتح محادثة لهذا الحجز' }, timestamp } };
+          if (!isBookingChatEligible(booking.status)) return { statusCode: 409, body: { success: false, error: { code: 'BOOKING_CHAT_LOCKED', message: 'تتاح المحادثة بعد موافقة المالك على الطلب' }, timestamp } };
+          try {
+            const conversation = await conversationDb.getOrCreateForBooking(booking);
+            return { statusCode: 200, body: { success: true, data: conversation, timestamp } };
+          } catch {
+            return { statusCode: 500, body: { success: false, error: { code: 'CONVERSATION_PERSISTENCE_FAILED', message: 'تعذر إنشاء المحادثة أو استعادتها من قاعدة البيانات' }, timestamp } };
+          }
+        }
+
+        if (path.match(/^\/api\/v1\/owner\/conversations\/[^/]+\/messages$/) && (method === 'GET' || method === 'POST')) {
+          const conversationId = path.split('/')[5];
+          const conversation = await conversationDb.getForOwner(conversationId, ownerId).catch(() => null);
+          if (!conversation) return { statusCode: 403, body: { success: false, error: { code: 'FORBIDDEN_CONVERSATION_ACCESS', message: 'غير مصرح لك بالوصول إلى هذه المحادثة' }, timestamp } };
+          if (!isBookingChatEligible(conversation.bookingStatus)) return { statusCode: 409, body: { success: false, error: { code: 'BOOKING_CHAT_LOCKED', message: 'تتاح المحادثة بعد موافقة المالك على الطلب' }, timestamp } };
+          if (method === 'GET') {
+            try {
+              const messages = await messageDb.getByConversationId(conversationId);
+              return { statusCode: 200, body: { success: true, data: messages, timestamp } };
+            } catch {
+              return { statusCode: 500, body: { success: false, error: { code: 'MESSAGES_QUERY_FAILED', message: 'تعذر جلب الرسائل من قاعدة البيانات' }, timestamp } };
+            }
+          }
+          const text = typeof bodyPayload?.text === 'string' ? bodyPayload.text.trim() : '';
+          if (!text || text.length > 2000) return { statusCode: 400, body: { success: false, error: { code: 'INVALID_MESSAGE_TEXT', message: 'يجب أن يحتوي نص الرسالة على 1 إلى 2000 حرف' }, timestamp } };
+          const message = await messageDb.create(conversationId, ownerId, 'OWNER', text).catch(() => null);
+          if (!message) return { statusCode: 500, body: { success: false, error: { code: 'MESSAGE_PERSISTENCE_FAILED', message: 'تعذر حفظ الرسالة في قاعدة البيانات' }, timestamp } };
+          return { statusCode: 201, body: { success: true, data: message, timestamp } };
         }
 
         // --- D. Wallet Ledger Endpoint (RULE-5A-06 & RULE-5A-04) — PostgreSQL Driven ---
@@ -2962,7 +3006,20 @@ export class ExpressServerApp {
           };
         }
 
-        // 4.4B Customer Booking List (Real PostgreSQL IDOR Scoped)
+        // 4.4B Customer Booking Detail (canonical booking + canonical property composition)
+        if (path.match(/^\/api\/v1\/customer\/bookings\/[^/]+$/) && method === 'GET') {
+          const bookingId = path.split('/')[5];
+          const booking = await bookingDb.getById(bookingId).catch(() => null);
+          if (!booking) {
+            return { statusCode: 404, body: { success: false, error: { code: 'BOOKING_NOT_FOUND', message: 'طلب الحجز غير موجود' }, timestamp } };
+          }
+          if (booking.customerId !== customerId) {
+            return { statusCode: 403, body: { success: false, error: { code: 'FORBIDDEN_BOOKING_ACCESS', message: 'غير مصرح لك بالوصول إلى هذا الحجز' }, timestamp } };
+          }
+          return { statusCode: 200, body: { success: true, data: booking, timestamp } };
+        }
+
+        // 4.4C Customer Booking List (Real PostgreSQL IDOR Scoped)
         if (path === '/api/v1/customer/bookings' && method === 'GET') {
           let bookings: any[];
           try {
@@ -2984,7 +3041,42 @@ export class ExpressServerApp {
           };
         }
 
-        // 4.4C Customer Payments & Deposits Ledger (Real Data Only — ACCOUNT-01)
+        // 4.4D Booking-scoped Customer Messaging (BOOKING-01.1)
+        if (path.match(/^\/api\/v1\/customer\/bookings\/[^/]+\/conversation$/) && method === 'POST') {
+          const bookingId = path.split('/')[5];
+          const booking = await bookingDb.getById(bookingId).catch(() => null);
+          if (!booking) return { statusCode: 404, body: { success: false, error: { code: 'BOOKING_NOT_FOUND', message: 'طلب الحجز غير موجود' }, timestamp } };
+          if (booking.customerId !== customerId) return { statusCode: 403, body: { success: false, error: { code: 'FORBIDDEN_BOOKING_ACCESS', message: 'غير مصرح لك بفتح محادثة لهذا الحجز' }, timestamp } };
+          if (!isBookingChatEligible(booking.status)) return { statusCode: 409, body: { success: false, error: { code: 'BOOKING_CHAT_LOCKED', message: 'تتاح المحادثة بعد موافقة المالك على الطلب' }, timestamp } };
+          try {
+            const conversation = await conversationDb.getOrCreateForBooking(booking);
+            return { statusCode: 200, body: { success: true, data: conversation, timestamp } };
+          } catch {
+            return { statusCode: 500, body: { success: false, error: { code: 'CONVERSATION_PERSISTENCE_FAILED', message: 'تعذر إنشاء المحادثة أو استعادتها من قاعدة البيانات' }, timestamp } };
+          }
+        }
+
+        if (path.match(/^\/api\/v1\/customer\/conversations\/[^/]+\/messages$/) && (method === 'GET' || method === 'POST')) {
+          const conversationId = path.split('/')[5];
+          const conversation = await conversationDb.getForCustomer(conversationId, customerId).catch(() => null);
+          if (!conversation) return { statusCode: 403, body: { success: false, error: { code: 'FORBIDDEN_CONVERSATION_ACCESS', message: 'غير مصرح لك بالوصول إلى هذه المحادثة' }, timestamp } };
+          if (!isBookingChatEligible(conversation.bookingStatus)) return { statusCode: 409, body: { success: false, error: { code: 'BOOKING_CHAT_LOCKED', message: 'تتاح المحادثة بعد موافقة المالك على الطلب' }, timestamp } };
+          if (method === 'GET') {
+            try {
+              const messages = await messageDb.getByConversationId(conversationId);
+              return { statusCode: 200, body: { success: true, data: messages, timestamp } };
+            } catch {
+              return { statusCode: 500, body: { success: false, error: { code: 'MESSAGES_QUERY_FAILED', message: 'تعذر جلب الرسائل من قاعدة البيانات' }, timestamp } };
+            }
+          }
+          const text = typeof bodyPayload?.text === 'string' ? bodyPayload.text.trim() : '';
+          if (!text || text.length > 2000) return { statusCode: 400, body: { success: false, error: { code: 'INVALID_MESSAGE_TEXT', message: 'يجب أن يحتوي نص الرسالة على 1 إلى 2000 حرف' }, timestamp } };
+          const message = await messageDb.create(conversationId, customerId, 'CUSTOMER', text).catch(() => null);
+          if (!message) return { statusCode: 500, body: { success: false, error: { code: 'MESSAGE_PERSISTENCE_FAILED', message: 'تعذر حفظ الرسالة في قاعدة البيانات' }, timestamp } };
+          return { statusCode: 201, body: { success: true, data: message, timestamp } };
+        }
+
+        // 4.4E Customer Payments & Deposits Ledger (Real Data Only — ACCOUNT-01)
         if (path === '/api/v1/customer/payments' && method === 'GET') {
           const bookings = await bookingDb.getByCustomerId(customerId).catch(() => []);
           const transactions = await paymentTxDb.getByCustomerId(customerId).catch(() => []);

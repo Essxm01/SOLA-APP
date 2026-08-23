@@ -113,7 +113,7 @@ interface AppContextType {
   approveModificationRequest: (requestId: string) => Promise<void>;
   rejectModificationRequest: (requestId: string, reason?: string) => Promise<void>;
   isWithinSelfModificationWindow: (confirmedAt?: string) => boolean;
-  openChatForBooking: (bookingId: string) => void;
+  openChatForBooking: (bookingId: string) => Promise<void>;
   getChatMessages: (conversationId: string) => Promise<ChatMessage[]>;
   sendChatMessage: (conversationId: string, text: string, type?: ChatMessageType) => Promise<ChatMessage>;
 
@@ -274,7 +274,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           repo.property.getProperties(),
           repo.booking.getBookings(),
           repo.notification.getNotifications().catch(() => []),
-          repo.messaging.getConversations().catch(() => []),
+          repo.messaging.getConversations(),
           repo.dispute.getDisputes().catch(() => []),
           repo.wallet.getOwnerWallet().catch(() => null),
           repo.payout.getPayoutMethods().catch(() => []),
@@ -901,18 +901,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setActiveTab('disputes');
   };
 
-  const openChatForBooking = (bookingId: string) => {
-    const conv = chatConversations.find((c) => c.bookingId === bookingId);
-    if (conv) {
-      setActiveConversationId(conv.id);
-    } else {
-      const bk = bookings.find((b) => b.id === bookingId);
-      if (bk) {
-        const newConvId = `conv-${bk.id}`;
-        setActiveConversationId(newConvId);
-      }
+  const openChatForBooking = async (bookingId: string) => {
+    const booking = bookings.find((item) => item.id === bookingId);
+    if (!booking || (booking.status !== 'APPROVED_PENDING_PAYMENT' && booking.status !== 'CONFIRMED')) {
+      showToast('تتاح المحادثة بعد موافقة المالك على الطلب', 'info');
+      return;
     }
-    setActiveTab('messages');
+    try {
+      const repo = repositoryFactory;
+      if (repo.useMockMode) {
+        showToast('المحادثة غير متاحة في وضع البيانات التجريبية', 'info');
+        return;
+      }
+      const conversation = await repo.messaging.getOrCreateConversationForBooking(bookingId);
+      setChatConversations((current) => current.some((item) => item.id === conversation.id) ? current : [conversation, ...current]);
+      setActiveConversationId(conversation.id);
+      setActiveTab('messages');
+    } catch (err: any) {
+      showToast(err?.message || 'تعذر فتح المحادثة', 'error');
+      throw err;
+    }
   };
 
   const getChatMessages = async (conversationId: string): Promise<ChatMessage[]> => {

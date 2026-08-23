@@ -32,6 +32,7 @@ export const MessagesFoundationView: React.FC = () => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputText, setInputText] = useState('');
   const [isLoadingMessages, setIsLoadingMessages] = useState(false);
+  const [messageError, setMessageError] = useState<string | null>(null);
 
   const [modRejectionModal, setModRejectionModal] = useState<{
     isOpen: boolean;
@@ -60,11 +61,12 @@ export const MessagesFoundationView: React.FC = () => {
   const fetchMessages = useCallback(async () => {
     if (!activeConversationId) return;
     setIsLoadingMessages(true);
+    setMessageError(null);
     try {
       const msgs = await getChatMessages(activeConversationId);
       setMessages(msgs);
-    } catch (err) {
-      console.error(err);
+    } catch (err: any) {
+      setMessageError(err?.message || 'تعذر تحميل الرسائل');
     } finally {
       setIsLoadingMessages(false);
     }
@@ -85,11 +87,13 @@ export const MessagesFoundationView: React.FC = () => {
     const textToSend = inputText.trim();
     setInputText('');
 
+    setMessageError(null);
     try {
       await sendChatMessage(activeConversationId, textToSend, 'TEXT');
       await fetchMessages();
-    } catch (err) {
-      console.error(err);
+    } catch (err: any) {
+      setInputText(textToSend);
+      setMessageError(err?.message || 'تعذر إرسال الرسالة');
     }
   };
 
@@ -168,11 +172,9 @@ export const MessagesFoundationView: React.FC = () => {
               >
                 <div className="flex items-center gap-3 min-w-0">
                   <div className="relative shrink-0">
-                    <img
-                      src={c.renter?.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80'}
-                      alt={c.renter?.name || 'مستأجر'}
-                      className="w-12 h-12 rounded-full object-cover ring-2 ring-slate-100"
-                    />
+                    <div className="w-12 h-12 rounded-full bg-blue-50 text-[#0059FF] flex items-center justify-center font-black ring-2 ring-slate-100">
+                      {(c.renter?.name || 'م')[0]}
+                    </div>
                     {c.unreadCount > 0 && (
                       <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-[#0059FF] text-white text-[10px] flex items-center justify-center font-mono">
                         {c.unreadCount}
@@ -212,11 +214,9 @@ export const MessagesFoundationView: React.FC = () => {
           >
             <ArrowRight className="w-4 h-4 text-[#0059FF]" />
           </button>
-          <img
-            src={activeConv?.renter?.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80'}
-            alt={activeConv?.renter?.name || 'مستأجر'}
-            className="w-10 h-10 rounded-full object-cover ring-2 ring-slate-100 shrink-0"
-          />
+          <div className="w-10 h-10 rounded-full bg-blue-50 text-[#0059FF] flex items-center justify-center font-black ring-2 ring-slate-100 shrink-0">
+            {(activeConv?.renter?.name || 'م')[0]}
+          </div>
           <div className="min-w-0">
             <h3 className="text-xs font-bold text-slate-900 truncate">{activeConv?.renter?.name || 'مستأجر'}</h3>
             <p className="text-[11px] text-slate-500 truncate">{activeConv?.propertyTitle}</p>
@@ -231,6 +231,10 @@ export const MessagesFoundationView: React.FC = () => {
       <div className="flex-1 overflow-y-auto p-4 space-y-3">
         {isLoadingMessages ? (
           <div className="text-center py-8 text-xs text-slate-400">جاري تحميل الرسائل...</div>
+        ) : messageError ? (
+          <div className="text-center py-8 space-y-3"><p className="text-xs font-bold text-rose-700">{messageError}</p><button onClick={() => void fetchMessages()} className="text-xs font-black text-[#0059FF] underline">إعادة المحاولة</button></div>
+        ) : messages.length === 0 ? (
+          <div className="text-center py-12 text-xs text-slate-500 font-bold">ابدأ المحادثة</div>
         ) : (
           messages.map((msg) => {
             const isOwner = msg.senderRole === 'OWNER';

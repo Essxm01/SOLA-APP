@@ -297,6 +297,16 @@ export const BookingsFoundationView: React.FC = () => {
                       </>
                     )}
 
+                    {(b.status === 'APPROVED_PENDING_PAYMENT' || b.status === 'CONFIRMED') && (
+                      <button
+                        onClick={() => void openChatForBooking(b.id)}
+                        className="flex-1 px-3 py-2.5 rounded-xl bg-blue-50 border border-blue-100 text-[#0059FF] text-xs font-bold flex items-center justify-center gap-1"
+                      >
+                        <MessageSquare className="w-4 h-4" />
+                        محادثة المستأجر
+                      </button>
+                    )}
+
                     <button
                       onClick={() => openDetails(b)}
                       className="px-3 py-2.5 rounded-xl border border-slate-200 text-slate-700 text-xs font-bold hover:bg-slate-50"
@@ -603,16 +613,18 @@ export const BookingsFoundationView: React.FC = () => {
             <div className="bg-white p-3.5 rounded-2xl border border-slate-200 space-y-2">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold text-[#0059FF]">معلومات المستأجر</span>
-                <button
-                  onClick={() => {
-                    setIsDetailsOpen(false);
-                    openChatForBooking(selectedBooking.id);
-                  }}
-                  className="flex items-center gap-1 text-xs font-bold text-[#0059FF] hover:underline"
-                >
-                  <MessageSquare className="w-4 h-4" />
-                  <span>فتح المحادثة 💬</span>
-                </button>
+                {(selectedBooking.status === 'APPROVED_PENDING_PAYMENT' || selectedBooking.status === 'CONFIRMED') ? (
+                  <button
+                    onClick={() => {
+                      setIsDetailsOpen(false);
+                      void openChatForBooking(selectedBooking.id);
+                    }}
+                    className="flex items-center gap-1 text-xs font-bold text-[#0059FF] hover:underline"
+                  >
+                    <MessageSquare className="w-4 h-4" />
+                    <span>محادثة المستأجر</span>
+                  </button>
+                ) : <span className="text-[11px] text-slate-500 font-bold">تتاح المحادثة بعد موافقة المالك</span>}
               </div>
               <div className="flex items-center gap-3">
                 <div className="w-12 h-12 rounded-full bg-slate-100 text-slate-700 flex items-center justify-center font-black">

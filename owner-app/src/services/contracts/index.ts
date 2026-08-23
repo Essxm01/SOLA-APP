@@ -267,6 +267,7 @@ export interface SendChatMessagePayload {
 
 export interface IMessagingRepository {
   getConversations(): Promise<ChatConversation[]>;
+  getOrCreateConversationForBooking(bookingId: string): Promise<ChatConversation>;
   getChatMessages(conversationId: string): Promise<ChatMessage[]>;
   sendChatMessage(payload: SendChatMessagePayload): Promise<ChatMessage>;
   markConversationAsRead(conversationId: string): Promise<void>;

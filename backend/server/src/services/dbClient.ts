@@ -66,6 +66,29 @@ function mapBookingRestRow(booking: any) {
   };
 }
 
+function mapConversationRestRow(conversation: any) {
+  return {
+    id: conversation.id,
+    bookingId: conversation.booking_id,
+    propertyId: conversation.property_id,
+    customerId: conversation.customer_id,
+    ownerId: conversation.owner_id,
+    createdAt: conversation.created_at,
+    updatedAt: conversation.updated_at,
+  };
+}
+
+function mapBookingMessageRestRow(message: any) {
+  return {
+    id: message.id,
+    conversationId: message.conversation_id,
+    senderId: message.sender_id,
+    senderRole: message.sender_role,
+    text: message.text,
+    timestamp: message.created_at,
+  };
+}
+
 async function queryViaSupabaseRest(text: string, params: any[] | undefined, url: string, key: string): Promise<pg.QueryResult<any> | null> {
   const headers: Record<string, string> = {
     'apikey': key,
@@ -1060,6 +1083,89 @@ async function queryViaSupabaseRest(text: string, params: any[] | undefined, url
     const raw: any = await res.json().catch(() => []);
     const rows = (Array.isArray(raw) ? raw : []).map(mapBookingRestRow);
     return { rows, command: 'DELETE', rowCount: rows.length, oid: 0, fields: [] };
+  }
+
+  // 7I. Lookup the one conversation associated with a booking before attempting creation.
+  if (lowerSql.startsWith('select') && lowerSql.includes('from booking_conversations') && /\bwhere\s+booking_id\s*=\s*\$1\s*(?:order by|$)/i.test(lowerSql.replace(/\s+/g, ' '))) {
+    const bookingId = params?.[0];
+    const res = await fetch(`${url}/rest/v1/booking_conversations?booking_id=eq.${encodeURIComponent(bookingId)}`, { headers });
+    if (!res.ok) throw new Error(`REST_BOOKING_CONVERSATION_LOOKUP_FAILED: HTTP ${res.status}`);
+    const raw: any = await res.json().catch(() => []);
+    const rows = (Array.isArray(raw) ? raw : []).map(mapConversationRestRow);
+    return { rows, command: 'SELECT', rowCount: rows.length, oid: 0, fields: [] };
+  }
+
+  // 7J. Idempotent one-conversation-per-booking upsert.
+  if (lowerSql.startsWith('insert into booking_conversations') && lowerSql.includes('on conflict (booking_id)')) {
+    const payload = {
+      booking_id: params?.[0],
+      property_id: params?.[1],
+      customer_id: params?.[2],
+      owner_id: params?.[3],
+      updated_at: new Date().toISOString(),
+    };
+    const res = await fetch(`${url}/rest/v1/booking_conversations?on_conflict=booking_id`, {
+      method: 'POST',
+      headers: { ...headers, 'Prefer': 'resolution=merge-duplicates,return=representation' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const body = await res.text().catch(() => '');
+      throw new Error(`REST_BOOKING_CONVERSATION_UPSERT_FAILED: HTTP ${res.status} — ${body.slice(0, 200)}`);
+    }
+    const raw: any = await res.json().catch(() => []);
+    const rows = (Array.isArray(raw) ? raw : [raw]).filter(Boolean).map(mapConversationRestRow);
+    return { rows, command: 'INSERT', rowCount: rows.length, oid: 0, fields: [] };
+  }
+
+  // 7K. Participant-scoped conversation reads. The REST predicate includes both the conversation and verified participant.
+  if (lowerSql.startsWith('select') && lowerSql.includes('from booking_conversations') && /\bid\s*=\s*\$1\b/i.test(text) && /\b(customer_id|owner_id)\s*=\s*\$2\b/i.test(text)) {
+    const participantColumn = /\bcustomer_id\s*=\s*\$2\b/i.test(text) ? 'customer_id' : 'owner_id';
+    const res = await fetch(`${url}/rest/v1/booking_conversations?id=eq.${encodeURIComponent(params?.[0])}&${participantColumn}=eq.${encodeURIComponent(params?.[1])}`, { headers });
+    if (!res.ok) throw new Error(`REST_BOOKING_CONVERSATION_PARTICIPANT_READ_FAILED: HTTP ${res.status}`);
+    const raw: any = await res.json().catch(() => []);
+    const rows = (Array.isArray(raw) ? raw : []).map(mapConversationRestRow);
+    return { rows, command: 'SELECT', rowCount: rows.length, oid: 0, fields: [] };
+  }
+
+  // 7L. Owner conversation inbox is owner-scoped.
+  if (lowerSql.startsWith('select') && lowerSql.includes('from booking_conversations') && /\bowner_id\s*=\s*\$1\b/i.test(text)) {
+    const res = await fetch(`${url}/rest/v1/booking_conversations?owner_id=eq.${encodeURIComponent(params?.[0])}&order=updated_at.desc`, { headers });
+    if (!res.ok) throw new Error(`REST_BOOKING_CONVERSATIONS_SELECT_BY_OWNER_FAILED: HTTP ${res.status}`);
+    const raw: any = await res.json().catch(() => []);
+    const rows = (Array.isArray(raw) ? raw : []).map(mapConversationRestRow);
+    return { rows, command: 'SELECT', rowCount: rows.length, oid: 0, fields: [] };
+  }
+
+  // 7M. Message history is retrieved only after the route has verified the participant-scoped conversation.
+  if (lowerSql.startsWith('select') && lowerSql.includes('from booking_messages') && /\bconversation_id\s*=\s*\$1\b/i.test(text)) {
+    const res = await fetch(`${url}/rest/v1/booking_messages?conversation_id=eq.${encodeURIComponent(params?.[0])}&order=created_at.asc`, { headers });
+    if (!res.ok) throw new Error(`REST_BOOKING_MESSAGES_SELECT_FAILED: HTTP ${res.status}`);
+    const raw: any = await res.json().catch(() => []);
+    const rows = (Array.isArray(raw) ? raw : []).map(mapBookingMessageRestRow);
+    return { rows, command: 'SELECT', rowCount: rows.length, oid: 0, fields: [] };
+  }
+
+  // 7N. Text messages are persisted with the sender identity inferred by the verified backend route.
+  if (lowerSql.startsWith('insert into booking_messages')) {
+    const payload = {
+      conversation_id: params?.[0],
+      sender_id: params?.[1],
+      sender_role: params?.[2],
+      text: params?.[3],
+    };
+    const res = await fetch(`${url}/rest/v1/booking_messages`, {
+      method: 'POST',
+      headers: { ...headers, 'Prefer': 'return=representation' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const body = await res.text().catch(() => '');
+      throw new Error(`REST_BOOKING_MESSAGE_INSERT_FAILED: HTTP ${res.status} — ${body.slice(0, 200)}`);
+    }
+    const raw: any = await res.json().catch(() => []);
+    const rows = (Array.isArray(raw) ? raw : [raw]).filter(Boolean).map(mapBookingMessageRestRow);
+    return { rows, command: 'INSERT', rowCount: rows.length, oid: 0, fields: [] };
   }
 
   // 7. SELECT bookings for Property Availability & Overlap Checks (Canonical Blocking Statuses)

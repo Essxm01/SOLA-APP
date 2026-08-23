@@ -9,6 +9,7 @@ import { CustomerSupportModal } from './components/CustomerSupportModal';
 import { CustomerWalletModal } from './components/CustomerWalletModal';
 import type { BookingDetails } from './components/CustomerCheckoutModal';
 import { BookingSuccessModal } from './components/BookingSuccessModal';
+import { BookingDetailModal, type CustomerBookingRecord } from './components/BookingDetailModal';
 import { CustomerBottomNav, CustomerTabType } from './components/CustomerBottomNav';
 import { LoadingStateView, EmptyStateView, ErrorStateView } from './components/StateViews';
 import { getApiUrl } from './utils/api';
@@ -16,9 +17,10 @@ import {
   Heart,
   CalendarCheck,
   User,
-  Clock,
-  CheckCircle2,
   AlertCircle,
+  ImageOff,
+  MapPin,
+  Users,
   ChevronLeft,
   HelpCircle,
   Wallet,
@@ -75,6 +77,8 @@ export function App() {
 
   // Active Booking State for Checkout / Details
   const [activeBooking, setActiveBooking] = useState<BookingDetails | null>(null);
+  const [customerBookings, setCustomerBookings] = useState<CustomerBookingRecord[]>([]);
+  const [bookingDetailId, setBookingDetailId] = useState<string | null>(null);
   const [bookingsLoading, setBookingsLoading] = useState<boolean>(false);
   const [bookingsError, setBookingsError] = useState<string | null>(null);
 
@@ -183,23 +187,42 @@ export function App() {
     } catch {}
   };
 
-  const toBookingDetails = (booking: any): BookingDetails => ({
+  const toBookingRecord = (booking: any): CustomerBookingRecord => ({
     id: booking.id,
     bookingNumber: booking.bookingNumber,
-    propertyTitle: booking.propertyTitle || 'وحدة محجوزة',
+    propertyId: booking.propertyId,
+    propertyTitle: booking.property?.title || booking.propertyTitle || '',
+    propertyImage: booking.property?.images?.[0] || booking.propertyImage || '',
+    locationName: booking.property?.locationName || booking.locationName || '',
     checkIn: booking.checkIn,
     checkOut: booking.checkOut,
-    totalNights: Number(booking.nights),
-    depositAmountEgp: Number(booking.financialSummary?.depositAmount ?? booking.depositAmount),
-    remainingBalanceEgp: Number(booking.financialSummary?.remainingBalance ?? booking.remainingAmount),
-    totalBookingValueEgp: Number(booking.financialSummary?.totalBookingValue ?? booking.totalStay),
+    nights: Number(booking.nights),
+    guestsCount: Number(booking.guestsCount ?? booking.guests ?? 0),
     status: booking.status,
+    totalStay: Number(booking.financialSummary?.totalBookingValue ?? booking.totalStay),
+    depositAmount: Number(booking.financialSummary?.depositAmount ?? booking.depositAmount),
+    remainingAmount: Number(booking.financialSummary?.remainingBalance ?? booking.remainingAmount),
+    property: booking.property,
+  });
+
+  const toBookingDetails = (booking: CustomerBookingRecord): BookingDetails => ({
+    id: booking.id,
+    bookingNumber: booking.bookingNumber,
+    propertyTitle: booking.propertyTitle,
+    checkIn: booking.checkIn,
+    checkOut: booking.checkOut,
+    totalNights: booking.nights,
+    depositAmountEgp: booking.depositAmount,
+    remainingBalanceEgp: booking.remainingAmount,
+    totalBookingValueEgp: booking.totalStay,
+    status: booking.status as BookingDetails['status'],
   });
 
   const fetchBookings = async (token?: string | null) => {
     const t = token || authToken || localStorage.getItem('sola_customer_access_token');
     if (!t) {
       setActiveBooking(null);
+      setCustomerBookings([]);
       return [];
     }
     setBookingsLoading(true);
@@ -210,8 +233,9 @@ export function App() {
       if (!res.ok || !json.success || !Array.isArray(json.data)) {
         throw new Error(json?.error?.message || 'تعذر جلب طلبات الحجز');
       }
-      const bookings = json.data.map(toBookingDetails);
-      setActiveBooking(bookings[0] || null);
+      const bookings = json.data.map(toBookingRecord);
+      setCustomerBookings(bookings);
+      setActiveBooking(bookings[0] ? toBookingDetails(bookings[0]) : null);
       return bookings;
     } catch (err: any) {
       setBookingsError(err?.message || 'تعذر جلب طلبات الحجز من الخادم');
@@ -376,6 +400,8 @@ export function App() {
     setUserProfile(null);
     setAccountSummary(null);
     setActiveBooking(null);
+    setCustomerBookings([]);
+    setBookingDetailId(null);
     setBookingsError(null);
     setActiveTab('EXPLORE');
   };
@@ -405,11 +431,6 @@ export function App() {
       throw new Error(json?.error?.message || 'تعذر إرسال طلب الحجز. لم يتم إنشاء أي طلب.');
     }
 
-    const created: BookingDetails = {
-      ...toBookingDetails(json.data),
-      propertyTitle: prop.title,
-    };
-    setActiveBooking(created);
     await fetchBookings(authToken);
     setSelectedProperty(null);
     setShowSuccessModal(true);
@@ -542,63 +563,24 @@ export function App() {
                 <p className="text-xs font-bold text-rose-900">{bookingsError}</p>
                 <button onClick={() => void fetchBookings()} className="min-h-11 px-4 rounded-xl bg-white border border-rose-200 text-rose-700 text-xs font-black">إعادة المحاولة</button>
               </div>
-            ) : activeBooking ? (
-              <div className="space-y-4">
-                {/* Lifecycle Banner */}
-                {activeBooking.status === 'PENDING_OWNER_APPROVAL' && (
-                  <div className="p-4 bg-amber-50 border border-amber-200 rounded-2xl flex items-start gap-3 text-xs font-bold text-amber-900">
-                    <Clock className="w-5 h-5 text-amber-600 shrink-0 mt-0.5 animate-spin-slow" />
-                    <div>
-                      <h4 className="font-black text-amber-950 text-sm mb-0.5">طلبك قيد المراجعة لدى المالك ⏳</h4>
-                      <p className="text-amber-800 text-[11px] leading-relaxed">
-                        تم إرسال طلب الحجز إلى المالك بنجاح. سيتم إشعارك فور موافقة المالك لتتمكن من دفع العربون وتأكيد حجزك.
-                      </p>
+            ) : customerBookings.length > 0 ? (
+              <div className="space-y-3">
+                {customerBookings.map((booking) => (
+                  <button key={booking.id} onClick={() => setBookingDetailId(booking.id)} className="w-full text-right bg-white rounded-2xl overflow-hidden border border-slate-200 shadow-sm hover:border-blue-200 transition-colors">
+                    <div className="flex gap-3 p-3">
+                      <div className="w-24 h-24 rounded-xl overflow-hidden bg-slate-100 shrink-0">
+                        {booking.propertyImage ? <img src={booking.propertyImage} alt={booking.propertyTitle} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-slate-400"><ImageOff className="w-5 h-5" /></div>}
+                      </div>
+                      <div className="min-w-0 flex-1 space-y-1.5">
+                        <div className="flex justify-between items-start gap-2"><h3 className="font-black text-sm text-slate-900 truncate">{booking.propertyTitle}</h3><span className={`text-[10px] font-black px-2 py-1 rounded-full shrink-0 ${booking.status === 'APPROVED_PENDING_PAYMENT' ? 'bg-blue-50 text-[#0059FF]' : booking.status === 'REJECTED' ? 'bg-rose-50 text-rose-700' : 'bg-amber-50 text-amber-800'}`}>{booking.status === 'PENDING_OWNER_APPROVAL' ? 'قيد المراجعة' : booking.status === 'APPROVED_PENDING_PAYMENT' ? 'وافق المالك' : booking.status === 'CONFIRMED' ? 'مؤكد' : 'مرفوض'}</span></div>
+                        {booking.locationName && <p className="flex gap-1 text-[11px] text-slate-500 truncate"><MapPin className="w-3.5 h-3.5 shrink-0 text-[#0059FF]" />{booking.locationName}</p>}
+                        <p className="text-[11px] font-bold text-slate-700" dir="ltr">{booking.checkIn} ← {booking.checkOut} · {booking.nights} ليالٍ</p>
+                        <p className="flex gap-1 text-[11px] text-slate-500"><Users className="w-3.5 h-3.5" />{booking.guestsCount} ضيوف</p>
+                      </div>
                     </div>
-                  </div>
-                )}
-
-                {activeBooking.status === 'APPROVED_PENDING_PAYMENT' && (
-                  <div className="p-4 bg-blue-50 border border-blue-200 rounded-2xl flex items-start gap-3 text-xs font-bold text-blue-900">
-                    <CheckCircle2 className="w-5 h-5 text-[#0059FF] shrink-0 mt-0.5" />
-                    <div>
-                      <h4 className="font-black text-blue-950 text-sm mb-0.5">وافق المالك على طلبك! 🎉</h4>
-                      <p className="text-blue-800 text-[11px] leading-relaxed">
-                        أصبح الطلب جاهزاً لدفع العربون ({activeBooking.depositAmountEgp.toLocaleString()} ج.م). الدفع غير متاح في هذه المرحلة بعد.
-                      </p>
-                    </div>
-                  </div>
-                )}
-
-                {activeBooking.status === 'CONFIRMED' && (
-                  <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-2xl flex items-start gap-3 text-xs font-bold text-emerald-900">
-                    <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
-                    <div>
-                      <h4 className="font-black text-emerald-950 text-sm mb-0.5">تم تأكيد حجزك رسمياً 🥳</h4>
-                      <p className="text-emerald-800 text-[11px] leading-relaxed">
-                        تم استلام العربون وحجز الوحدة باسمك بشكل رسمي. يرجى التنسيق مع المالك لتحديد موعد الاستلام.
-                      </p>
-                    </div>
-                  </div>
-                )}
-
-                {activeBooking.status === 'REJECTED' && (
-                  <div className="p-4 bg-rose-50 border border-rose-200 rounded-2xl flex items-start gap-3 text-xs font-bold text-rose-900">
-                    <AlertCircle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
-                    <div>
-                      <h4 className="font-black text-rose-950 text-sm mb-0.5">اعتذر المالك عن قبول الحجز ⚠️</h4>
-                      <p className="text-rose-800 text-[11px] leading-relaxed">
-                        تعذر على المالك قبول الطلب في التواريخ المحددة. يمكنك استكشاف وحدات ساحلية أخرى.
-                      </p>
-                    </div>
-                  </div>
-                )}
-
-                <div className="bg-white rounded-2xl border border-slate-200 p-4 space-y-2 text-xs font-bold text-slate-700">
-                  <div className="flex justify-between gap-3"><span>الوحدة</span><span className="text-slate-900">{activeBooking.propertyTitle}</span></div>
-                  <div className="flex justify-between gap-3"><span>الإقامة</span><span dir="ltr">{activeBooking.checkIn} ← {activeBooking.checkOut}</span></div>
-                  <div className="flex justify-between gap-3"><span>إجمالي الطلب</span><span>{activeBooking.totalBookingValueEgp.toLocaleString()} ج.م</span></div>
-                  <div className="flex justify-between gap-3 text-[#0059FF]"><span>العربون بعد الموافقة</span><span>{activeBooking.depositAmountEgp.toLocaleString()} ج.م</span></div>
-                </div>
+                    <div className="px-3 py-2.5 border-t border-slate-100 flex items-center justify-between text-xs"><span className="text-slate-600">الإجمالي <strong className="text-slate-900">{booking.totalStay.toLocaleString()} ج.م</strong></span><span className="text-[#0059FF] font-black">العربون {booking.depositAmount.toLocaleString()} ج.م · عرض التفاصيل</span></div>
+                  </button>
+                ))}
               </div>
             ) : (
               <div className="bg-slate-50 p-8 rounded-3xl border border-slate-200 text-center my-6">
@@ -883,6 +865,14 @@ export function App() {
           }}
           isFavorite={favorites.includes(selectedProperty.id)}
           onToggleFavorite={(id) => handleToggleFavorite(id)}
+        />
+      )}
+
+      {bookingDetailId && authToken && (
+        <BookingDetailModal
+          bookingId={bookingDetailId}
+          authToken={authToken}
+          onClose={() => setBookingDetailId(null)}
         />
       )}
 

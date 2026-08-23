@@ -183,9 +183,9 @@ export const propertyDb = {
         images,
         amenities: Array.isArray(p.amenities) ? p.amenities : [],
         houseRules: p.houseRules && typeof p.houseRules === 'object' ? p.houseRules : {},
-        locationName: p.resortName ? `${p.resortName} — ${p.region || p.address}` : (p.address || p.region || 'الساحل الشمالي'),
+        locationName: p.resortName ? `${p.resortName}${p.region || p.address ? ` — ${p.region || p.address}` : ''}` : (p.address || p.region || ''),
         pricing: { basePricePerNight: Number(p.pricePerNight), currency: 'EGP' },
-        location: { governorate: 'مطروح', city: p.region || 'الساحل الشمالي', district: p.resortName || '', address: p.address || '' },
+        location: { governorate: '', city: p.region || '', district: p.resortName || '', address: p.address || '' },
         capacity: { baseGuests: p.maxGuests, maxGuests: p.maxGuests, bedrooms: p.bedrooms, beds: p.bedsCount || p.bedrooms, bathrooms: p.bathrooms },
       };
     }));
@@ -219,9 +219,9 @@ export const propertyDb = {
       images,
       amenities: Array.isArray(p.amenities) ? p.amenities : [],
       houseRules: p.houseRules && typeof p.houseRules === 'object' ? p.houseRules : {},
-      locationName: p.resortName ? `${p.resortName} — ${p.region || p.address}` : (p.address || p.region || 'الساحل الشمالي'),
+      locationName: p.resortName ? `${p.resortName}${p.region || p.address ? ` — ${p.region || p.address}` : ''}` : (p.address || p.region || ''),
       pricing: { basePricePerNight: Number(p.pricePerNight), currency: 'EGP' },
-      location: { governorate: 'مطروح', city: p.region || 'الساحل الشمالي', district: p.resortName || '', address: p.address || '' },
+      location: { governorate: '', city: p.region || '', district: p.resortName || '', address: p.address || '' },
       capacity: { baseGuests: p.maxGuests, maxGuests: p.maxGuests, bedrooms: p.bedrooms, beds: p.bedsCount || p.bedrooms, bathrooms: p.bathrooms },
     };
   },
@@ -536,6 +536,22 @@ async function hydrateBooking(booking: any) {
     propertyTitle: property.title,
     locationName: property.resortName ? `${property.resortName} — ${property.region || property.address || ''}` : (property.address || property.region || ''),
     propertyImage: property.images?.[0] || '',
+    property: {
+      id: property.id,
+      title: property.title,
+      images: property.images || [],
+      address: property.address || '',
+      region: property.region || '',
+      resortName: property.resortName || '',
+      locationName: property.locationName || '',
+      description: property.description || '',
+      bedrooms: Number(property.bedrooms) || 0,
+      bathrooms: Number(property.bathrooms) || 0,
+      maxGuests: Number(property.maxGuests) || 0,
+      pricePerNight: Number(property.pricePerNight),
+      amenities: Array.isArray(property.amenities) ? property.amenities : [],
+      houseRules: property.houseRules && typeof property.houseRules === 'object' ? property.houseRules : {},
+    },
     totalPrice: Number(financialSummary.totalBookingValue),
     deposit: Number(financialSummary.depositAmount),
     totalStay: Number(financialSummary.totalBookingValue),
@@ -558,6 +574,132 @@ async function hydrateBooking(booking: any) {
     },
   };
 }
+
+export const BOOKING_CHAT_ENABLED_STATUSES = new Set(['APPROVED_PENDING_PAYMENT', 'CONFIRMED']);
+
+export function isBookingChatEligible(status: string) {
+  return BOOKING_CHAT_ENABLED_STATUSES.has(status);
+}
+
+function mapConversationRestRow(row: any) {
+  return {
+    id: row.id,
+    bookingId: row.booking_id,
+    propertyId: row.property_id,
+    customerId: row.customer_id,
+    ownerId: row.owner_id,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function mapMessageRestRow(row: any) {
+  return {
+    id: row.id,
+    conversationId: row.conversation_id,
+    senderId: row.sender_id,
+    senderRole: row.sender_role === 'CUSTOMER' ? 'RENTER' : 'OWNER',
+    text: row.text,
+    type: 'TEXT',
+    timestamp: row.created_at,
+    isRead: true,
+  };
+}
+
+async function hydrateConversation(conversation: any) {
+  const booking = await bookingDb.getById(conversation.bookingId);
+  if (!booking) throw new Error('CANONICAL_CONVERSATION_BOOKING_MISSING');
+
+  const messages = await messageDb.getByConversationId(conversation.id);
+  const latest = messages[messages.length - 1];
+  return {
+    ...conversation,
+    propertyTitle: booking.propertyTitle,
+    propertyImage: booking.propertyImage,
+    checkIn: booking.checkIn,
+    checkOut: booking.checkOut,
+    bookingStatus: booking.status,
+    renter: { id: booking.customerId, name: booking.guestName || 'مستأجر', avatar: '', rating: 0 },
+    lastMessage: latest?.text || '',
+    lastMessageTimestamp: latest?.timestamp || conversation.createdAt,
+    unreadCount: 0,
+  };
+}
+
+export const conversationDb = {
+  async getOrCreateForBooking(booking: any) {
+    const existing = await queryDb(
+      `SELECT id, booking_id AS "bookingId", property_id AS "propertyId", customer_id AS "customerId", owner_id AS "ownerId", created_at AS "createdAt", updated_at AS "updatedAt"
+       FROM booking_conversations WHERE booking_id = $1`,
+      [booking.id]
+    );
+    if (existing.rows[0]) return hydrateConversation(existing.rows[0]);
+
+    const inserted = await queryDb(
+      `INSERT INTO booking_conversations (booking_id, property_id, customer_id, owner_id)
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (booking_id) DO UPDATE SET updated_at = NOW()
+       RETURNING id, booking_id AS "bookingId", property_id AS "propertyId", customer_id AS "customerId", owner_id AS "ownerId", created_at AS "createdAt", updated_at AS "updatedAt"`,
+      [booking.id, booking.propertyId, booking.customerId, booking.ownerId]
+    );
+    if (!inserted.rows[0]) throw new Error('CONVERSATION_PERSISTENCE_FAILED');
+    return hydrateConversation(inserted.rows[0]);
+  },
+
+  async getForCustomer(conversationId: string, customerId: string) {
+    const res = await queryDb(
+      `SELECT id, booking_id AS "bookingId", property_id AS "propertyId", customer_id AS "customerId", owner_id AS "ownerId", created_at AS "createdAt", updated_at AS "updatedAt"
+       FROM booking_conversations WHERE id = $1 AND customer_id = $2`,
+      [conversationId, customerId]
+    );
+    return res.rows[0] ? hydrateConversation(res.rows[0]) : null;
+  },
+
+  async getForOwner(conversationId: string, ownerId: string) {
+    const res = await queryDb(
+      `SELECT id, booking_id AS "bookingId", property_id AS "propertyId", customer_id AS "customerId", owner_id AS "ownerId", created_at AS "createdAt", updated_at AS "updatedAt"
+       FROM booking_conversations WHERE id = $1 AND owner_id = $2`,
+      [conversationId, ownerId]
+    );
+    return res.rows[0] ? hydrateConversation(res.rows[0]) : null;
+  },
+
+  async getByOwnerId(ownerId: string) {
+    const res = await queryDb(
+      `SELECT id, booking_id AS "bookingId", property_id AS "propertyId", customer_id AS "customerId", owner_id AS "ownerId", created_at AS "createdAt", updated_at AS "updatedAt"
+       FROM booking_conversations WHERE owner_id = $1 ORDER BY updated_at DESC`,
+      [ownerId]
+    );
+    return Promise.all(res.rows.map(hydrateConversation));
+  },
+};
+
+export const messageDb = {
+  async getByConversationId(conversationId: string) {
+    const res = await queryDb(
+      `SELECT id, conversation_id AS "conversationId", sender_id AS "senderId", sender_role AS "senderRole", text, created_at AS "timestamp"
+       FROM booking_messages WHERE conversation_id = $1 ORDER BY created_at ASC`,
+      [conversationId]
+    );
+    return res.rows.map((row: any) => ({
+      ...row,
+      senderRole: row.senderRole === 'CUSTOMER' ? 'RENTER' : 'OWNER',
+      type: 'TEXT',
+      isRead: true,
+    }));
+  },
+
+  async create(conversationId: string, senderId: string, senderRole: 'CUSTOMER' | 'OWNER', text: string) {
+    const res = await queryDb(
+      `INSERT INTO booking_messages (conversation_id, sender_id, sender_role, text)
+       VALUES ($1, $2, $3, $4)
+       RETURNING id, conversation_id AS "conversationId", sender_id AS "senderId", sender_role AS "senderRole", text, created_at AS "timestamp"`,
+      [conversationId, senderId, senderRole, text]
+    );
+    const row = res.rows[0];
+    return row ? { ...row, senderRole: row.senderRole === 'CUSTOMER' ? 'RENTER' : 'OWNER', type: 'TEXT', isRead: true } : null;
+  },
+};
 
 // ----------------------------------------------------------------------------
 // 4. PAYOUTS REPOSITORY (With Idempotency & PII Masking)

@@ -437,17 +437,21 @@ export class HttpRepository implements
 
   // 10. Messaging Repository
   async getConversations(): Promise<ChatConversation[]> {
-    return this.fetchJson('/owner/messages/conversations');
+    return this.fetchJson('/owner/conversations');
+  }
+
+  async getOrCreateConversationForBooking(bookingId: string): Promise<ChatConversation> {
+    return this.fetchJson(`/owner/bookings/${bookingId}/conversation`, { method: 'POST' });
   }
 
   async getChatMessages(conversationId: string): Promise<ChatMessage[]> {
-    return this.fetchJson(`/owner/messages/conversations/${conversationId}`);
+    return this.fetchJson(`/owner/conversations/${conversationId}/messages`);
   }
 
   async sendChatMessage(payload: SendChatMessagePayload): Promise<ChatMessage> {
-    return this.fetchJson('/owner/messages/send', {
+    return this.fetchJson(`/owner/conversations/${payload.conversationId}/messages`, {
       method: 'POST',
-      body: JSON.stringify(payload),
+      body: JSON.stringify({ text: payload.text }),
     });
   }
 

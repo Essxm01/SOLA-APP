@@ -1,6 +1,6 @@
 # Current Task
 
-**Status:** In progress — OWNER-HOME-01
+**Status:** Ready for Founder visual acceptance — OWNER-HOME-01
 
 ## Objective
 
@@ -39,4 +39,4 @@ Run Owner focused tests, typecheck/build, design check, then verify the deployed
 
 ## Documentation Impact
 
-Update `docs/CURRENT_STATE.md` if the visible Home migration materially changes the handoff state, then mark this task complete.
+`docs/CURRENT_STATE.md` records the material Home change. Preserve this completed contract until the next task replaces it.

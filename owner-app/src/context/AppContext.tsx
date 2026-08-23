@@ -272,7 +272,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           advAnalyticsData,
         ] = await Promise.all([
           repo.property.getProperties(),
-          repo.booking.getBookings().catch(() => []),
+          repo.booking.getBookings(),
           repo.notification.getNotifications().catch(() => []),
           repo.messaging.getConversations().catch(() => []),
           repo.dispute.getDisputes().catch(() => []),
@@ -720,7 +720,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       } else {
         await mockRepository.approveBooking(bookingId);
       }
-      showToast('تم قبول طلب الحجز وتأكيده بنجاح! 🥳', 'success');
+      showToast('تم قبول الطلب. بانتظار سداد العربون من العميل.', 'success');
       await refreshData();
     } catch (err: any) {
       showToast(err.message || 'تعذر قبول طلب الحجز', 'error');

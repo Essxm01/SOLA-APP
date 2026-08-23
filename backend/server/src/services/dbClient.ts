@@ -47,6 +47,25 @@ function safeParse<T>(val: any, fallback: T): T {
   }
 }
 
+function mapBookingRestRow(booking: any) {
+  return {
+    id: booking.id,
+    bookingNumber: booking.booking_number,
+    propertyId: booking.property_id,
+    ownerId: booking.owner_id,
+    customerId: booking.customer_id,
+    guestName: booking.guest_name,
+    checkIn: booking.check_in,
+    checkOut: booking.check_out,
+    nights: booking.nights,
+    guestsCount: booking.total_guests,
+    status: booking.status,
+    createdAt: booking.created_at,
+    confirmedAt: booking.confirmed_at,
+    rejectedAt: booking.rejected_at,
+  };
+}
+
 async function queryViaSupabaseRest(text: string, params: any[] | undefined, url: string, key: string): Promise<pg.QueryResult<any> | null> {
   const headers: Record<string, string> = {
     'apikey': key,
@@ -882,6 +901,165 @@ async function queryViaSupabaseRest(text: string, params: any[] | undefined, url
       propertyId: r.property_id,
     }));
     return { rows: mapped, command: 'UPDATE', rowCount: mapped.length, oid: 0, fields: [] };
+  }
+
+  // 7A. INSERT a canonical customer booking request.
+  if (lowerSql.startsWith('insert into bookings') && lowerSql.includes('customer_id')) {
+    const payload = {
+      id: params?.[0],
+      booking_number: params?.[1],
+      property_id: params?.[2],
+      owner_id: params?.[3],
+      customer_id: params?.[4],
+      guest_name: params?.[5],
+      guest_phone: params?.[6],
+      check_in: params?.[7],
+      check_out: params?.[8],
+      nights: Number(params?.[9]),
+      total_guests: Number(params?.[10]),
+      status: params?.[11],
+    };
+    const res = await fetch(`${url}/rest/v1/bookings`, {
+      method: 'POST',
+      headers: { ...headers, 'Prefer': 'return=representation' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const body = await res.text().catch(() => '');
+      throw new Error(`REST_BOOKING_INSERT_FAILED: HTTP ${res.status} — ${body.slice(0, 200)}`);
+    }
+    const raw: any = await res.json().catch(() => []);
+    const rows = (Array.isArray(raw) ? raw : [raw]).filter(Boolean).map((b: any) => ({
+      id: b.id,
+      bookingNumber: b.booking_number,
+      propertyId: b.property_id,
+      ownerId: b.owner_id,
+      customerId: b.customer_id,
+      guestName: b.guest_name,
+      checkIn: b.check_in,
+      checkOut: b.check_out,
+      nights: b.nights,
+      guestsCount: b.total_guests,
+      status: b.status,
+      createdAt: b.created_at,
+    }));
+    return { rows, command: 'INSERT', rowCount: rows.length, oid: 0, fields: [] };
+  }
+
+  // 7B. INSERT canonical server-calculated booking financial summary.
+  if (lowerSql.startsWith('insert into booking_financial_summaries')) {
+    const payload = {
+      booking_id: params?.[0],
+      total_booking_value: Number(params?.[1]),
+      deposit_amount: Number(params?.[2]),
+      sola_commission_amount: Number(params?.[3]),
+      owner_net_deposit_amount: Number(params?.[4]),
+      remaining_balance: Number(params?.[5]),
+      commission_on_remaining_balance: Number(params?.[6]),
+    };
+    const res = await fetch(`${url}/rest/v1/booking_financial_summaries`, {
+      method: 'POST',
+      headers: { ...headers, 'Prefer': 'return=representation' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const body = await res.text().catch(() => '');
+      throw new Error(`REST_BOOKING_FINANCIAL_SUMMARY_INSERT_FAILED: HTTP ${res.status} — ${body.slice(0, 200)}`);
+    }
+    const raw: any = await res.json().catch(() => []);
+    const rows = (Array.isArray(raw) ? raw : [raw]).filter(Boolean).map((summary: any) => ({
+      bookingId: summary.booking_id,
+      totalBookingValue: summary.total_booking_value,
+      depositAmount: summary.deposit_amount,
+      solaCommissionAmount: summary.sola_commission_amount,
+      ownerNetDepositAmount: summary.owner_net_deposit_amount,
+      remainingBalance: summary.remaining_balance,
+      commissionOnRemainingBalance: summary.commission_on_remaining_balance,
+      createdAt: summary.created_at,
+    }));
+    return { rows, command: 'INSERT', rowCount: rows.length, oid: 0, fields: [] };
+  }
+
+  // 7C. SELECT a booking financial summary by booking id.
+  if (lowerSql.includes('from booking_financial_summaries') && /\bbooking_id\s*=\s*\$1\b/i.test(text)) {
+    const bookingId = params?.[0];
+    const res = await fetch(`${url}/rest/v1/booking_financial_summaries?booking_id=eq.${encodeURIComponent(bookingId)}`, { headers });
+    if (!res.ok) throw new Error(`REST_BOOKING_FINANCIAL_SUMMARY_SELECT_FAILED: HTTP ${res.status}`);
+    const raw: any = await res.json().catch(() => []);
+    const rows = (Array.isArray(raw) ? raw : []).map((summary: any) => ({
+      bookingId: summary.booking_id,
+      totalBookingValue: summary.total_booking_value,
+      depositAmount: summary.deposit_amount,
+      solaCommissionAmount: summary.sola_commission_amount,
+      ownerNetDepositAmount: summary.owner_net_deposit_amount,
+      remainingBalance: summary.remaining_balance,
+      commissionOnRemainingBalance: summary.commission_on_remaining_balance,
+      createdAt: summary.created_at,
+    }));
+    return { rows, command: 'SELECT', rowCount: rows.length, oid: 0, fields: [] };
+  }
+
+  // 7D. SELECT owner-scoped booking requests. Keep this before generic availability matching.
+  if (lowerSql.startsWith('select') && lowerSql.includes('from bookings') && /\bowner_id\s*=\s*\$1\b/i.test(text) && !lowerSql.includes('property_id = $1')) {
+    const ownerId = params?.[0];
+    const res = await fetch(`${url}/rest/v1/bookings?owner_id=eq.${encodeURIComponent(ownerId)}&order=created_at.desc`, { headers });
+    if (!res.ok) throw new Error(`REST_BOOKINGS_SELECT_BY_OWNER_FAILED: HTTP ${res.status}`);
+    const raw: any = await res.json().catch(() => []);
+    const rows = (Array.isArray(raw) ? raw : []).map(mapBookingRestRow);
+    return { rows, command: 'SELECT', rowCount: rows.length, oid: 0, fields: [] };
+  }
+
+  // 7E. SELECT a single booking by id. The exact id predicate prevents owner_id collisions.
+  if (lowerSql.startsWith('select') && lowerSql.includes('from bookings') && /\bid\s*=\s*\$1\b/i.test(text) && !/\b(owner_id|customer_id|property_id)\s*=\s*\$1\b/i.test(text)) {
+    const bookingId = params?.[0];
+    const res = await fetch(`${url}/rest/v1/bookings?id=eq.${encodeURIComponent(bookingId)}`, { headers });
+    if (!res.ok) throw new Error(`REST_BOOKING_SELECT_BY_ID_FAILED: HTTP ${res.status}`);
+    const raw: any = await res.json().catch(() => []);
+    const rows = (Array.isArray(raw) ? raw : []).map(mapBookingRestRow);
+    return { rows, command: 'SELECT', rowCount: rows.length, oid: 0, fields: [] };
+  }
+
+  // 7F. SELECT customer-scoped bookings. Customer ID is the sole authority; never fall back to a phone match.
+  if (lowerSql.startsWith('select') && lowerSql.includes('from bookings') && /\bcustomer_id\s*=\s*\$1\b/i.test(text)) {
+    const customerId = params?.[0];
+    const res = await fetch(`${url}/rest/v1/bookings?customer_id=eq.${encodeURIComponent(customerId)}&order=created_at.desc`, { headers });
+    if (!res.ok) throw new Error(`REST_BOOKINGS_SELECT_BY_CUSTOMER_FAILED: HTTP ${res.status}`);
+    const raw: any = await res.json().catch(() => []);
+    const rows = (Array.isArray(raw) ? raw : []).map(mapBookingRestRow);
+    return { rows, command: 'SELECT', rowCount: rows.length, oid: 0, fields: [] };
+  }
+
+  // 7G. Owner decision. PATCH requires the pending state and exact owner ownership in the REST predicate.
+  if (lowerSql.startsWith('update bookings') && /\bid\s*=\s*\$1\b/i.test(text) && /\bowner_id\s*=\s*\$2\b/i.test(text) && /\bstatus\s*=\s*'pending_owner_approval'/i.test(text)) {
+    const bookingId = params?.[0];
+    const ownerId = params?.[1];
+    const status = params?.[2];
+    const res = await fetch(`${url}/rest/v1/bookings?id=eq.${encodeURIComponent(bookingId)}&owner_id=eq.${encodeURIComponent(ownerId)}&status=eq.PENDING_OWNER_APPROVAL`, {
+      method: 'PATCH',
+      headers: { ...headers, 'Prefer': 'return=representation' },
+      body: JSON.stringify({ status, ...(status === 'REJECTED' ? { rejected_at: new Date().toISOString() } : {}) }),
+    });
+    if (!res.ok) {
+      const body = await res.text().catch(() => '');
+      throw new Error(`REST_BOOKING_STATUS_UPDATE_FAILED: HTTP ${res.status} — ${body.slice(0, 200)}`);
+    }
+    const raw: any = await res.json().catch(() => []);
+    const rows = (Array.isArray(raw) ? raw : []).map(mapBookingRestRow);
+    return { rows, command: 'UPDATE', rowCount: rows.length, oid: 0, fields: [] };
+  }
+
+  // 7H. Compensating delete is limited to a just-created customer-owned pending request when summary persistence fails.
+  if (lowerSql.startsWith('delete from bookings') && /\bid\s*=\s*\$1\b/i.test(text) && /\bcustomer_id\s*=\s*\$2\b/i.test(text) && /\bstatus\s*=\s*'pending_owner_approval'/i.test(text)) {
+    const bookingId = params?.[0];
+    const customerId = params?.[1];
+    const res = await fetch(`${url}/rest/v1/bookings?id=eq.${encodeURIComponent(bookingId)}&customer_id=eq.${encodeURIComponent(customerId)}&status=eq.PENDING_OWNER_APPROVAL`, {
+      method: 'DELETE',
+      headers: { ...headers, 'Prefer': 'return=representation' },
+    });
+    if (!res.ok) throw new Error(`REST_BOOKING_COMPENSATING_DELETE_FAILED: HTTP ${res.status}`);
+    const raw: any = await res.json().catch(() => []);
+    const rows = (Array.isArray(raw) ? raw : []).map(mapBookingRestRow);
+    return { rows, command: 'DELETE', rowCount: rows.length, oid: 0, fields: [] };
   }
 
   // 7. SELECT bookings for Property Availability & Overlap Checks (Canonical Blocking Statuses)

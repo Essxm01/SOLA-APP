@@ -42,8 +42,11 @@ interface PropertyDetailModalProps {
   property: CustomerPropertyItem;
   authToken?: string | null;
   onClose: () => void;
-  onInitiateBooking: (prop: CustomerPropertyItem, checkIn: string, checkOut: string, guests: number) => void;
+  onInitiateBooking: (prop: CustomerPropertyItem, checkIn: string, checkOut: string, guests: number) => Promise<void>;
   onRequireAuth: (interceptedAction: { propertyId: string; checkIn: string; checkOut: string; guests: number }) => void;
+  restoredBookingIntent?: { propertyId: string; checkIn: string; checkOut: string; guests: number } | null;
+  restoreBookingReview?: boolean;
+  onBookingReviewRestored?: () => void;
   isFavorite?: boolean;
   onToggleFavorite?: (id: string) => void;
 }
@@ -68,13 +71,16 @@ export const PropertyDetailModal: React.FC<PropertyDetailModalProps> = ({
   onClose,
   onInitiateBooking,
   onRequireAuth,
+  restoredBookingIntent,
+  restoreBookingReview = false,
+  onBookingReviewRestored,
   isFavorite = false,
   onToggleFavorite,
 }) => {
   // Booking Selection State
-  const [checkIn, setCheckIn] = useState<string | null>(null);
-  const [checkOut, setCheckOut] = useState<string | null>(null);
-  const [guests, setGuests] = useState<number>(1);
+  const [checkIn, setCheckIn] = useState<string | null>(restoredBookingIntent?.checkIn || null);
+  const [checkOut, setCheckOut] = useState<string | null>(restoredBookingIntent?.checkOut || null);
+  const [guests, setGuests] = useState<number>(restoredBookingIntent?.guests || 1);
 
   // Gallery State
   const images = useMemo(() => {
@@ -103,6 +109,8 @@ export const PropertyDetailModal: React.FC<PropertyDetailModalProps> = ({
 
   // Booking Review Sheet
   const [showReviewSheet, setShowReviewSheet] = useState<boolean>(false);
+  const [isSubmittingBooking, setIsSubmittingBooking] = useState<boolean>(false);
+  const [bookingSubmitError, setBookingSubmitError] = useState<string | null>(null);
 
   // ── 1. Fetch Real Availability (Fail-Closed) ──────────────────────────────
   const fetchAvailability = useCallback(async () => {
@@ -193,6 +201,16 @@ export const PropertyDetailModal: React.FC<PropertyDetailModalProps> = ({
     }
   }, [checkIn, checkOut, guests, fetchServerQuote]);
 
+  useEffect(() => {
+    if (!restoreBookingReview || !authToken || !checkIn || !checkOut || quoteLoading) return;
+    if (quote) {
+      setShowReviewSheet(true);
+      onBookingReviewRestored?.();
+      return;
+    }
+    void fetchServerQuote();
+  }, [restoreBookingReview, authToken, checkIn, checkOut, quote, quoteLoading, fetchServerQuote, onBookingReviewRestored]);
+
   // ── 4. Continue CTA Handler ───────────────────────────────────────────────
   const handleCTAPress = async () => {
     if (!checkIn || !checkOut) return;
@@ -211,8 +229,18 @@ export const PropertyDetailModal: React.FC<PropertyDetailModalProps> = ({
   };
 
   // ── 5. Confirm Submit Booking Request ─────────────────────────────────────
-  const handleConfirmSubmit = () => {
-    onInitiateBooking(property, checkIn!, checkOut!, guests);
+  const handleConfirmSubmit = async () => {
+    if (isSubmittingBooking || !checkIn || !checkOut) return;
+    setIsSubmittingBooking(true);
+    setBookingSubmitError(null);
+    try {
+      await onInitiateBooking(property, checkIn, checkOut, guests);
+      setShowReviewSheet(false);
+    } catch (err: any) {
+      setBookingSubmitError(err?.message || 'تعذر إرسال طلب الحجز. لم يتم إنشاء أي طلب.');
+    } finally {
+      setIsSubmittingBooking(false);
+    }
   };
 
   // Local calculations
@@ -586,6 +614,8 @@ export const PropertyDetailModal: React.FC<PropertyDetailModalProps> = ({
             onClose={() => setShowReviewSheet(false)}
             onConfirmSubmit={handleConfirmSubmit}
             onEditDetails={() => setShowReviewSheet(false)}
+            isSubmitting={isSubmittingBooking}
+            submitError={bookingSubmitError}
           />
         )}
 

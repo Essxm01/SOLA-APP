@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import type { Booking } from '../../types';
 import { BookingStatusChip } from '../ui/Badge';
@@ -14,27 +14,22 @@ import {
   ChevronLeft,
   MessageSquare,
   Sparkles,
-  Clock,
   AlertTriangle,
   DollarSign,
-  Wallet,
 } from 'lucide-react';
 
 export const BookingsFoundationView: React.FC = () => {
   const {
     bookings,
     cancellationRequests,
-    isEmptyDashboard,
     bookingTabSegment,
     setBookingTabSegment,
     approveBooking,
     rejectBooking,
     approveCancellationRequest,
     rejectCancellationRequest,
-    simulateDepositPayment,
     openChatForBooking,
     isWithinSelfModificationWindow,
-    isBookingExpired,
   } = useApp();
 
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
@@ -68,13 +63,6 @@ export const BookingsFoundationView: React.FC = () => {
 
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Live timer tick helper for expiration
-  const [, setTick] = useState(0);
-  useEffect(() => {
-    const timer = setInterval(() => setTick((t) => t + 1), 60000);
-    return () => clearInterval(timer);
-  }, []);
-
   const today = new Date().toISOString().slice(0, 10);
 
   const pendingBookings = (bookings || []).filter(
@@ -88,23 +76,6 @@ export const BookingsFoundationView: React.FC = () => {
   const pastBookings = (bookings || [])
     .filter((b) => b.checkOut < today || b.status === 'CANCELLED')
     .sort((a, b) => b.checkIn.localeCompare(a.checkIn));
-
-  const getRemainingExpirationText = (expiresAt?: string) => {
-    if (!expiresAt) return null;
-    const now = new Date().getTime();
-    const exp = new Date(expiresAt).getTime();
-    const diffMs = exp - now;
-
-    if (diffMs <= 0) return 'منتهي';
-
-    const hours = Math.floor(diffMs / (1000 * 60 * 60));
-    const mins = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
-
-    if (hours > 0) {
-      return `ينتهي الطلب خلال ${hours} ساعة و ${mins} دقيقة`;
-    }
-    return `ينتهي الطلب خلال ${mins} دقيقة فقط! ⚠️`;
-  };
 
   const handleOpenConfirm = (booking: Booking, action: 'approve' | 'reject') => {
     setConfirmModal({
@@ -160,16 +131,6 @@ export const BookingsFoundationView: React.FC = () => {
       setIsSubmitting(false);
       setCancellationConfirmModal({ isOpen: false, booking: null, requestId: null, action: 'approve', reason: '' });
       setIsDetailsOpen(false);
-    }
-  };
-
-  const handleSimulateDeposit = async (bookingId: string) => {
-    try {
-      await simulateDepositPayment(bookingId);
-      const updated = bookings.find((b) => b.id === bookingId);
-      if (updated) setSelectedBooking(updated);
-    } catch (err) {
-      console.error(err);
     }
   };
 
@@ -242,7 +203,7 @@ export const BookingsFoundationView: React.FC = () => {
       {/* SEGMENT 1: PENDING REQUESTS */}
       {bookingTabSegment === 'pending' && (
         <div className="space-y-3">
-          {isEmptyDashboard || pendingBookings.length === 0 ? (
+          {pendingBookings.length === 0 ? (
             <EmptyState
               type="bookings"
               title="لا توجد طلبات حجز جديدة حالياً"
@@ -250,45 +211,34 @@ export const BookingsFoundationView: React.FC = () => {
             />
           ) : (
             pendingBookings.map((b) => {
-              const expired = isBookingExpired(b);
-              const expText = getRemainingExpirationText(b.expiresAt);
               const fin = b.financialSummary;
 
               return (
                 <div
                   key={b.id}
                   className={`bg-white rounded-2xl p-4 border-2 shadow-xs space-y-3.5 hover:shadow-md transition-all ${
-                    expired ? 'border-slate-200 opacity-80' : 'border-amber-200'
+                    'border-amber-200'
                   }`}
                 >
                   {/* Renter Info Header */}
                   <div className="flex items-center justify-between border-b border-slate-100 pb-3">
                     <div className="flex items-center gap-3">
-                      <img
-                        src={b.renter?.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80'}
-                        alt={b.renter?.name || 'مستأجر'}
-                        className="w-11 h-11 rounded-full object-cover ring-2 ring-amber-100"
-                      />
+                      <div className="w-11 h-11 rounded-full bg-amber-100 text-amber-800 flex items-center justify-center font-black ring-2 ring-amber-100">
+                        {(b.renter?.name || 'م')[0]}
+                      </div>
                       <div>
                         <div className="flex items-center gap-1.5">
                           <span className="text-sm font-bold text-slate-900">{b.renter?.name || 'مستأجر'}</span>
-                          <span className="text-[11px] font-bold text-amber-600 bg-amber-50 px-1.5 py-0.2 rounded-md">
-                            ★ {b.renter?.rating ?? 5.0}
-                          </span>
                         </div>
                         <span className="text-[11px] text-slate-400">طلب حجز جديد • {b.createdAt}</span>
                       </div>
                     </div>
-                    <BookingStatusChip status={expired ? 'EXPIRED' : b.status} />
+                    <BookingStatusChip status={b.status} />
                   </div>
 
                   {/* Property & Dates Summary */}
                   <div className="flex gap-3 bg-slate-50 p-2.5 rounded-xl border border-slate-100">
-                    <img
-                      src={b.propertyImage}
-                      alt={b.propertyTitle}
-                      className="w-16 h-16 rounded-lg object-cover shrink-0"
-                    />
+                    {b.propertyImage ? <img src={b.propertyImage} alt={b.propertyTitle} className="w-16 h-16 rounded-lg object-cover shrink-0" /> : <div className="w-16 h-16 rounded-lg bg-slate-200 text-slate-500 text-[10px] flex items-center justify-center shrink-0">بدون صورة</div>}
                     <div className="min-w-0 space-y-1 text-xs">
                       <h4 className="font-bold text-slate-900 truncate">{b.propertyTitle}</h4>
                       <p className="text-slate-500 flex items-center gap-1">
@@ -303,31 +253,16 @@ export const BookingsFoundationView: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* Expiration Timer Warning */}
-                  {!expired && expText && (
-                    <div className="p-2 bg-amber-50 border border-amber-200 rounded-xl text-xs font-bold text-amber-900 flex items-center gap-1.5">
-                      <Clock className="w-4 h-4 text-amber-600 shrink-0" />
-                      <span>{expText}</span>
-                    </div>
-                  )}
-
-                  {expired && (
-                    <div className="p-2 bg-slate-100 border border-slate-200 rounded-xl text-xs font-bold text-slate-600 flex items-center gap-1.5">
-                      <Clock className="w-4 h-4 text-slate-400 shrink-0" />
-                      <span>انتهت مهلة الرد على هذا الطلب ولا يمكن قبوله.</span>
-                    </div>
-                  )}
-
                   {/* Financial Breakdown Brief Pill */}
                   {fin && (
                     <div className="p-3 bg-blue-50/60 rounded-xl border border-blue-100 space-y-1 text-xs dir-rtl">
                       <div className="flex items-center justify-between text-blue-900 font-bold">
+                        <span>قيمة الحجز:</span>
+                        <span className="font-mono text-sm">{fin.totalBookingValue.toLocaleString()} ج.م</span>
+                      </div>
+                      <div className="flex items-center justify-between text-blue-900 font-bold">
                         <span>عربون الليلة الأولى:</span>
                         <span className="font-mono text-sm">{fin.depositAmount.toLocaleString()} ج.م</span>
-                      </div>
-                      <div className="flex items-center justify-between text-slate-600 text-[11px]">
-                        <span>صافي أرباحك من العربون (بعد 20% عمولة Sola):</span>
-                        <span className="font-mono font-bold text-emerald-700">{fin.ownerNetDepositAmount.toLocaleString()} ج.م</span>
                       </div>
                       <div className="flex items-center justify-between text-slate-600 text-[11px] pt-1 border-t border-blue-100/50">
                         <span>المبلغ المتبقي عند الوصول:</span>
@@ -338,7 +273,7 @@ export const BookingsFoundationView: React.FC = () => {
 
                   {/* Actions Row */}
                   <div className="pt-2 flex items-center gap-2">
-                    {!expired ? (
+                    {b.status === 'PENDING_OWNER_APPROVAL' && (
                       <>
                         <Button
                           variant="primary"
@@ -360,10 +295,6 @@ export const BookingsFoundationView: React.FC = () => {
                           رفض الطلب 🔴
                         </Button>
                       </>
-                    ) : (
-                      <div className="flex-1 text-center py-2 bg-slate-100 rounded-xl text-xs font-bold text-slate-500">
-                        الطلب منتهي ⏱️
-                      </div>
                     )}
 
                     <button
@@ -383,7 +314,7 @@ export const BookingsFoundationView: React.FC = () => {
       {/* SEGMENT 2: UPCOMING BOOKINGS */}
       {bookingTabSegment === 'upcoming' && (
         <div className="space-y-3">
-          {isEmptyDashboard || upcomingBookings.length === 0 ? (
+          {upcomingBookings.length === 0 ? (
             <EmptyState
               type="bookings"
               title="لا توجد حجوزات قادمة مؤكدة"
@@ -405,22 +336,16 @@ export const BookingsFoundationView: React.FC = () => {
                 >
                   <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
                     <div className="flex items-center gap-2">
-                      <img
-                        src={b.renter?.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80'}
-                        alt={b.renter?.name || 'مستأجر'}
-                        className="w-8 h-8 rounded-full object-cover"
-                      />
+                      <div className="w-8 h-8 rounded-full bg-slate-100 text-slate-700 flex items-center justify-center font-black text-xs">
+                        {(b.renter?.name || 'م')[0]}
+                      </div>
                       <span className="text-xs font-bold text-slate-900">{b.renter.name}</span>
                     </div>
                     <BookingStatusChip status={b.hasCancellationRequest ? 'CANCELLATION_REQUESTED' : b.status} />
                   </div>
 
                   <div className="flex gap-3">
-                    <img
-                      src={b.propertyImage}
-                      alt={b.propertyTitle}
-                      className="w-14 h-14 rounded-xl object-cover shrink-0"
-                    />
+                    {b.propertyImage ? <img src={b.propertyImage} alt={b.propertyTitle} className="w-14 h-14 rounded-xl object-cover shrink-0" /> : <div className="w-14 h-14 rounded-xl bg-slate-200 text-slate-500 text-[10px] flex items-center justify-center shrink-0">بدون صورة</div>}
                     <div className="min-w-0 space-y-1 text-xs">
                       <h4 className="font-bold text-slate-900 truncate">{b.propertyTitle}</h4>
                       <p className="text-slate-500 font-mono font-bold flex items-center gap-1">
@@ -508,7 +433,7 @@ export const BookingsFoundationView: React.FC = () => {
       {/* SEGMENT 3: PAST BOOKINGS & CANCELLATIONS */}
       {bookingTabSegment === 'past' && (
         <div className="space-y-3">
-          {isEmptyDashboard || pastBookings.length === 0 ? (
+          {pastBookings.length === 0 ? (
             <EmptyState
               type="bookings"
               title="لا توجد حجوزات سابقة أو ملغاة"
@@ -634,21 +559,6 @@ export const BookingsFoundationView: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Section 2: Mock Payment Simulator trigger for testing */}
-                {selectedBooking.financialSummary.depositPaymentStatus !== 'PAID' && (
-                  <div className="pt-2 border-t border-slate-100">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      fullWidth
-                      onClick={() => handleSimulateDeposit(selectedBooking.id)}
-                      icon={<Wallet className="w-4 h-4 text-emerald-600" />}
-                      className="text-emerald-700 border-emerald-300 bg-emerald-50 hover:bg-emerald-100 font-bold text-xs py-2"
-                    >
-                      محاكاة تحويل العربون الافتراضي 💰 (Mock Deposit Test)
-                    </Button>
-                  </div>
-                )}
               </div>
             )}
 
@@ -705,14 +615,12 @@ export const BookingsFoundationView: React.FC = () => {
                 </button>
               </div>
               <div className="flex items-center gap-3">
-                <img
-                  src={selectedBooking.renter?.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80'}
-                  alt={selectedBooking.renter?.name || 'مستأجر'}
-                  className="w-12 h-12 rounded-full object-cover"
-                />
+                <div className="w-12 h-12 rounded-full bg-slate-100 text-slate-700 flex items-center justify-center font-black">
+                  {(selectedBooking.renter?.name || 'م')[0]}
+                </div>
                 <div>
                   <h4 className="text-sm font-bold text-slate-900">{selectedBooking.renter?.name || 'مستأجر'}</h4>
-                  <span className="text-xs text-slate-500">{selectedBooking.renter?.phone}</span>
+                  <span className="text-xs text-slate-500">التواصل داخل التطبيق فقط</span>
                 </div>
               </div>
             </div>
@@ -733,7 +641,7 @@ export const BookingsFoundationView: React.FC = () => {
             </div>
 
             {/* Action buttons inside details modal if PENDING & NOT EXPIRED */}
-            {selectedBooking.status === 'PENDING_OWNER_APPROVAL' && !isBookingExpired(selectedBooking) && (
+            {selectedBooking.status === 'PENDING_OWNER_APPROVAL' && (
               <div className="flex gap-2 pt-2">
                 <Button
                   variant="primary"

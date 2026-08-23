@@ -7,7 +7,7 @@ import { CustomerAuthModal, type CustomerUserProfile } from './components/Custom
 import { CustomerEditAccountPage } from './components/CustomerEditAccountPage';
 import { CustomerSupportModal } from './components/CustomerSupportModal';
 import { CustomerWalletModal } from './components/CustomerWalletModal';
-import { CustomerCheckoutModal, BookingDetails } from './components/CustomerCheckoutModal';
+import type { BookingDetails } from './components/CustomerCheckoutModal';
 import { BookingSuccessModal } from './components/BookingSuccessModal';
 import { CustomerBottomNav, CustomerTabType } from './components/CustomerBottomNav';
 import { LoadingStateView, EmptyStateView, ErrorStateView } from './components/StateViews';
@@ -60,6 +60,7 @@ export function App() {
   const [showSupportModal, setShowSupportModal] = useState<boolean>(false);
   const [showWalletModal, setShowWalletModal] = useState<boolean>(false);
   const [showSuccessModal, setShowSuccessModal] = useState<boolean>(false);
+  const [restoreBookingReview, setRestoreBookingReview] = useState<boolean>(false);
 
   // Intercepted Guest Context
   const [interceptedContext, setInterceptedContext] = useState<{
@@ -67,10 +68,15 @@ export function App() {
     checkIn: string;
     checkOut: string;
     guests: number;
-  } | null>(null);
+  } | null>(() => {
+    const saved = localStorage.getItem('sola_customer_pending_booking_intent');
+    try { return saved ? JSON.parse(saved) : null; } catch { return null; }
+  });
 
   // Active Booking State for Checkout / Details
   const [activeBooking, setActiveBooking] = useState<BookingDetails | null>(null);
+  const [bookingsLoading, setBookingsLoading] = useState<boolean>(false);
+  const [bookingsError, setBookingsError] = useState<string | null>(null);
 
   // Fetch Published Properties from API (Real PostgreSQL Records)
   const fetchProperties = async () => {
@@ -177,6 +183,44 @@ export function App() {
     } catch {}
   };
 
+  const toBookingDetails = (booking: any): BookingDetails => ({
+    id: booking.id,
+    bookingNumber: booking.bookingNumber,
+    propertyTitle: booking.propertyTitle || 'وحدة محجوزة',
+    checkIn: booking.checkIn,
+    checkOut: booking.checkOut,
+    totalNights: Number(booking.nights),
+    depositAmountEgp: Number(booking.financialSummary?.depositAmount ?? booking.depositAmount),
+    remainingBalanceEgp: Number(booking.financialSummary?.remainingBalance ?? booking.remainingAmount),
+    totalBookingValueEgp: Number(booking.financialSummary?.totalBookingValue ?? booking.totalStay),
+    status: booking.status,
+  });
+
+  const fetchBookings = async (token?: string | null) => {
+    const t = token || authToken || localStorage.getItem('sola_customer_access_token');
+    if (!t) {
+      setActiveBooking(null);
+      return [];
+    }
+    setBookingsLoading(true);
+    setBookingsError(null);
+    try {
+      const res = await fetch(getApiUrl('/customer/bookings'), { headers: { Authorization: `Bearer ${t}` } });
+      const json = await res.json();
+      if (!res.ok || !json.success || !Array.isArray(json.data)) {
+        throw new Error(json?.error?.message || 'تعذر جلب طلبات الحجز');
+      }
+      const bookings = json.data.map(toBookingDetails);
+      setActiveBooking(bookings[0] || null);
+      return bookings;
+    } catch (err: any) {
+      setBookingsError(err?.message || 'تعذر جلب طلبات الحجز من الخادم');
+      throw err;
+    } finally {
+      setBookingsLoading(false);
+    }
+  };
+
   // Session Restoration & Token Refresh on Mount
   useEffect(() => {
     const restoreSession = async () => {
@@ -201,6 +245,7 @@ export function App() {
             setUserProfile(mergedProfile);
             localStorage.setItem('sola_customer_profile', JSON.stringify(mergedProfile));
             fetchAccountSummary(storedToken);
+            void fetchBookings(storedToken).catch(() => undefined);
             return;
           }
         } catch {
@@ -221,6 +266,7 @@ export function App() {
             setAuthToken(json.data.accessToken);
             fetchCustomerProfile(json.data.accessToken);
             fetchAccountSummary(json.data.accessToken);
+            void fetchBookings(json.data.accessToken).catch(() => undefined);
           } else {
             handleLogout();
           }
@@ -242,6 +288,12 @@ export function App() {
         fetchCustomerProfile(tok);
         fetchAccountSummary(tok);
       }
+    }
+  }, [activeTab, authToken]);
+
+  useEffect(() => {
+    if (activeTab === 'BOOKINGS' && authToken) {
+      void fetchBookings(authToken).catch(() => undefined);
     }
   }, [activeTab, authToken]);
 
@@ -291,6 +343,7 @@ export function App() {
       fetchCustomerProfile(token);
     }
     fetchAccountSummary(token);
+    void fetchBookings(token).catch(() => undefined);
     setShowAuthModal(false);
 
     // Context Preservation: Return to exact same property & dates post-login
@@ -299,7 +352,7 @@ export function App() {
       if (targetProp) {
         setSelectedProperty(targetProp);
       }
-      setInterceptedContext(null);
+      setRestoreBookingReview(true);
     }
   };
 
@@ -322,78 +375,42 @@ export function App() {
     setCustomerPhone(null);
     setUserProfile(null);
     setAccountSummary(null);
+    setActiveBooking(null);
+    setBookingsError(null);
     setActiveTab('EXPLORE');
   };
 
-  // Booking Request Handler (Posts PENDING_OWNER_APPROVAL Request to Backend)
+  // Booking Request Handler: submits intent only. The server owns price, availability, and persistence.
   const handleInitiateBooking = async (
     prop: CustomerPropertyItem,
     checkIn: string,
     checkOut: string,
     guests: number
-  ) => {
-    const d1 = new Date(checkIn);
-    const d2 = new Date(checkOut);
-    const nights = Math.max(1, Math.round((d2.getTime() - d1.getTime()) / (1000 * 3600 * 24)));
-    const nightlyPrice = prop.basePricePerNight || 0;
-    const totalValue = nightlyPrice * nights;
-    const deposit = nightlyPrice;
-    const remaining = totalValue - deposit;
-
-    try {
-      const res = await fetch(getApiUrl('/customer/bookings'), {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
-        },
-        body: JSON.stringify({
-          propertyId: prop.id,
-          checkIn,
-          checkOut,
-          totalGuests: guests,
-        }),
-      });
-
-      const json = await res.json();
-      if (res.ok && json.success && json.data) {
-        const created = json.data;
-        const newBooking: BookingDetails = {
-          id: created.id,
-          bookingNumber: created.bookingNumber,
-          propertyTitle: prop.title,
-          checkIn: created.checkIn,
-          checkOut: created.checkOut,
-          totalNights: created.nights,
-          depositAmountEgp: created.financialSummary?.depositAmount || deposit,
-          remainingBalanceEgp: created.financialSummary?.remainingBalance || remaining,
-          totalBookingValueEgp: created.financialSummary?.totalBookingValue || totalValue,
-          status: 'PENDING_OWNER_APPROVAL',
-        };
-
-        setActiveBooking(newBooking);
-        setSelectedProperty(null);
-        setShowSuccessModal(true);
-        return;
-      }
-    } catch {
-      // Fallback
+  ): Promise<void> => {
+    if (!authToken) {
+      const intent = { propertyId: prop.id, checkIn, checkOut, guests };
+      localStorage.setItem('sola_customer_pending_booking_intent', JSON.stringify(intent));
+      setInterceptedContext(intent);
+      setShowAuthModal(true);
+      return;
     }
 
-    const fallbackBooking: BookingDetails = {
-      id: `bk_${Date.now()}`,
-      bookingNumber: `BK-${Date.now().toString().slice(-6)}`,
-      propertyTitle: prop.title,
-      checkIn,
-      checkOut,
-      totalNights: nights,
-      depositAmountEgp: deposit,
-      remainingBalanceEgp: remaining,
-      totalBookingValueEgp: totalValue,
-      status: 'PENDING_OWNER_APPROVAL',
-    };
+    const res = await fetch(getApiUrl('/customer/bookings'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
+      body: JSON.stringify({ propertyId: prop.id, checkIn, checkOut, guests }),
+    });
+    const json = await res.json();
+    if (!res.ok || !json.success || !json.data) {
+      throw new Error(json?.error?.message || 'تعذر إرسال طلب الحجز. لم يتم إنشاء أي طلب.');
+    }
 
-    setActiveBooking(fallbackBooking);
+    const created: BookingDetails = {
+      ...toBookingDetails(json.data),
+      propertyTitle: prop.title,
+    };
+    setActiveBooking(created);
+    await fetchBookings(authToken);
     setSelectedProperty(null);
     setShowSuccessModal(true);
   };
@@ -517,7 +534,15 @@ export function App() {
         {activeTab === 'BOOKINGS' && (
           <div className="my-4">
             <h2 className="text-base font-black text-slate-900 mb-3">حجوزاتي والطلبات الحالية</h2>
-            {activeBooking ? (
+            {bookingsLoading ? (
+              <LoadingStateView message="جاري جلب طلبات الحجز..." />
+            ) : bookingsError ? (
+              <div className="bg-rose-50 p-5 rounded-2xl border border-rose-200 text-center space-y-3">
+                <AlertCircle className="w-8 h-8 text-rose-600 mx-auto" />
+                <p className="text-xs font-bold text-rose-900">{bookingsError}</p>
+                <button onClick={() => void fetchBookings()} className="min-h-11 px-4 rounded-xl bg-white border border-rose-200 text-rose-700 text-xs font-black">إعادة المحاولة</button>
+              </div>
+            ) : activeBooking ? (
               <div className="space-y-4">
                 {/* Lifecycle Banner */}
                 {activeBooking.status === 'PENDING_OWNER_APPROVAL' && (
@@ -538,7 +563,7 @@ export function App() {
                     <div>
                       <h4 className="font-black text-blue-950 text-sm mb-0.5">وافق المالك على طلبك! 🎉</h4>
                       <p className="text-blue-800 text-[11px] leading-relaxed">
-                        يرجى دفع مبلغ العربون ({activeBooking.depositAmountEgp.toLocaleString()} ج.م) لتثبيت الحجز رسمياً.
+                        أصبح الطلب جاهزاً لدفع العربون ({activeBooking.depositAmountEgp.toLocaleString()} ج.م). الدفع غير متاح في هذه المرحلة بعد.
                       </p>
                     </div>
                   </div>
@@ -568,17 +593,12 @@ export function App() {
                   </div>
                 )}
 
-                {/* Render Booking / Payment Component */}
-                <CustomerCheckoutModal
-                  booking={activeBooking}
-                  authToken={authToken || ''}
-                  onPaymentSuccess={() => {
-                    setActiveBooking((prev) => (prev ? { ...prev, status: 'CONFIRMED' } : null));
-                  }}
-                  onCancelBooking={() => {
-                    setActiveBooking((prev) => (prev ? { ...prev, status: 'CANCELLED_BY_GUEST' } : null));
-                  }}
-                />
+                <div className="bg-white rounded-2xl border border-slate-200 p-4 space-y-2 text-xs font-bold text-slate-700">
+                  <div className="flex justify-between gap-3"><span>الوحدة</span><span className="text-slate-900">{activeBooking.propertyTitle}</span></div>
+                  <div className="flex justify-between gap-3"><span>الإقامة</span><span dir="ltr">{activeBooking.checkIn} ← {activeBooking.checkOut}</span></div>
+                  <div className="flex justify-between gap-3"><span>إجمالي الطلب</span><span>{activeBooking.totalBookingValueEgp.toLocaleString()} ج.م</span></div>
+                  <div className="flex justify-between gap-3 text-[#0059FF]"><span>العربون بعد الموافقة</span><span>{activeBooking.depositAmountEgp.toLocaleString()} ج.م</span></div>
+                </div>
               </div>
             ) : (
               <div className="bg-slate-50 p-8 rounded-3xl border border-slate-200 text-center my-6">
@@ -850,8 +870,16 @@ export function App() {
           onClose={() => setSelectedProperty(null)}
           onInitiateBooking={handleInitiateBooking}
           onRequireAuth={(context) => {
+            localStorage.setItem('sola_customer_pending_booking_intent', JSON.stringify(context));
             setInterceptedContext(context);
             setShowAuthModal(true);
+          }}
+          restoredBookingIntent={interceptedContext}
+          restoreBookingReview={restoreBookingReview}
+          onBookingReviewRestored={() => {
+            setRestoreBookingReview(false);
+            setInterceptedContext(null);
+            localStorage.removeItem('sola_customer_pending_booking_intent');
           }}
           isFavorite={favorites.includes(selectedProperty.id)}
           onToggleFavorite={(id) => handleToggleFavorite(id)}

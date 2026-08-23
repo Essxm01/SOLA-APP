@@ -58,19 +58,18 @@ export class PropertyDomainController {
 // 2. BOOKING DOMAIN CONTROLLER (RULE-3B-02, 3C-01, 4A-01)
 // ==========================================
 export class BookingDomainController {
-  static approveBooking(booking: Booking): { booking: Booking; confirmedAt: string } {
+  static approveBooking(booking: Booking): { booking: Booking; approvedAt: string } {
     if (booking.status !== 'PENDING_OWNER_APPROVAL') {
       throw new Error('INVALID_STATE_TRANSITION_BOOKING_NOT_PENDING');
     }
 
-    const confirmedAt = new Date().toISOString();
+    const approvedAt = new Date().toISOString();
     const updatedBooking: Booking = {
       ...booking,
-      status: 'CONFIRMED',
-      confirmedAt,
+      status: 'APPROVED_PENDING_PAYMENT',
     };
 
-    return { booking: updatedBooking, confirmedAt };
+    return { booking: updatedBooking, approvedAt };
   }
 
   static rejectBooking(booking: Booking): Booking {

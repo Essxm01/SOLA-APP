@@ -652,7 +652,15 @@ export class ExpressServerApp {
 
         // --- C2. Owner Booking List & Approval/Rejection Endpoints — PostgreSQL Driven ---
         if (path === '/api/v1/owner/bookings' && method === 'GET') {
-          const ownerBookings = await bookingDb.getByOwnerId(ownerId).catch(() => []);
+          let ownerBookings: any[];
+          try {
+            ownerBookings = await bookingDb.getByOwnerId(ownerId);
+          } catch (err: any) {
+            return {
+              statusCode: 500,
+              body: { success: false, error: { code: 'OWNER_BOOKINGS_QUERY_FAILED', message: 'تعذر جلب طلبات الحجز من قاعدة البيانات' }, timestamp },
+            };
+          }
           return {
             statusCode: 200,
             body: {
@@ -665,37 +673,42 @@ export class ExpressServerApp {
 
         if (path.startsWith('/api/v1/owner/bookings/') && path.endsWith('/approve') && method === 'POST') {
           const bookingId = path.split('/')[5];
-          const mockBooking: any = {
-            id: bookingId,
-            bookingNumber: 'BK-990011',
-            propertyId: 'prop-pub-001',
-            ownerId,
-            customerId: 'cust001',
-            checkIn: '2026-09-01',
-            checkOut: '2026-09-05',
-            status: 'PENDING_OWNER_APPROVAL',
-            createdAt: timestamp,
-          };
+          const booking = await bookingDb.getById(bookingId).catch(() => null);
+          if (!booking) {
+            return { statusCode: 404, body: { success: false, error: { code: 'BOOKING_NOT_FOUND', message: 'طلب الحجز غير موجود' }, timestamp } };
+          }
+          if (booking.ownerId !== ownerId) {
+            return { statusCode: 403, body: { success: false, error: { code: 'BOOKING_NOT_OWNED', message: 'لا تملك صلاحية اتخاذ قرار لهذا الطلب' }, timestamp } };
+          }
+          if (booking.status !== 'PENDING_OWNER_APPROVAL') {
+            return { statusCode: 409, body: { success: false, error: { code: 'INVALID_BOOKING_STATUS', message: 'لا يمكن قبول طلب لم يعد بانتظار موافقتك' }, timestamp } };
+          }
 
-          const approved = BookingDomainController.approveBooking(mockBooking);
-          const breakdown = calculateBookingFinancials(5000, 1000); // 5000 total, 1000 deposit
+          let blocks: any[];
+          try {
+            blocks = await bookingDb.getBlocksByPropertyId(booking.propertyId);
+          } catch {
+            return { statusCode: 500, body: { success: false, error: { code: 'AVAILABILITY_CHECK_FAILED', message: 'تعذر التحقق من توفر التواريخ قبل الموافقة' }, timestamp } };
+          }
+          if (hasDateRangeOverlap(booking.checkIn, booking.checkOut, blocks)) {
+            return { statusCode: 409, body: { success: false, error: { code: 'DATE_OVERLAP', message: 'التواريخ أصبحت محجوزة بطلب آخر مؤكد' }, timestamp } };
+          }
+
+          let approved: any;
+          try {
+            approved = await bookingDb.updateStatusForOwner(bookingId, ownerId, 'APPROVED_PENDING_PAYMENT');
+          } catch (err: any) {
+            return { statusCode: 409, body: { success: false, error: { code: 'APPROVAL_PERSISTENCE_FAILED', message: 'تعذر قبول الطلب لأن التواريخ لم تعد متاحة' }, timestamp } };
+          }
+          if (!approved) {
+            return { statusCode: 409, body: { success: false, error: { code: 'BOOKING_DECISION_CONFLICT', message: 'تمت معالجة هذا الطلب أو تغيّرت حالته' }, timestamp } };
+          }
 
           return {
             statusCode: 200,
             body: {
               success: true,
-              data: {
-                ...approved.booking,
-                confirmedAt: approved.confirmedAt,
-                financialSummary: {
-                  totalBookingValue: breakdown.totalBookingValueInCents / 100,
-                  depositAmount: breakdown.depositAmountInCents / 100,
-                  solaCommissionAmount: breakdown.solaCommissionInCents / 100,
-                  ownerNetDepositAmount: breakdown.ownerNetDepositInCents / 100,
-                  remainingBalance: breakdown.remainingBalanceInCents / 100,
-                  commissionOnRemainingBalance: 0,
-                },
-              },
+              data: approved,
               timestamp,
             },
           };
@@ -703,29 +716,26 @@ export class ExpressServerApp {
 
         if (path.startsWith('/api/v1/owner/bookings/') && path.endsWith('/reject') && method === 'POST') {
           const bookingId = path.split('/')[5];
-          const mockBooking: any = {
-            id: bookingId,
-            bookingNumber: 'BK-990011',
-            propertyId: 'prop-pub-001',
-            ownerId,
-            customerId: 'cust001',
-            checkIn: '2026-09-01',
-            checkOut: '2026-09-05',
-            status: 'PENDING_OWNER_APPROVAL',
-            createdAt: timestamp,
-          };
-
-          const rejected = BookingDomainController.rejectBooking(mockBooking);
+          const booking = await bookingDb.getById(bookingId).catch(() => null);
+          if (!booking) {
+            return { statusCode: 404, body: { success: false, error: { code: 'BOOKING_NOT_FOUND', message: 'طلب الحجز غير موجود' }, timestamp } };
+          }
+          if (booking.ownerId !== ownerId) {
+            return { statusCode: 403, body: { success: false, error: { code: 'BOOKING_NOT_OWNED', message: 'لا تملك صلاحية اتخاذ قرار لهذا الطلب' }, timestamp } };
+          }
+          if (booking.status !== 'PENDING_OWNER_APPROVAL') {
+            return { statusCode: 409, body: { success: false, error: { code: 'INVALID_BOOKING_STATUS', message: 'لا يمكن رفض طلب لم يعد بانتظار موافقتك' }, timestamp } };
+          }
+          const rejected = await bookingDb.updateStatusForOwner(bookingId, ownerId, 'REJECTED').catch(() => null);
+          if (!rejected) {
+            return { statusCode: 409, body: { success: false, error: { code: 'BOOKING_DECISION_CONFLICT', message: 'تمت معالجة هذا الطلب أو تغيّرت حالته' }, timestamp } };
+          }
 
           return {
             statusCode: 200,
             body: {
               success: true,
-              data: {
-                ...rejected,
-                refundStatus: 'FULL_REFUND_ISSUED_100_PERCENT',
-                refundAmount: 1000,
-              },
+              data: rejected,
               timestamp,
             },
           };
@@ -2755,11 +2765,11 @@ export class ExpressServerApp {
           }
         }
 
-        // 4.4 Customer Booking Creation Foundation
+        // 4.4 Customer Booking Request Creation — canonical intent only, revalidated on the server
         if (path === '/api/v1/customer/bookings' && method === 'POST') {
-          const { propertyId, checkIn, checkOut, totalGuests } = bodyPayload || {};
+          const { propertyId, checkIn, checkOut, guests } = bodyPayload || {};
 
-          if (!propertyId || !checkIn || !checkOut || !totalGuests) {
+          if (!propertyId || !checkIn || !checkOut || !guests) {
             return {
               statusCode: 400,
               body: { success: false, error: { code: 'MISSING_BOOKING_FIELDS', message: 'مطلوب تفاصيل الحجز وتواريخ الإقامة وعدد الأفراد' }, timestamp },
@@ -2780,6 +2790,21 @@ export class ExpressServerApp {
             return {
               statusCode: 404,
               body: { success: false, error: { code: 'PROPERTY_NOT_FOUND', message: 'الوحدة غير موجودة' }, timestamp },
+            };
+          }
+
+          if (!prop.ownerId) {
+            return {
+              statusCode: 500,
+              body: { success: false, error: { code: 'PROPERTY_OWNER_MISSING', message: 'بيانات مالك الوحدة غير مكتملة ولا يمكن إرسال الطلب' }, timestamp },
+            };
+          }
+
+          const customer = await userDb.getById(customerId).catch(() => null);
+          if (!customer) {
+            return {
+              statusCode: 403,
+              body: { success: false, error: { code: 'CUSTOMER_IDENTITY_NOT_FOUND', message: 'تعذر التحقق من هوية العميل قبل إرسال الطلب' }, timestamp },
             };
           }
 
@@ -2821,26 +2846,26 @@ export class ExpressServerApp {
           };
 
           try {
-            const validated = CustomerDomainController.validateCustomerBookingRequest(propWithPrice, checkIn, checkOut, Number(totalGuests));
+            const validated = CustomerDomainController.validateCustomerBookingRequest(propWithPrice, checkIn, checkOut, Number(guests));
             const breakdown = calculateBookingFinancials(validated.totalBookingValue, validated.firstNightPrice);
 
             const bookingId = crypto.randomUUID();
             const bookingNumber = `BK-${Date.now().toString().slice(-6)}`;
-            const createdIso = timestamp;
-            const expiresIso = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+            let created: any;
 
             try {
-              await bookingDb.create({
+              created = await bookingDb.create({
                 id: bookingId,
                 bookingNumber,
                 propertyId: prop.id,
-                ownerId: prop.ownerId || '00000000-0000-0000-0000-000000000001',
-                guestName: 'Sola Customer',
-                guestPhone: customerPhone,
+                ownerId: prop.ownerId,
+                customerId,
+                guestName: customer.fullName || customer.phoneNumber,
+                guestPhone: customer.phoneNumber,
                 checkIn,
                 checkOut,
                 nights: validated.nights,
-                totalGuests: Number(totalGuests),
+                totalGuests: Number(guests),
                 status: 'PENDING_OWNER_APPROVAL',
               });
             } catch (dbErr: any) {
@@ -2850,35 +2875,52 @@ export class ExpressServerApp {
               };
             }
 
+            if (!created) {
+              return {
+                statusCode: 500,
+                body: { success: false, error: { code: 'BOOKING_PERSISTENCE_FAILED', message: 'لم يتم تأكيد حفظ طلب الحجز في قاعدة البيانات' }, timestamp },
+              };
+            }
+
+            let financialSummary: any;
+            try {
+              financialSummary = await bookingDb.createFinancialSummary({
+                bookingId: created.id,
+                totalBookingValue: breakdown.totalBookingValueInCents / 100,
+                depositAmount: breakdown.depositAmountInCents / 100,
+                solaCommissionAmount: breakdown.solaCommissionInCents / 100,
+                ownerNetDepositAmount: breakdown.ownerNetDepositInCents / 100,
+                remainingBalance: breakdown.remainingBalanceInCents / 100,
+              });
+            } catch {
+              await bookingDb.deleteNewBooking(created.id, customerId).catch(() => undefined);
+              return {
+                statusCode: 500,
+                body: { success: false, error: { code: 'BOOKING_FINANCIAL_PERSISTENCE_FAILED', message: 'تعذر حفظ تفاصيل الطلب المالية، ولم يتم إنشاء طلب حجز مكتمل' }, timestamp },
+              };
+            }
+
+            if (!financialSummary) {
+              await bookingDb.deleteNewBooking(created.id, customerId).catch(() => undefined);
+              return {
+                statusCode: 500,
+                body: { success: false, error: { code: 'BOOKING_FINANCIAL_PERSISTENCE_FAILED', message: 'تعذر تأكيد حفظ تفاصيل الطلب المالية' }, timestamp },
+              };
+            }
+
             return {
               statusCode: 201,
               body: {
                 success: true,
                 data: {
-                  id: bookingId,
-                  bookingNumber,
-                  propertyId: prop.id,
-                  ownerId: prop.ownerId,
-                  customerId,
-                  guestName: 'Sola Customer',
-                  guestPhone: customerPhone,
-                  checkIn,
-                  checkOut,
-                  nights: validated.nights,
-                  totalGuests: Number(totalGuests),
-                  status: 'PENDING_OWNER_APPROVAL',
-                  createdAt: createdIso,
-                  expiredAt: expiresIso,
+                  ...created,
                   financialSummary: {
-                    totalBookingValue: breakdown.totalBookingValueInCents / 100,
-                    depositAmount: breakdown.depositAmountInCents / 100,
+                    totalBookingValue: Number(financialSummary.totalBookingValue),
+                    depositAmount: Number(financialSummary.depositAmount),
                     depositPaymentStatus: 'NOT_DUE',
-                    solaCommissionAmount: breakdown.solaCommissionInCents / 100,
-                    ownerNetDepositAmount: breakdown.ownerNetDepositInCents / 100,
-                    remainingBalance: breakdown.remainingBalanceInCents / 100,
+                    remainingBalance: Number(financialSummary.remainingBalance),
                     remainingBalancePaymentMethod: 'CASH_ON_ARRIVAL',
                     remainingBalanceStatus: 'NOT_DUE',
-                    ownerPayoutStatus: 'OWNER_PAYOUT_PENDING',
                     currency: 'EGP',
                   },
                 },
@@ -2895,7 +2937,7 @@ export class ExpressServerApp {
 
         // 4.4A Customer Account Summary (Real PostgreSQL Driven — ACCOUNT-01)
         if (path === '/api/v1/customer/account/summary' && method === 'GET') {
-          const bookings = await bookingDb.getByCustomerId(customerId, customerPhone).catch(() => []);
+          const bookings = await bookingDb.getByCustomerId(customerId).catch(() => []);
           const todayIso = new Date().toISOString().slice(0, 10);
           
           const confirmedBookings = bookings.filter((b: any) => b.status === 'CONFIRMED');
@@ -2922,7 +2964,15 @@ export class ExpressServerApp {
 
         // 4.4B Customer Booking List (Real PostgreSQL IDOR Scoped)
         if (path === '/api/v1/customer/bookings' && method === 'GET') {
-          const bookings = await bookingDb.getByCustomerId(customerId, customerPhone).catch(() => []);
+          let bookings: any[];
+          try {
+            bookings = await bookingDb.getByCustomerId(customerId);
+          } catch {
+            return {
+              statusCode: 500,
+              body: { success: false, error: { code: 'CUSTOMER_BOOKINGS_QUERY_FAILED', message: 'تعذر جلب طلبات الحجز من قاعدة البيانات' }, timestamp },
+            };
+          }
 
           return {
             statusCode: 200,
@@ -2936,7 +2986,7 @@ export class ExpressServerApp {
 
         // 4.4C Customer Payments & Deposits Ledger (Real Data Only — ACCOUNT-01)
         if (path === '/api/v1/customer/payments' && method === 'GET') {
-          const bookings = await bookingDb.getByCustomerId(customerId, customerPhone).catch(() => []);
+          const bookings = await bookingDb.getByCustomerId(customerId).catch(() => []);
           const transactions = await paymentTxDb.getByCustomerId(customerId).catch(() => []);
 
           // Derive clean renter payment items from real bookings & payment records

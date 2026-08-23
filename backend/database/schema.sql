@@ -171,7 +171,7 @@ ALTER TABLE bookings ADD CONSTRAINT no_overlapping_active_bookings
 EXCLUDE USING gist (
     property_id WITH =,
     daterange(check_in, check_out, '[)') WITH &&
-) WHERE (status IN ('PENDING_OWNER_APPROVAL', 'CONFIRMED'));
+) WHERE (status IN ('APPROVED_PENDING_PAYMENT', 'CONFIRMED'));
 
 CREATE INDEX idx_bookings_owner_status ON bookings(owner_id, status);
 

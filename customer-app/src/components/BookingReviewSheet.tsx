@@ -28,6 +28,7 @@ interface BookingReviewSheetProps {
   onConfirmSubmit: () => void;
   onEditDetails: () => void;
   isSubmitting?: boolean;
+  submitError?: string | null;
 }
 
 export const BookingReviewSheet: React.FC<BookingReviewSheetProps> = ({
@@ -44,6 +45,7 @@ export const BookingReviewSheet: React.FC<BookingReviewSheetProps> = ({
   onConfirmSubmit,
   onEditDetails,
   isSubmitting = false,
+  submitError,
 }) => {
   const propertyImage =
     property.images && property.images.length > 0
@@ -181,6 +183,11 @@ export const BookingReviewSheet: React.FC<BookingReviewSheetProps> = ({
 
         {/* Primary Action Buttons */}
         <div className="space-y-2 pt-1">
+          {submitError && (
+            <div className="p-3 rounded-xl border border-rose-200 bg-rose-50 text-rose-800 text-[11px] font-bold leading-relaxed">
+              {submitError}
+            </div>
+          )}
           <button
             type="button"
             onClick={onConfirmSubmit}

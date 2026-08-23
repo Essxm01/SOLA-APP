@@ -421,76 +421,83 @@ export const propertyDb = {
 export const bookingDb = {
   async getByOwnerId(ownerId: string) {
     const res = await queryDb(
-      `SELECT b.id, b.booking_number AS "bookingNumber", b.property_id AS "propertyId", b.owner_id AS "ownerId",
-              b.guest_name AS "guestName", b.guest_phone AS "guestPhone", b.check_in AS "checkIn", b.check_out AS "checkOut",
-              b.nights, b.total_guests AS "guestsCount", b.status, b.created_at AS "createdAt", b.confirmed_at AS "confirmedAt",
-              p.title AS "propertyTitle", p.address AS "locationName"
-       FROM bookings b
-       JOIN properties p ON b.property_id = p.id
-       WHERE b.owner_id = $1 ORDER BY b.created_at DESC`,
+      `SELECT id, booking_number AS "bookingNumber", property_id AS "propertyId", owner_id AS "ownerId",
+              customer_id AS "customerId", guest_name AS "guestName", check_in AS "checkIn", check_out AS "checkOut",
+              nights, total_guests AS "guestsCount", status, created_at AS "createdAt",
+              confirmed_at AS "confirmedAt", rejected_at AS "rejectedAt"
+       FROM bookings WHERE owner_id = $1 ORDER BY created_at DESC`,
       [ownerId]
     );
-
-    return res.rows.map(b => ({
-      ...b,
-      propertyImage: 'https://images.unsplash.com/photo-1512917774080-9991f1c4c750?w=800',
-      totalPrice: b.nights * 5000,
-      deposit: 5000,
-      currency: 'EGP',
-      renter: {
-        id: 'cust001',
-        name: b.guestName || 'مستأجر صولا المعتمد',
-        phone: b.guestPhone || '+201111111111',
-        avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80',
-        rating: 5.0
-      },
-      financialSummary: {
-        totalBookingValue: b.nights * 5000,
-        depositAmount: 5000,
-        depositPaymentStatus: 'PAID',
-        solaCommissionAmount: 1000,
-        ownerNetDepositAmount: 4000,
-        remainingBalance: (b.nights - 1) * 5000,
-        remainingBalancePaymentMethod: 'CASH_ON_ARRIVAL',
-        remainingBalanceStatus: 'NOT_DUE',
-        ownerPayoutStatus: 'OWNER_PAYOUT_PENDING',
-        currency: 'EGP',
-        createdAt: b.createdAt
-      }
-    }));
+    return Promise.all(res.rows.map((booking) => hydrateBooking(booking)));
   },
 
   async create(bk: any) {
     const res = await queryDb(
-      `INSERT INTO bookings (id, booking_number, property_id, owner_id, guest_name, guest_phone, check_in, check_out, nights, total_guests, status)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-       RETURNING id, booking_number AS "bookingNumber", property_id AS "propertyId", owner_id AS "ownerId", guest_name AS "guestName", guest_phone AS "guestPhone", check_in AS "checkIn", check_out AS "checkOut", nights, total_guests AS "guestsCount", status, created_at AS "createdAt"`,
-      [bk.id, bk.bookingNumber, bk.propertyId, bk.ownerId, bk.guestName || 'مستأجر صولا', bk.guestPhone || '+201111111111', bk.checkIn, bk.checkOut, bk.nights, bk.totalGuests || 2, bk.status || 'PENDING_OWNER_APPROVAL']
+      `INSERT INTO bookings (id, booking_number, property_id, owner_id, customer_id, guest_name, guest_phone, check_in, check_out, nights, total_guests, status)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+       RETURNING id, booking_number AS "bookingNumber", property_id AS "propertyId", owner_id AS "ownerId", customer_id AS "customerId", guest_name AS "guestName", check_in AS "checkIn", check_out AS "checkOut", nights, total_guests AS "guestsCount", status, created_at AS "createdAt"`,
+      [bk.id, bk.bookingNumber, bk.propertyId, bk.ownerId, bk.customerId, bk.guestName, bk.guestPhone, bk.checkIn, bk.checkOut, bk.nights, bk.totalGuests, bk.status]
     );
-    return res.rows[0];
+    return res.rows[0] || null;
   },
 
+  async createFinancialSummary(summary: any) {
+    const res = await queryDb(
+      `INSERT INTO booking_financial_summaries (booking_id, total_booking_value, deposit_amount, sola_commission_amount, owner_net_deposit_amount, remaining_balance, commission_on_remaining_balance)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       RETURNING booking_id AS "bookingId", total_booking_value AS "totalBookingValue", deposit_amount AS "depositAmount", sola_commission_amount AS "solaCommissionAmount", owner_net_deposit_amount AS "ownerNetDepositAmount", remaining_balance AS "remainingBalance", commission_on_remaining_balance AS "commissionOnRemainingBalance", created_at AS "createdAt"`,
+      [summary.bookingId, summary.totalBookingValue, summary.depositAmount, summary.solaCommissionAmount, summary.ownerNetDepositAmount, summary.remainingBalance, 0]
+    );
+    return res.rows[0] || null;
+  },
+
+  async deleteNewBooking(id: string, customerId: string) {
+    await queryDb(
+      `DELETE FROM bookings WHERE id = $1 AND customer_id = $2 AND status = 'PENDING_OWNER_APPROVAL'`,
+      [id, customerId]
+    );
+  },
+
+  async getFinancialSummary(bookingId: string) {
+    const res = await queryDb(
+      `SELECT booking_id AS "bookingId", total_booking_value AS "totalBookingValue", deposit_amount AS "depositAmount", sola_commission_amount AS "solaCommissionAmount", owner_net_deposit_amount AS "ownerNetDepositAmount", remaining_balance AS "remainingBalance", commission_on_remaining_balance AS "commissionOnRemainingBalance", created_at AS "createdAt"
+       FROM booking_financial_summaries WHERE booking_id = $1`,
+      [bookingId]
+    );
+    return res.rows[0] || null;
+  },
+
+  async getById(id: string) {
+    const res = await queryDb(
+      `SELECT id, booking_number AS "bookingNumber", property_id AS "propertyId", owner_id AS "ownerId", customer_id AS "customerId", guest_name AS "guestName", check_in AS "checkIn", check_out AS "checkOut", nights, total_guests AS "guestsCount", status, created_at AS "createdAt", confirmed_at AS "confirmedAt", rejected_at AS "rejectedAt"
+       FROM bookings WHERE id = $1`,
+      [id]
+    );
+    return res.rows[0] ? hydrateBooking(res.rows[0]) : null;
+  },
+
+  async updateStatusForOwner(id: string, ownerId: string, status: 'APPROVED_PENDING_PAYMENT' | 'REJECTED') {
+    const res = await queryDb(
+      `UPDATE bookings SET status = $3,
+           rejected_at = CASE WHEN $3 = 'REJECTED' THEN NOW() ELSE rejected_at END
+       WHERE id = $1 AND owner_id = $2 AND status = 'PENDING_OWNER_APPROVAL'
+       RETURNING id, booking_number AS "bookingNumber", property_id AS "propertyId", owner_id AS "ownerId", customer_id AS "customerId", guest_name AS "guestName", check_in AS "checkIn", check_out AS "checkOut", nights, total_guests AS "guestsCount", status, created_at AS "createdAt", confirmed_at AS "confirmedAt", rejected_at AS "rejectedAt"`,
+      [id, ownerId, status]
+    );
+    return res.rows[0] ? hydrateBooking(res.rows[0]) : null;
+  },
+
+  // Retained for legacy cancellation code paths outside BOOKING-01.
   async updateStatus(id: string, status: string) {
     const res = await queryDb(
-      `UPDATE bookings
-       SET status = $2,
-           confirmed_at = CASE WHEN $2 = 'CONFIRMED' THEN NOW() ELSE confirmed_at END,
-           rejected_at = CASE WHEN $2 = 'REJECTED' THEN NOW() ELSE rejected_at END
-       WHERE id = $1
-       RETURNING id, booking_number AS "bookingNumber", status, confirmed_at AS "confirmedAt", rejected_at AS "rejectedAt"`,
+      `UPDATE bookings SET status = $2 WHERE id = $1
+       RETURNING id, booking_number AS "bookingNumber", status`,
       [id, status]
     );
-    return res.rows[0];
+    return res.rows[0] || null;
   },
 
   async getBlocksByPropertyId(propertyId: string) {
-    if (propertyId.startsWith('prop-pub-')) {
-      return [
-        { checkIn: '2026-09-08', checkOut: '2026-09-12', status: 'CONFIRMED' },
-        { checkIn: '2026-09-18', checkOut: '2026-09-22', status: 'APPROVED_PENDING_PAYMENT' }
-      ];
-    }
-
     const res = await queryDb(
       `SELECT check_in AS "checkIn", check_out AS "checkOut", status
        FROM bookings
@@ -504,37 +511,53 @@ export const bookingDb = {
     return [];
   },
 
-  async getByCustomerId(customerId: string, phone?: string) {
+  async getByCustomerId(customerId: string) {
     const res = await queryDb(
-      `SELECT b.id, b.booking_number AS "bookingNumber", b.property_id AS "propertyId", b.owner_id AS "ownerId",
-              b.customer_id AS "customerId", b.guest_name AS "guestName", b.guest_phone AS "guestPhone",
-              b.check_in AS "checkIn", b.check_out AS "checkOut", b.nights, b.total_guests AS "guestsCount",
-              b.status, b.created_at AS "createdAt", b.confirmed_at AS "confirmedAt",
-              p.title AS "propertyTitle", p.address AS "locationName", p.base_price_per_night AS "pricePerNight"
-       FROM bookings b
-       LEFT JOIN properties p ON b.property_id = p.id
-       WHERE (b.customer_id = $1 OR b.guest_phone = $2)
-       ORDER BY b.created_at DESC`,
-      [customerId, phone || '']
+      `SELECT id, booking_number AS "bookingNumber", property_id AS "propertyId", owner_id AS "ownerId", customer_id AS "customerId", guest_name AS "guestName", check_in AS "checkIn", check_out AS "checkOut", nights, total_guests AS "guestsCount", status, created_at AS "createdAt", confirmed_at AS "confirmedAt", rejected_at AS "rejectedAt"
+       FROM bookings WHERE customer_id = $1 ORDER BY created_at DESC`,
+      [customerId]
     );
-
-    return res.rows.map(b => {
-      const pricePerNight = Number(b.pricePerNight) || 5000;
-      const totalStay = (b.nights || 2) * pricePerNight;
-      const deposit = pricePerNight;
-      const remaining = totalStay - deposit;
-      return {
-        ...b,
-        pricePerNight,
-        totalStay,
-        depositAmount: deposit,
-        remainingAmount: remaining,
-        currency: 'EGP',
-        propertyImage: 'https://images.unsplash.com/photo-1512917774080-9991f1c4c750?w=800',
-      };
-    });
+    return Promise.all(res.rows.map((booking) => hydrateBooking(booking)));
   }
 };
+
+async function hydrateBooking(booking: any) {
+  const [property, financialSummary] = await Promise.all([
+    propertyDb.getById(booking.propertyId),
+    bookingDb.getFinancialSummary(booking.id),
+  ]);
+
+  if (!property || !financialSummary) {
+    throw new Error('CANONICAL_BOOKING_RELATION_MISSING');
+  }
+
+  return {
+    ...booking,
+    propertyTitle: property.title,
+    locationName: property.resortName ? `${property.resortName} — ${property.region || property.address || ''}` : (property.address || property.region || ''),
+    propertyImage: property.images?.[0] || '',
+    totalPrice: Number(financialSummary.totalBookingValue),
+    deposit: Number(financialSummary.depositAmount),
+    totalStay: Number(financialSummary.totalBookingValue),
+    depositAmount: Number(financialSummary.depositAmount),
+    remainingAmount: Number(financialSummary.remainingBalance),
+    currency: 'EGP',
+    renter: { id: booking.customerId, name: booking.guestName || 'مستأجر', avatar: '', rating: 0 },
+    financialSummary: {
+      ...financialSummary,
+      totalBookingValue: Number(financialSummary.totalBookingValue),
+      depositAmount: Number(financialSummary.depositAmount),
+      solaCommissionAmount: Number(financialSummary.solaCommissionAmount),
+      ownerNetDepositAmount: Number(financialSummary.ownerNetDepositAmount),
+      remainingBalance: Number(financialSummary.remainingBalance),
+      depositPaymentStatus: 'NOT_DUE',
+      remainingBalancePaymentMethod: 'CASH_ON_ARRIVAL',
+      remainingBalanceStatus: 'NOT_DUE',
+      ownerPayoutStatus: 'OWNER_PAYOUT_PENDING',
+      currency: 'EGP',
+    },
+  };
+}
 
 // ----------------------------------------------------------------------------
 // 4. PAYOUTS REPOSITORY (With Idempotency & PII Masking)
@@ -1094,4 +1117,3 @@ export const sessionDb = {
     return true;
   }
 };
-

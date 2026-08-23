@@ -1,6 +1,6 @@
 # Current project state
 
-**Last updated:** 2026-08-23  
+**Last updated:** 2026-08-23
 **Repository commit at update:** `05e1fdbea5cbc3f6368fb587c0c428293e3c2f86` (`feat(owner): add approved first-run entry`)
 
 ## Current status

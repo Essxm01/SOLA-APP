@@ -4,7 +4,7 @@ This log records durable decisions that are visible in current code, migrations,
 
 ## ADR-001 — Supabase is the canonical business-data store
 
-**Date:** active before the retained migration history  
+**Date:** active before the retained migration history
 **Status:** Active
 
 ### Context
@@ -21,7 +21,7 @@ Persistence failure is a visible failure. Schema changes require migration revie
 
 ## ADR-002 — Keep the narrow Worker REST/RPC compatibility adapter for now
 
-**Date:** active implementation; original adoption rationale not fully recorded  
+**Date:** active implementation; original adoption rationale not fully recorded
 **Status:** Active technical debt
 
 ### Context
@@ -38,7 +38,7 @@ Matchers must be strict and tested over the deployed path. Do not add a generic 
 
 ## ADR-003 — Use unified human identity with optional Owner capability
 
-**Date:** 2026-08-20 (migration `014`; lifecycle hardening in later commits)  
+**Date:** 2026-08-20 (migration `014`; lifecycle hardening in later commits)
 **Status:** Active
 
 ### Context
@@ -55,7 +55,7 @@ Typed phone/local storage is not authority. Logout and account changes destroy O
 
 ## ADR-004 — Prototype deposit payment uses canonical financial summary and atomic RPC
 
-**Date:** 2026-08-23 (migration `019`)  
+**Date:** 2026-08-23 (migration `019`)
 **Status:** Active
 
 ### Context
@@ -72,7 +72,7 @@ No real charge/card handling occurs in prototype. Finalization is idempotent and
 
 ## ADR-005 — DESIGN_SYSTEM is independent KONFRM authority
 
-**Date:** 2026-08-23 (Design System v2.0.0)  
+**Date:** 2026-08-23 (Design System v2.0.0)
 **Status:** Active
 
 ### Context
@@ -89,7 +89,7 @@ New global visual/component rules require central proposal, approval, documentat
 
 ## ADR-006 — One design family, role-specific experiences
 
-**Date:** 2026-08-23 (Design System v2.1.0+)  
+**Date:** 2026-08-23 (Design System v2.1.0+)
 **Status:** Active
 
 ### Context
@@ -106,7 +106,7 @@ Do not migrate screens by visual symmetry alone. Follow approved experience deci
 
 ## ADR-007 — First-run Owner introduction is device state, not authentication
 
-**Date:** 2026-08-23  
+**Date:** 2026-08-23
 **Status:** Active
 
 ### Context

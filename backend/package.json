@@ -10,6 +10,7 @@
     "test:booking-01": "npx tsx server/src/tests/booking01.test.ts",
     "test:booking-01-1": "npx tsx server/src/tests/booking011.test.ts",
     "test:hotfix-02": "npx tsx server/src/tests/m03Hotfix02.test.ts",
+    "test:owner-identity-01": "npx tsx server/src/tests/ownerIdentity01.test.ts",
     "check": "npx tsc --noEmit"
   },
   "dependencies": {

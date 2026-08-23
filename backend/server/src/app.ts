@@ -388,29 +388,17 @@ export class ExpressServerApp {
 
         // --- A0. Real Owner Profile Endpoints (PostgreSQL Driven) ---
         if (path === '/api/v1/owner/profile' && method === 'GET') {
-          let owner = await ownerDb.getById(ownerId).catch(() => null);
+          const owner = await ownerDb.getById(ownerId).catch(() => null);
           if (!owner) {
-            owner = await ownerDb.upsert({
-              id: ownerId,
-              phoneNumber: formatOwnerPhone(ownerId),
-              fullName: 'Essam (المالك)',
-              status: 'ACTIVE',
-              verificationStatus: 'UNVERIFIED',
-            }).catch(() => null);
-          }
-
-          if (!owner) {
-            owner = dbOwnersStore.get(ownerId) || {
-              id: ownerId,
-              phoneNumber: formatOwnerPhone(ownerId),
-              fullName: 'Essam (المالك)',
-              status: 'ACTIVE',
-              verificationStatus: 'UNVERIFIED',
-              createdAt: timestamp,
-              updatedAt: timestamp,
+            return {
+              statusCode: 404,
+              body: {
+                success: false,
+                error: { code: 'OWNER_PROFILE_NOT_FOUND', message: 'حساب المالك غير موجود أو لم يعد مخولاً.' },
+                timestamp,
+              },
             };
           }
-          dbOwnersStore.set(ownerId, owner);
 
           return {
             statusCode: 200,
@@ -423,28 +411,32 @@ export class ExpressServerApp {
         }
 
         if (path === '/api/v1/owner/profile' && method === 'PUT') {
-          let owner = await ownerDb.upsert({
-            id: ownerId,
-            phoneNumber: formatOwnerPhone(ownerId),
-            fullName: bodyPayload?.fullName || 'Essam (المالك)',
+          const existingOwner = await ownerDb.getById(ownerId).catch(() => null);
+          if (!existingOwner) {
+            return {
+              statusCode: 404,
+              body: {
+                success: false,
+                error: { code: 'OWNER_CAPABILITY_MISSING', message: 'حساب المالك غير موجود أو لم يعد مخولاً.' },
+                timestamp,
+              },
+            };
+          }
+          const owner = await ownerDb.updateProfile(ownerId, {
+            fullName: bodyPayload?.fullName,
             email: bodyPayload?.email,
             avatarUrl: bodyPayload?.avatarUrl,
           }).catch(() => null);
-
           if (!owner) {
-            owner = {
-              id: ownerId,
-              phoneNumber: formatOwnerPhone(ownerId),
-              fullName: bodyPayload?.fullName || 'Essam (المالك)',
-              email: bodyPayload?.email,
-              avatarUrl: bodyPayload?.avatarUrl,
-              status: 'ACTIVE',
-              verificationStatus: 'UNVERIFIED',
-              createdAt: timestamp,
-              updatedAt: timestamp,
+            return {
+              statusCode: 500,
+              body: {
+                success: false,
+                error: { code: 'OWNER_PROFILE_UPDATE_FAILED', message: 'تعذر تحديث بيانات حساب المالك.' },
+                timestamp,
+              },
             };
           }
-          dbOwnersStore.set(ownerId, owner);
 
           return {
             statusCode: 200,

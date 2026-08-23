@@ -22,7 +22,7 @@ import {
 } from 'lucide-react';
 
 export const ProfileView: React.FC = () => {
-  const { owner, phoneNumber, logout } = useAuth();
+  const { owner, logout } = useAuth();
   const { properties, bookings, showToast, refreshData } = useApp();
 
   // Modals state
@@ -52,7 +52,7 @@ export const ProfileView: React.FC = () => {
 
   const ownerDisplayName = (owner as any)?.fullName || owner?.name || 'لم يتم إضافة الاسم بعد';
   const verificationStatus = owner?.verificationStatus || 'UNVERIFIED';
-  const displayPhone = phoneNumber || owner?.phone || (owner as any)?.phoneNumber || '+201001234567';
+  const displayPhone = (owner as any)?.phoneNumber || owner?.phone || 'غير متاح';
 
   // Handle Save Profile
   const handleSaveProfile = async (e: React.FormEvent) => {
@@ -577,4 +577,3 @@ export const ProfileView: React.FC = () => {
     </div>
   );
 };
-

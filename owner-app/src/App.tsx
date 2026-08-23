@@ -19,10 +19,7 @@ import { MobileContainer } from './components/ui/MobileContainer';
 import { ErrorBoundary } from './components/ui/ErrorBoundary';
 
 const OwnerAppContent: React.FC = () => {
-  const { isAuthenticated, hasCompletedOnboarding, completeOnboarding } = useAuth();
-  const { activeTab } = useApp();
-
-  const [showSplash, setShowSplash] = useState(true);
+  const { activeTab, isLoading, error, refreshData } = useApp();
 
   const renderTabContent = () => {
     switch (activeTab) {
@@ -47,44 +44,31 @@ const OwnerAppContent: React.FC = () => {
     }
   };
 
-  const renderScreen = () => {
-    if (showSplash) {
-      return <SplashScreen onContinue={() => setShowSplash(false)} />;
-    }
+  if (isLoading) return <div className="min-h-screen flex items-center justify-center text-slate-600 dir-rtl">جاري تحميل بيانات حساب المالك…</div>;
+  if (error) return <div className="min-h-screen flex flex-col items-center justify-center gap-4 p-6 text-center dir-rtl"><p className="text-slate-700">{error}</p><button className="text-[#0059FF] font-bold" onClick={() => void refreshData()}>إعادة المحاولة</button></div>;
+  return <div className="w-full min-h-full pb-16 relative"><ErrorBoundary key={activeTab}>{renderTabContent()}</ErrorBoundary><BottomNavigation /><NotificationsModal /><Toast /></div>;
+};
 
-    if (!hasCompletedOnboarding) {
-      return <OnboardingScreen onComplete={() => completeOnboarding()} />;
-    }
+const OwnerSessionContent: React.FC = () => {
+  const { hasCompletedOnboarding, completeOnboarding } = useAuth();
+  const [showSplash, setShowSplash] = useState(true);
 
-    if (!isAuthenticated) {
-      return <LoginScreen />;
-    }
+  if (showSplash) return <SplashScreen onContinue={() => setShowSplash(false)} />;
+  if (!hasCompletedOnboarding) return <OnboardingScreen onComplete={completeOnboarding} />;
+  return <OwnerAppContent />;
+};
 
-    return (
-      <div className="w-full min-h-full pb-16 relative">
-        <ErrorBoundary key={activeTab}>
-          {renderTabContent()}
-        </ErrorBoundary>
-        <BottomNavigation />
-        <NotificationsModal />
-        <Toast />
-      </div>
-    );
-  };
-
-  return (
-    <MobileContainer>
-      {renderScreen()}
-    </MobileContainer>
-  );
+const OwnerAuthGate: React.FC = () => {
+  const { isLoadingAuth, isAuthenticated, owner } = useAuth();
+  if (isLoadingAuth) return <MobileContainer><div className="min-h-screen flex items-center justify-center text-slate-600 dir-rtl">جاري التحقق من الحساب…</div></MobileContainer>;
+  if (!isAuthenticated || !owner?.id) return <MobileContainer><LoginScreen /></MobileContainer>;
+  return <MobileContainer><AppProvider key={owner.id} ownerId={owner.id}><OwnerSessionContent /></AppProvider></MobileContainer>;
 };
 
 export function App() {
   return (
     <AuthProvider>
-      <AppProvider>
-        <OwnerAppContent />
-      </AppProvider>
+      <OwnerAuthGate />
     </AuthProvider>
   );
 }

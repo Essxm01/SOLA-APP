@@ -27,6 +27,7 @@ import type {
 } from '../types';
 import { mockRepository } from '../services/mockRepository';
 import { repositoryFactory } from '../services/repositoryFactory';
+import { getOwnerDraftStorageKey } from '../utils/ownerIdentity';
 
 type NavTab = 'home' | 'bookings' | 'properties' | 'messages' | 'disputes' | 'wallet' | 'profile' | 'calendar';
 type PropertyViewMode = 'list' | 'details' | 'wizard';
@@ -173,7 +174,8 @@ interface AppContextType {
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
-export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+export const AppProvider: React.FC<{ children: React.ReactNode; ownerId: string }> = ({ children, ownerId }) => {
+  const ownerDraftStorageKey = getOwnerDraftStorageKey(ownerId);
   const [activeTab, setActiveTab] = useState<NavTab>('home');
   const [isEmptyDashboard, setIsEmptyDashboard] = useState<boolean>(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState<boolean>(false);
@@ -211,8 +213,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [propertyViewMode, setPropertyViewMode] = useState<PropertyViewMode>('list');
   const [wizardStep, setWizardStep] = useState<number>(1);
   const [currentDraft, setCurrentDraft] = useState<Partial<Property> | null>(() => {
-    const saved = localStorage.getItem('sola_owner_property_draft');
-    return saved ? JSON.parse(saved) : null;
+    const saved = localStorage.getItem(getOwnerDraftStorageKey(ownerId));
+    try {
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
   });
 
   // Phase 3A States
@@ -333,8 +339,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           totalPendingDepositsCount: newRequests,
         });
 
-        if ((propsData as Property[]).length > 0 && !calendarPropertyId) {
-          setCalendarPropertyId((propsData as Property[])[0].id);
+        if ((propsData as Property[]).length > 0) {
+          setCalendarPropertyId((current) => current || (propsData as Property[])[0].id);
         }
       } else {
         const [
@@ -385,8 +391,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setFinancialAnalytics(analyticsData);
         setAdvancedAnalytics(advAnalyticsData);
 
-        if (propsData.length > 0 && !calendarPropertyId) {
-          setCalendarPropertyId(propsData[0].id);
+        if (propsData.length > 0) {
+          setCalendarPropertyId((current) => current || propsData[0].id);
         }
       }
     } catch (err) {
@@ -395,7 +401,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     } finally {
       setIsLoading(false);
     }
-  }, [isEmptyDashboard, calendarPropertyId, analyticsTimeRange]);
+  }, [isEmptyDashboard, analyticsTimeRange]);
 
   useEffect(() => {
     refreshData();
@@ -403,9 +409,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   useEffect(() => {
     if (currentDraft) {
-      localStorage.setItem('sola_owner_property_draft', JSON.stringify(currentDraft));
+      localStorage.setItem(ownerDraftStorageKey, JSON.stringify(currentDraft));
+    } else {
+      localStorage.removeItem(ownerDraftStorageKey);
     }
-  }, [currentDraft]);
+  }, [currentDraft, ownerDraftStorageKey]);
 
   const createOrUpdateProperty = async (
     data: Partial<Property>,
@@ -451,11 +459,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
         showToast('تم إرسال الوحدة للمراجعة', 'success');
         setCurrentDraft(null);
-        localStorage.removeItem('sola_owner_property_draft');
+        localStorage.removeItem(ownerDraftStorageKey);
       } else {
         showToast('تم حفظ مسودة الوحدة بنجاح', 'info');
         setCurrentDraft(prev => ({ ...(prev || {}), ...savedProperty, id: savedProperty.id }));
-        localStorage.setItem('sola_owner_property_draft', JSON.stringify({ ...(currentDraft || {}), ...savedProperty, id: savedProperty.id }));
       }
       await refreshData();
       return savedProperty as Property;

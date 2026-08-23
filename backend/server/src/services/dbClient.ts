@@ -192,6 +192,34 @@ async function queryViaSupabaseRest(text: string, params: any[] | undefined, url
     return { rows: mapped, command: 'SELECT', rowCount: mapped.length, oid: 0, fields: [] };
   }
 
+  // 0E. UPDATE an existing canonical owner profile. This route deliberately
+  // does not use the owners upsert compatibility handler.
+  if (lowerSql.startsWith('update owners') && /\bwhere\s+id\s*=\s*\$1\b/i.test(sql)) {
+    const ownerId = params?.[0];
+    const fullName = params?.[1];
+    const email = params?.[2];
+    const avatarUrl = params?.[3];
+    const payload: Record<string, unknown> = { updated_at: new Date().toISOString() };
+    if (fullName) payload.full_name = fullName;
+    if (email === '__NULL__') payload.email = null;
+    else if (email) payload.email = email;
+    if (avatarUrl) payload.avatar_url = avatarUrl;
+    const res = await fetch(`${url}/rest/v1/owners?id=eq.${encodeURIComponent(ownerId)}`, {
+      method: 'PATCH',
+      headers: { ...headers, 'Prefer': 'return=representation' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) throw new Error(`REST_OWNER_PROFILE_UPDATE_FAILED: HTTP ${res.status}`);
+    const raw: any = await res.json().catch(() => []);
+    const rows: any[] = Array.isArray(raw) ? raw : [];
+    const mapped = rows.map(o => ({
+      id: o.id, phoneNumber: o.phone_number, fullName: o.full_name, email: o.email,
+      avatarUrl: o.avatar_url, status: o.status, verificationStatus: o.verification_status,
+      createdAt: o.created_at, updatedAt: o.updated_at,
+    }));
+    return { rows: mapped, command: 'UPDATE', rowCount: mapped.length, oid: 0, fields: [] };
+  }
+
   // 00. INSERT INTO users (strict, no synthetic fallbacks — DATA-02)
   if (lowerSql.startsWith('insert into users')) {
     const id = params?.[0] || crypto.randomUUID();

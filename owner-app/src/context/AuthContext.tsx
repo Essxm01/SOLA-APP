@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import type { Owner } from '../types';
 import { mockRepository } from '../services/mockRepository';
 import { repositoryFactory } from '../services/repositoryFactory';
+import { getCanonicalOwnerPhone, isValidOwnerLogin, unwrapOwnerLoginResponse } from '../utils/ownerIdentity';
 
 interface AuthContextType {
   isAuthenticated: boolean;
@@ -20,9 +21,9 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
-    return localStorage.getItem('sola_owner_authenticated') === 'true' || !!localStorage.getItem('sola_access_token');
-  });
+  // A token in storage is only a candidate session. It is not authenticated until
+  // the canonical owner profile has been read successfully.
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
 
   const [hasCompletedOnboarding, setHasCompletedOnboarding] = useState<boolean>(() => {
     return localStorage.getItem('sola_owner_onboarding') === 'true';
@@ -34,6 +35,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const [owner, setOwner] = useState<Owner | null>(null);
   const [isLoadingAuth, setIsLoadingAuth] = useState<boolean>(true);
+
+  const clearLocalOwnerSession = () => {
+    setIsAuthenticated(false);
+    setOwner(null);
+    setPhoneNumber('');
+    localStorage.removeItem('sola_owner_authenticated');
+    localStorage.removeItem('sola_access_token');
+    localStorage.removeItem('sola_refresh_token');
+    localStorage.removeItem('sola_owner_phone');
+  };
+
+  const applyCanonicalOwner = (canonicalOwner: Owner) => {
+    const canonicalPhone = getCanonicalOwnerPhone(canonicalOwner);
+    if (!canonicalOwner.id || !canonicalPhone) {
+      throw new Error('OWNER_PROFILE_INVALID');
+    }
+    setOwner(canonicalOwner);
+    setPhoneNumber(canonicalPhone);
+    localStorage.setItem('sola_owner_phone', canonicalPhone);
+    localStorage.setItem('sola_owner_authenticated', 'true');
+    setIsAuthenticated(true);
+  };
 
   useEffect(() => {
     const loadProfile = async () => {
@@ -47,8 +70,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           if (!repo.useMockMode) {
             try {
               const profile = await repo.owner.getCurrentOwner();
-              setOwner(profile as Owner);
-              setIsAuthenticated(true);
+              applyCanonicalOwner(profile as Owner);
             } catch (err: any) {
               // If token expired, attempt refresh session
               if (refreshToken) {
@@ -57,30 +79,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                   if (refreshRes && refreshRes.accessToken) {
                     localStorage.setItem('sola_access_token', refreshRes.accessToken);
                     const profile = await repo.owner.getCurrentOwner();
-                    setOwner(profile as Owner);
-                    setIsAuthenticated(true);
+                    applyCanonicalOwner(profile as Owner);
                     return;
                   }
                 } catch (refreshErr) {
                   // Refresh token revoked or expired -> clean logout
-                  await logout();
+                  clearLocalOwnerSession();
                   return;
                 }
               }
-              await logout();
+              clearLocalOwnerSession();
             }
           } else {
             const profile = await mockRepository.getOwnerProfile();
-            setOwner(profile);
-            setIsAuthenticated(true);
+            applyCanonicalOwner(profile);
           }
         } else {
-          setIsAuthenticated(false);
-          setOwner(null);
+          clearLocalOwnerSession();
         }
       } catch (err) {
-        setIsAuthenticated(false);
-        setOwner(null);
+        clearLocalOwnerSession();
       } finally {
         setIsLoadingAuth(false);
       }
@@ -89,57 +107,49 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const loginWithPhone = async (phone: string): Promise<{ success: boolean; ownerOnboardingRequired?: boolean; error?: string }> => {
-    setPhoneNumber(phone);
-    localStorage.setItem('sola_owner_phone', phone);
     const repo = repositoryFactory;
     if (!repo.useMockMode) {
       try {
         const res: any = await repo.auth.prototypeLogin({ phone, surface: 'OWNER' });
-        const token = res.tokens?.accessToken || res.data?.tokens?.accessToken || res.accessToken;
-        const refreshToken = res.tokens?.refreshToken || res.data?.tokens?.refreshToken || res.refreshToken;
-        const ownerData = res.owner || res.data?.owner;
-        const ownerOnboardingRequired = res.ownerOnboardingRequired ?? res.data?.ownerOnboardingRequired;
+        const result = unwrapOwnerLoginResponse(res);
+        const token = result.tokens?.accessToken || result.accessToken;
+        const refreshToken = result.tokens?.refreshToken || result.refreshToken;
 
-        if (token) {
-          localStorage.setItem('sola_access_token', token);
-          if (refreshToken) {
-            localStorage.setItem('sola_refresh_token', refreshToken);
-          }
-          localStorage.setItem('sola_owner_authenticated', 'true');
-          if (ownerData) {
-            setOwner(ownerData);
-          }
-          if (ownerOnboardingRequired) {
-            setHasCompletedOnboarding(false);
-            localStorage.setItem('sola_owner_onboarding', 'false');
-          } else {
-            setHasCompletedOnboarding(true);
-            localStorage.setItem('sola_owner_onboarding', 'true');
-          }
-          setIsAuthenticated(true);
-          return { success: true, ownerOnboardingRequired };
+        if (!isValidOwnerLogin(res)) {
+          // A pure customer must never retain a previous owner session or its UI.
+          clearLocalOwnerSession();
+          if (refreshToken) void repo.auth.revokeSession(refreshToken).catch(() => {});
+          return {
+            success: false,
+            ownerOnboardingRequired: result.ownerOnboardingRequired === true,
+            error: result.ownerOnboardingRequired === true
+              ? 'هذا الرقم غير مسجل كحساب مالك حالياً'
+              : res.error?.message || 'تعذر تسجيل الدخول كمالك',
+          };
         }
 
-        if (ownerOnboardingRequired) {
-          setHasCompletedOnboarding(false);
-          localStorage.setItem('sola_owner_onboarding', 'false');
-          return { success: false, ownerOnboardingRequired: true, error: 'هذا الحساب غير مسجل كمالك وحدات بعد.' };
+        // Keep the token only long enough to validate the canonical profile. The
+        // UI is still unauthenticated until this read succeeds.
+        localStorage.setItem('sola_access_token', token!);
+        if (refreshToken) localStorage.setItem('sola_refresh_token', refreshToken);
+        const canonicalOwner = await repo.owner.getCurrentOwner();
+        if (canonicalOwner.id !== result.owner?.id) {
+          throw new Error('OWNER_PROFILE_ID_MISMATCH');
         }
-
-        return { success: false, error: res.error?.message || 'تعذر تسجيل الدخول كمالك' };
+        applyCanonicalOwner(canonicalOwner as Owner);
+        return { success: true };
       } catch (err: any) {
+        clearLocalOwnerSession();
         return { success: false, error: err.message || 'حدث خطأ في تسجيل الدخول' };
       }
     }
 
-    setIsAuthenticated(true);
-    localStorage.setItem('sola_owner_authenticated', 'true');
+    const profile = await mockRepository.getOwnerProfile();
+    applyCanonicalOwner(profile);
     return { success: true };
   };
 
   const sendOTP = async (phone: string): Promise<boolean> => {
-    setPhoneNumber(phone);
-    localStorage.setItem('sola_owner_phone', phone);
     const repo = repositoryFactory;
     if (!repo.useMockMode) {
       await repo.auth.requestOtp({ phone });
@@ -155,48 +165,29 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const res: any = await repo.auth.verifyOtp({ phone: phoneNumber, code, surface: 'OWNER' });
       const token = res.accessToken || res.tokens?.accessToken;
       const refreshToken = res.refreshToken || res.tokens?.refreshToken;
-      if (token) {
+      if (token && isValidOwnerLogin(res)) {
         localStorage.setItem('sola_access_token', token);
-        if (refreshToken) {
-          localStorage.setItem('sola_refresh_token', refreshToken);
-        }
-        localStorage.setItem('sola_owner_authenticated', 'true');
-        if (res.owner) {
-          setOwner(res.owner);
-        }
-        if (res.ownerOnboardingRequired) {
-          setHasCompletedOnboarding(false);
-          localStorage.setItem('sola_owner_onboarding', 'false');
-        }
-        setIsAuthenticated(true);
+        if (refreshToken) localStorage.setItem('sola_refresh_token', refreshToken);
+        applyCanonicalOwner(unwrapOwnerLoginResponse(res).owner as Owner);
         return true;
       }
+      clearLocalOwnerSession();
       return false;
     }
     await new Promise((r) => setTimeout(r, 800));
     if (code.length >= 4) {
-      setIsAuthenticated(true);
-      localStorage.setItem('sola_owner_authenticated', 'true');
+      applyCanonicalOwner(await mockRepository.getOwnerProfile());
       return true;
     }
     return false;
   };
 
-  const logout = async () => {
+  const logout = () => {
     const repo = repositoryFactory;
     const refreshToken = localStorage.getItem('sola_refresh_token');
-    if (refreshToken && !repo.useMockMode) {
-      try {
-        await repo.auth.revokeSession(refreshToken);
-      } catch {}
-    }
-    setIsAuthenticated(false);
-    setOwner(null);
-    localStorage.removeItem('sola_owner_authenticated');
-    localStorage.removeItem('sola_access_token');
-    localStorage.removeItem('sola_refresh_token');
-    localStorage.removeItem('sola_owner_phone');
-    localStorage.removeItem('sola_owner_onboarding');
+    // Destroy the account boundary before a best-effort revoke can delay the UI.
+    clearLocalOwnerSession();
+    if (refreshToken && !repo.useMockMode) void repo.auth.revokeSession(refreshToken).catch(() => {});
   };
 
   const completeOnboarding = () => {

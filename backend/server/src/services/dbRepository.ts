@@ -126,6 +126,20 @@ export const ownerDb = {
     return res.rows[0];
   },
 
+  async updateProfile(ownerId: string, data: { fullName?: string; email?: string | null; avatarUrl?: string }) {
+    const res = await queryDb(
+      `UPDATE owners
+       SET full_name = CASE WHEN $2 IS NOT NULL AND $2 <> '' THEN $2 ELSE full_name END,
+           email = CASE WHEN $3::text = '__NULL__' THEN NULL WHEN $3 IS NOT NULL THEN $3 ELSE email END,
+           avatar_url = COALESCE($4, avatar_url),
+           updated_at = NOW()
+       WHERE id = $1
+       RETURNING id, phone_number AS "phoneNumber", full_name AS "fullName", email, avatar_url AS "avatarUrl", status, verification_status AS "verificationStatus", created_at AS "createdAt", updated_at AS "updatedAt"`,
+      [ownerId, data.fullName || null, data.email === null ? '__NULL__' : (data.email || null), data.avatarUrl || null]
+    );
+    return res.rows[0] || null;
+  },
+
   async submitDocument(doc: { ownerId: string; documentType: string; documentUrl: string; title?: string }) {
     const res = await queryDb(
       `INSERT INTO owner_verification_documents (owner_id, document_type, document_url, status, uploaded_at)

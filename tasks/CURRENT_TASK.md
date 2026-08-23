@@ -1,26 +1,26 @@
 # Current Task
 
-**Status:** Ready for Founder visual acceptance — OWNER-HOME-01
+**Status:** In progress — returning Owner bootstrap follow-up
 
 ## Objective
 
-Migrate the Owner Home and header to the approved action-first KONFRM experience without altering Owner navigation, identity, booking, property, payment, or wallet business rules.
+Remove the two consecutive technical loading pages shown to returning Owners on hard refresh, without weakening canonical Owner validation or changing the accepted Owner Home.
 
 ## Context
 
-The Home must answer what needs action now, then show relevant booking context, compact property health, and canonical available/pending wallet balances. Failed wallet reads must never look like zero.
+The existing Owner Home visual migration remains the target visual language. A candidate session must render only a neutral, data-free launch shell until canonical Owner validation succeeds; Home then owns its layout-matching data skeleton.
 
 ## Requirements
 
-- Derive attention from `PENDING_OWNER_APPROVAL` bookings only.
-- Derive upcoming context from future `CONFIRMED` check-ins only.
-- Use `OwnerWallet.availableBalance` and `pendingBalance` directly; do not use legacy metrics aliases.
-- Remove fake promotion, fake renter-avatar, and legacy visible SOLA Home copy.
+- Never treat a stored token/localStorage identity as authenticated.
+- Keep `AppProvider key={owner.id}` below the validated canonical Owner boundary.
+- Do not show the full-screen `جاري التحقق من الحساب…` or `جاري تحميل بيانات حساب المالك…` pages on normal returning launch.
+- Keep first-run Splash/onboarding, Login, logout, and KYC routing unchanged.
 
 ## Relevant Areas
 
-- `owner-app/src/components/dashboard/`, `owner-app/src/components/layout/HeaderBar.tsx`
-- `owner-app/src/context/AppContext.tsx`, `owner-app/src/utils/ownerHome.ts`
+- `owner-app/src/App.tsx`, `owner-app/src/components/ui/LoadingSkeleton.tsx`
+- `owner-app/src/components/layout/BottomNavigation.tsx`, `owner-app/src/utils/ownerBootstrap.ts`
 - `DESIGN_SYSTEM/EXPERIENCE/OWNER_EXPERIENCE.md`
 
 ## Constraints
@@ -29,14 +29,14 @@ Follow `../AGENTS.md`, [DESIGN_SYSTEM.md](../docs/DESIGN_SYSTEM.md), and [BUSINE
 
 ## Acceptance Criteria
 
-- Action-first hierarchy, truthful empty/error/loading states, compact canonical data.
-- No dark finance hero, fake metrics/actions/data, or raw legacy branding in touched Home/Header surfaces.
-- Owner build and focused derivation tests pass; Pages deployment and read-only live review complete.
+- Returning authenticated hard refresh presents neutral launch shell → Home skeleton → canonical Home.
+- Invalid session presents neutral launch shell → Login, with no personal-data flash.
+- Owner build and focused tests pass; Pages deployment and repeated live hard-refresh review complete.
 
 ## Validation
 
-Run Owner focused tests, typecheck/build, design check, then verify the deployed Owner Pages Home with existing canonical Owner data. No production mutation.
+Run Owner focused tests, typecheck/build, design check, then verify repeated hard refreshes of a valid live Owner session. No production mutation.
 
 ## Documentation Impact
 
-`docs/CURRENT_STATE.md` records the material Home change. Preserve this completed contract until the next task replaces it.
+Update `docs/CURRENT_STATE.md` only if the completed bootstrap behavior materially changes the handoff state.

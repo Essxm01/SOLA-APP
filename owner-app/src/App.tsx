@@ -20,6 +20,8 @@ import { NotificationsModal } from './components/notifications/NotificationsModa
 import { Toast } from './components/ui/Toast';
 import { MobileContainer } from './components/ui/MobileContainer';
 import { ErrorBoundary } from './components/ui/ErrorBoundary';
+import { OwnerLaunchSkeleton } from './components/ui/LoadingSkeleton';
+import { getOwnerAuthPresentation, shouldHomeOwnDataState } from './utils/ownerBootstrap';
 
 const OwnerAppContent: React.FC = () => {
   const { activeTab, isLoading, error, refreshData } = useApp();
@@ -47,9 +49,17 @@ const OwnerAppContent: React.FC = () => {
     }
   };
 
-  if (isLoading) return <div className="min-h-screen flex items-center justify-center text-slate-600 dir-rtl">جاري تحميل بيانات حساب المالك…</div>;
-  if (error) return <div className="min-h-screen flex flex-col items-center justify-center gap-4 p-6 text-center dir-rtl"><p className="text-slate-700">{error}</p><button className="text-[#0059FF] font-bold" onClick={() => void refreshData()}>إعادة المحاولة</button></div>;
-  return <div className="w-full min-h-full pb-16 relative"><ErrorBoundary key={activeTab}>{renderTabContent()}</ErrorBoundary><BottomNavigation /><NotificationsModal /><Toast /></div>;
+  // Home owns its truthful loading/error presentation so returning Owners see
+  // the Home-shaped skeleton rather than a second technical bootstrap page.
+  const tabContent = shouldHomeOwnDataState(activeTab)
+    ? renderTabContent()
+    : isLoading
+      ? <OwnerLaunchSkeleton />
+      : error
+        ? <div className="min-h-[60vh] p-6 text-center text-[var(--konfrm-text-secondary)]"><p>تعذر تحميل بيانات الشاشة.</p><button type="button" className="mt-4 font-bold text-[var(--konfrm-color-primary)]" onClick={() => void refreshData()}>إعادة المحاولة</button></div>
+        : renderTabContent();
+
+  return <div className="w-full min-h-full pb-16 relative"><ErrorBoundary key={activeTab}>{tabContent}</ErrorBoundary><BottomNavigation disabled={isLoading} /><NotificationsModal /><Toast /></div>;
 };
 
 const OwnerFirstRunGate: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -73,11 +83,13 @@ const OwnerFirstRunGate: React.FC<{ children: React.ReactNode }> = ({ children }
 const OwnerAuthGate: React.FC = () => {
   const { isLoadingAuth, isAuthenticated, owner } = useAuth();
   const [showRegistration, setShowRegistration] = useState(false);
-  if (isLoadingAuth) return <MobileContainer><div className="min-h-screen flex items-center justify-center text-slate-600 dir-rtl">جاري التحقق من الحساب…</div></MobileContainer>;
-  if (!isAuthenticated || !owner?.id) {
+  const authPresentation = getOwnerAuthPresentation(isLoadingAuth, isAuthenticated, !!owner?.id, !!owner?.ownerOnboardingCompletedAt);
+  if (authPresentation === 'NEUTRAL_LAUNCH') return <MobileContainer><OwnerLaunchSkeleton /></MobileContainer>;
+  if (authPresentation === 'LOGIN') {
     return <MobileContainer>{showRegistration ? <CreateOwnerAccountScreen onBack={() => setShowRegistration(false)} /> : <LoginScreen onCreateOwnerAccount={() => setShowRegistration(true)} />}</MobileContainer>;
   }
-  if (!owner.ownerOnboardingCompletedAt) return <MobileContainer><OwnerKycOnboarding onComplete={() => undefined} /></MobileContainer>;
+  if (authPresentation === 'KYC') return <MobileContainer><OwnerKycOnboarding onComplete={() => undefined} /></MobileContainer>;
+  if (!owner) return <MobileContainer><OwnerLaunchSkeleton /></MobileContainer>;
   return <MobileContainer><AppProvider key={owner.id} ownerId={owner.id}><OwnerAppContent /></AppProvider></MobileContainer>;
 };
 

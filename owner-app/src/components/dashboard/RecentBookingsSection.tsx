@@ -1,117 +1,18 @@
 import React from 'react';
+import { CalendarDays, UserRound } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
-import { BookingStatusChip } from '../ui/Badge';
-import { Button } from '../ui/Button';
-import { EmptyState } from '../ui/EmptyState';
-import { Calendar, MapPin, CheckCircle, XCircle } from 'lucide-react';
+import { getPendingBookingRequests, getUpcomingConfirmedBookings } from '../../utils/ownerHome';
+
+const initials = (name?: string) => name?.trim().split(/\s+/).slice(0, 2).map((part) => part[0]).join('') || '';
 
 export const RecentBookingsSection: React.FC = () => {
-  const { bookings, approveBooking, rejectBooking, openPendingBookings } = useApp();
+  const { bookings, openPendingBookings, setActiveTab } = useApp();
+  const pending = getPendingBookingRequests(bookings).slice(0, 2);
+  const nextBooking = getUpcomingConfirmedBookings(bookings)[0];
 
-  const pendingBookings = bookings.filter((b) => b.status === 'PENDING_OWNER_APPROVAL');
-
-  if (pendingBookings.length === 0) {
-    return (
-      <div className="space-y-3 dir-rtl text-right">
-        <div className="flex items-center justify-between">
-          <h3 className="text-sm font-bold text-slate-900">طلبات الحجز المعلقة</h3>
-          <button
-            onClick={openPendingBookings}
-            className="text-xs text-[#0059FF] font-bold hover:underline"
-          >
-            عرض الأرشيف
-          </button>
-        </div>
-        <EmptyState
-          type="bookings"
-          title="لا توجد طلبات حجز معلقة حالياً"
-          description="جميع الطلبات تم البت فيها. ستظهر أي طلبات حجز جديدة فور إرسالها هنا."
-        />
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-3 dir-rtl text-right">
-      <div className="flex items-center justify-between">
-        <h3 className="text-sm font-bold text-slate-900">طلبات الحجز المعلقة</h3>
-        <button
-          onClick={openPendingBookings}
-          className="text-xs text-[#0059FF] font-bold hover:underline"
-        >
-          عرض الكل ({pendingBookings.length})
-        </button>
-      </div>
-
-      <div className="space-y-3">
-        {pendingBookings.map((b) => (
-          <div
-            key={b.id}
-            className="p-4 bg-white rounded-2xl border border-slate-200/80 shadow-xs hover:shadow-md transition-all space-y-3"
-          >
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2.5">
-                <img
-                  src={b.renter?.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80'}
-                  alt={b.renter?.name || 'مستأجر'}
-                  className="w-10 h-10 rounded-full object-cover ring-2 ring-blue-100"
-                />
-                <div>
-                  <span className="text-xs font-bold text-slate-900 block">{b.renter?.name || 'مستأجر'}</span>
-                  <span className="text-[11px] text-slate-400">طلب حجز جديد</span>
-                </div>
-              </div>
-              <BookingStatusChip status={b.status} />
-            </div>
-
-            <div className="flex items-center gap-3 p-2.5 bg-slate-50 rounded-xl border border-slate-100">
-              <img
-                src={b.propertyImage}
-                alt={b.propertyTitle}
-                className="w-12 h-12 rounded-lg object-cover"
-              />
-              <div className="min-w-0 space-y-0.5 text-xs">
-                <h4 className="font-bold text-slate-900 truncate">{b.propertyTitle}</h4>
-                <p className="text-slate-500 flex items-center gap-1">
-                  <MapPin className="w-3.5 h-3.5 text-slate-400" />
-                  <span className="truncate">{b.locationName}</span>
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-center justify-between text-xs font-bold text-slate-700 bg-blue-50/50 p-2 rounded-xl border border-blue-100">
-              <span className="flex items-center gap-1">
-                <Calendar className="w-4 h-4 text-[#0059FF]" />
-                {b.checkIn} ➔ {b.checkOut}
-              </span>
-              <span className="font-mono text-[#0059FF]">{b.nights} ليالٍ</span>
-            </div>
-
-            <div className="pt-2 border-t border-slate-100 flex items-center gap-2">
-              <Button
-                variant="primary"
-                size="sm"
-                fullWidth
-                onClick={() => approveBooking(b.id)}
-                icon={<CheckCircle className="w-4 h-4" />}
-                className="bg-emerald-600 hover:bg-emerald-700 font-bold py-2 text-xs"
-              >
-                قبول الطلب 🟢
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                fullWidth
-                onClick={() => rejectBooking(b.id)}
-                icon={<XCircle className="w-4 h-4" />}
-                className="text-rose-600 border-rose-200 hover:bg-rose-50 font-bold py-2 text-xs"
-              >
-                رفض الطلب 🔴
-              </Button>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
+  return <section className="space-y-4 text-right" aria-labelledby="owner-bookings">
+    <div className="flex items-center justify-between"><h2 id="owner-bookings" className="text-lg font-extrabold text-[var(--konfrm-text-primary)]">الحجوزات</h2><button onClick={() => setActiveTab('bookings')} className="min-h-11 text-sm font-bold text-[var(--konfrm-color-primary)]">عرض الحجوزات</button></div>
+    {pending.length > 0 && <div className="space-y-3">{pending.map((booking) => <button key={booking.id} onClick={openPendingBookings} className="w-full rounded-[var(--konfrm-radius-card)] border border-[var(--konfrm-border-default)] bg-[var(--konfrm-surface-primary)] p-4 text-right"><div className="flex items-center gap-3"><span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[var(--konfrm-surface-secondary)] font-bold text-[var(--konfrm-text-secondary)]">{booking.renter?.avatar ? <img src={booking.renter.avatar} alt="" className="h-10 w-10 rounded-full object-cover" /> : initials(booking.renter?.name) || <UserRound className="h-5 w-5" />}</span><div className="min-w-0 flex-1"><p className="font-bold text-[var(--konfrm-text-primary)]">{booking.renter?.name || 'ضيف'}</p><p className="mt-1 truncate text-sm text-[var(--konfrm-text-secondary)]">{booking.propertyTitle}</p></div><span className="text-sm font-bold text-[var(--konfrm-color-primary)]">مراجعة الطلب</span></div><div className="mt-3 flex items-center gap-2 text-sm text-[var(--konfrm-text-secondary)]"><CalendarDays className="h-4 w-4" />{booking.checkIn} — {booking.checkOut}<span>• {booking.nights} ليالٍ</span></div></button>)}</div>}
+    {nextBooking && <div className="rounded-[var(--konfrm-radius-card)] bg-[var(--konfrm-surface-secondary)] p-4"><p className="text-sm font-bold text-[var(--konfrm-text-primary)]">الحجز القادم</p><p className="mt-2 font-bold text-[var(--konfrm-text-primary)]">{nextBooking.propertyTitle}</p><p className="mt-1 text-sm text-[var(--konfrm-text-secondary)]">{nextBooking.checkIn} — {nextBooking.checkOut}</p></div>}
+  </section>;
 };

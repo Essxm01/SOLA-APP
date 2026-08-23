@@ -1,79 +1,15 @@
 import React from 'react';
+import { ImageOff, MapPin } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
+import { getPropertyHomeSummary, getRelevantProperties } from '../../utils/ownerHome';
 import { PropertyStatusChip } from '../ui/Badge';
-import { MapPin, BedDouble, Bath, Star, Plus } from 'lucide-react';
 
 export const PropertiesSummarySection: React.FC = () => {
   const { properties, setActiveTab } = useApp();
-
-  if (properties.length === 0) return null;
-
-  return (
-    <div className="w-full space-y-3 dir-rtl">
-      <div className="flex items-center justify-between px-1">
-        <h2 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
-          <span>الوحدات الساحلية للمالك</span>
-          <span className="text-xs font-mono bg-amber-100 text-amber-900 px-2 py-0.5 rounded-full font-bold">
-            {properties.length}
-          </span>
-        </h2>
-        <button
-          onClick={() => setActiveTab('properties')}
-          className="text-xs font-bold text-[#0059FF] hover:underline flex items-center gap-1"
-        >
-          <Plus className="w-3.5 h-3.5" />
-          <span>إضافة وحدة</span>
-        </button>
-      </div>
-
-      <div className="space-y-3">
-        {properties.map((property) => (
-          <div
-            key={property.id}
-            onClick={() => setActiveTab('properties')}
-            className="bg-white rounded-2xl p-3.5 border border-slate-200/80 shadow-xs hover:shadow-md transition-all duration-200 cursor-pointer flex gap-3 items-center"
-          >
-            <img
-              src={property.images[0]}
-              alt={property.title}
-              className="w-22 h-22 rounded-xl object-cover shrink-0 ring-1 ring-slate-200"
-            />
-
-            <div className="flex-1 min-w-0 text-right">
-              <div className="flex items-center justify-between gap-1 mb-1">
-                <PropertyStatusChip status={property.status} />
-                <div className="flex items-center gap-1 text-xs font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-md">
-                  <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
-                  <span>{property.rating}</span>
-                </div>
-              </div>
-
-              <h3 className="text-sm font-bold text-slate-900 truncate leading-snug">
-                {property.title}
-              </h3>
-
-              <div className="flex items-center gap-1 text-xs text-slate-500 mt-1">
-                <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                <span className="truncate">{property.locationName}</span>
-              </div>
-
-              <div className="flex items-center justify-between mt-2 pt-2 border-t border-slate-100 text-xs text-slate-600">
-                <div className="flex items-center gap-3">
-                  <span className="flex items-center gap-1">
-                    <BedDouble className="w-3.5 h-3.5 text-slate-400" /> {property.bedrooms} غرف
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <Bath className="w-3.5 h-3.5 text-slate-400" /> {property.bathrooms} حمام
-                  </span>
-                </div>
-                <span className="font-extrabold text-[#0059FF] font-mono">
-                  {property.pricePerNight.toLocaleString()} {property.currency} / ليلة
-                </span>
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
+  if (!properties.length) return null;
+  const summary = getPropertyHomeSummary(properties);
+  const visible = getRelevantProperties(properties);
+  return <section className="space-y-4 text-right" aria-labelledby="owner-properties"><div className="flex items-center justify-between"><div><h2 id="owner-properties" className="text-lg font-extrabold text-[var(--konfrm-text-primary)]">وحداتك</h2><p className="mt-1 text-sm text-[var(--konfrm-text-secondary)]">{summary.published} منشورة · {summary.pendingReview} قيد المراجعة · {summary.drafts} مسودات</p></div><button onClick={() => setActiveTab('properties')} className="min-h-11 text-sm font-bold text-[var(--konfrm-color-primary)]">عرض كل الوحدات</button></div>
+    <div className="space-y-3">{visible.map((property) => <button key={property.id} onClick={() => setActiveTab('properties')} className="flex w-full gap-3 rounded-[var(--konfrm-radius-card)] border border-[var(--konfrm-border-default)] bg-[var(--konfrm-surface-primary)] p-3 text-right"><div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-[var(--konfrm-radius-control)] bg-[var(--konfrm-surface-secondary)] text-[var(--konfrm-text-muted)]">{property.images?.[0] ? <img src={property.images[0]} alt="" className="h-full w-full object-cover" /> : <ImageOff className="h-5 w-5" />}</div><div className="min-w-0 flex-1"><div className="flex items-start justify-between gap-2"><h3 className="truncate font-bold text-[var(--konfrm-text-primary)]">{property.title}</h3><PropertyStatusChip status={property.status} /></div><p className="mt-2 flex items-center gap-1 truncate text-sm text-[var(--konfrm-text-secondary)]"><MapPin className="h-4 w-4 shrink-0" />{property.locationName || property.region}</p>{property.status === 'DRAFT' && <p className="mt-2 text-sm font-bold text-[var(--konfrm-color-primary)]">تحتاج إلى الإكمال</p>}{property.status === 'REJECTED' && <p className="mt-2 text-sm font-bold text-[var(--konfrm-semantic-danger)]">تحتاج إلى تعديلات</p>}</div></button>)}</div>
+  </section>;
 };

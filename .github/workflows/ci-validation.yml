@@ -73,10 +73,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-      - name: Install & Build Owner App
+      - name: Install, test & build Owner App
         run: |
           cd owner-app
           npm ci || npm install
+          npm run test:home
           npm run build
 
   # ----------------------------------------------------------------------------

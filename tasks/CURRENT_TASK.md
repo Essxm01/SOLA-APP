@@ -1,44 +1,42 @@
 # Current Task
 
-**Status:** In progress — OWNER-REGISTRATION-KYC-01
+**Status:** In progress — OWNER-HOME-01
 
 ## Objective
 
-Implement real explicit Owner account creation and a private three-document KYC vertical slice without altering existing booking, payment, wallet, or Owner identity rules.
+Migrate the Owner Home and header to the approved action-first KONFRM experience without altering Owner navigation, identity, booking, property, payment, or wallet business rules.
 
 ## Context
 
-The explicit registration route may create the optional `owners` extension with the same UUID as `users`; Owner login itself must never create it. New KYC is private and requires ID front, ID back, and fresh face capture. Existing Owners must not be forced through the new KYC journey.
+The Home must answer what needs action now, then show relevant booking context, compact property health, and canonical available/pending wallet balances. Failed wallet reads must never look like zero.
 
 ## Requirements
 
-- Keep Owner app state behind canonical validated Owner authentication.
-- Use Supabase PostgreSQL/Storage as canonical state; do not create production test identities/documents.
-- Preserve the public property-media architecture and all financial/booking behavior.
+- Derive attention from `PENDING_OWNER_APPROVAL` bookings only.
+- Derive upcoming context from future `CONFIRMED` check-ins only.
+- Use `OwnerWallet.availableBalance` and `pendingBalance` directly; do not use legacy metrics aliases.
+- Remove fake promotion, fake renter-avatar, and legacy visible SOLA Home copy.
 
 ## Relevant Areas
 
-- `owner-app/src/components/auth/`, `owner-app/src/context/AuthContext.tsx`, `owner-app/src/App.tsx`
-- `backend/server/src/app.ts`, `services/authService.ts`, `services/dbRepository.ts`, `services/dbClient.ts`, `services/storageProvider.ts`
-- `backend/database/migrations/020_owner_registration_kyc.sql`
-- `admin-app/src/components/VerificationsQueue.tsx`
+- `owner-app/src/components/dashboard/`, `owner-app/src/components/layout/HeaderBar.tsx`
+- `owner-app/src/context/AppContext.tsx`, `owner-app/src/utils/ownerHome.ts`
+- `DESIGN_SYSTEM/EXPERIENCE/OWNER_EXPERIENCE.md`
 
 ## Constraints
 
-Follow `../AGENTS.md`, [DATABASE.md](../docs/DATABASE.md), [BUSINESS_RULES.md](../docs/BUSINESS_RULES.md), and [INTEGRATIONS.md](../docs/INTEGRATIONS.md). Preserve unrelated work and do not infer product decisions.
+Follow `../AGENTS.md`, [DESIGN_SYSTEM.md](../docs/DESIGN_SYSTEM.md), and [BUSINESS_RULES.md](../docs/BUSINESS_RULES.md). No backend/database/migration changes; no production writes.
 
 ## Acceptance Criteria
 
-- Registration is real and idempotent; existing Customer identity is reused.
-- Login remains non-creating for Customer-only users.
-- KYC package requires three valid private objects before pending review.
-- Admin approval/rejection is canonical and checks package completeness.
-- Existing Owner data and first-run behavior remain intact; Splash is approximately two seconds only on first-ever device use.
+- Action-first hierarchy, truthful empty/error/loading states, compact canonical data.
+- No dark finance hero, fake metrics/actions/data, or raw legacy branding in touched Home/Header surfaces.
+- Owner build and focused derivation tests pass; Pages deployment and read-only live review complete.
 
 ## Validation
 
-Run focused backend/Owner/Admin checks and type checks, verify the migration/bucket/functions live, deploy Worker/Owner/Admin, and perform read-only live regression checks. No synthetic live identity/KYC documents.
+Run Owner focused tests, typecheck/build, design check, then verify the deployed Owner Pages Home with existing canonical Owner data. No production mutation.
 
 ## Documentation Impact
 
-Update database/current-state documentation, then mark complete and replace it when the next active task begins.
+Update `docs/CURRENT_STATE.md` if the visible Home migration materially changes the handoff state, then mark this task complete.

@@ -1,143 +1,21 @@
 import React from 'react';
+import { AlertCircle, ArrowLeft, Clock3 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
-import {
-  Clock,
-  MessageSquare,
-  Building,
-  Wallet,
-  Scale,
-} from 'lucide-react';
+import { getPendingBookingRequests, getWalletHomeState } from '../../utils/ownerHome';
+import { Button } from '../ui/Button';
+
+const money = (amount: number) => `${amount.toLocaleString('ar-EG')} ج.م`;
 
 export const ActionCards: React.FC = () => {
-  const { metrics, openPendingBookings, setActiveTab } = useApp();
+  const { bookings, openPendingBookings, wallet, walletError, refreshWallet, setActiveTab } = useApp();
+  const pendingCount = getPendingBookingRequests(bookings).length;
+  const walletState = getWalletHomeState(wallet, walletError);
 
-  return (
-    <div className="space-y-3 dir-rtl text-right">
-      {/* Primary Financial Metric Summary Card */}
-      <div className="bg-gradient-to-r from-slate-900 to-blue-950 rounded-2xl p-4 text-white shadow-md space-y-3">
-        <div className="flex items-center justify-between border-b border-slate-800 pb-2.5">
-          <span className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
-            <Wallet className="w-4 h-4 text-[#FFD700]" />
-            <span>المؤشرات المالية للحجوزات المؤكدة (EGP)</span>
-          </span>
-          <span className="text-[10px] bg-emerald-500/20 text-emerald-300 font-bold px-2 py-0.5 rounded-full border border-emerald-500/30">
-            صافي المالك 💵
-          </span>
-        </div>
-
-        <div className="grid grid-cols-2 gap-3">
-          <div className="bg-white/10 p-3 rounded-xl backdrop-blur-xs space-y-1">
-            <span className="text-[10px] text-slate-300 block font-bold">أرباحك الصافية من العربون</span>
-            <span className="text-lg font-black text-[#FFD700] font-mono">
-              {metrics.totalConfirmedDepositsOwnerNet.toLocaleString()} ج.م
-            </span>
-            <span className="text-[9px] text-slate-400 block">بعد خصم عمولة Sola (20%)</span>
-          </div>
-
-          <div className="bg-white/10 p-3 rounded-xl backdrop-blur-xs space-y-1">
-            <span className="text-[10px] text-slate-300 block font-bold">المتبقي المتوقع عند الوصول</span>
-            <span className="text-lg font-black text-white font-mono">
-              {metrics.totalExpectedBalanceOnArrival.toLocaleString()} ج.م
-            </span>
-            <span className="text-[9px] text-slate-400 block">يُدفع لك شخصياً بعد المعاينة</span>
-          </div>
-        </div>
-      </div>
-
-      {/* Grid of Operational Action Cards */}
-      <div className="grid grid-cols-2 gap-2.5">
-        {/* Disputes Card */}
-        <div
-          onClick={() => setActiveTab('disputes')}
-          className={`p-3.5 rounded-2xl border transition-all cursor-pointer shadow-xs hover:shadow-md flex flex-col justify-between h-24 ${
-            metrics.openDisputesCount > 0
-              ? 'bg-rose-50/80 border-rose-300'
-              : 'bg-white border-slate-200'
-          }`}
-        >
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-800">نزاعات عدم المطابقة</span>
-            <Scale className={`w-4 h-4 ${metrics.openDisputesCount > 0 ? 'text-rose-600' : 'text-slate-400'}`} />
-          </div>
-
-          <div className="flex items-baseline justify-between">
-            <span className="text-2xl font-black text-slate-900 font-mono">
-              {metrics.openDisputesCount}
-            </span>
-            <span className="text-[10px] font-bold text-[#0059FF] hover:underline">
-              مركز النزاعات ➔
-            </span>
-          </div>
-        </div>
-
-        {/* Pending Booking Requests Card */}
-        <div
-          onClick={openPendingBookings}
-          className={`p-3.5 rounded-2xl border transition-all cursor-pointer shadow-xs hover:shadow-md flex flex-col justify-between h-24 ${
-            metrics.newBookingRequestsCount > 0
-              ? 'bg-amber-50/80 border-amber-300'
-              : 'bg-white border-slate-200'
-          }`}
-        >
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-800">طلبات حجز جديدة</span>
-            <Clock className={`w-4 h-4 ${metrics.newBookingRequestsCount > 0 ? 'text-amber-600' : 'text-slate-400'}`} />
-          </div>
-
-          <div className="flex items-baseline justify-between">
-            <span className="text-2xl font-black text-slate-900 font-mono">
-              {metrics.newBookingRequestsCount}
-            </span>
-            <span className="text-[10px] font-bold text-[#0059FF] hover:underline">
-              مراجعة الطلبات ➔
-            </span>
-          </div>
-        </div>
-
-        {/* Unread Messages Card */}
-        <div
-          onClick={() => setActiveTab('messages')}
-          className={`p-3.5 rounded-2xl border transition-all cursor-pointer shadow-xs hover:shadow-md flex flex-col justify-between h-24 ${
-            metrics.unreadMessagesCount > 0
-              ? 'bg-blue-50/80 border-blue-300'
-              : 'bg-white border-slate-200'
-          }`}
-        >
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-800">محادثات المستأجرين</span>
-            <MessageSquare className={`w-4 h-4 ${metrics.unreadMessagesCount > 0 ? 'text-[#0059FF]' : 'text-slate-400'}`} />
-          </div>
-
-          <div className="flex items-baseline justify-between">
-            <span className="text-2xl font-black text-slate-900 font-mono">
-              {metrics.unreadMessagesCount}
-            </span>
-            <span className="text-[10px] font-bold text-[#0059FF] hover:underline">
-              فتح المحادثات ➔
-            </span>
-          </div>
-        </div>
-
-        {/* Units Under Review Card */}
-        <div
-          onClick={() => setActiveTab('properties')}
-          className="p-3.5 bg-white rounded-2xl border border-slate-200 transition-all cursor-pointer shadow-xs hover:shadow-md flex flex-col justify-between h-24"
-        >
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-800">وحدات قيد المراجعة</span>
-            <Building className="w-4 h-4 text-slate-400" />
-          </div>
-
-          <div className="flex items-baseline justify-between">
-            <span className="text-2xl font-black text-slate-900 font-mono">
-              {metrics.underReviewPropertiesCount}
-            </span>
-            <span className="text-[10px] font-bold text-[#0059FF] hover:underline">
-              عرض الوحدات ➔
-            </span>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
+  return <section className="space-y-4 text-right" aria-labelledby="owner-attention">
+    <div><h2 id="owner-attention" className="text-lg font-extrabold text-[var(--konfrm-text-primary)]">يحتاج انتباهك</h2><p className="mt-1 text-sm text-[var(--konfrm-text-secondary)]">ملخص واضح لما يحتاج منك خطوة الآن.</p></div>
+    {pendingCount > 0 ? <div className="rounded-[var(--konfrm-radius-card)] border border-[var(--konfrm-border-focus)] bg-[var(--konfrm-color-primary-soft)] p-4"><div className="flex items-start gap-3"><span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[var(--konfrm-radius-control)] bg-[var(--konfrm-color-primary)] text-white"><Clock3 className="h-5 w-5" /></span><div className="min-w-0 flex-1"><h3 className="font-bold text-[var(--konfrm-text-primary)]">طلبات حجز تنتظر قرارك</h3><p className="mt-1 text-sm text-[var(--konfrm-text-secondary)]">لديك {pendingCount.toLocaleString('ar-EG')} طلب بانتظار المراجعة.</p><Button className="mt-4" variant="primary" size="md" onClick={openPendingBookings}>مراجعة الطلبات <ArrowLeft className="h-4 w-4" /></Button></div></div></div> : <p className="rounded-[var(--konfrm-radius-card)] bg-[var(--konfrm-surface-secondary)] px-4 py-3 text-sm text-[var(--konfrm-text-secondary)]">لا توجد طلبات تحتاج قرارك الآن.</p>}
+    <section className="space-y-3 pt-2" aria-labelledby="owner-money"><div className="flex items-center justify-between"><h2 id="owner-money" className="text-lg font-extrabold text-[var(--konfrm-text-primary)]">أموالك</h2><button onClick={() => setActiveTab('wallet')} className="min-h-11 text-sm font-bold text-[var(--konfrm-color-primary)]">عرض المحفظة</button></div>
+      {walletState.kind === 'error' ? <div className="flex items-center justify-between gap-3 rounded-[var(--konfrm-radius-card)] border border-[var(--konfrm-semantic-danger)] bg-[var(--konfrm-surface-primary)] p-4"><span className="flex items-center gap-2 text-sm text-[var(--konfrm-text-primary)]"><AlertCircle className="h-5 w-5 text-[var(--konfrm-semantic-danger)]" />تعذر تحميل رصيد المحفظة</span><button onClick={() => void refreshWallet()} className="min-h-11 text-sm font-bold text-[var(--konfrm-color-primary)]">إعادة المحاولة</button></div> : walletState.kind === 'ready' ? <div className="grid grid-cols-2 overflow-hidden rounded-[var(--konfrm-radius-card)] border border-[var(--konfrm-border-default)] bg-[var(--konfrm-surface-primary)]"><div className="p-4"><p className="text-sm text-[var(--konfrm-text-secondary)]">متاح للسحب</p><p className="mt-1 text-xl font-extrabold text-[var(--konfrm-text-primary)]">{money(walletState.available)}</p></div><div className="border-r border-[var(--konfrm-border-subtle)] p-4"><p className="text-sm text-[var(--konfrm-text-secondary)]">معلق</p><p className="mt-1 text-xl font-extrabold text-[var(--konfrm-text-primary)]">{money(walletState.pending)}</p></div></div> : <div className="h-24 animate-pulse rounded-[var(--konfrm-radius-card)] bg-[var(--konfrm-surface-secondary)]" />}
+    </section>
+  </section>;
 };

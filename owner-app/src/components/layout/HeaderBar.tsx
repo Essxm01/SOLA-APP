@@ -6,18 +6,18 @@ import { Bell, User } from 'lucide-react';
 
 export const HeaderBar: React.FC = () => {
   const { owner } = useAuth();
-  const { metrics, setIsNotificationsOpen, isEmptyDashboard, setActiveTab } = useApp();
+  const { metrics, notifications, setIsNotificationsOpen, setActiveTab } = useApp();
 
   const ownerDisplayName = (owner as any)?.fullName || owner?.name || 'لم يتم إضافة الاسم بعد';
   const verificationStatus = owner?.verificationStatus || 'UNVERIFIED';
 
   return (
-    <header className="w-full bg-white border-b border-slate-200/80 px-4 py-3 sticky top-0 z-30 shadow-xs dir-rtl">
+    <header className="sticky top-0 z-30 w-full border-b border-[var(--konfrm-border-subtle)] bg-[var(--konfrm-surface-primary)] px-[var(--konfrm-space-page-x)] py-3 dir-rtl">
       <div className="flex items-center justify-between gap-3">
         {/* Owner Avatar and Info (Clickable ➔ Navigates to Profile) */}
         <div
           onClick={() => setActiveTab('profile')}
-          className="flex items-center gap-3 cursor-pointer group hover:opacity-90 transition-all"
+          className="group flex min-h-11 items-center gap-3 text-right"
           title="فتح تفاصيل حساب المالك"
         >
           <div className="relative">
@@ -25,23 +25,22 @@ export const HeaderBar: React.FC = () => {
               <img
                 src={owner.avatar}
                 alt={ownerDisplayName}
-                className="w-11 h-11 rounded-2xl object-cover ring-2 ring-[#0059FF]/20 shadow-xs group-hover:ring-[#0059FF]"
+                className="h-11 w-11 rounded-full object-cover"
               />
             ) : (
-              <div className="w-11 h-11 rounded-2xl bg-blue-50 text-[#0059FF] font-black flex items-center justify-center text-base ring-2 ring-[#0059FF]/20 shadow-xs group-hover:ring-[#0059FF]">
+              <div className="flex h-11 w-11 items-center justify-center rounded-full bg-[var(--konfrm-color-primary-soft)] text-base font-black text-[var(--konfrm-color-primary)]">
                 {ownerDisplayName && ownerDisplayName !== 'لم يتم إضافة الاسم بعد' ? (
                   ownerDisplayName.trim().charAt(0)
                 ) : (
-                  <User className="w-5 h-5 text-[#0059FF]" />
+                  <User className="h-5 w-5" />
                 )}
               </div>
             )}
-            <div className="absolute -bottom-1 -right-1 w-3.5 h-3.5 bg-emerald-500 rounded-full border-2 border-white" />
           </div>
 
           <div className="flex flex-col text-right">
             <div className="flex items-center gap-1.5">
-              <h1 className="text-sm font-extrabold text-slate-900 leading-tight group-hover:text-[#0059FF] transition-colors">
+              <h1 className="text-sm font-extrabold leading-tight text-[var(--konfrm-text-primary)] group-hover:text-[var(--konfrm-color-primary)]">
                 {ownerDisplayName}
               </h1>
             </div>
@@ -52,25 +51,27 @@ export const HeaderBar: React.FC = () => {
                   verificationStatus === 'VERIFIED'
                     ? 'حساب موثق'
                     : verificationStatus === 'PENDING_VERIFICATION'
-                    ? 'بانتظار مراجعة الإدارة'
-                    : 'غير موثق (اضغط للتوثيق)'
+                    ? 'التوثيق قيد المراجعة'
+                    : verificationStatus === 'REJECTED'
+                    ? 'التوثيق يحتاج مراجعة'
+                    : 'حساب غير موثق'
                 }
               />
             </div>
           </div>
         </div>
 
-        {/* Right Actions: Standalone Brand Mark & Notifications Button */}
+        {/* Brand mark and notifications are both real product actions. */}
         <div className="flex items-center gap-2.5">
-          <img src="/konfrm-mark.svg" alt="Brand Mark" className="w-7 h-7 object-contain" />
+          <img src="/konfrm-mark.svg" alt="KONFRM" className="h-7 w-7 object-contain" />
           <button
             onClick={() => setIsNotificationsOpen(true)}
-            className="relative w-10 h-10 rounded-2xl bg-slate-100 flex items-center justify-center text-slate-700 hover:bg-blue-50 hover:text-[#0059FF] transition-all border border-slate-200/80 active:scale-95"
+            className="relative flex min-h-11 min-w-11 items-center justify-center rounded-[var(--konfrm-radius-control)] border border-[var(--konfrm-border-default)] text-[var(--konfrm-text-secondary)] hover:bg-[var(--konfrm-color-primary-soft)] hover:text-[var(--konfrm-color-primary)]"
             aria-label="الإشعارات"
           >
-            <Bell className="w-5 h-5" />
-            {!isEmptyDashboard && metrics.unreadNotificationsCount > 0 && (
-              <span className="absolute -top-1 -right-1 min-w-5 h-5 px-1 bg-rose-500 text-white text-[10px] font-black rounded-full flex items-center justify-center shadow-md animate-bounce font-mono">
+            <Bell className="h-5 w-5" />
+            {notifications.length > 0 && metrics.unreadNotificationsCount > 0 && (
+              <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-[var(--konfrm-semantic-danger)] px-1 text-[10px] font-black text-[var(--konfrm-text-inverse)]">
                 {metrics.unreadNotificationsCount}
               </span>
             )}
@@ -80,4 +81,3 @@ export const HeaderBar: React.FC = () => {
     </header>
   );
 };
-

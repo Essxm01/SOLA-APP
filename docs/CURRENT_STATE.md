@@ -16,6 +16,7 @@ The repository contains working vertical slices for property operations, booking
 - **Identity:** Owner app authenticates against canonical Owner capability, scopes `AppProvider` to canonical Owner identity, and clears local state before best-effort revoke.
 - **Truthful states:** Admin validates sessions before shell render; Admin overview/notifications and Customer property/payment-history fetches distinguish loading, success/empty, and error.
 - **Owner entry:** first-ever device flow is a short KONFRM splash then one-time Owner onboarding; it is independent of authentication and does not change Owner capability rules.
+- **Owner Home:** action-first Home uses canonical pending booking requests, future confirmed bookings, property status context, and direct available/pending wallet values; it does not use dashboard financial aliases as wallet truth.
 - **Owner registration/KYC:** explicit Owner registration is separate from login and preserves a Customer’s UUID when adding the Owner extension. New Owners submit National ID front, National ID back, and a fresh face image to the private `owner-verification` bucket; the package becomes pending Admin review only after all three files validate. Existing Owners are backfilled as onboarding-complete.
 - **Governance:** `DESIGN_SYSTEM/` is independent KONFRM visual/product-experience authority (v2.1.2).
 

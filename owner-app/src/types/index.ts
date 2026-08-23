@@ -186,6 +186,8 @@ export interface OwnerWallet {
 }
 
 export type WalletTransactionType =
+  | 'DEPOSIT_HELD_IN_ESCROW'
+  | 'DEPOSIT_AVAILABLE'
   | 'DEPOSIT_CREDIT'
   | 'PAYOUT_RESERVATION'
   | 'PAYOUT_WITHDRAWAL'
@@ -210,6 +212,8 @@ export interface WalletLedgerEntry {
   previousBalance: number;
   newBalance: number;
   description: string;
+  title?: string;
+  statusLabel?: string;
   idempotencyKey: string;
   createdAt: string;
 }
@@ -852,4 +856,3 @@ export interface AdvancedOwnerAnalytics {
   topPerformingProperty?: PropertyPerformanceMetric;
   generatedAt: string;
 }
-

@@ -639,16 +639,15 @@ export class ExpressServerApp {
 
         // --- C1. Owner Wallet Summary Endpoint (RULE-5A-01) — PostgreSQL Driven ---
         if (path === '/api/v1/owner/wallet' && method === 'GET') {
-          const walletSummary = await walletDb.getOwnerWalletSummary(ownerId).catch(() => ({
-            ownerId,
-            currency: 'EGP',
-            availableBalance: 0,
-            pendingBalance: 0,
-            reservedForPayout: 0,
-            heldBalance: 0,
-            totalEarnedLifeTime: 0,
-            totalWithdrawnLifeTime: 0,
-          }));
+          let walletSummary: any;
+          try {
+            walletSummary = await walletDb.getOwnerWalletSummary(ownerId);
+          } catch {
+            return {
+              statusCode: 500,
+              body: { success: false, error: { code: 'WALLET_QUERY_FAILED', message: 'تعذر جلب بيانات المحفظة المالية من قاعدة البيانات' }, timestamp },
+            };
+          }
           return {
             statusCode: 200,
             body: {
@@ -799,15 +798,25 @@ export class ExpressServerApp {
 
         // --- D. Wallet Ledger Endpoint (RULE-5A-06 & RULE-5A-04) — PostgreSQL Driven ---
         if (path === '/api/v1/owner/wallet/ledger' && method === 'GET') {
-          const limit = parseInt(searchParams?.get('limit') || '50', 10);
-          const offset = parseInt(searchParams?.get('offset') || '0', 10);
-          const ledgerEntries = await walletDb.getOwnerLedger(ownerId, limit, offset).catch(() => []);
+          const requestedLimit = parseInt(searchParams?.get('limit') || '50', 10);
+          const requestedOffset = parseInt(searchParams?.get('offset') || '0', 10);
+          const limit = Number.isFinite(requestedLimit) ? Math.min(Math.max(requestedLimit, 1), 100) : 50;
+          const offset = Number.isFinite(requestedOffset) ? Math.max(requestedOffset, 0) : 0;
+          let ledgerEntries: any[];
+          try {
+            ledgerEntries = await walletDb.getOwnerLedger(ownerId, limit, offset);
+          } catch {
+            return {
+              statusCode: 500,
+              body: { success: false, error: { code: 'WALLET_LEDGER_QUERY_FAILED', message: 'تعذر جلب سجل المحفظة المالي من قاعدة البيانات' }, timestamp },
+            };
+          }
           return {
             statusCode: 200,
             body: {
               success: true,
               data: ledgerEntries,
-              meta: { limit, offset, total: ledgerEntries.length },
+              meta: { limit, offset, returned: ledgerEntries.length },
               timestamp,
             },
           };

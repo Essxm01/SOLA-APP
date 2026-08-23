@@ -138,6 +138,52 @@ async function queryViaSupabaseRest(text: string, params: any[] | undefined, url
     return { rows, command: 'SELECT', rowCount: rows.length, oid: 0, fields: [] };
   }
 
+  // OWNER-WALLET-01: canonical owner wallet, scoped solely by the verified
+  // owner id supplied by the repository. Keep this strict to avoid pg fallback
+  // in the deployed Worker.
+  if (lowerSql.startsWith('select') && lowerSql.includes('from owner_wallets') && /\bowner_id\s*=\s*\$1\b/i.test(sql)) {
+    const ownerId = params?.[0];
+    const res = await fetch(`${url}/rest/v1/owner_wallets?owner_id=eq.${encodeURIComponent(ownerId)}`, { headers });
+    if (!res.ok) throw new Error(`REST_OWNER_WALLET_SELECT_FAILED: HTTP ${res.status}`);
+    const raw: any = await res.json().catch(() => []);
+    const rows = (Array.isArray(raw) ? raw : []).map((wallet: any) => ({
+      ownerId: wallet.owner_id,
+      currency: wallet.currency,
+      availableBalance: wallet.available_balance,
+      pendingBalance: wallet.pending_balance,
+      heldBalance: wallet.held_balance,
+      reservedForPayout: wallet.reserved_for_payout_balance,
+      updatedAt: wallet.updated_at,
+    }));
+    return { rows, command: 'SELECT', rowCount: rows.length, oid: 0, fields: [] };
+  }
+
+  // OWNER-WALLET-01: immutable ledger reads. Support only the repository's
+  // owner-scoped, newest-first query and its unpaginated lifetime projection.
+  if (lowerSql.startsWith('select') && lowerSql.includes('from wallet_ledger_entries') && /\bowner_id\s*=\s*\$1\b/i.test(sql)) {
+    const ownerId = params?.[0];
+    let queryUrl = `${url}/rest/v1/wallet_ledger_entries?owner_id=eq.${encodeURIComponent(ownerId)}`;
+    if (lowerSql.includes('order by created_at desc')) queryUrl += '&order=created_at.desc';
+    if (/\blimit\s+\$2\b/i.test(sql)) queryUrl += `&limit=${encodeURIComponent(String(params?.[1] ?? 50))}`;
+    if (/\boffset\s+\$3\b/i.test(sql)) queryUrl += `&offset=${encodeURIComponent(String(params?.[2] ?? 0))}`;
+    const res = await fetch(queryUrl, { headers });
+    if (!res.ok) throw new Error(`REST_OWNER_WALLET_LEDGER_SELECT_FAILED: HTTP ${res.status}`);
+    const raw: any = await res.json().catch(() => []);
+    const rows = (Array.isArray(raw) ? raw : []).map((entry: any) => ({
+      id: entry.id,
+      ownerId: entry.owner_id,
+      bookingId: entry.booking_id,
+      payoutRequestId: entry.payout_request_id,
+      disputeId: entry.dispute_id,
+      type: entry.transaction_type,
+      amount: entry.amount,
+      newBalance: entry.balance_after,
+      idempotencyKey: entry.idempotency_key,
+      createdAt: entry.created_at,
+    }));
+    return { rows, command: 'SELECT', rowCount: rows.length, oid: 0, fields: [] };
+  }
+
   // 0A. SELECT users WHERE phone_number = $1 (canonical users table only — DATA-02)
   if (lowerSql.includes('from users') && lowerSql.includes('phone_number = $1')) {
     const phone = params?.[0];

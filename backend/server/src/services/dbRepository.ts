@@ -1075,68 +1075,96 @@ export const adminStatsDb = {
 // ----------------------------------------------------------------------------
 export const walletDb = {
   async getOwnerWalletSummary(ownerId: string) {
-    // Compute wallet from bookings that have been settled
-    const res = await queryDb(
-      `SELECT
-        COALESCE(SUM(CASE WHEN b.status = 'CONFIRMED' THEN p.base_price_per_night * 0.80 ELSE 0 END), 0) AS "totalEarnedLifeTime",
-        COALESCE(SUM(CASE WHEN b.status = 'CONFIRMED' AND b.check_in <= CURRENT_DATE THEN p.base_price_per_night * 0.80 ELSE 0 END), 0) AS "availableBalance",
-        COALESCE(SUM(CASE WHEN b.status = 'CONFIRMED' AND b.check_in > CURRENT_DATE THEN p.base_price_per_night * 0.80 ELSE 0 END), 0) AS "pendingBalance"
-       FROM bookings b
-       JOIN properties p ON b.property_id = p.id
-       WHERE b.owner_id = $1`,
-      [ownerId]
-    );
-    const payoutRes = await queryDb(
-      `SELECT
-        COALESCE(SUM(net_amount) FILTER (WHERE status = 'COMPLETED'), 0) AS "totalWithdrawnLifeTime",
-        COALESCE(SUM(net_amount) FILTER (WHERE status IN ('PENDING_ADMIN_PROCESSING', 'PROCESSING')), 0) AS "reservedForPayout"
-       FROM payout_requests WHERE owner_id = $1`,
-      [ownerId]
-    );
-    const disputeRes = await queryDb(
-      `SELECT COALESCE(SUM(d.guest_refund_amount), 0) AS "heldBalance"
-       FROM disputes d WHERE d.owner_id = $1 AND d.status IN ('OPEN', 'ESCALATED_TO_ADMIN', 'WAITING_FOR_MORE_EVIDENCE')`,
-      [ownerId]
-    );
-    const w = res.rows[0] || {};
-    const p = payoutRes.rows[0] || {};
-    const d = disputeRes.rows[0] || {};
+    // PAYMENT-01 made owner_wallets and wallet_ledger_entries the financial
+    // source of truth. Never rebuild wallet amounts from booking/property data.
+    const [walletRes, ledgerRes] = await Promise.all([
+      queryDb(
+        `SELECT owner_id AS "ownerId", currency,
+                available_balance AS "availableBalance", pending_balance AS "pendingBalance",
+                held_balance AS "heldBalance", reserved_for_payout_balance AS "reservedForPayout",
+                updated_at AS "updatedAt"
+         FROM owner_wallets WHERE owner_id = $1`,
+        [ownerId]
+      ),
+      queryDb(
+        `SELECT transaction_type AS type, amount
+         FROM wallet_ledger_entries WHERE owner_id = $1`,
+        [ownerId]
+      ),
+    ]);
+
+    const wallet = walletRes.rows[0];
+    const ledgerRows = ledgerRes.rows;
+    const earningTypes = new Set(['DEPOSIT_HELD_IN_ESCROW', 'DEPOSIT_AVAILABLE', 'ADJUSTMENT_CREDIT']);
+    const withdrawnTypes = new Set(['PAYOUT_WITHDRAWAL', 'PAYOUT_COMPLETED']);
+    const totalEarnedLifeTime = ledgerRows
+      .filter((row: any) => earningTypes.has(row.type) && Number(row.amount) > 0)
+      .reduce((sum: number, row: any) => sum + Number(row.amount), 0);
+    const totalWithdrawnLifeTime = ledgerRows
+      .filter((row: any) => withdrawnTypes.has(row.type))
+      .reduce((sum: number, row: any) => sum + Math.abs(Number(row.amount)), 0);
+
+    // An owner with no wallet row and no immutable financial history is a
+    // genuine zero wallet. Query failures are allowed to throw to the route.
+    if (!wallet && ledgerRows.length === 0) {
+      return {
+        ownerId,
+        currency: 'EGP',
+        availableBalance: 0,
+        pendingBalance: 0,
+        reservedForPayout: 0,
+        heldBalance: 0,
+        totalEarnedLifeTime: 0,
+        totalWithdrawnLifeTime: 0,
+        updatedAt: null,
+      };
+    }
+
     return {
       ownerId,
-      currency: 'EGP',
-      availableBalance: Number(w.availableBalance || 0) - Number(p.reservedForPayout || 0) - Number(p.totalWithdrawnLifeTime || 0),
-      pendingBalance: Number(w.pendingBalance || 0),
-      reservedForPayout: Number(p.reservedForPayout || 0),
-      heldBalance: Number(d.heldBalance || 0),
-      totalEarnedLifeTime: Number(w.totalEarnedLifeTime || 0),
-      totalWithdrawnLifeTime: Number(p.totalWithdrawnLifeTime || 0),
+      currency: wallet?.currency || 'EGP',
+      availableBalance: Number(wallet?.availableBalance || 0),
+      pendingBalance: Number(wallet?.pendingBalance || 0),
+      reservedForPayout: Number(wallet?.reservedForPayout || 0),
+      heldBalance: Number(wallet?.heldBalance || 0),
+      totalEarnedLifeTime,
+      totalWithdrawnLifeTime,
+      updatedAt: wallet?.updatedAt || null,
     };
   },
 
   async getOwnerLedger(ownerId: string, limit = 50, offset = 0) {
-    // Combine booking credits and payout debits into a unified ledger
     const res = await queryDb(
-      `(SELECT 'DEPOSIT_CREDIT' AS type, b.id, p.base_price_per_night * 0.80 AS amount,
-              p.base_price_per_night * 0.20 AS fee, p.base_price_per_night * 0.80 AS "netAmount",
-              'EGP' AS currency, b.created_at AS "createdAt",
-              CONCAT('حجز #', b.booking_number) AS description
-       FROM bookings b JOIN properties p ON b.property_id = p.id
-       WHERE b.owner_id = $1 AND b.status = 'CONFIRMED')
-       UNION ALL
-       (SELECT 'PAYOUT_DEBIT' AS type, pr.id, pr.gross_amount * -1 AS amount,
-              pr.actual_provider_fee AS fee, pr.net_amount * -1 AS "netAmount",
-              'EGP' AS currency, pr.created_at AS "createdAt",
-              CONCAT('سحب #', pr.request_number) AS description
-       FROM payout_requests pr WHERE pr.owner_id = $1 AND pr.status = 'COMPLETED')
-       ORDER BY "createdAt" DESC LIMIT $2 OFFSET $3`,
+      `SELECT id, owner_id AS "ownerId", booking_id AS "bookingId", payout_request_id AS "payoutRequestId",
+              dispute_id AS "disputeId", transaction_type AS type, amount, balance_after AS "newBalance",
+              idempotency_key AS "idempotencyKey", created_at AS "createdAt"
+       FROM wallet_ledger_entries
+       WHERE owner_id = $1
+       ORDER BY created_at DESC LIMIT $2 OFFSET $3`,
       [ownerId, limit, offset]
     );
-    return res.rows.map(r => ({
-      ...r,
-      amount: Number(r.amount),
-      fee: Number(r.fee),
-      netAmount: Number(r.netAmount),
-    }));
+    return res.rows.map((row: any) => {
+      const amount = Number(row.amount || 0);
+      const type = String(row.type || 'ADJUSTMENT_CREDIT');
+      const presentation = type === 'DEPOSIT_HELD_IN_ESCROW'
+        ? { title: 'صافي عربون حجز مؤكد', statusLabel: 'معلق حتى موعد الإتاحة' }
+        : type.startsWith('PAYOUT')
+          ? { title: 'عملية سحب أرباح', statusLabel: 'تمت المعالجة' }
+          : { title: 'حركة مالية في المحفظة', statusLabel: 'مسجلة' };
+      return {
+        ...row,
+        type,
+        amount,
+        fee: 0,
+        netAmount: amount,
+        currency: 'EGP',
+        previousBalance: Number(row.newBalance || 0) - amount,
+        newBalance: Number(row.newBalance || 0),
+        description: presentation.title,
+        title: presentation.title,
+        statusLabel: presentation.statusLabel,
+      };
+    });
   },
 };
 

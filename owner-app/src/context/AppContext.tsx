@@ -155,6 +155,8 @@ interface AppContextType {
 
   // Phase 5: Wallet, Payouts & Financial Analytics
   wallet: OwnerWallet | null;
+  walletError: string | null;
+  refreshWallet: () => Promise<OwnerWallet | null>;
   payoutMethods: OwnerPayoutMethod[];
   payoutRequests: PayoutRequest[];
   walletLedger: WalletLedgerEntry[];
@@ -240,6 +242,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; ownerId: string 
 
   // Phase 5 States
   const [wallet, setWallet] = useState<OwnerWallet | null>(null);
+  const [walletError, setWalletError] = useState<string | null>(null);
   const [payoutMethods, setPayoutMethods] = useState<OwnerPayoutMethod[]>([]);
   const [payoutRequests, setPayoutRequests] = useState<PayoutRequest[]>([]);
   const [walletLedger, setWalletLedger] = useState<WalletLedgerEntry[]>([]);
@@ -257,6 +260,39 @@ export const AppProvider: React.FC<{ children: React.ReactNode; ownerId: string 
     }, 4000);
   }, []);
 
+  const refreshWallet = useCallback(async (): Promise<OwnerWallet | null> => {
+    const repo = repositoryFactory;
+    if (repo.useMockMode) {
+      const [walletData, ledgerData] = await Promise.all([
+        mockRepository.getOwnerWallet(),
+        mockRepository.getWalletLedgerEntries(),
+      ]);
+      setWallet(walletData);
+      setWalletLedger(ledgerData);
+      setWalletError(null);
+      return walletData;
+    }
+
+    const [walletResult, ledgerResult] = await Promise.allSettled([
+      repo.wallet.getOwnerWallet(),
+      repo.wallet.getWalletLedgerEntries(),
+    ]);
+
+    if (walletResult.status === 'fulfilled') {
+      setWallet(walletResult.value as OwnerWallet);
+    }
+    if (ledgerResult.status === 'fulfilled') {
+      setWalletLedger(Array.isArray(ledgerResult.value) ? ledgerResult.value as WalletLedgerEntry[] : []);
+    }
+
+    if (walletResult.status === 'rejected' || ledgerResult.status === 'rejected') {
+      setWalletError('تعذر تحميل بيانات المحفظة المالية. يرجى إعادة المحاولة.');
+      return walletResult.status === 'fulfilled' ? walletResult.value as OwnerWallet : null;
+    }
+    setWalletError(null);
+    return walletResult.value as OwnerWallet;
+  }, []);
+
   const refreshData = useCallback(async () => {
     setIsLoading(true);
     setError(null);
@@ -270,10 +306,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode; ownerId: string 
           notifsData,
           convsData,
           dispData,
-          walletData,
           methodsData,
           reqsData,
-          ledgerData,
           analyticsData,
           advAnalyticsData,
         ] = await Promise.all([
@@ -282,10 +316,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode; ownerId: string 
           repo.notification.getNotifications().catch(() => []),
           repo.messaging.getConversations(),
           repo.dispute.getDisputes().catch(() => []),
-          repo.wallet.getOwnerWallet().catch(() => null),
           repo.payout.getPayoutMethods().catch(() => []),
           repo.payout.getPayoutRequests().catch(() => []),
-          repo.wallet.getWalletLedgerEntries().catch(() => []),
           repo.financial.getFinancialAnalyticsSummary().catch(() => null),
           repo.analytics.getAdvancedAnalytics(analyticsTimeRange).catch(() => null),
         ]);
@@ -295,12 +327,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode; ownerId: string 
         setNotifications(Array.isArray(notifsData) ? notifsData as NotificationItem[] : []);
         setChatConversations(Array.isArray(convsData) ? convsData as ChatConversation[] : []);
         setDisputes(Array.isArray(dispData) ? dispData as Dispute[] : []);
-        setWallet(walletData as OwnerWallet || null);
         setPayoutMethods(Array.isArray(methodsData) ? methodsData as OwnerPayoutMethod[] : []);
         setPayoutRequests(Array.isArray(reqsData) ? reqsData as PayoutRequest[] : []);
-        setWalletLedger(Array.isArray(ledgerData) ? ledgerData as WalletLedgerEntry[] : []);
         setFinancialAnalytics(analyticsData as FinancialAnalyticsSummary || null);
         setAdvancedAnalytics(advAnalyticsData as AdvancedOwnerAnalytics || null);
+        const refreshedWallet = await refreshWallet();
 
         // Derive dashboard metrics from live server data
         const validProps = Array.isArray(propsData) ? propsData as Property[] : [];
@@ -318,7 +349,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; ownerId: string 
         const upcomingBks = validBks.filter((b) => b.status === 'CONFIRMED').length;
         const unreadNotifs = validNotifs.filter((n) => !n.isRead).length;
 
-        setMetrics({
+        setMetrics((previous) => ({
           newBookingRequestsCount: newRequests,
           pendingModificationRequestsCount: 0,
           pendingCancellationRequestsCount: 0,
@@ -334,10 +365,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode; ownerId: string 
           draftPropertiesCount: draftProps,
           pausedPropertiesCount: pausedProps,
 
-          totalConfirmedDepositsOwnerNet: (walletData as OwnerWallet)?.availableBalance ?? 0,
-          totalExpectedBalanceOnArrival: (walletData as OwnerWallet)?.pendingBalance ?? 0,
+          totalConfirmedDepositsOwnerNet: refreshedWallet?.totalEarnedLifeTime ?? previous.totalConfirmedDepositsOwnerNet,
+          totalExpectedBalanceOnArrival: refreshedWallet?.pendingBalance ?? previous.totalExpectedBalanceOnArrival,
           totalPendingDepositsCount: newRequests,
-        });
+        }));
 
         if ((propsData as Property[]).length > 0) {
           setCalendarPropertyId((current) => current || (propsData as Property[])[0].id);
@@ -385,6 +416,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; ownerId: string 
         setDisputes(dispData);
 
         setWallet(walletData);
+        setWalletError(null);
         setPayoutMethods(methodsData);
         setPayoutRequests(reqsData);
         setWalletLedger(ledgerData);
@@ -401,7 +433,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; ownerId: string 
     } finally {
       setIsLoading(false);
     }
-  }, [isEmptyDashboard, analyticsTimeRange]);
+  }, [isEmptyDashboard, analyticsTimeRange, refreshWallet]);
 
   useEffect(() => {
     refreshData();
@@ -1198,6 +1230,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode; ownerId: string 
 
         // Phase 5
         wallet,
+        walletError,
+        refreshWallet,
         payoutMethods,
         payoutRequests,
         walletLedger,

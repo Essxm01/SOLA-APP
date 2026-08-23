@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import type { PayoutMethodType } from '../../types';
 import { Button } from '../ui/Button';
@@ -23,6 +23,8 @@ import {
 export const WalletFoundationView: React.FC = () => {
   const {
     wallet,
+    walletError,
+    refreshWallet,
     payoutMethods,
     payoutRequests,
     walletLedger,
@@ -49,6 +51,11 @@ export const WalletFoundationView: React.FC = () => {
   const [newAccountTitle, setNewAccountTitle] = useState('');
   const [newAccountNumber, setNewAccountNumber] = useState('');
   const [newBankName, setNewBankName] = useState('البنك الأهلي المصري');
+  const canRequestPayout = (wallet?.availableBalance ?? 0) >= MINIMUM_PAYOUT_AMOUNT;
+
+  useEffect(() => {
+    void refreshWallet();
+  }, [refreshWallet]);
 
   const handleRequestPayout = async () => {
     if (payoutAmount < MINIMUM_PAYOUT_AMOUNT) {
@@ -120,12 +127,23 @@ export const WalletFoundationView: React.FC = () => {
           variant="primary"
           size="sm"
           onClick={() => setIsPayoutSheetOpen(true)}
+          disabled={!canRequestPayout}
           icon={<ArrowUpRight className="w-4 h-4" />}
           className="bg-[#0059FF] font-bold text-xs py-2 px-3 shrink-0 shadow-xs"
         >
           سحب الأرباح 💸
         </Button>
       </div>
+
+      {walletError && (
+        <div className="rounded-2xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-800 space-y-2">
+          <p className="font-bold">{walletError}</p>
+          <button onClick={() => void refreshWallet()} className="font-black text-rose-700 underline">إعادة المحاولة</button>
+        </div>
+      )}
+      {!walletError && !canRequestPayout && (
+        <p className="text-[11px] text-slate-500 font-bold">لا يوجد رصيد متاح للسحب بعد.</p>
+      )}
 
       {/* Main Balance Overview Card Stream */}
       <div className="bg-gradient-to-br from-slate-900 via-blue-950 to-slate-900 rounded-3xl p-5 text-white shadow-xl space-y-4 relative overflow-hidden">
@@ -298,6 +316,7 @@ export const WalletFoundationView: React.FC = () => {
               variant="primary"
               size="sm"
               onClick={() => setIsPayoutSheetOpen(true)}
+              disabled={!canRequestPayout}
               icon={<Plus className="w-3.5 h-3.5" />}
               className="text-xs py-1.5 px-3"
             >
@@ -371,20 +390,21 @@ export const WalletFoundationView: React.FC = () => {
           </div>
 
           <div className="space-y-2">
+            {!walletError && walletLedger.length === 0 && <div className="p-6 text-center bg-white rounded-2xl border border-slate-200 text-slate-500 text-xs">لا توجد عمليات مالية مسجلة بعد.</div>}
             {walletLedger.map((entry) => (
               <div
                 key={entry.id}
                 className="bg-white p-3 rounded-2xl border border-slate-200 shadow-xs space-y-1 text-xs"
               >
                 <div className="flex items-center justify-between text-[11px] border-b border-slate-100 pb-1">
-                  <span className="font-bold text-[#0059FF]">{entry.type}</span>
+                  <span className="font-bold text-[#0059FF]">{entry.title || entry.type}</span>
                   <span className="text-slate-400 font-mono">{entry.createdAt}</span>
                 </div>
 
-                <p className="text-slate-800 text-[11px] leading-relaxed">{entry.description}</p>
+                <p className="text-slate-800 text-[11px] leading-relaxed">{entry.statusLabel || entry.description}</p>
 
                 <div className="flex items-center justify-between pt-1 text-[11px]">
-                  <span className="text-slate-500 font-mono text-[10px]">Key: {entry.idempotencyKey}</span>
+                  <span className="text-slate-500 text-[10px]">عملية مالية موثقة</span>
                   <span className="font-black text-slate-900 font-mono">{entry.amount.toLocaleString()} ج.م</span>
                 </div>
               </div>

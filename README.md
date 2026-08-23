@@ -1,32 +1,24 @@
-# React + TypeScript + Vite
+# KONFRM / كونفرم
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+KONFRM is an Arabic-first vacation-rental product with separate Customer, Owner, and Admin applications. This repository also contains the TypeScript backend, Supabase migration history, and the central KONFRM design/product-experience system.
 
-Currently, two official plugins are available:
+## Start here
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- [Repository knowledge index](./docs/INDEX.md)
+- [Current project state](./docs/CURRENT_STATE.md)
+- [Coding-agent guide](./AGENTS.md)
+- [Current task contract](./tasks/CURRENT_TASK.md)
+- [KONFRM Design System](./DESIGN_SYSTEM/README.md)
 
-## React Compiler
+Visible product identity is **KONFRM / كونفرم**. Legacy `SOLA` identifiers remain in repository/infrastructure names and are not a request to rename deployed resources.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## Repository map
 
-## Expanding the Oxlint configuration
+- `customer-app/` — Customer React/Vite application
+- `owner-app/` — Owner React/Vite application
+- `admin-app/` — Admin React/Vite application
+- `backend/` — API, Worker adapter, repositories, tests, and migrations
+- `DESIGN_SYSTEM/` — authoritative visual and experience governance
+- `docs/` — compact repository memory
 
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
-
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
-```
-
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+For setup, validation, architecture, integrations, and change rules, follow the linked knowledge documents rather than treating this README as an encyclopedia.

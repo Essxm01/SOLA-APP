@@ -1,38 +1,7 @@
 {
-  "$schema": "http://json-schema.org/draft-07/schema#",
-  "name": "SOLA Unified Spacing Tokens",
-  "version": "1.0.0",
-  "source_of_truth": "SOLA Owner App (8pt Grid System)",
-  "spacing": {
-    "base_grid": "8px",
-    "scale": {
-      "0.5": { "value": "2px", "pixels": 2, "rem": "0.125rem" },
-      "1": { "value": "4px", "pixels": 4, "rem": "0.25rem" },
-      "1.5": { "value": "6px", "pixels": 6, "rem": "0.375rem" },
-      "2": { "value": "8px", "pixels": 8, "rem": "0.5rem" },
-      "2.5": { "value": "10px", "pixels": 10, "rem": "0.625rem" },
-      "3": { "value": "12px", "pixels": 12, "rem": "0.75rem" },
-      "3.5": { "value": "14px", "pixels": 14, "rem": "0.875rem" },
-      "4": { "value": "16px", "pixels": 16, "rem": "1.0rem" },
-      "5": { "value": "20px", "pixels": 20, "rem": "1.25rem" },
-      "6": { "value": "24px", "pixels": 24, "rem": "1.5rem" },
-      "8": { "value": "32px", "pixels": 32, "rem": "2.0rem" },
-      "10": { "value": "40px", "pixels": 40, "rem": "2.5rem" },
-      "12": { "value": "48px", "pixels": 48, "rem": "3.0rem" },
-      "16": { "value": "64px", "pixels": 64, "rem": "4.0rem" }
-    },
-    "layout": {
-      "mobile_container_max_width": "410px",
-      "mobile_container_height": "840px",
-      "page_padding_mobile": "16px",
-      "page_padding_desktop": "24px",
-      "card_padding": "16px",
-      "modal_padding": "24px",
-      "bottom_sheet_padding": "24px",
-      "input_padding_x": "16px",
-      "input_padding_y": "12px",
-      "button_padding_x": "16px",
-      "button_padding_y": "10px"
-    }
-  }
+  "meta": { "name": "KONFRM spacing tokens", "version": "2.0.0", "authority": "DESIGN_SYSTEM/" },
+  "base": { "value": "8px", "purpose": "8pt-derived spacing philosophy." },
+  "scale": { "xs": "4px", "sm": "8px", "md": "12px", "lg": "16px", "xl": "24px", "2xl": "32px", "3xl": "40px", "4xl": "48px" },
+  "semantic": { "pageHorizontal": "16px", "pageVerticalRhythm": "24px", "sectionGap": "24px", "cardPadding": "16px", "controlGap": "12px", "inlineGap": "8px", "listGap": "12px", "modalPadding": "24px", "bottomSheetPadding": "24px", "safeBottom": "24px" },
+  "rule": "Applications use named tokens. Values such as 13px, 17px and 21px are not introduced locally without a documented token and approved design-system change."
 }

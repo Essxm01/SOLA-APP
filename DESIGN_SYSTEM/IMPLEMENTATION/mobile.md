@@ -1,32 +1,12 @@
-# 📱 SOLA Implementation Guide — Mobile Applications (Owner & Renter App)
+# Mobile shell contract
 
----
+Customer and Owner are mobile-first, with a baseline viewport of `375px`.
 
-## 1. React Native / Mobile Token Theme Object
-```typescript
-export const SOLA_MOBILE_THEME = {
-  colors: {
-    primaryBlue: '#0059FF',
-    secondaryGold: '#FFD700',
-    bgMain: '#F5F7FA',
-    bgSurface: '#FFFFFF',
-    textPrimary: '#0F172A',
-    textSecondary: '#475569',
-    textMuted: '#64748B',
-    border: '#E2E8F0',
-    success: '#059669',
-    warning: '#D97706',
-    danger: '#E11D48',
-  },
-  radius: {
-    card: 16,
-    button: 12,
-    input: 12,
-    badge: 9999,
-  },
-  typography: {
-    fontFamily: 'Cairo',
-    direction: 'rtl',
-  },
-};
-```
+- At desktop browser widths, authenticated mobile-app content may be centered and constrained to a maximum width of approximately `430px`.
+- At mobile widths, the shell uses the natural viewport width.
+- No fake phone frame, notch, simulator or fullscreen mode switch.
+- Header, content area, sticky action region and bottom navigation reserve safe bottom padding.
+- Bottom sheets originate from the viewport bottom, use the shared bottom-sheet radius/padding, and preserve an accessible close path.
+- Interactive targets are at least `44 × 44px`.
+
+This is a structural contract; it does not require mobile cards in desktop Admin.

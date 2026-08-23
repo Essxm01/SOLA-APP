@@ -1,15 +1,9 @@
-# ♿ SOLA Guidelines — Accessibility & Contrast
+# Accessibility baseline
 
----
-
-## 1. Color Contrast Standards (WCAG 2.1 AA)
-- Primary Blue (`#0059FF`) over White background: Contrast ratio **4.6:1** (Passes AA for text).
-- Primary Text (`#0F172A`) over White background: Contrast ratio **15.8:1** (Passes AAA).
-- Secondary Text (`#475569`) over White background: Contrast ratio **7.2:1** (Passes AAA).
-- Button text on Primary Blue: White (`#FFFFFF`) contrast ratio **4.6:1**.
-
----
-
-## 2. Touch Targets & Focus Rings
-- Minimum Touch Target on Mobile: `44px` height for buttons and inputs.
-- Focus States: `focus:outline-none focus:ring-2 focus:ring-[#0059FF] focus:ring-offset-2`
+- 44px minimum mobile touch target; icon-only controls have an accessible name.
+- Visible keyboard focus is mandatory.
+- Meet sufficient contrast; disabled state is visually distinct and semantically disabled.
+- Status is not colour-only: include readable label, icon/text or both as appropriate.
+- Buttons, inputs and errors have semantic labels and associations.
+- Cairo sizing must remain readable in Arabic; required information does not rely on tiny type.
+- Motion, where used later, communicates state and stays brief; no decorative choreography.

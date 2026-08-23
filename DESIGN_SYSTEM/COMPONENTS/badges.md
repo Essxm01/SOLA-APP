@@ -1,24 +1,13 @@
-# 🛡️ SOLA Component Specification — Badges & Status Chips
+# StatusBadge contract
 
-> **Source of Truth**: `owner-app/src/components/ui/Badge.tsx` & `constants/theme.ts`
+A `StatusBadge` is a semantic presentation of a canonical status, not an independently styled screen chip. It uses the corresponding semantic background, text and border token; an icon or dot is optional and cannot be the only signal.
 
----
+| Domain | Status → Arabic label guidance | Semantic type |
+|---|---|---|
+| Property | DRAFT → مسودة; PENDING_REVIEW → قيد المراجعة; PUBLISHED → منشورة; REJECTED → مرفوضة; PAUSED → موقوفة | warning, warning, success, danger, info |
+| Booking | PENDING_OWNER_APPROVAL → بانتظار موافقة المالك; APPROVED_PENDING_PAYMENT → تمت الموافقة — العربون مطلوب; CONFIRMED → الحجز مؤكد; REJECTED → مرفوض; CANCELLED → ملغى; EXPIRED → انتهت المهلة | warning, info, success, danger, danger, muted/info |
+| Payment | INITIATED → بدأ الدفع; PENDING → قيد المعالجة; SUCCEEDED → تم الدفع; FAILED → فشل الدفع | info, warning, success, danger |
+| Wallet/Payout | PENDING → معلق; AVAILABLE → متاح; RESERVED → محجوز; HELD → محتجز; PROCESSING → قيد التحويل; COMPLETED → مكتمل; REJECTED → مرفوض | warning, success, info, warning, info, success, danger |
+| Identity | UNVERIFIED → غير موثق; PENDING_VERIFICATION → قيد التحقق; VERIFIED → موثق; REJECTED → مرفوض | muted, warning, success, danger |
 
-## 1. Property / Payout / Booking Status Chip
-- **Anatomy**: `inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-extrabold border transition-colors`
-- **Dot Indicator**: `<span className="w-1.5 h-1.5 rounded-full bg-current" />`
-
----
-
-## 2. Status Mapping Table
-
-| Status Group | Status Code | Background | Text Color | Border Color | Label (Arabic) |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| **Payout** | `PENDING` | `bg-amber-50` | `text-amber-900` | `border-amber-300` | قيد الطلب |
-| **Payout** | `PROCESSING` | `bg-blue-50` | `text-[#0059FF]` | `border-blue-300` | قيد التحويل البنكي |
-| **Payout** | `COMPLETED` | `bg-emerald-50` | `text-emerald-900` | `border-emerald-300` | تم التحويل بنجاح ✅ |
-| **Payout** | `REJECTED` | `bg-rose-50` | `text-rose-900` | `border-rose-300` | مرفوض وإعادة الرصيد |
-| **Dispute** | `OPENED` / `ESCALATED` | `bg-amber-50` | `text-amber-900` | `border-amber-300` | مصعد للإدارة |
-| **Dispute** | `RESOLVING_PENDING_GATEWAY` | `bg-blue-50` | `text-[#0059FF]` | `border-blue-300` | معالجة الاسترداد |
-| **Dispute** | `RESOLVED` | `bg-emerald-50` | `text-emerald-900` | `border-emerald-300` | تم حسم النزاع رسمياً ✅ |
-| **Verification** | `VERIFIED` | `bg-emerald-100` | `text-emerald-900` | `border-emerald-300` | موثق رسمياً ✓ |
+Applications map internal enum values centrally and never expose them as user-facing English text. Exact wording may be refined centrally without changing business status semantics.

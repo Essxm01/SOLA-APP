@@ -1,13 +1,18 @@
-# 🔗 SOLA Design System — Token Mapping Table
+# Token consumption and generation
 
-| Semantic Token Name | HEX / Value | Tailwind Class Equivalent | React Native Theme | Usage Context |
-| :--- | :--- | :--- | :--- | :--- |
-| `color.brand.primary_blue` | `#0059FF` | `bg-[#0059FF]`, `text-[#0059FF]` | `theme.colors.primaryBlue` | Primary CTA, Active Tabs, Key Icons |
-| `color.brand.secondary_gold` | `#FFD700` | `bg-[#FFD700]`, `text-amber-900` | `theme.colors.secondaryGold` | Accent Badges, Gold Highlights |
-| `color.background.main` | `#F5F7FA` | `bg-[#F5F7FA]`, `bg-slate-100` | `theme.colors.bgMain` | Page Background |
-| `color.background.surface` | `#FFFFFF` | `bg-white` | `theme.colors.bgSurface` | Card & Sheet Background |
-| `color.text.primary` | `#0F172A` | `text-slate-900` | `theme.colors.textPrimary` | Main Titles & High Contrast Text |
-| `color.semantic.success.background` | `#ECFDF5` | `bg-emerald-50` | `theme.colors.successBg` | Confirmed / Paid Status |
-| `color.semantic.danger.background` | `#FFF1F2` | `bg-rose-50` | `theme.colors.dangerBg` | Disputes / Holds / Rejected |
-| `radius.xl` | `16px` | `rounded-2xl` | `16` | Card & Container Border Radius |
-| `radius.lg` | `12px` | `rounded-xl` | `12` | Button & Input Border Radius |
+`TOKENS/*.json` is canonical. Run `npm run design:generate` to produce:
+
+- `DESIGN_SYSTEM/generated/konfrm-tokens.css` — semantic CSS custom properties.
+- `DESIGN_SYSTEM/generated/konfrm-tokens.ts` — typed, immutable token map for React/TypeScript.
+
+The generator is intentionally dependency-free. It is suitable for the three existing Vite applications without introducing a framework or changing their build architecture.
+
+## Application migration rule
+
+When a controlled UI migration begins, each application imports the same generated CSS file from its global stylesheet and consumes semantic variables or the generated TypeScript map. Applications must not copy literal palette values into local theme files.
+
+This authority task deliberately does not add imports to legacy screens: importing a token file alone would not migrate their raw values and could imply a visual redesign. The generated contract is ready for the next, scoped migration.
+
+## Naming
+
+Use semantic variables such as `--konfrm-color-primary`, `--konfrm-surface-primary`, `--konfrm-text-primary`, `--konfrm-border-default`, `--konfrm-radius-card`, and `--konfrm-space-page-horizontal`. Do not create product tokens named after Tailwind palettes such as `slate-900` or `blue-950`.

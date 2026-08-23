@@ -1,27 +1,6 @@
 {
-  "$schema": "http://json-schema.org/draft-07/schema#",
-  "name": "SOLA Unified Border Tokens",
-  "version": "1.0.0",
-  "source_of_truth": "SOLA Owner App (Forensic Extraction)",
-  "borders": {
-    "width": {
-      "none": "0px",
-      "thin": "1px",
-      "medium": "2px",
-      "thick": "4px"
-    },
-    "color": {
-      "standard": "#E2E8F0",
-      "subtle": "#F1F5F9",
-      "focus": "#0059FF",
-      "error": "#F87171",
-      "success": "#A7F3D0",
-      "warning": "#FDE68A",
-      "dark_glass": "rgba(255, 255, 255, 0.10)"
-    },
-    "style": {
-      "solid": "solid",
-      "dashed": "dashed"
-    }
-  }
+  "meta": { "name": "KONFRM border tokens", "version": "2.0.0", "authority": "DESIGN_SYSTEM/" },
+  "width": { "none": "0px", "default": "1px", "focus": "2px" },
+  "style": { "default": "solid", "dashed": "dashed" },
+  "rule": "Border color is consumed from colors.border; semantic borders are used only for genuine semantic status or validation feedback."
 }

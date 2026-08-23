@@ -1,30 +1,5 @@
 {
-  "$schema": "http://json-schema.org/draft-07/schema#",
-  "name": "SOLA Unified Border Radius Tokens",
-  "version": "1.0.0",
-  "source_of_truth": "SOLA Owner App (Forensic Extraction)",
-  "radius": {
-    "none": "0px",
-    "xs": "4px",
-    "sm": "6px",
-    "md": "8px",
-    "lg": "12px",
-    "xl": "16px",
-    "2xl": "24px",
-    "3xl": "36px",
-    "full": "9999px",
-    "component_mapping": {
-      "button_small": "8px",
-      "button_standard": "12px",
-      "input_field": "12px",
-      "status_chip": "9999px",
-      "badge": "9999px",
-      "card": "16px",
-      "modal_dialog": "16px",
-      "bottom_sheet_top": "24px",
-      "mobile_screen": "36px",
-      "mobile_shell": "48px",
-      "avatar": "9999px"
-    }
-  }
+  "meta": { "name": "KONFRM radius tokens", "version": "2.0.0", "authority": "DESIGN_SYSTEM/" },
+  "radius": { "control": "12px", "card": "16px", "elevatedCard": "16px", "modal": "20px", "bottomSheet": "20px 20px 0 0", "pill": "9999px", "round": "50%" },
+  "rule": "Use the named component radius. Do not create per-screen radius systems or fake-device shell radii."
 }

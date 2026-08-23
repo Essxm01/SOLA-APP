@@ -1,123 +1,50 @@
 {
-  "$schema": "http://json-schema.org/draft-07/schema#",
-  "name": "SOLA Unified Color Tokens",
-  "version": "1.0.0",
-  "source_of_truth": "SOLA Owner App (Forensic Extraction)",
-  "color": {
-    "brand": {
-      "primary_blue": {
-        "value": "#0059FF",
-        "type": "color",
-        "description": "SOLA Signature Primary Blue. Main CTA button, active navigation, primary highlights.",
-        "hover": "#0046CC",
-        "soft": "rgba(0, 89, 255, 0.10)",
-        "ring": "rgba(0, 89, 255, 0.20)",
-        "shadow": "rgba(0, 89, 255, 0.20)"
-      },
-      "secondary_gold": {
-        "value": "#FFD700",
-        "type": "color",
-        "description": "SOLA Coastal Gold / Sola Yellow. Accent badges, secondary CTAs, priority highlights.",
-        "hover": "#E6C200",
-        "soft": "rgba(255, 215, 0, 0.15)",
-        "shadow": "rgba(255, 215, 0, 0.20)"
-      }
-    },
-    "background": {
-      "main": {
-        "value": "#F5F7FA",
-        "type": "color",
-        "description": "Main application background shade."
-      },
-      "surface": {
-        "value": "#FFFFFF",
-        "type": "color",
-        "description": "Primary card, modal, and container background."
-      },
-      "surface_elevated": {
-        "value": "#F8FAFC",
-        "type": "color",
-        "description": "Secondary inset surface background."
-      },
-      "dark_header": {
-        "value": "rgba(15, 23, 42, 0.95)",
-        "type": "color",
-        "description": "Dark glassmorphic app bar and master portal header."
-      },
-      "glass_panel": {
-        "value": "rgba(255, 255, 255, 0.85)",
-        "type": "color",
-        "description": "Light glassmorphic card panel with backdrop blur."
-      }
-    },
-    "text": {
-      "primary": {
-        "value": "#0F172A",
-        "type": "color",
-        "description": "Primary headings and high-contrast text."
-      },
-      "secondary": {
-        "value": "#475569",
-        "type": "color",
-        "description": "Body text and label descriptions."
-      },
-      "muted": {
-        "value": "#64748B",
-        "type": "color",
-        "description": "Secondary metadata, captions, and placeholders."
-      },
-      "inverse": {
-        "value": "#FFFFFF",
-        "type": "color",
-        "description": "Text rendered over dark backgrounds or primary buttons."
-      }
-    },
-    "border": {
-      "main": {
-        "value": "#E2E8F0",
-        "type": "color",
-        "description": "Standard border for cards, inputs, and dividers."
-      },
-      "subtle": {
-        "value": "#F1F5F9",
-        "type": "color",
-        "description": "Subtle internal card separator."
-      },
-      "focus": {
-        "value": "#0059FF",
-        "type": "color",
-        "description": "Input and button active focus ring border."
-      }
-    },
-    "semantic": {
-      "success": {
-        "solid": "#059669",
-        "text": "#065F46",
-        "background": "#ECFDF5",
-        "border": "#A7F3D0",
-        "description": "Confirmed status, completed transactions, verified state."
-      },
-      "warning": {
-        "solid": "#D97706",
-        "text": "#78350F",
-        "background": "#FFFBEB",
-        "border": "#FDE68A",
-        "description": "Pending approval, SLA deadline warnings, draft state."
-      },
-      "danger": {
-        "solid": "#E11D48",
-        "text": "#881337",
-        "background": "#FFF1F2",
-        "border": "#FECDD3",
-        "description": "Rejections, frozen financial holds ($H$), dispute alerts."
-      },
-      "info": {
-        "solid": "#0059FF",
-        "text": "#1E40AF",
-        "background": "#EFF6FF",
-        "border": "#BFDBFE",
-        "description": "Messaging threads, payout execution, general info."
-      }
-    }
+  "meta": {
+    "name": "KONFRM color tokens",
+    "version": "2.0.0",
+    "authority": "DESIGN_SYSTEM/",
+    "status": "approved foundations with documented implementation defaults"
+  },
+  "brand": {
+    "primary": { "value": "#0059FF", "purpose": "Primary action, active selection and focus identity.", "allowedUse": "Primary CTAs, active navigation and focus indicators.", "prohibitedMisuse": "Do not use as a decorative page fill or an inactive-state color." },
+    "primaryHover": { "value": "#0047CC", "purpose": "Pressed or hover response for a primary control.", "allowedUse": "Interactive primary controls only." },
+    "primarySoft": { "value": "#EAF1FF", "purpose": "Low-emphasis primary selection surface.", "allowedUse": "Selected rows, informative callouts and icon wells." },
+    "accent": { "value": "#FFD700", "purpose": "Summer Yellow attention accent.", "allowedUse": "Small, intentional highlights or limited attention cues.", "prohibitedMisuse": "Never use as the normal primary CTA, a large surface, or body-text color." },
+    "accentSoft": { "value": "#FFF8CC", "purpose": "Low-emphasis yellow accent surface.", "allowedUse": "Small highlight containers only." }
+  },
+  "surface": {
+    "canvas": { "value": "#F8FAFC", "purpose": "Default light page canvas." },
+    "primary": { "value": "#FFFFFF", "purpose": "Cards, controls, sheets and primary content surfaces." },
+    "secondary": { "value": "#F1F5F9", "purpose": "Inset and grouped supporting surfaces." },
+    "elevated": { "value": "#FFFFFF", "purpose": "Modal, bottom-sheet and elevated card surface." }
+  },
+  "text": {
+    "primary": { "value": "#0F172A", "purpose": "High-contrast text only; not a standard page or card surface." },
+    "secondary": { "value": "#475569", "purpose": "Body copy and supporting labels." },
+    "muted": { "value": "#64748B", "purpose": "Metadata, placeholders and low-priority supporting text." },
+    "inverse": { "value": "#FFFFFF", "purpose": "Text on an approved high-contrast control." }
+  },
+  "border": {
+    "default": { "value": "#E2E8F0", "purpose": "Standard card, input and divider border." },
+    "subtle": { "value": "#F1F5F9", "purpose": "Low-emphasis internal separation." },
+    "strong": { "value": "#CBD5E1", "purpose": "Selected or stronger structural border." },
+    "focus": { "value": "#0059FF", "purpose": "Keyboard and input focus outline." }
+  },
+  "semantic": {
+    "success": { "solid": "#15803D", "text": "#166534", "background": "#F0FDF4", "border": "#BBF7D0", "purpose": "Confirmed, completed and verified states; not a brand color." },
+    "warning": { "solid": "#B45309", "text": "#92400E", "background": "#FFFBEB", "border": "#FDE68A", "purpose": "Pending, draft or attention-needed states; not a brand color." },
+    "danger": { "solid": "#BE123C", "text": "#9F1239", "background": "#FFF1F2", "border": "#FECDD3", "purpose": "Errors, rejected and destructive states; not a brand color." },
+    "info": { "solid": "#0059FF", "text": "#1D4ED8", "background": "#EFF6FF", "border": "#BFDBFE", "purpose": "Informative and in-progress states; not a second brand color." }
+  },
+  "interaction": {
+    "hover": { "value": "#F1F5F9", "purpose": "Neutral interactive hover surface." },
+    "pressed": { "value": "#E2E8F0", "purpose": "Neutral pressed surface." },
+    "selected": { "value": "#EAF1FF", "purpose": "Selected control or row surface." },
+    "disabled": { "value": "#E2E8F0", "purpose": "Disabled control surface; pair with disabled text and semantics." },
+    "focusRing": { "value": "rgba(0, 89, 255, 0.32)", "purpose": "Visible focus halo; never remove focus indication." }
+  },
+  "policy": {
+    "forbiddenNormalSurfaces": ["#0F172A", "navy dashboard slabs", "dark finance panels", "dark hero cards", "dark app headers", "decorative dark gradients", "blue-950/slate-900 blocks"],
+    "note": "A dark neutral may be used only as a text token where contrast requires it. It is not a standard KONFRM surface."
   }
 }

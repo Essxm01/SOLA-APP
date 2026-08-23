@@ -1,58 +1,47 @@
-# 🏛️ SOLA Vacation Rentals — Unified Central Design System
+# KONFRM Design System
 
-> **Single Source of Truth** for all digital products in the SOLA Vacation Rentals ecosystem (`Owner App`, `Renter App`, `Admin Portal`).
-> **Authoritative Visual Reference**: `SOLA Owner App` (Forensic Extraction v1.0.0).
-
----
-
-## 📐 Architecture Overview
+**Version:** `2.0.0`
+**Authority:** `DESIGN_SYSTEM/` is the independent visual and interaction source of truth for KONFRM / كونفرم.
 
 ```
-                      ┌─────────────────────────────────┐
-                      │    SOLA Owner App Codebase      │
-                      │  (Authoritative Visual Source)  │
-                      └────────────────┬────────────────┘
-                                       │
-                             Forensic UI/UX Extraction
-                                       │
-                                       ▼
-                      ┌─────────────────────────────────┐
-                      │     DESIGN_SYSTEM/ Repository   │
-                      │  (Single Source of Truth Tokens)│
-                      └────────────────┬────────────────┘
-                                       │
-          ┌────────────────────────────┼────────────────────────────┐
-          ▼                            ▼                            ▼
-┌──────────────────┐         ┌──────────────────┐         ┌──────────────────┐
-│  SOLA Owner App  │         │  SOLA Renter App │         │ SOLA Admin Portal│
-│ (Mobile & Web)   │         │ (iOS & Android)  │         │ (Web Application)│
-└──────────────────┘         └──────────────────┘         └──────────────────┘
+                         DESIGN_SYSTEM/
+                               |
+          +--------------------+--------------------+
+          |                    |                    |
+     Customer App          Owner App            Admin App
 ```
 
----
+Applications consume this system. They do not define it, and no production application is a source from which global rules are automatically extracted. Existing screens are implementation evidence only. If an implementation conflicts with this directory, **DESIGN_SYSTEM wins**.
 
-## 📁 Repository Structure
+## Approved foundations
 
-- [`GOVERNANCE.md`](./GOVERNANCE.md): Governance rules, anti-drift policies, versioning, and change approvals.
-- [`AUDIT_REPORT.md`](./AUDIT_REPORT.md): Forensic audit report documenting the extraction process from `owner-app`.
-- **`TOKENS/`**: Machine-readable JSON design tokens:
-  - [`colors.json`](./TOKENS/colors.json): Brand colors (`#0059FF`, `#FFD700`), surfaces, semantic statuses.
-  - [`typography.json`](./TOKENS/typography.json): Cairo font scales, weights, monospace identifiers.
-  - [`spacing.json`](./TOKENS/spacing.json): 8pt grid scale and layout padding rules.
-  - [`radius.json`](./TOKENS/radius.json): Border radius scales (`16px` cards, `12px` buttons/inputs).
-  - [`shadows.json`](./TOKENS/shadows.json): Elevation levels and shadow styles.
-  - [`borders.json`](./TOKENS/borders.json): Border widths and colors.
-  - [`breakpoints.json`](./TOKENS/breakpoints.json): Responsive layout target viewports.
-  - [`icons.json`](./TOKENS/icons.json): Lucide React outlined icon tokens.
-- **`COMPONENTS/`**: Detailed component specifications (`buttons.md`, `inputs.md`, `cards.md`, `navigation.md`, `badges.md`, `modals.md`, `bottom-sheets.md`, `alerts.md`, `states.md`).
-- **`GUIDELINES/`**: Usage rules (`rtl.md`, `typography.md`, `responsive.md`, `accessibility.md`, `usage-rules.md`).
-- **`IMPLEMENTATION/`**: Code snippets for Web (`web.md`), Mobile (`mobile.md`), and Token Mapping (`token-mapping.md`).
+- Product identity: **KONFRM / كونفرم**; the official mark is [`LOGO.svg`](./LOGO.svg).
+- Light-first product: white and light neutral surfaces are dominant.
+- Primary Blue: `#0059FF`; Summer Yellow: `#FFD700`, used sparingly as an accent.
+- UI font: Cairo; Arabic-first, RTL-native.
+- Customer and Owner are mobile-first. Admin is desktop operational.
+- 8pt-derived spacing, restrained elevation, Lucide React icons, and 44px minimum mobile touch targets.
 
----
+Infrastructure identifiers that still contain `SOLA` are outside this design-system scope and remain unchanged.
 
-## 🎨 Core Brand Palette at a Glance
+## What is here
 
-- **SOLA Primary Blue**: `#0059FF` (Hover: `#0046CC`, Soft: `rgba(0, 89, 255, 0.10)`)
-- **SOLA Coastal Gold**: `#FFD700` (Hover: `#E6C200`, Soft: `rgba(255, 215, 0, 0.15)`)
-- **SOLA Background**: `#F5F7FA` | **Card Surface**: `#FFFFFF` | **Dark Header**: `rgba(15, 23, 42, 0.95)`
-- **Typography**: Cairo (`dir="rtl"`) for Arabic; Monospace for EGP amounts, dispute IDs, and phone numbers.
+- [`TOKENS/`](./TOKENS): canonical, machine-readable contracts.
+- [`generated/`](./generated): generated CSS variables and TypeScript map for all React applications. Do not hand-edit generated output.
+- [`COMPONENTS/`](./COMPONENTS): behavioural and accessibility contracts, not app-specific implementations.
+- [`GUIDELINES/`](./GUIDELINES): roles, RTL, responsive, accessibility and financial presentation rules.
+- [`LEGACY_DRIFT.md`](./LEGACY_DRIFT.md): static migration backlog; it records debt without authorizing it.
+- [`LEGACY_EXCEPTIONS.json`](./LEGACY_EXCEPTIONS.json): baseline for the lightweight anti-drift check.
+
+## Contribution workflow
+
+Before implementing any UI pattern:
+
+1. Search this directory for an existing token or component contract.
+2. Consume it if it exists.
+3. If it is missing, do not invent it locally.
+4. Propose the central addition, including role impact and accessibility states.
+5. Record the decision in tokens/components and version it appropriately.
+6. Only then implement it in an application.
+
+See [`GOVERNANCE.md`](./GOVERNANCE.md) for approval boundaries and [`CHANGELOG.md`](./CHANGELOG.md) for releases.

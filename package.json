@@ -11,7 +11,9 @@
     "test:backend": "cd backend && npm run test",
     "build:owner": "cd owner-app && npm run build",
     "check:owner": "cd owner-app && npm run check",
-    "check:backend": "cd backend && npm run check"
+    "check:backend": "cd backend && npm run check",
+    "design:generate": "node scripts/generate-design-tokens.mjs",
+    "design:check": "node scripts/check-design-system.mjs"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.3.3",

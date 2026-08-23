@@ -1,11 +1,7 @@
-# 🚫 SOLA Guidelines — Forbidden Design Tropes & Usage Rules
+# Light-first and anti-drift rules
 
----
+Normal KONFRM surfaces are canvas, white/light card, sheet and neutral supporting surfaces. The following are not standard application language: navy dashboard slabs, dark finance panels, dark hero cards, dark app headers, blue-950/slate-900 background blocks, decorative dark gradients, glassmorphism and glow shadows.
 
-## Forbidden Design Patterns
-1. **NO Arbitrary HEX Codes**: Never invent new colors. Use tokens defined in `TOKENS/colors.json`.
-2. **NO Emoji Icons in Production UI**: Always use Lucide React outlined icons (`lucide-react`).
-3. **NO Huge Untracked Typefaces**: Always use specified Cairo typography scales.
-4. **NO Purple Fonts on Dark Backgrounds**: Strictly forbidden.
-5. **NO Colored Outline Borders**: Focus rings must use soft ring offsets (`ring-blue-100`).
-6. **NO Unnecessary Dashboard Clutter**: Information density must serve clear operational utility.
+`#0F172A` remains a high-contrast text token only. Semantic colours communicate genuine status and are not additional brand palettes. Yellow is a sparse accent, never the routine primary CTA.
+
+Use tokens and component contracts before utility-class or literal-value choices. Existing violations are tracked in [`LEGACY_DRIFT.md`](../LEGACY_DRIFT.md); their existence does not authorize future use.

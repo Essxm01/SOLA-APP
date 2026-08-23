@@ -1,26 +1,17 @@
-# 🃏 SOLA Component Specification — Cards
+# Card, MetricCard, ListRow, PropertyCard and BookingCard shells
 
-> **Source of Truth**: `owner-app/src/components/ui/Card.tsx`
+Cards are light: `surface.primary`, `border.default`, `radius.card`, `cardPadding`, and at most `shadow.subtle`. Borders and spacing take precedence over shadow.
 
----
+| Contract | Required content | Notes |
+|---|---|---|
+| Standard | coherent grouped content | not a decorative container stack |
+| Interactive | standard card plus clear action/focus state | whole-card click must remain accessible |
+| MetricCard | label, one primary number, supporting context | does not invent dark KPI slabs |
+| Summary | concise status/value/action | suitable for a decision moment |
+| Selected | standard card plus selected border/surface | selection is not colour-only |
+| Warning | semantic warning context | not a new yellow brand-card type |
+| ListRow | title, supporting metadata, optional trailing action | predictable height and divider logic |
+| PropertyCard shell | real image or neutral placeholder, title, location, status, price, 1–2 actions | never fake property imagery |
+| BookingCard shell | booking identity, property, dates/status and contextual action | no raw enum label to users |
 
-## Standard Card Anatomy
-- **Background**: `#FFFFFF` (`bg-white`)
-- **Border**: `1px solid rgba(226, 232, 240, 0.8)` (`border border-slate-200/80`)
-- **Border Radius**: `16px` (`rounded-2xl`)
-- **Padding**: `16px` (`p-4` or `p-6`)
-- **Shadow**: `shadow-sm` (`box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05)`)
-- **Hover Effect (`hoverEffect = true`)**: `hover:shadow-md hover:border-slate-300 hover:-translate-y-0.5 transition-all duration-200`
-
----
-
-## Card Variants
-
-### 1. Glass Panel Card (`glass-panel`)
-- **Background**: `rgba(255, 255, 255, 0.85)`
-- **Backdrop Filter**: `blur(12px)`
-- **Border**: `1px solid rgba(255, 255, 255, 0.3)`
-
-### 2. KPI Summary Card
-- **Border**: Accent border on start edge (`border-l-4 border-l-[#0059FF]`, `border-l-amber-500`, `border-l-emerald-500`, or `border-l-rose-500`)
-- **Icon Container**: `p-2.5 rounded-xl` with semantic background tint.
+Dark-card is not a normal variant. A hover effect may use neutral border/elevation changes, never a glow or decorative translation system.

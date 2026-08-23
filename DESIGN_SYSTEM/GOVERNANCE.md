@@ -1,43 +1,42 @@
-# 🏛️ SOLA Design System — Governance & Architectural Rules
+# KONFRM Design System Governance
 
-> **Version**: `1.0.0`
-> **Effective Date**: `2026-08-15`
-> **Status**: `OFFICIALLY APPROVED & ACTIVE`
+**Current version:** `2.0.0`
+**Status:** active governance contract; approved foundations and explicitly labelled implementation defaults are distinct.
 
----
+## Authority model
 
-## 1. Source of Truth Flow
-```
-               [ SOLA Owner App (Visual Source) ]
-                               │
-                    (Forensic Extraction)
-                               │
-             [ DESIGN_SYSTEM/ (Single Source of Truth) ]
-                               │
-        ┌──────────────────────┼──────────────────────┐
-        ↓                      ↓                      ↓
-  [ Owner App ]          [ Renter App ]        [ Admin Portal ]
-   Mobile UI               Mobile UI              Web App UI
-```
+`DESIGN_SYSTEM/` governs Customer, Owner and Admin. No app is a design authority, including Owner. A production screen cannot promote its own one-off colour, component, typography, radius, shadow, gradient or interaction pattern into the global system.
 
----
+When code and the design system disagree, the design system wins. A genuinely new requirement follows: **propose → central approval → central documentation/token → version → app consumption**. Never reverse this order.
 
-## 2. Governance Rules
+## Founder/Product authority
 
-### Rule 1 — Single Source of Truth
-No application within the SOLA ecosystem (Owner App, Renter App, Admin Portal) may declare custom brand colors, custom font families, or custom primary component styles outside of `DESIGN_SYSTEM/`.
+Product-level visual decisions are Founder/Product decisions. Coding agents may implement approved tokens and variants, identify drift, and recommend additions. They may not independently:
 
-### Rule 2 — Visual Hierarchy & Platform Adaptation
-- **Mobile Applications** (Owner App, Renter App): Must adopt mobile-native interaction models (Touch targets $\ge 44\text{px}$, Bottom Sheets, Mobile Container).
-- **Web Applications** (Admin Portal): Must adapt layout density for desktop viewports (Information density, Data Tables, Sub-Tab Navigation, Filter Bars) while preserving 100% of SOLA Brand Colors, Radius, Typography, Shadows, and Badges.
+- create brand colours or global component styles;
+- change Cairo or introduce another primary UI family;
+- promote a one-off screen treatment into the system;
+- introduce a new radius or shadow family, decorative gradients, or new role-UX principles.
 
-### Rule 3 — Anti-Drift Enforcement
-Any proposed new color token, semantic status badge, or component variant must be documented and committed to `DESIGN_SYSTEM/TOKENS/` and `DESIGN_SYSTEM/COMPONENTS/` before implementation in any application codebase.
+The v2 approved foundations are listed in [`README.md`](./README.md). Exact component dimensions and neutral tones marked as implementation defaults are technical defaults, not retrospective Founder approval; changes to them follow this governance process.
 
----
+## Versioning
 
-## 3. Versioning Log
+- **PATCH** — clarification, documentation correction, or nonvisual generation/check fix.
+- **MINOR** — approved new token or component variant.
+- **MAJOR** — brand or foundational visual architecture change.
 
-| Version | Date | Description | Affected Applications |
-| :--- | :--- | :--- | :--- |
-| **`v1.0.0`** | 2026-08-15 | Initial forensic extraction from SOLA Owner App. Central design system established. | Owner App, Renter App, Admin Portal |
+Version `2.0.0` is a major change because authority moved from an Owner-derived SOLA extraction to independent KONFRM governance. Releases are recorded in [`CHANGELOG.md`](./CHANGELOG.md).
+
+## Enforcement
+
+Run `npm run design:generate` after modifying canonical tokens, then `npm run design:check`. The check validates tokens and flags new raw hexes, forbidden dark-surface utility patterns and font-family declarations outside the committed legacy baseline. The baseline is debt inventory, not permission for new drift. Remove exceptions as screens migrate.
+
+## Review checklist
+
+- Is the addition needed by more than one screen or role?
+- Does a token/component already solve it?
+- Are RTL, loading, empty, error, disabled, selected and focus states specified?
+- Is Customer financial privacy preserved?
+- Does it stay light-first and avoid navy slabs, decorative gradients and glow?
+- Is the version bump and changelog entry appropriate?

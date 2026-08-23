@@ -406,8 +406,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode; ownerId: string 
           mockRepository.getAdvancedAnalytics(analyticsTimeRange),
         ]);
 
-        setProperties(propsData);
-        setBookings(bksData);
+        // Local-only visual review fixtures. They never ship in a production Vite bundle
+        // and exist solely to render Owner Home states without mutating canonical data.
+        const homeFixture = import.meta.env.DEV
+          ? new URLSearchParams(window.location.search).get('ownerHomeFixture')
+          : null;
+        const fixtureProperties = homeFixture === 'zero-properties' ? [] : propsData;
+        const fixtureBookings = homeFixture === 'populated'
+          ? bksData.filter((booking) => booking.status !== 'PENDING_OWNER_APPROVAL')
+          : homeFixture === 'zero-properties' ? [] : bksData;
+
+        setProperties(fixtureProperties);
+        setBookings(fixtureBookings);
         setNotifications(notifsData);
         setMetrics(metricsData);
         setModificationRequests(modsData);
@@ -423,8 +433,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode; ownerId: string 
         setFinancialAnalytics(analyticsData);
         setAdvancedAnalytics(advAnalyticsData);
 
-        if (propsData.length > 0) {
-          setCalendarPropertyId((current) => current || propsData[0].id);
+        if (fixtureProperties.length > 0) {
+          setCalendarPropertyId((current) => current || fixtureProperties[0].id);
         }
       }
     } catch (err) {

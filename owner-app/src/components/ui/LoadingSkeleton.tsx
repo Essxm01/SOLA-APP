@@ -1,50 +1,10 @@
 import React from 'react';
 
-export const LoadingSkeleton: React.FC<{ className?: string }> = ({ className = '' }) => {
-  return <div className={`animate-pulse bg-slate-200 rounded-xl ${className}`} />;
-};
+export const LoadingSkeleton: React.FC<{ className?: string }> = ({ className = '' }) => <div className={`animate-pulse rounded-[var(--konfrm-radius-control)] bg-[var(--konfrm-surface-secondary)] ${className}`} />;
 
-export const DashboardSkeleton: React.FC = () => {
-  return (
-    <div className="flex flex-col gap-5 w-full animate-fade-in text-right">
-      {/* Needs Attention skeleton */}
-      <div className="space-y-2">
-        <LoadingSkeleton className="w-28 h-5 rounded-lg" />
-        <LoadingSkeleton className="w-full h-14 rounded-2xl" />
-      </div>
-
-      {/* Bookings skeleton */}
-      <div className="space-y-2">
-        <div className="flex items-center justify-between">
-          <LoadingSkeleton className="w-20 h-5 rounded-lg" />
-          <LoadingSkeleton className="w-14 h-4 rounded-lg" />
-        </div>
-        <LoadingSkeleton className="w-full h-24 rounded-2xl" />
-      </div>
-
-      {/* Properties skeleton */}
-      <div className="space-y-2">
-        <div className="flex items-center justify-between">
-          <LoadingSkeleton className="w-24 h-5 rounded-lg" />
-          <LoadingSkeleton className="w-16 h-4 rounded-lg" />
-        </div>
-        <LoadingSkeleton className="w-full h-24 rounded-2xl" />
-      </div>
-
-      {/* Wallet skeleton */}
-      <div className="space-y-2">
-        <div className="flex items-center justify-between">
-          <LoadingSkeleton className="w-20 h-5 rounded-lg" />
-          <LoadingSkeleton className="w-14 h-4 rounded-lg" />
-        </div>
-        <LoadingSkeleton className="w-full h-28 rounded-2xl" />
-      </div>
-
-      {/* Actions skeleton */}
-      <div className="grid grid-cols-2 gap-3 pt-1">
-        <LoadingSkeleton className="h-12 rounded-2xl" />
-        <LoadingSkeleton className="h-12 rounded-2xl" />
-      </div>
-    </div>
-  );
-};
+export const DashboardSkeleton: React.FC = () => <div className="space-y-[var(--konfrm-space-section-gap)]" aria-label="جاري تحميل الصفحة الرئيسية">
+  <div className="flex items-center gap-3"><LoadingSkeleton className="h-8 w-8 rounded-[var(--konfrm-radius-round)]" /><div><LoadingSkeleton className="h-4 w-32" /><LoadingSkeleton className="mt-2 h-3 w-48" /></div></div>
+  <div><LoadingSkeleton className="h-4 w-24" /><LoadingSkeleton className="mt-2 h-6 w-44" /><LoadingSkeleton className="mt-3 h-[142px] w-full rounded-[var(--konfrm-radius-elevated-card)]" /></div>
+  <div><LoadingSkeleton className="h-6 w-20" /><LoadingSkeleton className="mt-3 h-[170px] w-full rounded-[var(--konfrm-radius-elevated-card)]" /></div>
+  <div><LoadingSkeleton className="h-6 w-24" /><LoadingSkeleton className="mt-3 h-[178px] w-full rounded-[var(--konfrm-radius-elevated-card)]" /></div>
+</div>;

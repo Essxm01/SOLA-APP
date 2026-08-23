@@ -7,81 +7,56 @@ import { RecentBookingsSection } from './RecentBookingsSection';
 import { PropertiesSummarySection } from './PropertiesSummarySection';
 import { WalletSummarySection } from './WalletSummarySection';
 import { DashboardSkeleton } from '../ui/LoadingSkeleton';
-import { Button } from '../ui/Button';
-import { AlertCircle, Building, Plus, RefreshCw } from 'lucide-react';
+import { AlertCircle, Building2, Plus, RefreshCw } from 'lucide-react';
 
 export const OwnerDashboardView: React.FC = () => {
   const { isLoading, error, refreshData, openAddPropertyWizard, properties } = useApp();
 
   return (
-    <div className="min-h-full w-full bg-[var(--konfrm-surface-canvas)] pb-32 dir-rtl">
-      {/* Top Header */}
+    <main className="min-h-full w-full bg-[var(--konfrm-surface-canvas)] pb-28 text-right" dir="rtl">
       <HeaderBar />
 
-      <div className="mx-auto max-w-md space-y-5 px-4 py-4">
-        {/* Loading State */}
+      <div className="mx-auto w-full max-w-[430px] px-[var(--konfrm-space-page-horizontal)] py-5">
         {isLoading ? (
           <DashboardSkeleton />
         ) : error ? (
-          /* Error State */
-          <div className="space-y-3.5 rounded-2xl border border-rose-200 bg-white p-6 text-center shadow-xs">
-            <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-xl bg-rose-50 text-rose-600">
+          <section className="mx-auto flex min-h-[48vh] max-w-sm flex-col items-center justify-center text-center">
+            <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-[var(--konfrm-radius-card)] bg-rose-50 text-rose-700">
               <AlertCircle className="h-6 w-6" />
             </div>
-            <div className="space-y-1">
-              <h3 className="text-sm font-black text-slate-900">تعذر تحميل البيانات الرئيسية</h3>
-              <p className="text-xs text-slate-500">{error}</p>
-            </div>
-            <Button
-              variant="primary"
-              size="sm"
-              onClick={refreshData}
-              icon={<RefreshCw className="h-3.5 w-3.5" />}
-              className="bg-[#0059FF] font-bold text-xs rounded-xl shadow-xs"
-            >
+            <h2 className="text-[18px] font-extrabold text-[var(--konfrm-text-primary)]">تعذر تحميل الصفحة الرئيسية</h2>
+            <p className="mt-2 max-w-[280px] text-[14px] leading-6 text-[var(--konfrm-text-secondary)]">تحقق من الاتصال ثم حاول مرة أخرى.</p>
+            <button type="button" onClick={() => void refreshData()} className="mt-5 inline-flex min-h-11 items-center gap-2 rounded-[var(--konfrm-radius-control)] bg-[var(--konfrm-color-primary)] px-4 text-[14px] font-bold text-[var(--konfrm-text-inverse)]">
+              <RefreshCw className="h-4 w-4" />
               إعادة المحاولة
-            </Button>
-          </div>
+            </button>
+          </section>
         ) : properties.length === 0 ? (
-          /* New-Owner Zero-Property Onboarding State */
-          <div className="space-y-5">
+          <div className="space-y-[var(--konfrm-space-section-gap)]">
             <ActionCards />
-
-            <div className="rounded-2xl border border-blue-200/80 bg-white p-5 text-center shadow-xs space-y-3.5">
-              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-50 text-[#0059FF]">
-                <Building className="h-6 w-6" />
+            <section className="rounded-[var(--konfrm-radius-elevated-card)] border border-[var(--konfrm-border-default)] bg-[var(--konfrm-surface-primary)] p-5 [box-shadow:var(--konfrm-shadow-subtle)]">
+              <div className="flex h-12 w-12 items-center justify-center rounded-[var(--konfrm-radius-card)] bg-[var(--konfrm-color-primary-soft)] text-[var(--konfrm-color-primary)]">
+                <Building2 className="h-6 w-6" />
               </div>
-              <div className="space-y-1">
-                <h3 className="text-sm font-black text-slate-900">ابدأ بإضافة أول وحدة</h3>
-                <p className="text-xs text-slate-500 max-w-xs mx-auto leading-relaxed">
-                  أضف بيانات وحدتك الساحلية والأسعار وأرسلها للمراجعة لتصبح جاهزة للحجز للضيوف.
-                </p>
-              </div>
-              <Button
-                variant="primary"
-                size="md"
-                onClick={() => openAddPropertyWizard()}
-                icon={<Plus className="h-4 w-4" />}
-                className="w-full bg-[#0059FF] hover:bg-blue-700 font-extrabold text-xs py-2.5 rounded-xl shadow-xs"
-              >
-                إضافة أول وحدة الآن
-              </Button>
-            </div>
-
+              <h2 className="mt-4 text-[20px] font-extrabold tracking-[-0.01em] text-[var(--konfrm-text-primary)]">ابدأ بإضافة أول وحدة</h2>
+              <p className="mt-2 max-w-[310px] text-[14px] leading-6 text-[var(--konfrm-text-secondary)]">أضف بيانات وحدتك وأرسلها للمراجعة لتصبح جاهزة للظهور للمستأجرين.</p>
+              <button type="button" onClick={() => openAddPropertyWizard()} className="mt-5 flex min-h-12 w-full items-center justify-center gap-2 rounded-[var(--konfrm-radius-control)] bg-[var(--konfrm-color-primary)] px-4 text-[15px] font-bold text-[var(--konfrm-text-inverse)]">
+                <Plus className="h-5 w-5" />
+                إضافة وحدة
+              </button>
+            </section>
             <WalletSummarySection />
           </div>
         ) : (
-          /* Populated Dashboard Content */
-          <>
+          <div className="space-y-[var(--konfrm-space-section-gap)]">
             <ActionCards />
             <RecentBookingsSection />
             <PropertiesSummarySection />
             <WalletSummarySection />
             <QuickActions />
-          </>
+          </div>
         )}
       </div>
-    </div>
+    </main>
   );
 };
-

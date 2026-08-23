@@ -20,6 +20,13 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+// This is only for the controlled local Owner Home visual-review URLs. It keeps
+// the production authentication and KYC boundary unchanged.
+const withLocalHomeFixtureOwner = (canonicalOwner: Owner): Owner => {
+  const fixture = import.meta.env.DEV ? new URLSearchParams(window.location.search).get('ownerHomeFixture') : null;
+  return fixture ? { ...canonicalOwner, ownerOnboardingCompletedAt: canonicalOwner.ownerOnboardingCompletedAt || '2026-01-01T00:00:00.000Z' } : canonicalOwner;
+};
+
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   // A token in storage is only a candidate session. It is not authenticated until
   // the canonical owner profile has been read successfully.
@@ -88,7 +95,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             }
           } else {
             const profile = await mockRepository.getOwnerProfile();
-            applyCanonicalOwner(profile);
+            applyCanonicalOwner(withLocalHomeFixtureOwner(profile));
           }
         } else {
           clearLocalOwnerSession();
@@ -141,7 +148,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     const profile = await mockRepository.getOwnerProfile();
-    applyCanonicalOwner(profile);
+    applyCanonicalOwner(withLocalHomeFixtureOwner(profile));
     return { success: true };
   };
 
@@ -151,8 +158,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const canonicalOwner = repo.useMockMode
         ? await mockRepository.getOwnerProfile()
         : await repo.owner.getCurrentOwner();
-      applyCanonicalOwner(canonicalOwner as Owner);
-      return canonicalOwner as Owner;
+      const ownerForSession = withLocalHomeFixtureOwner(canonicalOwner as Owner);
+      applyCanonicalOwner(ownerForSession);
+      return ownerForSession;
     } catch {
       clearLocalOwnerSession();
       return null;
@@ -216,7 +224,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
     await new Promise((r) => setTimeout(r, 800));
     if (code.length >= 4) {
-      applyCanonicalOwner(await mockRepository.getOwnerProfile());
+      applyCanonicalOwner(withLocalHomeFixtureOwner(await mockRepository.getOwnerProfile()));
       return true;
     }
     return false;

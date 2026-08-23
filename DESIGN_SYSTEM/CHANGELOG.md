@@ -1,5 +1,13 @@
 # KONFRM Design System Changelog
 
+## 2.1.1 — 2026-08-23
+
+### Founder decision-state sync
+
+- Recorded Founder approval for `UX-NAV-02`, `UX-ADMIN-CHAT-01` and `UX-ADMIN-LOGIN-01`.
+- Clarified that these approvals define capability/policy only; they do not implement Favorites persistence, Admin conversation authorization or Admin login changes.
+- No runtime UI, business logic, backend or database changes.
+
 ## 2.1.0 — 2026-08-23
 
 ### Product experience authority

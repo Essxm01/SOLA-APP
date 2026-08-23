@@ -1,6 +1,6 @@
 # KONFRM Product Experience System
 
-**System version:** `2.1.0`  
+**System version:** `2.1.1`
 **Authority:** `DESIGN_SYSTEM/` governs both visual foundations and role-specific product experience.
 
 ```

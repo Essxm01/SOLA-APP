@@ -1,6 +1,6 @@
 # KONFRM Design System Governance
 
-**Current version:** `2.1.0`
+**Current version:** `2.1.1`
 **Status:** active governance contract; approved foundations and explicitly labelled implementation defaults are distinct.
 
 ## Authority model
@@ -26,7 +26,7 @@ The v2 approved foundations are listed in [`README.md`](./README.md). Exact comp
 - **MINOR** — approved new token/component variant or formal cross-role experience governance layer.
 - **MAJOR** — brand or foundational visual architecture change.
 
-Version `2.0.0` is a major change because authority moved from an Owner-derived SOLA extraction to independent KONFRM governance. Version `2.1.0` adds formal role-specific experience governance without changing the visual foundations. Releases are recorded in [`CHANGELOG.md`](./CHANGELOG.md).
+Version `2.0.0` is a major change because authority moved from an Owner-derived SOLA extraction to independent KONFRM governance. Version `2.1.0` adds formal role-specific experience governance without changing the visual foundations. Version `2.1.1` is a patch that records Founder approval states only; it changes no runtime behavior or visual foundation. Releases are recorded in [`CHANGELOG.md`](./CHANGELOG.md).
 
 ## Enforcement
 

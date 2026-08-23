@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import './index.css';
 import { AdminLogin } from './components/AdminLogin';
 import { VerificationsQueue } from './components/VerificationsQueue';
@@ -8,8 +8,14 @@ import { DisputesQueue } from './components/DisputesQueue';
 import { DisputeDetailExecution } from './components/DisputeDetailExecution';
 import { PropertyReviewQueue } from './components/PropertyReviewQueue';
 import { PropertyReviewDetail } from './components/PropertyReviewDetail';
-import { getApiUrl } from './utils/api';
 import { clearAdminSession } from './utils/adminSession';
+import {
+  fetchCanonicalAdminData,
+  shouldRenderAdminShell,
+  validateAdminSession,
+  type AdminBootstrapState,
+  type CanonicalAdmin,
+} from './utils/adminTruthfulState';
 import {
   Scale,
   CreditCard,
@@ -20,64 +26,104 @@ import {
   Building2
 } from 'lucide-react';
 import { Card } from './components/ui/Card';
+import { ErrorState, SkeletonBox } from './components/ui/StateViews';
+
+type OverviewStats = {
+  properties: { pendingProperties: number };
+  verifications: { pendingVerifications: number };
+  payouts: { pendingPayouts: number };
+  disputes: { openDisputes: number };
+};
+
+type DataState = 'IDLE' | 'LOADING' | 'SUCCESS' | 'ERROR';
 
 export function App() {
-  const [adminUser, setAdminUser] = useState<any | null>(() => {
-    const stored = localStorage.getItem('sola_admin_user');
-    return stored ? JSON.parse(stored) : null;
-  });
+  const [bootstrapState, setBootstrapState] = useState<AdminBootstrapState>('RESTORING');
+  const [bootstrapError, setBootstrapError] = useState<string | null>(null);
+  const [adminUser, setAdminUser] = useState<CanonicalAdmin | null>(null);
 
   const [activeTab, setActiveTab] = useState<'overview' | 'verifications' | 'properties' | 'payouts' | 'disputes'>('overview');
   const [selectedDisputeId, setSelectedDisputeId] = useState<string | null>(null);
   const [selectedPayoutId, setSelectedPayoutId] = useState<string | null>(null);
   const [selectedPropertyId, setSelectedPropertyId] = useState<string | null>(null);
 
-  const [notificationsCount, setNotificationsCount] = useState<number>(0);
-  const [overviewStats, setOverviewStats] = useState<any>(null);
+  const [notificationsCount, setNotificationsCount] = useState<number | null>(null);
+  const [notificationsState, setNotificationsState] = useState<DataState>('IDLE');
+  const [overviewStats, setOverviewStats] = useState<OverviewStats | null>(null);
+  const [overviewState, setOverviewState] = useState<DataState>('IDLE');
 
-  const fetchAdminNotifications = async () => {
-    try {
-      const token = localStorage.getItem('sola_admin_access_token') || '';
-      if (!token) return;
-      const response = await fetch(getApiUrl('/admin/notifications'), {
-        headers: { 'Authorization': `Bearer ${token}` },
-      });
-      const json = await response.json();
-      if (json.success && Array.isArray(json.data)) {
-        setNotificationsCount(json.data.length);
-      }
-    } catch {
-      // Quiet fallback
-    }
-  };
+  const handleLogout = useCallback(() => {
+    clearAdminSession(localStorage);
+    setAdminUser(null);
+    setOverviewStats(null);
+    setNotificationsCount(null);
+    setBootstrapError(null);
+    setBootstrapState('UNAUTHENTICATED');
+  }, []);
 
-  const fetchOverviewStats = async () => {
-    try {
-      const token = localStorage.getItem('sola_admin_access_token') || '';
-      if (!token) return;
-      const response = await fetch(getApiUrl('/admin/overview/stats'), {
-        headers: { 'Authorization': `Bearer ${token}` },
-      });
-      const json = await response.json();
-      if (json.success && json.data) {
-        setOverviewStats(json.data);
-      }
-    } catch {
-      // Quiet fallback
+  const restoreAdminSession = useCallback(async () => {
+    setBootstrapState('RESTORING');
+    setBootstrapError(null);
+    const validation = await validateAdminSession(localStorage.getItem('sola_admin_access_token'));
+    if (validation.kind === 'valid') {
+      setAdminUser(validation.admin);
+      localStorage.setItem('sola_admin_user', JSON.stringify(validation.admin));
+      setBootstrapState('AUTHENTICATED');
+      return;
     }
-  };
+    if (validation.kind === 'invalid') {
+      clearAdminSession(localStorage);
+      setAdminUser(null);
+      setBootstrapState('UNAUTHENTICATED');
+      return;
+    }
+    setAdminUser(null);
+    setBootstrapError(validation.message);
+    setBootstrapState('ERROR');
+  }, []);
+
+  const fetchAdminNotifications = useCallback(async () => {
+    setNotificationsState('LOADING');
+    const result = await fetchCanonicalAdminData<unknown[]>('/admin/notifications', localStorage.getItem('sola_admin_access_token'));
+    if (result.kind === 'success' && Array.isArray(result.data)) {
+      setNotificationsCount(result.data.length);
+      setNotificationsState('SUCCESS');
+      return;
+    }
+    if (result.kind === 'unauthorized') {
+      handleLogout();
+      return;
+    }
+    setNotificationsCount(null);
+    setNotificationsState('ERROR');
+  }, [handleLogout]);
+
+  const fetchOverviewStats = useCallback(async () => {
+    setOverviewState('LOADING');
+    const result = await fetchCanonicalAdminData<OverviewStats>('/admin/overview/stats', localStorage.getItem('sola_admin_access_token'));
+    if (result.kind === 'success') {
+      setOverviewStats(result.data);
+      setOverviewState('SUCCESS');
+      return;
+    }
+    if (result.kind === 'unauthorized') {
+      handleLogout();
+      return;
+    }
+    setOverviewStats(null);
+    setOverviewState('ERROR');
+  }, [handleLogout]);
 
   useEffect(() => {
-    if (adminUser) {
+    void restoreAdminSession();
+  }, [restoreAdminSession]);
+
+  useEffect(() => {
+    if (bootstrapState === 'AUTHENTICATED') {
       fetchAdminNotifications();
       fetchOverviewStats();
     }
-  }, [adminUser]);
-
-  const handleLogout = () => {
-    clearAdminSession(localStorage);
-    setAdminUser(null);
-  };
+  }, [bootstrapState, fetchAdminNotifications, fetchOverviewStats]);
 
   const resetSubSelections = () => {
     setSelectedDisputeId(null);
@@ -85,12 +131,34 @@ export function App() {
     setSelectedPropertyId(null);
   };
 
-  if (!adminUser) {
+  if (bootstrapState === 'RESTORING') {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4 dir-rtl" dir="rtl">
+        <Card className="w-full max-w-md p-8 bg-white border border-slate-200 shadow-sm rounded-3xl text-center space-y-4">
+          <SkeletonBox className="h-8 w-8 mx-auto rounded-full" />
+          <SkeletonBox className="h-4 w-48 mx-auto" />
+          <p className="text-sm font-bold text-slate-700">جارٍ التحقق من جلسة الإدارة…</p>
+        </Card>
+      </div>
+    );
+  }
+
+  if (bootstrapState === 'ERROR') {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4 dir-rtl" dir="rtl">
+        <div className="w-full max-w-lg">
+          <ErrorState title="تعذر التحقق من جلسة الإدارة" message={bootstrapError || undefined} onRetry={() => void restoreAdminSession()} />
+        </div>
+      </div>
+    );
+  }
+
+  if (!shouldRenderAdminShell(bootstrapState) || !adminUser) {
     return (
       <AdminLogin
         onLoginSuccess={(user) => {
           setAdminUser(user);
-          fetchAdminNotifications();
+          setBootstrapState('AUTHENTICATED');
         }}
       />
     );
@@ -111,19 +179,25 @@ export function App() {
           {/* User Controls & Status Indicators */}
           <div className="flex items-center gap-3">
             
-            {/* Live Status Badge */}
-            <div className="hidden sm:flex items-center gap-2 bg-emerald-50 text-emerald-700 px-3.5 py-1.5 rounded-2xl border border-emerald-200 text-xs font-bold shadow-xs">
-              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
-              <span>النظام مستقر وتعمل الكيانات بنجاح</span>
+            <div className="hidden sm:flex items-center gap-2 bg-blue-50 text-blue-700 px-3.5 py-1.5 rounded-2xl border border-blue-200 text-xs font-bold shadow-xs">
+              <span className="w-2.5 h-2.5 rounded-full bg-blue-600" />
+              <span>جلسة إدارة موثّقة</span>
             </div>
 
-            {/* Notifications Counter */}
-            <button className="relative p-2.5 rounded-2xl bg-slate-100 hover:bg-blue-50 text-slate-700 hover:text-[#0059FF] transition-all border border-slate-200 active:scale-95 cursor-pointer">
-              <Bell className="w-4.5 h-4.5 text-slate-700" />
-              {notificationsCount > 0 && (
+            <button
+              className="relative p-2.5 rounded-2xl bg-slate-100 text-slate-700 transition-all border border-slate-200"
+              disabled
+              title={notificationsState === 'ERROR' ? 'تعذر تحميل حالة التنبيهات' : 'التنبيهات غير متاحة من هذه الشاشة حالياً'}
+              aria-label={notificationsState === 'ERROR' ? 'تعذر تحميل حالة التنبيهات' : 'التنبيهات غير متاحة من هذه الشاشة حالياً'}
+            >
+              <Bell className={`w-4.5 h-4.5 ${notificationsState === 'ERROR' ? 'text-rose-600' : 'text-slate-700'}`} />
+              {(notificationsCount ?? 0) > 0 && (
                 <span className="absolute -top-1 -right-1 w-4.5 h-4.5 bg-[#0059FF] text-[#FFD700] rounded-full text-[10px] font-black flex items-center justify-center border border-white shadow-xs">
                   {notificationsCount}
                 </span>
+              )}
+              {notificationsState === 'ERROR' && (
+                <span className="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-rose-600 border border-white" aria-hidden="true" />
               )}
             </button>
 
@@ -265,13 +339,29 @@ export function App() {
                   </p>
                 </div>
 
-                <div className="flex items-center gap-2 bg-emerald-50 text-emerald-700 px-4 py-2 rounded-2xl border border-emerald-200 text-xs font-bold shadow-xs">
-                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
-                  <span>جميع الأنظمة التشغيلية تعمل بنجاح</span>
+                <div className="flex items-center gap-2 bg-blue-50 text-blue-700 px-4 py-2 rounded-2xl border border-blue-200 text-xs font-bold shadow-xs">
+                  <span className="w-2.5 h-2.5 rounded-full bg-blue-600" />
+                  <span>{overviewState === 'SUCCESS' ? 'تم تحميل المؤشرات التشغيلية' : 'حالة المؤشرات التشغيلية'}</span>
                 </div>
               </div>
 
-              {/* Operational Metrics Cards Grid */}
+              {overviewState === 'ERROR' ? (
+                <ErrorState
+                  title="تعذر تحميل المؤشرات التشغيلية"
+                  message="لم يتم استلام بيانات موثوقة للنظرة العامة. لم تُعرض أي أرقام بديلة."
+                  onRetry={() => void fetchOverviewStats()}
+                />
+              ) : overviewState === 'LOADING' || overviewState === 'IDLE' || !overviewStats ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4" aria-label="جارٍ تحميل المؤشرات التشغيلية">
+                  {[1, 2, 3, 4].map((index) => (
+                    <div key={index} className="bg-white p-5 rounded-2xl border border-slate-200 space-y-3">
+                      <SkeletonBox className="h-4 w-2/3" />
+                      <SkeletonBox className="h-9 w-1/3" />
+                      <SkeletonBox className="h-3 w-4/5" />
+                    </div>
+                  ))}
+                </div>
+              ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 
                 {/* Metric 1: Pending Unit Reviews */}
@@ -285,7 +375,7 @@ export function App() {
                       <Building2 className="w-4 h-4" />
                     </div>
                   </div>
-                  <div className="text-3xl font-black text-slate-900">{overviewStats?.properties?.pendingProperties ?? 0} <span className="text-xs font-semibold text-slate-400">وحدة</span></div>
+                  <div className="text-3xl font-black text-slate-900">{overviewStats.properties.pendingProperties} <span className="text-xs font-semibold text-slate-400">وحدة</span></div>
                   <div className="text-[11px] font-bold text-[#0059FF]">طابور مراجعة العقارات والوحدات</div>
                 </div>
 
@@ -300,7 +390,7 @@ export function App() {
                       <UserCheck className="w-4 h-4" />
                     </div>
                   </div>
-                  <div className="text-3xl font-black text-slate-900">{overviewStats?.verifications?.pendingVerifications ?? 0} <span className="text-xs font-semibold text-slate-400">طلبات</span></div>
+                  <div className="text-3xl font-black text-slate-900">{overviewStats.verifications.pendingVerifications} <span className="text-xs font-semibold text-slate-400">طلبات</span></div>
                   <div className="text-[11px] font-bold text-[#0059FF]">قائمة انتظار توثيق هوية الملاك</div>
                 </div>
 
@@ -315,7 +405,7 @@ export function App() {
                       <CreditCard className="w-4 h-4" />
                     </div>
                   </div>
-                  <div className="text-3xl font-black text-slate-900">{overviewStats?.payouts?.pendingPayouts ?? 0} <span className="text-xs font-semibold text-slate-400">طلبات</span></div>
+                  <div className="text-3xl font-black text-slate-900">{overviewStats.payouts.pendingPayouts} <span className="text-xs font-semibold text-slate-400">طلبات</span></div>
                   <div className="text-[11px] font-bold text-amber-800">قائمة السحوبات المالية</div>
                 </div>
 
@@ -330,11 +420,12 @@ export function App() {
                       <Scale className="w-4 h-4" />
                     </div>
                   </div>
-                  <div className="text-3xl font-black text-slate-900">{overviewStats?.disputes?.openDisputes ?? 0} <span className="text-xs font-semibold text-slate-400">نزاعات</span></div>
+                  <div className="text-3xl font-black text-slate-900">{overviewStats.disputes.openDisputes} <span className="text-xs font-semibold text-slate-400">نزاعات</span></div>
                   <div className="text-[11px] font-bold text-rose-600">طابور النزاعات والبت المالي</div>
                 </div>
 
               </div>
+              )}
             </Card>
           </div>
         )}

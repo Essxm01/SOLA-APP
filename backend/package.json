@@ -13,6 +13,7 @@
     "test:owner-identity-01": "npx tsx server/src/tests/ownerIdentity01.test.ts",
     "test:owner-wallet-01": "npx tsx server/src/tests/ownerWallet01.test.ts",
     "test:payment-01": "npx tsx server/src/tests/payment01.test.ts",
+    "test:admin-truthful-state": "npx tsx server/src/tests/adminTruthfulState.test.ts",
     "check": "npx tsc --noEmit"
   },
   "dependencies": {

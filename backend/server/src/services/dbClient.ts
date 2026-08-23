@@ -184,6 +184,94 @@ async function queryViaSupabaseRest(text: string, params: any[] | undefined, url
     return { rows, command: 'SELECT', rowCount: rows.length, oid: 0, fields: [] };
   }
 
+  // ADMIN-TRUTHFUL-STATE-01: exact canonical notification read. This is not
+  // a general notification matcher; it supports the repository's owner-scoped
+  // newest-first query only, and throws rather than fabricating an empty list.
+  if (lowerSql.startsWith('select') && lowerSql.includes('from notifications') && /\bowner_id\s*=\s*\$1\b/i.test(sql) && lowerSql.includes('order by created_at desc')) {
+    const ownerId = params?.[0];
+    const res = await fetch(`${url}/rest/v1/notifications?owner_id=eq.${encodeURIComponent(ownerId)}&order=created_at.desc`, { headers });
+    if (!res.ok) throw new Error(`REST_ADMIN_NOTIFICATIONS_SELECT_FAILED: HTTP ${res.status}`);
+    const raw: any = await res.json().catch(() => []);
+    const rows = (Array.isArray(raw) ? raw : []).map((notification: any) => ({
+      id: notification.id,
+      ownerId: notification.owner_id,
+      title: notification.title,
+      message: notification.message,
+      type: notification.type,
+      isRead: notification.is_read,
+      actionRoute: notification.action_route,
+      createdAt: notification.created_at,
+    }));
+    return { rows, command: 'SELECT', rowCount: rows.length, oid: 0, fields: [] };
+  }
+
+  // ADMIN-TRUTHFUL-STATE-01: strict Worker-safe projections for the five
+  // canonical Admin overview aggregate queries. Each count is read directly
+  // from Supabase REST; a failed count throws and can never become a zero.
+  const countRows = async (table: string, query: string): Promise<number> => {
+    const response = await fetch(`${url}/rest/v1/${table}?${query}`, {
+      method: 'HEAD',
+      headers: { ...headers, Prefer: 'count=exact' },
+    });
+    if (!response.ok) throw new Error(`REST_ADMIN_OVERVIEW_COUNT_FAILED: ${table} HTTP ${response.status}`);
+    const total = response.headers.get('content-range')?.split('/').pop();
+    const parsed = Number(total);
+    if (!Number.isFinite(parsed)) throw new Error(`REST_ADMIN_OVERVIEW_COUNT_INVALID: ${table}`);
+    return parsed;
+  };
+
+  if (lowerSql.startsWith('select') && lowerSql.includes('from properties where deleted_at is null') && lowerSql.includes('pendingproperties') && lowerSql.includes('publishedproperties') && lowerSql.includes('rejectedproperties')) {
+    const [pendingProperties, publishedProperties, rejectedProperties, totalProperties] = await Promise.all([
+      countRows('properties', 'deleted_at=is.null&status=eq.PENDING_REVIEW'),
+      countRows('properties', 'deleted_at=is.null&status=eq.PUBLISHED'),
+      countRows('properties', 'deleted_at=is.null&status=eq.REJECTED'),
+      countRows('properties', 'deleted_at=is.null'),
+    ]);
+    return { rows: [{ pendingProperties, publishedProperties, rejectedProperties, totalProperties }], command: 'SELECT', rowCount: 1, oid: 0, fields: [] };
+  }
+
+  if (lowerSql.startsWith('select') && lowerSql.includes('from bookings') && lowerSql.includes('pendingbookings') && lowerSql.includes('confirmedbookings')) {
+    const [pendingBookings, confirmedBookings, totalBookings] = await Promise.all([
+      countRows('bookings', 'status=eq.PENDING_OWNER_APPROVAL'),
+      countRows('bookings', 'status=eq.CONFIRMED'),
+      countRows('bookings', ''),
+    ]);
+    return { rows: [{ pendingBookings, confirmedBookings, totalBookings }], command: 'SELECT', rowCount: 1, oid: 0, fields: [] };
+  }
+
+  if (lowerSql.startsWith('select') && lowerSql.includes('from owners') && lowerSql.includes('pendingverifications') && lowerSql.includes('verifiedowners')) {
+    const [pendingVerifications, verifiedOwners, totalOwners] = await Promise.all([
+      countRows('owners', 'verification_status=eq.PENDING_VERIFICATION'),
+      countRows('owners', 'verification_status=eq.VERIFIED'),
+      countRows('owners', ''),
+    ]);
+    return { rows: [{ pendingVerifications, verifiedOwners, totalOwners }], command: 'SELECT', rowCount: 1, oid: 0, fields: [] };
+  }
+
+  if (lowerSql.startsWith('select') && lowerSql.includes('from payout_requests') && lowerSql.includes('pendingpayouts') && lowerSql.includes('completedpayouts')) {
+    const [pendingPayouts, completedPayouts] = await Promise.all([
+      countRows('payout_requests', 'status=eq.PENDING_ADMIN_PROCESSING'),
+      countRows('payout_requests', 'status=eq.COMPLETED'),
+    ]);
+    const payoutRes = await fetch(`${url}/rest/v1/payout_requests?select=net_amount&status=eq.COMPLETED`, { headers });
+    if (!payoutRes.ok) throw new Error(`REST_ADMIN_OVERVIEW_PAYOUTS_SELECT_FAILED: HTTP ${payoutRes.status}`);
+    const completedRows: any = await payoutRes.json().catch(() => []);
+    const totalPaidOutEgp = (Array.isArray(completedRows) ? completedRows : []).reduce((sum, row) => sum + Number(row.net_amount || 0), 0);
+    const totalPayoutRows = await countRows('payout_requests', '');
+    return { rows: [{ pendingPayouts, completedPayouts, totalPaidOutEgp, totalPayouts: totalPayoutRows }], command: 'SELECT', rowCount: 1, oid: 0, fields: [] };
+  }
+
+  if (lowerSql.startsWith('select') && lowerSql.includes('from disputes') && lowerSql.includes('opendisputes') && lowerSql.includes('resolveddisputes')) {
+    const [open, escalated, waiting, resolvedDisputes, totalDisputes] = await Promise.all([
+      countRows('disputes', 'status=eq.OPEN'),
+      countRows('disputes', 'status=eq.ESCALATED_TO_ADMIN'),
+      countRows('disputes', 'status=eq.WAITING_FOR_MORE_EVIDENCE'),
+      countRows('disputes', 'status=eq.RESOLVED'),
+      countRows('disputes', ''),
+    ]);
+    return { rows: [{ openDisputes: open + escalated + waiting, resolvedDisputes, totalDisputes }], command: 'SELECT', rowCount: 1, oid: 0, fields: [] };
+  }
+
   // 0A. SELECT users WHERE phone_number = $1 (canonical users table only — DATA-02)
   if (lowerSql.includes('from users') && lowerSql.includes('phone_number = $1')) {
     const phone = params?.[0];

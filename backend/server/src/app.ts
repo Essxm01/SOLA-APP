@@ -11,7 +11,7 @@ import { PropertyDomainController, BookingDomainController, DisputeDomainControl
 import { calculateBookingFinancials, validatePayoutRequest, roundHalfEvenInCents } from './services/financialEngine.js';
 import { verifyJwtToken, requireRole } from './middleware/auth.js';
 import { applyCorsHeaders } from './middleware/cors.js';
-import { dbUsersStore, dbOwnersStore, dbNotificationsStore, dbOwnerVerificationDocsStore, dbPropertyVerificationDocsStore, dbPropertiesStore, dbBookingsStore, dbPayoutRequestsStore, dbDisputesStore } from './services/authService.js';
+import { dbUsersStore, dbOwnersStore, dbAdminUsersStore, dbNotificationsStore, dbOwnerVerificationDocsStore, dbPropertyVerificationDocsStore, dbPropertiesStore, dbBookingsStore, dbPayoutRequestsStore, dbDisputesStore } from './services/authService.js';
 import { userDb, ownerDb, propertyDb, bookingDb, conversationDb, messageDb, isBookingChatEligible, payoutDb, disputeDb, notificationDb, imageDb, uploadIntentDb, adminStatsDb, walletDb } from './services/dbRepository.js';
 import { paymentTxDb, PaymentService, PaymobGateway, verifyPaymobHmacSha512, getPaymentMode } from './services/paymentService.js';
 import { createStorageProvider, IObjectStorageProvider, verifyMagicBytes, computeSha256 } from './services/storageProvider.js';
@@ -1356,9 +1356,48 @@ export class ExpressServerApp {
 
         const adminId = jwt.sub;
 
+        // ADMIN-TRUTHFUL-STATE-01: the Admin client must validate its
+        // persisted access token against the existing canonical Admin
+        // identity model before rendering the operational shell.
+        if (path === '/api/v1/admin/auth/session' && method === 'GET') {
+          const admin = Array.from(dbAdminUsersStore.values()).find((candidate) => candidate.id === adminId && candidate.isActive);
+          if (!admin) {
+            return {
+              statusCode: 401,
+              body: {
+                success: false,
+                error: { code: 'ADMIN_SESSION_INVALID', message: 'جلسة الإدارة غير صالحة أو لم تعد فعالة' },
+                timestamp,
+              },
+            };
+          }
+          return {
+            statusCode: 200,
+            body: {
+              success: true,
+              data: {
+                admin: { id: admin.id, email: admin.email, fullName: admin.fullName, role: admin.role },
+              },
+              timestamp,
+            },
+          };
+        }
+
         // A0. Admin Notifications Endpoint — PostgreSQL Driven
         if (path === '/api/v1/admin/notifications' && method === 'GET') {
-          const adminNotifs = await notificationDb.getByOwnerId('admin').catch(() => []);
+          let adminNotifs;
+          try {
+            adminNotifs = await notificationDb.getByOwnerId('admin');
+          } catch {
+            return {
+              statusCode: 500,
+              body: {
+                success: false,
+                error: { code: 'ADMIN_NOTIFICATIONS_QUERY_FAILED', message: 'تعذر تحميل حالة التنبيهات التشغيلية' },
+                timestamp,
+              },
+            };
+          }
           return {
             statusCode: 200,
             body: {
@@ -1371,13 +1410,19 @@ export class ExpressServerApp {
 
         // A0.5. Admin Overview Stats Endpoint — PostgreSQL Driven
         if (path === '/api/v1/admin/overview/stats' && method === 'GET') {
-          const stats = await adminStatsDb.getOverviewStats().catch(() => ({
-            properties: { pendingProperties: 0, publishedProperties: 0, rejectedProperties: 0, totalProperties: 0 },
-            bookings: { pendingBookings: 0, confirmedBookings: 0, totalBookings: 0 },
-            verifications: { pendingVerifications: 0, verifiedOwners: 0, totalOwners: 0 },
-            payouts: { pendingPayouts: 0, completedPayouts: 0, totalPaidOutEgp: 0 },
-            disputes: { openDisputes: 0, resolvedDisputes: 0, totalDisputes: 0 },
-          }));
+          let stats;
+          try {
+            stats = await adminStatsDb.getOverviewStats();
+          } catch {
+            return {
+              statusCode: 500,
+              body: {
+                success: false,
+                error: { code: 'ADMIN_OVERVIEW_QUERY_FAILED', message: 'تعذر تحميل المؤشرات التشغيلية' },
+                timestamp,
+              },
+            };
+          }
           return {
             statusCode: 200,
             body: {

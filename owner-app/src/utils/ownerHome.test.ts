@@ -1,4 +1,5 @@
 import { getPendingBookingRequests, getPropertyHomeSummary, getUpcomingConfirmedBookings, getWalletHomeState } from './ownerHome';
+import { formatArabicDate, formatArabicDateRange } from './dateFormatter';
 
 const booking = (status: string, checkIn: string) => ({ status, checkIn, checkOut: checkIn }) as any;
 
@@ -11,7 +12,19 @@ const run = () => {
   equal(propertySummary.drafts, 1);
   equal(getWalletHomeState({ availableBalance: 0, pendingBalance: 1600, currency: 'EGP' } as any, null).kind, 'ready');
   equal(getWalletHomeState(null, 'failed').kind, 'error');
-  console.log('OWNER-HOME-01 derivations passed.');
+
+  // Test Arabic date formatting
+  const formattedSingle = formatArabicDate('2026-08-29');
+  equal(formattedSingle.includes('أغسطس'), true);
+
+  const formattedRangeSameMonth = formatArabicDateRange('2026-08-29', '2026-08-31');
+  equal(formattedRangeSameMonth.includes('أغسطس'), true);
+
+  const formattedRangeDiffMonth = formatArabicDateRange('2026-08-29', '2026-09-02');
+  equal(formattedRangeDiffMonth.includes('أغسطس') && formattedRangeDiffMonth.includes('سبتمبر'), true);
+
+  console.log('OWNER-HOME-01 derivations & date formatting tests passed.');
 };
 
 run();
+

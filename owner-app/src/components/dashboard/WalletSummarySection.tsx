@@ -1,12 +1,84 @@
 import React from 'react';
-import { AlertCircle } from 'lucide-react';
+import { AlertCircle, Wallet, RefreshCw } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { getWalletHomeState } from '../../utils/ownerHome';
-
-const money = (amount: number) => `${amount.toLocaleString('ar-EG')} ج.م`;
 
 export const WalletSummarySection: React.FC = () => {
   const { wallet, walletError, refreshWallet, setActiveTab } = useApp();
   const state = getWalletHomeState(wallet, walletError);
-  return <section className="space-y-3 text-right" aria-labelledby="owner-money"><div className="flex items-center justify-between"><h2 id="owner-money" className="text-lg font-extrabold text-[var(--konfrm-text-primary)]">أموالك</h2><button onClick={() => setActiveTab('wallet')} className="min-h-11 text-sm font-bold text-[var(--konfrm-color-primary)]">عرض المحفظة</button></div>{state.kind === 'error' ? <div className="flex items-center justify-between gap-3 rounded-[var(--konfrm-radius-card)] border border-[var(--konfrm-semantic-danger)] bg-[var(--konfrm-surface-primary)] p-4"><span className="flex items-center gap-2 text-sm text-[var(--konfrm-text-primary)]"><AlertCircle className="h-5 w-5 text-[var(--konfrm-semantic-danger)]" />تعذر تحميل رصيد المحفظة</span><button onClick={() => void refreshWallet()} className="min-h-11 text-sm font-bold text-[var(--konfrm-color-primary)]">إعادة المحاولة</button></div> : state.kind === 'ready' ? <div className="grid grid-cols-2 overflow-hidden rounded-[var(--konfrm-radius-card)] border border-[var(--konfrm-border-default)] bg-[var(--konfrm-surface-primary)]"><div className="p-4"><p className="text-sm text-[var(--konfrm-text-secondary)]">متاح للسحب</p><p className="mt-1 text-xl font-extrabold text-[var(--konfrm-text-primary)]">{money(state.available)}</p></div><div className="border-r border-[var(--konfrm-border-subtle)] p-4"><p className="text-sm text-[var(--konfrm-text-secondary)]">معلق</p><p className="mt-1 text-xl font-extrabold text-[var(--konfrm-text-primary)]">{money(state.pending)}</p></div></div> : <div className="h-24 animate-pulse rounded-[var(--konfrm-radius-card)] bg-[var(--konfrm-surface-secondary)]" />}</section>;
+
+  return (
+    <section className="space-y-3 text-right" aria-labelledby="owner-money">
+      {/* Section Header */}
+      <div className="flex items-center justify-between">
+        <h2 id="owner-money" className="text-lg font-black text-slate-900">
+          أموالك
+        </h2>
+        <button
+          onClick={() => setActiveTab('wallet')}
+          className="text-xs font-bold text-[#0059FF] hover:text-blue-700 transition-colors cursor-pointer"
+        >
+          عرض المحفظة
+        </button>
+      </div>
+
+      {state.kind === 'error' ? (
+        <div className="flex items-center justify-between gap-3 rounded-2xl border border-rose-200 bg-rose-50/60 p-4 shadow-xs">
+          <span className="flex items-center gap-2 text-xs font-bold text-rose-800">
+            <AlertCircle className="h-4.5 w-4.5 text-rose-600 shrink-0" />
+            تعذر تحميل رصيد المحفظة
+          </span>
+          <button
+            onClick={() => void refreshWallet()}
+            className="text-xs font-black text-[#0059FF] hover:text-blue-700 flex items-center gap-1 cursor-pointer"
+          >
+            <RefreshCw className="h-3.5 w-3.5" />
+            <span>إعادة المحاولة</span>
+          </button>
+        </div>
+      ) : state.kind === 'ready' ? (
+        <div 
+          onClick={() => setActiveTab('wallet')}
+          className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-xs hover:border-blue-300 transition-all cursor-pointer"
+        >
+          {/* Card Sub-Header */}
+          <div className="flex items-center justify-between border-b border-slate-100 pb-3 mb-3">
+            <div className="flex items-center gap-2">
+              <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-50 text-[#0059FF]">
+                <Wallet className="h-4 w-4" />
+              </div>
+              <span className="text-xs font-black text-slate-800">رصيد المحفظة</span>
+            </div>
+            <span className="text-[11px] font-bold text-slate-400">EGP</span>
+          </div>
+
+          {/* Values Grid: Available (Primary) & Pending (Secondary) */}
+          <div className="grid grid-cols-2 gap-4">
+            {/* Primary: Available Balance */}
+            <div className="space-y-0.5">
+              <span className="text-[11px] font-semibold text-slate-500 block">
+                متاح للسحب
+              </span>
+              <div className="text-xl font-black text-slate-900">
+                {state.available.toLocaleString('ar-EG')} <span className="text-xs font-bold text-slate-500">ج.م</span>
+              </div>
+            </div>
+
+            {/* Secondary: Pending Balance */}
+            <div className="border-r border-slate-100 pr-4 space-y-0.5">
+              <span className="text-[11px] font-semibold text-slate-500 block">
+                معلق
+              </span>
+              <div className="text-lg font-bold text-slate-600">
+                {state.pending.toLocaleString('ar-EG')} <span className="text-xs font-normal text-slate-400">ج.م</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="h-28 animate-pulse rounded-2xl bg-slate-100 border border-slate-200/60" />
+      )}
+    </section>
+  );
 };
+

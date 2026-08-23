@@ -39,8 +39,8 @@ export const BottomNavigation: React.FC = () => {
   ] as const;
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-slate-200/80 shadow-lg px-2 py-2 dir-rtl max-w-md mx-auto">
-      <div className="flex items-center justify-around">
+    <nav className="fixed bottom-0 left-0 right-0 z-40 bg-white border-t border-slate-200/80 px-1 py-1.5 dir-rtl max-w-md mx-auto shadow-[0_-1px_3px_rgba(0,0,0,0.03)]">
+      <div className="flex items-center justify-between gap-1">
         {tabs.map((tab) => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
@@ -49,21 +49,21 @@ export const BottomNavigation: React.FC = () => {
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id as any)}
-              className={`relative flex flex-col items-center justify-center py-1.5 px-3 rounded-2xl transition-all duration-200 ${
+              className={`relative flex-1 min-h-[48px] flex flex-col items-center justify-center py-1 px-1.5 rounded-xl transition-colors cursor-pointer ${
                 isActive
-                  ? 'text-[#0059FF] font-bold bg-blue-50/80 scale-105'
+                  ? 'text-[#0059FF] bg-blue-50/70 font-bold'
                   : 'text-slate-500 font-medium hover:text-slate-800'
               }`}
             >
-              <div className="relative">
-                <Icon className={`w-5 h-5 ${isActive ? 'stroke-[2.5px]' : 'stroke-2'}`} />
+              <div className="relative flex items-center justify-center">
+                <Icon className={`h-5 w-5 ${isActive ? 'stroke-[2.25px]' : 'stroke-[1.75px]'}`} />
                 {tab.badge !== null && (
-                  <span className="absolute -top-1.5 -right-2 min-w-4 h-4 px-1 bg-[#0059FF] text-white text-[9px] font-black rounded-full flex items-center justify-center border border-white">
+                  <span className="absolute -top-1 -right-2 min-w-4 h-4 px-1 bg-[#0059FF] text-white text-[9px] font-black rounded-full flex items-center justify-center border-2 border-white ring-1 ring-blue-100">
                     {tab.badge}
                   </span>
                 )}
               </div>
-              <span className="text-[11px] mt-1 tracking-tight">{tab.label}</span>
+              <span className="text-[11px] mt-0.5 tracking-tight">{tab.label}</span>
             </button>
           );
         })}

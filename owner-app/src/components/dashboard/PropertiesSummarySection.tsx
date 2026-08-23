@@ -22,14 +22,14 @@ export const PropertiesSummarySection: React.FC = () => {
   return (
     <section className="space-y-3 text-right" aria-labelledby="owner-properties">
       {/* Section Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 id="owner-properties" className="text-lg font-black text-slate-900">
+      <div className="flex items-baseline justify-between">
+        <div className="flex items-center gap-2">
+          <h2 id="owner-properties" className="text-lg font-black text-slate-900 tracking-tight">
             وحداتك
           </h2>
-          <p className="text-[11px] font-semibold text-slate-500 mt-0.5">
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-600 text-[11px] font-bold border border-slate-200/60">
             {summaryText}
-          </p>
+          </span>
         </div>
         <button
           onClick={() => setActiveTab('properties')}
@@ -45,17 +45,17 @@ export const PropertiesSummarySection: React.FC = () => {
           <div
             key={property.id}
             onClick={() => setActiveTab('properties')}
-            className="flex gap-3 rounded-2xl border border-slate-200/80 bg-white p-3 shadow-xs hover:border-blue-300 transition-all cursor-pointer text-right items-center"
+            className="group flex gap-3 rounded-2xl border border-slate-200/80 bg-white p-3.5 shadow-xs hover:border-blue-300 hover:shadow-sm transition-all cursor-pointer text-right items-center"
           >
             {/* Thumbnail or Neutral Placeholder */}
             {property.images && property.images[0] ? (
               <img
                 src={property.images[0]}
                 alt={property.title}
-                className="h-20 w-20 shrink-0 rounded-xl object-cover border border-slate-100"
+                className="h-20 w-20 shrink-0 rounded-xl object-cover border border-slate-100 group-hover:border-blue-200 transition-colors"
               />
             ) : (
-              <div className="flex h-20 w-20 shrink-0 flex-col items-center justify-center rounded-xl bg-slate-50 border border-slate-200/80 text-slate-400">
+              <div className="flex h-20 w-20 shrink-0 flex-col items-center justify-center rounded-xl bg-slate-50 border border-slate-200/80 text-slate-400 group-hover:border-blue-200 transition-colors">
                 <Building className="h-6 w-6" />
                 <span className="text-[9px] font-bold text-slate-400 mt-0.5">بدون صورة</span>
               </div>
@@ -64,7 +64,7 @@ export const PropertiesSummarySection: React.FC = () => {
             {/* Content Body */}
             <div className="min-w-0 flex-1 space-y-1">
               <div className="flex items-center justify-between gap-2">
-                <h3 className="truncate text-xs font-black text-slate-900" title={property.title}>
+                <h3 className="truncate text-xs font-black text-slate-900 group-hover:text-[#0059FF] transition-colors" title={property.title}>
                   {property.title}
                 </h3>
                 <PropertyStatusChip status={property.status} />

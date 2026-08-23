@@ -5,7 +5,7 @@ import {
   BOOKING_STATUS_CONFIG,
   VERIFICATION_STATUS_CONFIG,
 } from '../../constants/theme';
-import { ShieldCheck, CheckCircle2, AlertCircle, Clock, XCircle } from 'lucide-react';
+import { CheckCircle2, AlertCircle, Clock, XCircle } from 'lucide-react';
 
 interface PropertyStatusChipProps {
   status: PropertyStatus;
@@ -83,12 +83,24 @@ export const VerificationBadge: React.FC<VerificationBadgeProps> = ({
 }) => {
   const config = VERIFICATION_STATUS_CONFIG[status];
   const displayText = label || text || config.label;
+  const isVerified = status === 'VERIFIED';
+  const isPending = status === 'PENDING_VERIFICATION';
 
   return (
     <div
-      className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border border-blue-200/80 shadow-xs ${config.bg} ${config.text} ${className}`}
+      className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold border transition-colors ${
+        isVerified
+          ? 'bg-blue-50/80 text-[#0059FF] border-blue-200/70'
+          : isPending
+          ? 'bg-amber-50 text-amber-700 border-amber-200/70'
+          : 'bg-slate-50 text-slate-600 border-slate-200/80'
+      } ${className}`}
     >
-      <ShieldCheck className="w-4 h-4 text-[#0059FF] shrink-0" />
+      <span
+        className={`w-1.5 h-1.5 rounded-full ${
+          isVerified ? 'bg-[#0059FF]' : isPending ? 'bg-amber-500' : 'bg-slate-400'
+        }`}
+      />
       <span>{displayText}</span>
     </div>
   );

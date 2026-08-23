@@ -10,8 +10,8 @@ export const WalletSummarySection: React.FC = () => {
   return (
     <section className="space-y-3 text-right" aria-labelledby="owner-money">
       {/* Section Header */}
-      <div className="flex items-center justify-between">
-        <h2 id="owner-money" className="text-lg font-black text-slate-900">
+      <div className="flex items-baseline justify-between">
+        <h2 id="owner-money" className="text-lg font-black text-slate-900 tracking-tight">
           أموالك
         </h2>
         <button
@@ -39,27 +39,32 @@ export const WalletSummarySection: React.FC = () => {
       ) : state.kind === 'ready' ? (
         <div 
           onClick={() => setActiveTab('wallet')}
-          className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-xs hover:border-blue-300 transition-all cursor-pointer"
+          className="group rounded-2xl border border-slate-200/80 bg-white p-4 shadow-xs hover:border-blue-300 hover:shadow-sm transition-all cursor-pointer"
         >
           {/* Card Sub-Header */}
           <div className="flex items-center justify-between border-b border-slate-100 pb-3 mb-3">
             <div className="flex items-center gap-2">
-              <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-50 text-[#0059FF]">
+              <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-blue-50 text-[#0059FF] group-hover:bg-[#0059FF] group-hover:text-white transition-colors">
                 <Wallet className="h-4 w-4" />
               </div>
-              <span className="text-xs font-black text-slate-800">رصيد المحفظة</span>
+              <div>
+                <span className="text-xs font-black text-slate-900 block">رصيد المحفظة</span>
+                <span className="text-[10px] text-slate-400 font-medium">الرصيد المالي المتاح والعمليات الجارية</span>
+              </div>
             </div>
-            <span className="text-[11px] font-bold text-slate-400">EGP</span>
+            <span className="text-[10px] font-black text-[#0059FF] bg-blue-50 px-2 py-0.5 rounded-md border border-blue-100/70">
+              EGP
+            </span>
           </div>
 
           {/* Values Grid: Available (Primary) & Pending (Secondary) */}
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-2 gap-4 py-1">
             {/* Primary: Available Balance */}
             <div className="space-y-0.5">
               <span className="text-[11px] font-semibold text-slate-500 block">
                 متاح للسحب
               </span>
-              <div className="text-xl font-black text-slate-900">
+              <div className="text-2xl font-black text-slate-900 tracking-tight">
                 {state.available.toLocaleString('ar-EG')} <span className="text-xs font-bold text-slate-500">ج.م</span>
               </div>
             </div>
@@ -73,6 +78,12 @@ export const WalletSummarySection: React.FC = () => {
                 {state.pending.toLocaleString('ar-EG')} <span className="text-xs font-normal text-slate-400">ج.م</span>
               </div>
             </div>
+          </div>
+
+          {/* Bottom Card Footer Link */}
+          <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between text-[11px] font-bold text-[#0059FF]">
+            <span>تفاصيل السحب وسجل العمليات</span>
+            <span className="group-hover:translate-x-[-2px] transition-transform">←</span>
           </div>
         </div>
       ) : (

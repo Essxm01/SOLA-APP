@@ -93,30 +93,41 @@ export const RecentBookingsSection: React.FC = () => {
 
       {/* Next Upcoming Confirmed Booking Card */}
       {nextBooking ? (
-        <div className="rounded-2xl border border-slate-200/70 bg-slate-50/70 p-3.5 shadow-xs text-right">
-          <div className="flex items-center justify-between gap-2 mb-1.5">
-            <span className="text-[11px] font-bold text-slate-500 flex items-center gap-1.5">
-              <Calendar className="h-3.5 w-3.5 text-[#0059FF]" />
-              الحجز المؤكد القادم
-            </span>
-            <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200/50">
-              مؤكد
+        <div
+          onClick={() => setActiveTab('bookings')}
+          className="group rounded-2xl border border-slate-200/80 bg-white p-4 shadow-xs hover:border-blue-300 hover:shadow-sm transition-all cursor-pointer text-right"
+        >
+          <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-2.5 mb-2.5">
+            <div className="flex items-center gap-2">
+              <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-50 text-[#0059FF] group-hover:bg-[#0059FF] group-hover:text-white transition-colors">
+                <Calendar className="h-3.5 w-3.5" />
+              </div>
+              <span className="text-xs font-black text-slate-900">الحجز المؤكد القادم</span>
+            </div>
+            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200/60">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-600" />
+              <span>مؤكد</span>
             </span>
           </div>
 
-          <p className="font-black text-xs text-slate-900 truncate">
+          <p className="font-black text-sm text-slate-900 truncate">
             {nextBooking.propertyTitle}
           </p>
 
-          <div className="mt-1 flex items-center justify-between text-[11px] text-slate-500 font-medium">
-            <span>الضيف: {nextBooking.renter?.name || 'ضيف'}</span>
-            <span dir="rtl" className="font-semibold text-slate-700">
+          <div className="mt-1.5 flex items-center justify-between text-xs text-slate-500 font-medium">
+            <span>الضيف: {nextBooking.renter?.name || 'ضيف صولا'}</span>
+            <span dir="rtl" className="font-bold text-slate-800">
               {formatArabicDateRange(nextBooking.checkIn, nextBooking.checkOut)} ({nextBooking.nights} {nextBooking.nights === 1 ? 'ليلة' : nextBooking.nights === 2 ? 'ليلتان' : 'ليالٍ'})
             </span>
           </div>
+
+          <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between text-[11px] font-bold text-[#0059FF]">
+            <span>عرض تفاصيل الحجز</span>
+            <span className="group-hover:translate-x-[-2px] transition-transform">←</span>
+          </div>
         </div>
       ) : !hasBookingsContent && (
-        <div className="rounded-2xl border border-slate-200/60 bg-white p-3.5 text-center shadow-xs">
+        <div className="rounded-2xl border border-slate-200/60 bg-white p-4 text-center shadow-xs">
           <p className="text-xs text-slate-500 font-medium">لا توجد حجوزات قائمة أو قادمة حالياً</p>
         </div>
       )}

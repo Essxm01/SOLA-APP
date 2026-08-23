@@ -36,6 +36,8 @@ Severity: **P0** violates an approved brand foundation; **P1** is a major cross-
 - **P1 — 1 finding:** direct global font-family declaration in `src/index.css`; separate `ui/` Button, Card, Input, Modal, Badge and state-view implementations.
 - **P2 — 136 findings:** raw hex colours and local component style duplication.
 
-## Recommended next migration slice
+## Visual migration candidate
 
-Migrate **Owner Wallet presentation only** first: it has a focused, data-correct canonical financial read path and the most concentrated rejected dark-surface pattern. Consume generated tokens and central Card/Status/State contracts; do not change financial logic. Then move to Owner dashboard/property shell, Customer booking/payment, and Admin property review in controlled slices.
+When a visual-only migration is selected, **Owner Wallet presentation** is a focused candidate: it has a data-correct canonical financial read path and the most concentrated rejected dark-surface pattern. Consume generated tokens and central Card/Status/State contracts; do not change financial logic.
+
+This visual backlog does not override product-correctness priority. The current cross-role implementation order is governed by [`EXPERIENCE/MIGRATION_PLAN.md`](./EXPERIENCE/MIGRATION_PLAN.md).

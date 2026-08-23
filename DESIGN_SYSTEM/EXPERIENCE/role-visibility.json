@@ -1,0 +1,16 @@
+{
+  "version": "2.1.0",
+  "legend": ["VISIBLE", "SUMMARY", "CONTEXTUAL", "HIDDEN", "NEEDS_PRODUCT_DECISION"],
+  "domains": {
+    "property": { "customer": "VISIBLE", "owner": "VISIBLE", "admin": "CONTEXTUAL" },
+    "booking": { "customer": "VISIBLE", "owner": "VISIBLE", "admin": "SUMMARY" },
+    "payment": { "customer": "VISIBLE", "owner": "SUMMARY", "admin": "CONTEXTUAL" },
+    "finance": { "customer": "CONTEXTUAL", "owner": "VISIBLE", "admin": "CONTEXTUAL" },
+    "ownerWallet": { "customer": "HIDDEN", "owner": "VISIBLE", "admin": "CONTEXTUAL" },
+    "payout": { "customer": "HIDDEN", "owner": "VISIBLE", "admin": "VISIBLE" },
+    "identity": { "customer": "SUMMARY", "owner": "VISIBLE", "admin": "CONTEXTUAL" },
+    "chat": { "customer": "CONTEXTUAL", "owner": "CONTEXTUAL", "admin": "NEEDS_PRODUCT_DECISION" },
+    "disputes": { "customer": "CONTEXTUAL", "owner": "CONTEXTUAL", "admin": "VISIBLE" },
+    "audit": { "customer": "HIDDEN", "owner": "HIDDEN", "admin": "CONTEXTUAL" }
+  }
+}

@@ -1,5 +1,13 @@
 # KONFRM Design System Changelog
 
+## 2.1.0 — 2026-08-23
+
+### Product experience authority
+
+- Added the role-specific Product Experience System, current-state UX audit, information architecture, visibility matrix, migration plan and Founder review pack.
+- Documented recommendations and Founder decisions separately from approved existing rules.
+- No live application UI, route, API, database or business rule changed.
+
 ## 2.0.0 — 2026-08-23
 
 ### Major governance change

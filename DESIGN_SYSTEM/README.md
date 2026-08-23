@@ -1,7 +1,7 @@
 # KONFRM Design System
 
-**Version:** `2.0.0`
-**Authority:** `DESIGN_SYSTEM/` is the independent visual and interaction source of truth for KONFRM / كونفرم.
+**Version:** `2.1.0`
+**Authority:** `DESIGN_SYSTEM/` is the independent visual and product-experience source of truth for KONFRM / كونفرم.
 
 ```
                          DESIGN_SYSTEM/
@@ -27,6 +27,7 @@ Infrastructure identifiers that still contain `SOLA` are outside this design-sys
 ## What is here
 
 - [`TOKENS/`](./TOKENS): canonical, machine-readable contracts.
+- [`EXPERIENCE/`](./EXPERIENCE): role-specific UX authority, current-state audit, information architecture and Founder decisions.
 - [`generated/`](./generated): generated CSS variables and TypeScript map for all React applications. Do not hand-edit generated output.
 - [`COMPONENTS/`](./COMPONENTS): behavioural and accessibility contracts, not app-specific implementations.
 - [`GUIDELINES/`](./GUIDELINES): roles, RTL, responsive, accessibility and financial presentation rules.
@@ -44,4 +45,4 @@ Before implementing any UI pattern:
 5. Record the decision in tokens/components and version it appropriately.
 6. Only then implement it in an application.
 
-See [`GOVERNANCE.md`](./GOVERNANCE.md) for approval boundaries and [`CHANGELOG.md`](./CHANGELOG.md) for releases.
+See [`GOVERNANCE.md`](./GOVERNANCE.md) for approval boundaries, [`EXPERIENCE/`](./EXPERIENCE) for role UX, and [`CHANGELOG.md`](./CHANGELOG.md) for releases.

@@ -1,11 +1,11 @@
 # KONFRM Design System Governance
 
-**Current version:** `2.0.0`
+**Current version:** `2.1.0`
 **Status:** active governance contract; approved foundations and explicitly labelled implementation defaults are distinct.
 
 ## Authority model
 
-`DESIGN_SYSTEM/` governs Customer, Owner and Admin. No app is a design authority, including Owner. A production screen cannot promote its own one-off colour, component, typography, radius, shadow, gradient or interaction pattern into the global system.
+`DESIGN_SYSTEM/` governs Customer, Owner and Admin. No app is a visual or product-experience authority, including Owner. A production screen cannot promote its own one-off colour, component, typography, radius, shadow, gradient, navigation or interaction pattern into the global system.
 
 When code and the design system disagree, the design system wins. A genuinely new requirement follows: **propose → central approval → central documentation/token → version → app consumption**. Never reverse this order.
 
@@ -23,10 +23,10 @@ The v2 approved foundations are listed in [`README.md`](./README.md). Exact comp
 ## Versioning
 
 - **PATCH** — clarification, documentation correction, or nonvisual generation/check fix.
-- **MINOR** — approved new token or component variant.
+- **MINOR** — approved new token/component variant or formal cross-role experience governance layer.
 - **MAJOR** — brand or foundational visual architecture change.
 
-Version `2.0.0` is a major change because authority moved from an Owner-derived SOLA extraction to independent KONFRM governance. Releases are recorded in [`CHANGELOG.md`](./CHANGELOG.md).
+Version `2.0.0` is a major change because authority moved from an Owner-derived SOLA extraction to independent KONFRM governance. Version `2.1.0` adds formal role-specific experience governance without changing the visual foundations. Releases are recorded in [`CHANGELOG.md`](./CHANGELOG.md).
 
 ## Enforcement
 

@@ -3,6 +3,7 @@ import { resolve, relative, extname } from 'node:path';
 
 const root = process.cwd();
 const tokenDirectory = resolve(root, 'DESIGN_SYSTEM', 'TOKENS');
+const experienceDirectory = resolve(root, 'DESIGN_SYSTEM', 'EXPERIENCE');
 const baselinePath = resolve(root, 'DESIGN_SYSTEM', 'LEGACY_EXCEPTIONS.json');
 const applications = ['customer-app', 'owner-app', 'admin-app'];
 const sourceExtensions = new Set(['.tsx', '.ts', '.css']);
@@ -25,6 +26,28 @@ const validateTokens = async () => {
   }
   if (parsed['colors.json'].surface.dark_header) throw new Error('colors.json may not approve a dark_header surface');
   if (parsed['typography.json'].fontFamily?.ui?.value?.includes('Amiri')) throw new Error('Amiri is not an approved primary UI font');
+
+  const experienceFiles = ['DECISIONS.json', 'role-visibility.json'];
+  const experience = {};
+  for (const name of experienceFiles) {
+    try {
+      experience[name] = JSON.parse(await readFile(resolve(experienceDirectory, name), 'utf8'));
+    } catch (error) {
+      throw new Error(`Invalid experience JSON file ${name}: ${error.message}`);
+    }
+    if (experience[name].version !== '2.1.0') throw new Error(`${name} must declare version 2.1.0`);
+  }
+  const allowedDecisionStatuses = new Set(['APPROVED_EXISTING', 'RECOMMENDED', 'NEEDS_FOUNDER_DECISION']);
+  for (const decision of experience['DECISIONS.json'].decisions ?? []) {
+    if (!decision.id || !decision.title || !allowedDecisionStatuses.has(decision.status)) {
+      throw new Error('Each experience decision needs id, title and an allowed status');
+    }
+  }
+  for (const [domain, visibility] of Object.entries(experience['role-visibility.json'].domains ?? {})) {
+    if (!visibility.customer || !visibility.owner || !visibility.admin) {
+      throw new Error(`role-visibility.json domain ${domain} must cover customer, owner and admin`);
+    }
+  }
 };
 
 const filesIn = async (directory) => {

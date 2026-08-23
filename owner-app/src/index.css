@@ -1,3 +1,4 @@
+@import "../../DESIGN_SYSTEM/generated/konfrm-tokens.css";
 @import "tailwindcss";
 
 @layer base {
@@ -56,4 +57,17 @@
 
 .animate-pulse-glow {
   animation: pulseGlow 2.5s infinite ease-in-out;
+}
+
+@keyframes ownerEntryReveal {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.owner-entry-reveal {
+  animation: ownerEntryReveal 180ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .owner-entry-reveal { animation: none; }
 }

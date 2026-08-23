@@ -1,117 +1,115 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
+import { ArrowLeft, ArrowRight, Building2, ClipboardCheck, WalletCards } from 'lucide-react';
+import { getOwnerOnboardingSwipeAction } from '../../utils/ownerFirstRun';
 import { Button } from '../ui/Button';
-import { Building2, CalendarCheck, MessageSquareCheck, ArrowLeft, ArrowRight } from 'lucide-react';
 
 interface OnboardingScreenProps {
   onComplete: () => void;
 }
 
+const slides = [
+  {
+    icon: ClipboardCheck,
+    title: 'طلبات الحجز تحت سيطرتك',
+    subtitle: 'راجع طلبات الحجز واتخذ قرار القبول أو الرفض قبل أن ينتقل الحجز للخطوة التالية.',
+  },
+  {
+    icon: Building2,
+    title: 'وحداتك في مكان واحد',
+    subtitle: 'أضف وحداتك وتابع حالتها والحجوزات المرتبطة بها بسهولة.',
+  },
+  {
+    icon: WalletCards,
+    title: 'فلوسك واضحة',
+    subtitle: 'تابع رصيدك المعلق والمتاح للسحب وتفاصيل العربون المرتبطة بحجوزاتك.',
+  },
+];
+
 export const OnboardingScreen: React.FC<OnboardingScreenProps> = ({ onComplete }) => {
   const [currentSlide, setCurrentSlide] = useState(0);
-
-  const slides = [
-    {
-      icon: <Building2 className="w-14 h-14 text-[#0059FF]" />,
-      title: 'إدارة شاملة لوحداتك الساحلية',
-      subtitle: 'اعرض شاليهاتك وفيلاتك في أجمل الوجهات المصرية مثل مراسي، الجونة، العين السخنة ورأس الحكمة بكل سهولة.',
-      badge: 'إدارة الوحدات',
-    },
-    {
-      icon: <CalendarCheck className="w-14 h-14 text-[#0059FF]" />,
-      title: 'تحكّم كامل في الأسعار والتوفر',
-      subtitle: 'استخدم التقويم المركزي لتحديد مواعيد التوفر وإدارة أسعار المواسم والعطلات الصيفية بلا تعارض.',
-      badge: 'التقويم والأسعار',
-    },
-    {
-      icon: <MessageSquareCheck className="w-14 h-14 text-[#0059FF]" />,
-      title: 'استقبال الحجوزات والمحادثات المباشرة',
-      subtitle: 'راجع طلبات الحجز والتعديل فوراً، وتواصل مع المستأجرين بأمان عبر شات Sola الداخلي.',
-      badge: 'الحجوزات والدردشة',
-    },
-  ];
+  const gestureStartX = useRef<number | null>(null);
+  const slide = slides[currentSlide];
+  const Icon = slide.icon;
 
   const nextSlide = () => {
     if (currentSlide < slides.length - 1) {
-      setCurrentSlide((prev) => prev + 1);
-    } else {
-      onComplete();
+      setCurrentSlide((current) => current + 1);
+      return;
     }
+    onComplete();
   };
 
-  const prevSlide = () => {
-    if (currentSlide > 0) {
-      setCurrentSlide((prev) => prev - 1);
-    }
+  const previousSlide = () => {
+    if (currentSlide > 0) setCurrentSlide((current) => current - 1);
+  };
+
+  const handlePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+    gestureStartX.current = event.clientX;
+  };
+
+  const handlePointerUp = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (gestureStartX.current === null) return;
+    const action = getOwnerOnboardingSwipeAction(event.clientX - gestureStartX.current);
+    gestureStartX.current = null;
+    if (action === 'NEXT') nextSlide();
+    if (action === 'PREVIOUS') previousSlide();
   };
 
   return (
-    <div className="min-h-screen w-full bg-slate-50 flex flex-col justify-between p-6 dir-rtl">
-      {/* Top Header Navigation */}
-      <div className="flex items-center justify-between pt-4">
+    <main className="min-h-screen w-full bg-[var(--konfrm-surface-canvas)] flex flex-col justify-between px-6 py-8 dir-rtl">
+      <div className="flex min-h-11 items-center justify-between">
         {currentSlide > 0 ? (
           <button
-            onClick={prevSlide}
-            className="flex items-center gap-1 text-sm font-semibold text-slate-600 hover:text-slate-900"
+            type="button"
+            onClick={previousSlide}
+            className="inline-flex min-h-11 items-center gap-1 rounded-[var(--konfrm-radius-control)] text-sm font-semibold text-[var(--konfrm-text-secondary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--konfrm-interaction-focus-ring)]"
           >
-            <ArrowRight className="w-4 h-4" />
+            <ArrowRight className="h-4 w-4" />
             <span>السابق</span>
           </button>
-        ) : (
-          <div />
-        )}
+        ) : <span />}
         <button
+          type="button"
           onClick={onComplete}
-          className="text-xs font-bold text-[#0059FF] bg-blue-50 px-3 py-1.5 rounded-full hover:bg-blue-100 transition-colors"
+          className="min-h-11 rounded-[var(--konfrm-radius-control)] px-3 text-sm font-bold text-[var(--konfrm-color-primary)] hover:bg-[var(--konfrm-interaction-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--konfrm-interaction-focus-ring)]"
         >
           تخطي
         </button>
       </div>
 
-      {/* Main Slide Card */}
-      <div className="flex flex-col items-center text-center my-auto px-2 animate-fade-in key={currentSlide}">
-        <div className="w-28 h-28 rounded-3xl bg-blue-50 border border-blue-100 flex items-center justify-center mb-6 shadow-inner relative">
-          {slides[currentSlide].icon}
+      <div
+        className="owner-entry-reveal touch-pan-y flex flex-col items-center px-2 text-center"
+        onPointerDown={handlePointerDown}
+        onPointerUp={handlePointerUp}
+        onPointerCancel={() => { gestureStartX.current = null; }}
+      >
+        <div className="mb-6 flex h-24 w-24 items-center justify-center rounded-[var(--konfrm-radius-card)] border border-[var(--konfrm-border-default)] bg-[var(--konfrm-color-primary-soft)] text-[var(--konfrm-color-primary)]">
+          <Icon className="h-12 w-12" aria-hidden="true" />
         </div>
+        <h1 className="text-balance mb-3 text-2xl font-extrabold leading-snug text-[var(--konfrm-text-primary)]">{slide.title}</h1>
+        <p className="max-w-sm text-base leading-7 text-[var(--konfrm-text-secondary)]">{slide.subtitle}</p>
 
-        <span className="inline-block px-3 py-1 bg-amber-100 text-amber-900 text-xs font-bold rounded-full mb-3">
-          {slides[currentSlide].badge}
-        </span>
-
-        <h2 className="text-2xl font-extrabold text-slate-900 mb-3 leading-snug">
-          {slides[currentSlide].title}
-        </h2>
-
-        <p className="text-sm text-slate-600 leading-relaxed max-w-sm">
-          {slides[currentSlide].subtitle}
-        </p>
-
-        {/* Carousel Pagination Dots */}
-        <div className="flex items-center gap-2 mt-8">
-          {slides.map((_, idx) => (
+        <div className="mt-8 flex items-center gap-2" aria-label={`الخطوة ${currentSlide + 1} من ${slides.length}`}>
+          {slides.map((_, index) => (
             <button
-              key={idx}
-              onClick={() => setCurrentSlide(idx)}
-              className={`h-2.5 rounded-full transition-all duration-300 ${
-                idx === currentSlide ? 'w-8 bg-[#0059FF]' : 'w-2.5 bg-slate-300'
-              }`}
-            />
+              key={index}
+              type="button"
+              onClick={() => setCurrentSlide(index)}
+              aria-label={`الانتقال إلى الخطوة ${index + 1}`}
+              aria-current={index === currentSlide ? 'step' : undefined}
+              className="flex min-h-11 min-w-11 items-center justify-center rounded-[var(--konfrm-radius-control)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--konfrm-interaction-focus-ring)]"
+            >
+              <span className={`h-2.5 rounded-full transition-[width,background-color] duration-200 ${index === currentSlide ? 'w-7 bg-[var(--konfrm-color-primary)]' : 'w-2.5 bg-[var(--konfrm-border-strong)]'}`} />
+            </button>
           ))}
         </div>
       </div>
 
-      {/* Footer Controls */}
-      <div className="w-full pb-6">
-        <Button
-          variant="primary"
-          size="lg"
-          fullWidth
-          onClick={nextSlide}
-          icon={<ArrowLeft className="w-5 h-5" />}
-          className="py-4 text-base font-bold shadow-lg shadow-blue-500/25"
-        >
+      <div className="w-full pb-2">
+        <Button type="button" variant="primary" size="lg" fullWidth onClick={nextSlide} icon={<ArrowLeft className="h-5 w-5" />} className="min-h-12 py-3 text-base font-bold">
           {currentSlide === slides.length - 1 ? 'ابدأ الآن' : 'المتابعة'}
         </Button>
       </div>
-    </div>
+    </main>
   );
 };

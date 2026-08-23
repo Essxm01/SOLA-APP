@@ -6,7 +6,6 @@ import { getCanonicalOwnerPhone, isValidOwnerLogin, unwrapOwnerLoginResponse } f
 
 interface AuthContextType {
   isAuthenticated: boolean;
-  hasCompletedOnboarding: boolean;
   phoneNumber: string;
   owner: Owner | null;
   setPhoneNumber: (phone: string) => void;
@@ -14,7 +13,6 @@ interface AuthContextType {
   sendOTP: (phone: string) => Promise<boolean>;
   verifyOTP: (code: string) => Promise<boolean>;
   logout: () => void;
-  completeOnboarding: () => void;
   isLoadingAuth: boolean;
 }
 
@@ -24,10 +22,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // A token in storage is only a candidate session. It is not authenticated until
   // the canonical owner profile has been read successfully.
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
-
-  const [hasCompletedOnboarding, setHasCompletedOnboarding] = useState<boolean>(() => {
-    return localStorage.getItem('sola_owner_onboarding') === 'true';
-  });
 
   const [phoneNumber, setPhoneNumber] = useState<string>(() => {
     return localStorage.getItem('sola_owner_phone') || '';
@@ -190,16 +184,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (refreshToken && !repo.useMockMode) void repo.auth.revokeSession(refreshToken).catch(() => {});
   };
 
-  const completeOnboarding = () => {
-    setHasCompletedOnboarding(true);
-    localStorage.setItem('sola_owner_onboarding', 'true');
-  };
-
   return (
     <AuthContext.Provider
       value={{
         isAuthenticated,
-        hasCompletedOnboarding,
         phoneNumber,
         owner,
         setPhoneNumber,
@@ -207,7 +195,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         sendOTP,
         verifyOTP,
         logout,
-        completeOnboarding,
         isLoadingAuth,
       }}
     >

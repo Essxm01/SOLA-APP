@@ -104,7 +104,7 @@ export const PhoneInput: React.FC<PhoneInputProps> = ({
       {error ? (
         <span className="text-xs font-medium text-rose-600">{error}</span>
       ) : (
-        <span className="text-xs text-slate-500">أدخل رقم الهاتف المسجل لدى Sola (مثال: 01001234567)</span>
+        <span className="text-xs text-slate-500">أدخل رقم الهاتف المسجل لحساب المالك (مثال: 01001234567)</span>
       )}
     </div>
   );

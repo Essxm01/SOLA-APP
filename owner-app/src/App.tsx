@@ -4,6 +4,7 @@ import { AppProvider, useApp } from './context/AppContext';
 import { SplashScreen } from './components/auth/SplashScreen';
 import { OnboardingScreen } from './components/auth/OnboardingScreen';
 import { LoginScreen } from './components/auth/LoginScreen';
+import { completeOwnerFirstRunOnboarding, resolveOwnerFirstRunPhase, type OwnerFirstRunPhase } from './utils/ownerFirstRun';
 import { OwnerDashboardView } from './components/dashboard/OwnerDashboardView';
 import { BookingsFoundationView } from './components/bookings/BookingsFoundationView';
 import { PropertiesFoundationView } from './components/properties/PropertiesFoundationView';
@@ -49,26 +50,37 @@ const OwnerAppContent: React.FC = () => {
   return <div className="w-full min-h-full pb-16 relative"><ErrorBoundary key={activeTab}>{renderTabContent()}</ErrorBoundary><BottomNavigation /><NotificationsModal /><Toast /></div>;
 };
 
-const OwnerSessionContent: React.FC = () => {
-  const { hasCompletedOnboarding, completeOnboarding } = useAuth();
-  const [showSplash, setShowSplash] = useState(true);
+const OwnerFirstRunGate: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const [phase, setPhase] = useState<OwnerFirstRunPhase>(() => resolveOwnerFirstRunPhase(window.localStorage));
 
-  if (showSplash) return <SplashScreen onContinue={() => setShowSplash(false)} />;
-  if (!hasCompletedOnboarding) return <OnboardingScreen onComplete={completeOnboarding} />;
-  return <OwnerAppContent />;
+  if (phase === 'SPLASH') {
+    return <MobileContainer><SplashScreen onComplete={() => setPhase('ONBOARDING')} /></MobileContainer>;
+  }
+
+  if (phase === 'ONBOARDING') {
+    const finishOnboarding = () => {
+      completeOwnerFirstRunOnboarding(window.localStorage);
+      setPhase('DONE');
+    };
+    return <MobileContainer><OnboardingScreen onComplete={finishOnboarding} /></MobileContainer>;
+  }
+
+  return <>{children}</>;
 };
 
 const OwnerAuthGate: React.FC = () => {
   const { isLoadingAuth, isAuthenticated, owner } = useAuth();
   if (isLoadingAuth) return <MobileContainer><div className="min-h-screen flex items-center justify-center text-slate-600 dir-rtl">جاري التحقق من الحساب…</div></MobileContainer>;
   if (!isAuthenticated || !owner?.id) return <MobileContainer><LoginScreen /></MobileContainer>;
-  return <MobileContainer><AppProvider key={owner.id} ownerId={owner.id}><OwnerSessionContent /></AppProvider></MobileContainer>;
+  return <MobileContainer><AppProvider key={owner.id} ownerId={owner.id}><OwnerAppContent /></AppProvider></MobileContainer>;
 };
 
 export function App() {
   return (
     <AuthProvider>
-      <OwnerAuthGate />
+      <OwnerFirstRunGate>
+        <OwnerAuthGate />
+      </OwnerFirstRunGate>
     </AuthProvider>
   );
 }

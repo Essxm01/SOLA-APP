@@ -862,19 +862,31 @@ export class ExpressServerApp {
           }
 
           const isValidUuid = (val?: string) => val && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val);
+          const propertyTypes = new Set(['CHALET', 'VILLA', 'APARTMENT', 'STUDIO', 'HOTEL_ROOM', 'OTHER']);
+          const numeric = (value: unknown) => typeof value === 'number' && Number.isFinite(value);
+          const missingFields = [
+            !bodyPayload?.title?.trim() && 'title',
+            !propertyTypes.has(bodyPayload?.unitType) && 'unitType',
+            !propertyTypes.has(bodyPayload?.propertyType) && 'propertyType',
+            !numeric(bodyPayload?.bedrooms) || bodyPayload.bedrooms < 0 ? 'bedrooms' : false,
+            !numeric(bodyPayload?.bathrooms) || bodyPayload.bathrooms < 0 ? 'bathrooms' : false,
+            !numeric(bodyPayload?.maxGuests) || bodyPayload.maxGuests <= 0 ? 'maxGuests' : false,
+            !numeric(bodyPayload?.pricePerNight ?? bodyPayload?.basePricePerNight) || (bodyPayload?.pricePerNight ?? bodyPayload?.basePricePerNight) <= 0 ? 'pricePerNight' : false,
+          ].filter(Boolean);
+          if (missingFields.length) return { statusCode: 400, body: { success: false, error: { code: 'PROPERTY_CREATE_REQUIRED_FIELDS_MISSING', message: 'يرجى إدخال بيانات الوحدة الأساسية بشكل صحيح.' }, data: { missingFields }, timestamp } };
           const propId = isValidUuid(bodyPayload?.id) ? bodyPayload.id : crypto.randomUUID();
 
           const createdProperty = await propertyDb.create({
             id: propId,
             ownerId,
-            title: bodyPayload?.title || 'شاليه جديد',
-            unitType: bodyPayload?.unitType || 'CHALET',
-            propertyType: bodyPayload?.propertyType || bodyPayload?.unitType || 'CHALET',
+            title: bodyPayload.title.trim(),
+            unitType: bodyPayload.unitType,
+            propertyType: bodyPayload.propertyType,
             address: bodyPayload?.address || '',
-            bedrooms: bodyPayload?.bedrooms || 1,
-            bathrooms: bodyPayload?.bathrooms || 1,
-            maxGuests: bodyPayload?.maxGuests || 2,
-            basePricePerNight: bodyPayload?.pricePerNight || bodyPayload?.basePricePerNight || 1000,
+            bedrooms: bodyPayload.bedrooms,
+            bathrooms: bodyPayload.bathrooms,
+            maxGuests: bodyPayload.maxGuests,
+            basePricePerNight: bodyPayload.pricePerNight ?? bodyPayload.basePricePerNight,
             description: bodyPayload?.description || null,
             region: bodyPayload?.region || null,
             resortName: bodyPayload?.resortName || null,

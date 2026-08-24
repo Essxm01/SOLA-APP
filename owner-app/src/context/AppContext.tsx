@@ -486,15 +486,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode; ownerId: string 
         savedProperty = await mockRepository.createOrUpdateProperty(data, submitForReview);
       } else {
         const payload: any = {
-          title: data.title || 'شاليه جديد',
-          unitType: (data.unitType as any) || 'CHALET',
-          propertyType: data.propertyType || 'CHALET',
+          title: data.title,
+          unitType: data.unitType,
+          propertyType: data.propertyType,
           address: data.address || '',
-          bedrooms: data.bedrooms || 1,
-          bathrooms: data.bathrooms || 1,
-          maxGuests: data.maxGuests || 2,
-          basePricePerNight: data.pricePerNight || (data.pricing?.basePricePerNight) || 1000,
-          pricePerNight: data.pricePerNight || (data.pricing?.basePricePerNight) || 1000,
+          bedrooms: data.bedrooms,
+          bathrooms: data.bathrooms,
+          maxGuests: data.maxGuests,
+          basePricePerNight: data.pricePerNight ?? data.pricing?.basePricePerNight,
+          pricePerNight: data.pricePerNight ?? data.pricing?.basePricePerNight,
           description: data.description,
           region: data.region,
           resortName: data.resortName,
@@ -686,33 +686,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode; ownerId: string 
   const openAddPropertyWizard = (initialData?: Partial<Property>) => {
     if (initialData) {
       setCurrentDraft(initialData);
-    } else if (!currentDraft) {
-      setCurrentDraft({
-        unitType: 'شاليه',
-        propertyType: 'CHALET',
-        region: 'الساحل الشمالي',
-        bedrooms: 2,
-        bathrooms: 1,
-        maxGuests: 4,
-        areaSqM: 110,
-        bedsCount: 3,
-        pricePerNight: 5000,
-        currency: 'ج.م',
-        amenities: ['pool', 'central_ac', 'wifi'],
-        images: [],
-        mainImageIndex: 0,
-        houseRules: {
-          minStay: 2,
-          maxStay: 30,
-          smokingAllowed: false,
-          partiesAllowed: false,
-          petsAllowed: false,
-          childrenAllowed: true,
-          checkInTime: '14:00',
-          checkOutTime: '12:00',
-        },
-        status: 'DRAFT',
-      });
+    } else {
+      setCurrentDraft({ currency: 'EGP', amenities: [], images: [], houseRules: {} as any });
     }
     setWizardStep(1);
     setPropertyViewMode('wizard');

@@ -4,6 +4,7 @@ import type { Property, PropertyRules, PropertyType } from '../../types';
 import { Input } from '../ui/Input';
 import { Button } from '../ui/Button';
 import { repositoryFactory } from '../../services/repositoryFactory';
+import { canCreateCanonicalServerDraft } from '../../utils/ownerPropertyWizard';
 import {
   EGYPTIAN_COASTAL_REGIONS,
   UNIT_TYPES,
@@ -28,15 +29,9 @@ import {
   Loader2,
 } from 'lucide-react';
 
-const DEFAULT_HOUSE_RULES: PropertyRules = {
+const PLATFORM_STAY_RULES: Pick<PropertyRules, 'minStay' | 'maxStay'> = {
   minStay: 2,
   maxStay: 30,
-  smokingAllowed: false,
-  partiesAllowed: false,
-  petsAllowed: false,
-  childrenAllowed: true,
-  checkInTime: '14:00',
-  checkOutTime: '12:00',
 };
 
 export const AddPropertyWizard: React.FC = () => {
@@ -52,23 +47,7 @@ export const AddPropertyWizard: React.FC = () => {
 
   const [formData, setFormData] = useState<Partial<Property>>(() => {
     if (currentDraft) return currentDraft;
-    return {
-      unitType: 'شاليه',
-      propertyType: 'CHALET',
-      region: 'الساحل الشمالي',
-      bedrooms: 2,
-      bathrooms: 1,
-      maxGuests: 4,
-      areaSqM: 120,
-      bedsCount: 3,
-      pricePerNight: 5000,
-      currency: 'ج.م',
-      amenities: ['pool', 'central_ac', 'wifi'],
-      images: [],
-      mainImageIndex: 0,
-      houseRules: DEFAULT_HOUSE_RULES,
-      status: 'DRAFT',
-    };
+    return { currency: 'EGP', amenities: [], images: [], houseRules: PLATFORM_STAY_RULES as PropertyRules };
   });
 
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -99,7 +78,7 @@ export const AddPropertyWizard: React.FC = () => {
     setFormData((prev) => ({
       ...prev,
       houseRules: {
-        ...(prev.houseRules || DEFAULT_HOUSE_RULES),
+        ...(prev.houseRules || (PLATFORM_STAY_RULES as PropertyRules)),
         [key]: value,
       },
     }));
@@ -147,6 +126,11 @@ export const AddPropertyWizard: React.FC = () => {
   };
 
   const handleSaveDraft = async () => {
+    if (!formData.id && !canCreateCanonicalServerDraft(formData)) {
+      setCurrentDraft(formData);
+      showToast('تم حفظ المسودة على هذا الجهاز. أكمل البيانات الأساسية قبل إنشاء الوحدة.', 'info');
+      return;
+    }
     try {
       setIsSubmitting(true);
       const effectiveId = formData.id || draftIdRef.current || currentDraft?.id;
@@ -195,6 +179,11 @@ export const AddPropertyWizard: React.FC = () => {
     try {
       let currentPropId = formData.id || draftIdRef.current || currentDraft?.id;
       if (!currentPropId) {
+        if (!canCreateCanonicalServerDraft(formData)) {
+          showToast('أكمل اسم الوحدة ونوعها والسعة والسعر قبل إضافة الصور.', 'error');
+          setWizardStep(1);
+          return;
+        }
         const saved = await createOrUpdateProperty({ ...formData, status: 'DRAFT' }, false);
         currentPropId = saved.id;
         draftIdRef.current = saved.id;

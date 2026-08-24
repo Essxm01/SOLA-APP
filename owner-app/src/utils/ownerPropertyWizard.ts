@@ -26,6 +26,22 @@ export const VALID_PROPERTY_TYPES = new Set<PropertyType>([
   'OTHER',
 ]);
 
+const LEGACY_PROPERTY_TYPE_MAP: Readonly<Record<string, PropertyType>> = {
+  'شاليه': 'CHALET',
+  'فيلا': 'VILLA',
+  'شقة': 'APARTMENT',
+  'استوديو': 'STUDIO',
+  'غرفة فندقية': 'HOTEL_ROOM',
+  'نوع آخر': 'OTHER',
+};
+
+export function normalizePropertyType(value: unknown): PropertyType | undefined {
+  if (typeof value !== 'string') return undefined;
+  const canonical = PROPERTY_TYPE_OPTIONS.find(option => option.value === value);
+  if (canonical) return canonical.value;
+  return LEGACY_PROPERTY_TYPE_MAP[value.trim()];
+}
+
 export function getPropertyTypeLabel(type?: PropertyType): string {
   if (!type) return '—';
   const match = PROPERTY_TYPE_OPTIONS.find(opt => opt.value === type);
@@ -44,6 +60,18 @@ export interface WizardPropertyImage {
   sortOrder?: number;
   status: 'committed' | 'uploading' | 'failed';
   error?: string;
+}
+
+export function canDeleteWizardImage(propertyId: string | undefined, image: WizardPropertyImage): boolean {
+  return Boolean(propertyId && image.status === 'committed' && image.id);
+}
+
+/** Called only after the canonical delete endpoint confirms success. */
+export function removeWizardImageAfterCanonicalDelete(
+  images: WizardPropertyImage[],
+  imageId: string
+): WizardPropertyImage[] {
+  return images.filter(image => image.id !== imageId);
 }
 
 export interface WizardHouseRules {
@@ -94,6 +122,12 @@ export function createEmptyPropertyWizardDraft(): OwnerPropertyWizardDraft {
   };
 }
 
+export function isOwnerPropertyWizardDraft(value: unknown): value is OwnerPropertyWizardDraft {
+  if (!value || typeof value !== 'object') return false;
+  const draft = value as Partial<OwnerPropertyWizardDraft>;
+  return draft.currency === 'EGP' && Array.isArray(draft.amenities) && Array.isArray(draft.images) && !!draft.houseRules;
+}
+
 export function hydratePropertyToWizard(property: Property): OwnerPropertyWizardDraft {
   const images: WizardPropertyImage[] = (property.propertyImages && property.propertyImages.length > 0)
     ? property.propertyImages.map(img => ({
@@ -109,18 +143,8 @@ export function hydratePropertyToWizard(property: Property): OwnerPropertyWizard
         status: 'committed' as const,
       }));
 
-  const rawPropertyType = property.propertyType as unknown as PropertyType;
-  const rawUnitType = property.unitType as unknown as PropertyType;
-
-  const propertyType: PropertyType | undefined = VALID_PROPERTY_TYPES.has(rawPropertyType)
-    ? rawPropertyType
-    : VALID_PROPERTY_TYPES.has(rawUnitType)
-    ? rawUnitType
-    : undefined;
-
-  const unitType: PropertyType | undefined = VALID_PROPERTY_TYPES.has(rawUnitType)
-    ? rawUnitType
-    : propertyType;
+  const propertyType = normalizePropertyType(property.propertyType) ?? normalizePropertyType(property.unitType);
+  const unitType = normalizePropertyType(property.unitType) ?? propertyType;
 
   const rawHouseRules = property.houseRules;
   const houseRules: WizardHouseRules = {};
@@ -254,7 +278,7 @@ export function validateWizardForSubmission(draft: OwnerPropertyWizardDraft): { 
 }
 
 export function serializeHouseRules(rules: WizardHouseRules): PropertyRules {
-  const serialized: any = {
+  const serialized: Pick<PropertyRules, 'minStay' | 'maxStay'> & Partial<Omit<PropertyRules, 'minStay' | 'maxStay'>> = {
     minStay: 2,
     maxStay: 30,
   };
@@ -274,6 +298,7 @@ export function serializeHouseRules(rules: WizardHouseRules): PropertyRules {
     serialized.specialInstructions = rules.additionalRules;
   }
 
+  // The API type predates tri-state rules. Only explicitly selected values are sent.
   return serialized as PropertyRules;
 }
 
@@ -347,4 +372,3 @@ export function buildUpdatePropertyPayload(
 
   return payload;
 }
-

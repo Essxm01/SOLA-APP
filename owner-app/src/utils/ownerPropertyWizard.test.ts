@@ -10,6 +10,9 @@ import {
   serializeHouseRules,
   buildCreatePropertyPayload,
   buildUpdatePropertyPayload,
+  normalizePropertyType,
+  canDeleteWizardImage,
+  removeWizardImageAfterCanonicalDelete,
   type OwnerPropertyWizardDraft,
   type WizardPropertyImage,
 } from './ownerPropertyWizard';
@@ -18,6 +21,16 @@ import type { Property } from '../types';
 const assert = (value: boolean, message: string) => {
   if (!value) throw new Error(`Assertion failed: ${message}`);
 };
+
+assert(normalizePropertyType('CHALET') === 'CHALET', 'Canonical property type normalizes safely');
+assert(normalizePropertyType('شاليه') === 'CHALET', 'Legacy Arabic property type normalizes explicitly');
+assert(normalizePropertyType('not-a-property-type') === undefined, 'Unknown property type is rejected');
+assert(!canDeleteWizardImage('prop-1', { id: '', url: 'x', status: 'committed' }), 'Missing canonical image ID cannot be deleted');
+assert(canDeleteWizardImage('prop-1', { id: 'image-1', url: 'x', status: 'committed' }), 'Canonical image ID can be deleted');
+assert(
+  removeWizardImageAfterCanonicalDelete([{ id: 'image-1', url: 'x', status: 'committed' }], 'image-1').length === 0,
+  'Successful canonical delete removes the confirmed image locally'
+);
 
 // 1. Six-step navigation
 const empty = createEmptyPropertyWizardDraft();

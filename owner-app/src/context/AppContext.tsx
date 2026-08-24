@@ -28,7 +28,7 @@ import type {
 import { mockRepository } from '../services/mockRepository';
 import { repositoryFactory } from '../services/repositoryFactory';
 import { getOwnerDraftStorageKey } from '../utils/ownerIdentity';
-import { createEmptyPropertyWizardDraft, hydratePropertyToWizard } from '../utils/ownerPropertyWizard';
+import { createEmptyPropertyWizardDraft, hydratePropertyToWizard, isOwnerPropertyWizardDraft, type OwnerPropertyWizardDraft } from '../utils/ownerPropertyWizard';
 
 type NavTab = 'home' | 'bookings' | 'properties' | 'messages' | 'disputes' | 'wallet' | 'profile' | 'calendar';
 type PropertyViewMode = 'list' | 'details' | 'wizard';
@@ -66,8 +66,8 @@ interface AppContextType {
   setPropertyViewMode: (mode: PropertyViewMode) => void;
   wizardStep: number;
   setWizardStep: (step: number) => void;
-  currentDraft: Partial<Property> | null;
-  setCurrentDraft: (draft: Partial<Property> | null) => void;
+  currentDraft: OwnerPropertyWizardDraft | null;
+  setCurrentDraft: (draft: OwnerPropertyWizardDraft | null) => void;
   createOrUpdateProperty: (data: Partial<Property>, submitForReview?: boolean) => Promise<Property>;
   submitPropertyForReview: (propertyId: string) => Promise<void>;
   pauseProperty: (propertyId: string) => Promise<void>;
@@ -81,7 +81,7 @@ interface AppContextType {
   ) => Promise<void>;
   setDailyPricing: (propertyId: string, datePriceMap: Record<string, number>) => Promise<void>;
   getPropertyAuditLogs: (propertyId: string) => Promise<PropertyAuditLog[]>;
-  openAddPropertyWizard: (initialData?: Partial<Property>) => void;
+  openAddPropertyWizard: (initialData?: Property) => void;
   openPropertyDetails: (propertyId: string) => void;
 
   // Phase 3A: Calendar & Availability
@@ -215,10 +215,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode; ownerId: string 
   const [selectedPropertyId, setSelectedPropertyId] = useState<string | null>(null);
   const [propertyViewMode, setPropertyViewMode] = useState<PropertyViewMode>('list');
   const [wizardStep, setWizardStep] = useState<number>(1);
-  const [currentDraft, setCurrentDraft] = useState<Partial<Property> | null>(() => {
+  const [currentDraft, setCurrentDraft] = useState<OwnerPropertyWizardDraft | null>(() => {
     const saved = localStorage.getItem(getOwnerDraftStorageKey(ownerId));
     try {
-      return saved ? JSON.parse(saved) : null;
+      const parsed: unknown = saved ? JSON.parse(saved) : null;
+      return isOwnerPropertyWizardDraft(parsed) ? parsed : null;
     } catch {
       return null;
     }
@@ -522,7 +523,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; ownerId: string 
         localStorage.removeItem(ownerDraftStorageKey);
       } else {
         showToast('تم حفظ مسودة الوحدة بنجاح', 'info');
-        setCurrentDraft(prev => ({ ...(prev || {}), ...savedProperty, id: savedProperty.id }));
+        setCurrentDraft(hydratePropertyToWizard(savedProperty));
       }
       await refreshData();
       return savedProperty as Property;
@@ -684,28 +685,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode; ownerId: string 
     return mockRepository.getPropertyAuditLogs(propertyId);
   };
 
-  const openAddPropertyWizard = (initialData?: Partial<Property>) => {
+  const openAddPropertyWizard = (initialData?: Property) => {
     if (initialData) {
-      if ('existingPropertyId' in initialData) {
-        setCurrentDraft(initialData as any);
-      } else {
-        setCurrentDraft(hydratePropertyToWizard(initialData as Property) as any);
-      }
+      setCurrentDraft(hydratePropertyToWizard(initialData));
     } else {
       const saved = localStorage.getItem(getOwnerDraftStorageKey(ownerId));
       if (saved) {
         try {
           const parsed = JSON.parse(saved);
-          if (parsed && !parsed.existingPropertyId) {
+          if (isOwnerPropertyWizardDraft(parsed) && !parsed.existingPropertyId) {
             setCurrentDraft(parsed);
           } else {
-            setCurrentDraft(createEmptyPropertyWizardDraft() as any);
+            setCurrentDraft(createEmptyPropertyWizardDraft());
           }
         } catch {
-          setCurrentDraft(createEmptyPropertyWizardDraft() as any);
+          setCurrentDraft(createEmptyPropertyWizardDraft());
         }
       } else {
-        setCurrentDraft(createEmptyPropertyWizardDraft() as any);
+        setCurrentDraft(createEmptyPropertyWizardDraft());
       }
     }
     setWizardStep(1);

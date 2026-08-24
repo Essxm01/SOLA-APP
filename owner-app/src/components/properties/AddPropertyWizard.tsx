@@ -16,7 +16,6 @@ import {
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { useAuth } from '../../context/AuthContext';
-import type { Property } from '../../types';
 import { Input } from '../ui/Input';
 import { repositoryFactory } from '../../services/repositoryFactory';
 import {
@@ -27,12 +26,13 @@ import {
   PROPERTY_TYPE_OPTIONS,
   getPropertyTypeLabel,
   createEmptyPropertyWizardDraft,
-  hydratePropertyToWizard,
   validateStep,
   validateWizardForSubmission,
   canCreateCanonicalServerDraft,
   buildCreatePropertyPayload,
   buildUpdatePropertyPayload,
+  canDeleteWizardImage,
+  removeWizardImageAfterCanonicalDelete,
   type OwnerPropertyWizardDraft,
   type WizardPropertyImage,
 } from '../../utils/ownerPropertyWizard';
@@ -45,6 +45,26 @@ const STEPS = [
   'الصور',
   'المراجعة والإرسال',
 ] as const;
+const STEP_INTROS = [
+  ['بيانات الوحدة', 'اختر نوع الوحدة وأدخل معلوماتها الأساسية.'],
+  ['مكان الإقامة', 'أضف الموقع كما سيظهر للمستأجرين.'],
+  ['السعة والتسعير', 'حدّد السعة وسعر الليلة بوضوح.'],
+  ['التجهيزات والقواعد', 'اختر المرافق وحدد القواعد عند الحاجة.'],
+  ['صور حقيقية', 'أضف صورًا واضحة تساعد المستأجر على اتخاذ القرار.'],
+  ['مراجعة نهائية', 'راجع التفاصيل قبل إرسالها للإدارة.'],
+] as const;
+
+const toCommittedWizardImage = (value: unknown): WizardPropertyImage | null => {
+  if (!value || typeof value !== 'object') return null;
+  const record = value as { id?: unknown; fileUrl?: unknown; url?: unknown; sortOrder?: unknown; order?: unknown };
+  const id = typeof record.id === 'string' ? record.id : '';
+  const url = typeof record.fileUrl === 'string' ? record.fileUrl : typeof record.url === 'string' ? record.url : '';
+  if (!id || !url) return null;
+  return { id, url, sortOrder: typeof record.sortOrder === 'number' ? record.sortOrder : typeof record.order === 'number' ? record.order : undefined, status: 'committed' };
+};
+
+const getErrorMessage = (error: unknown, fallback: string): string =>
+  error instanceof Error && error.message ? error.message : fallback;
 
 interface StepperProps {
   label: string;
@@ -54,6 +74,7 @@ interface StepperProps {
   max?: number;
   onChange: (val: number) => void;
   disabled?: boolean;
+  compact?: boolean;
 }
 
 const WizardStepper: React.FC<StepperProps> = ({
@@ -64,6 +85,7 @@ const WizardStepper: React.FC<StepperProps> = ({
   max = 99,
   onChange,
   disabled = false,
+  compact = false,
 }) => {
   const current = typeof value === 'number' && !isNaN(value) ? value : min;
 
@@ -82,13 +104,13 @@ const WizardStepper: React.FC<StepperProps> = ({
 
   return (
     <div
-      className="p-3.5 rounded-2xl border flex items-center justify-between gap-3 shadow-subtle"
+      className={`p-3.5 rounded-2xl border flex gap-3 shadow-subtle ${compact ? 'flex-col items-stretch' : 'items-center justify-between'}`}
       style={{
         background: 'var(--konfrm-surface-primary)',
         borderColor: 'var(--konfrm-border-default)',
       }}
     >
-      <div className="min-w-0 flex-1">
+      <div className={`min-w-0 flex-1 ${compact ? 'text-center' : ''}`}>
         <strong className="text-sm font-black block" style={{ color: 'var(--konfrm-text-primary)' }}>
           {label}
         </strong>
@@ -99,14 +121,14 @@ const WizardStepper: React.FC<StepperProps> = ({
         )}
       </div>
 
-      <div className="flex items-center shrink-0" style={{ gap: '8px' }}>
+      <div className={`flex shrink-0 ${compact ? 'flex-col self-center' : 'items-center'}`} style={{ gap: '8px' }}>
         {/* Minus Button: 44x44 */}
         <button
           type="button"
           onClick={handleDecrement}
           disabled={disabled || isMin}
           aria-label={`تقليل ${label}`}
-          className={`w-[44px] h-[44px] rounded-xl border select-none cursor-pointer ${
+          className={`w-[44px] h-[44px] rounded-[15px] border select-none cursor-pointer ${
             isMin || disabled
               ? 'opacity-40 cursor-not-allowed border-[var(--konfrm-border-default)] bg-[var(--konfrm-surface-secondary)] text-[var(--konfrm-text-muted)]'
               : 'border-[var(--konfrm-border-default)] bg-[var(--konfrm-surface-primary)] text-[var(--konfrm-text-primary)] hover:border-[var(--konfrm-border-focus)] active:bg-[var(--konfrm-interaction-selected)]'
@@ -124,7 +146,7 @@ const WizardStepper: React.FC<StepperProps> = ({
 
         {/* Value Box: 58x44 */}
         <div
-          className="w-[58px] h-[44px] rounded-xl border font-black text-base select-none"
+          className="w-[58px] h-[44px] rounded-[15px] border font-black text-base select-none"
           style={{
             display: 'flex',
             alignItems: 'center',
@@ -145,10 +167,10 @@ const WizardStepper: React.FC<StepperProps> = ({
           onClick={handleIncrement}
           disabled={disabled || isMax}
           aria-label={`زيادة ${label}`}
-          className={`w-[44px] h-[44px] rounded-xl border select-none cursor-pointer ${
+          className={`w-[44px] h-[44px] rounded-[15px] select-none cursor-pointer ${
             isMax || disabled
               ? 'opacity-40 cursor-not-allowed border-[var(--konfrm-border-default)] bg-[var(--konfrm-surface-secondary)] text-[var(--konfrm-text-muted)]'
-              : 'border-[var(--konfrm-border-default)] bg-[var(--konfrm-surface-primary)] text-[var(--konfrm-text-primary)] hover:border-[var(--konfrm-border-focus)] active:bg-[var(--konfrm-interaction-selected)]'
+              : 'bg-[var(--konfrm-color-primary)] text-[var(--konfrm-text-inverse)] active:opacity-90'
           }`}
           style={{
             display: 'flex',
@@ -179,20 +201,7 @@ export const AddPropertyWizard: React.FC = () => {
   const { owner } = useAuth();
   const ownerId = owner?.id;
 
-  const [draft, setDraft] = useState<OwnerPropertyWizardDraft>(() => {
-    if (currentDraft) {
-      const anyDraft = currentDraft as any;
-      if (
-        'existingPropertyId' in anyDraft &&
-        Array.isArray(anyDraft.images) &&
-        (anyDraft.images.length === 0 || typeof anyDraft.images[0] === 'object')
-      ) {
-        return anyDraft as OwnerPropertyWizardDraft;
-      }
-      return hydratePropertyToWizard(currentDraft as Property);
-    }
-    return createEmptyPropertyWizardDraft();
-  });
+  const [draft, setDraft] = useState<OwnerPropertyWizardDraft>(() => currentDraft || createEmptyPropertyWizardDraft());
 
   const [error, setError] = useState<string>('');
   const [isBusy, setIsBusy] = useState<boolean>(false);
@@ -208,16 +217,16 @@ export const AddPropertyWizard: React.FC = () => {
     if (draft.existingPropertyId && !repositoryFactory.useMockMode) {
       repositoryFactory.property
         .getPropertyImages(draft.existingPropertyId)
-        .then((serverImages: any[]) => {
-          if (Array.isArray(serverImages) && serverImages.length > 0) {
+        .then((serverImages: unknown[]) => {
+          const canonicalImages = Array.isArray(serverImages)
+            ? serverImages
+                .map(toCommittedWizardImage)
+                .filter((image): image is WizardPropertyImage => image !== null)
+            : [];
+          if (canonicalImages.length > 0) {
             setDraft(prev => ({
               ...prev,
-              images: serverImages.map(img => ({
-                id: img.id,
-                url: img.fileUrl || img.url,
-                sortOrder: img.sortOrder ?? img.order,
-                status: 'committed' as const,
-              })),
+              images: canonicalImages,
             }));
           }
         })
@@ -230,7 +239,7 @@ export const AddPropertyWizard: React.FC = () => {
   // Synchronize local NEW draft to localStorage and AppContext (auto-save with owner scope)
   useEffect(() => {
     if (!isSubmitted) {
-      setCurrentDraft(draft as any);
+      setCurrentDraft(draft);
       if (!draft.existingPropertyId && ownerId) {
         try {
           localStorage.setItem(`sola_owner_property_draft:${ownerId}`, JSON.stringify(draft));
@@ -315,8 +324,8 @@ export const AddPropertyWizard: React.FC = () => {
         }
         showToast('تم حفظ المسودة محلياً بنجاح', 'success');
       }
-    } catch (err: any) {
-      showToast(err.message || 'تعذر حفظ المسودة', 'error');
+    } catch (err: unknown) {
+      showToast(err instanceof Error ? err.message : 'تعذر حفظ المسودة', 'error');
     } finally {
       setIsBusy(false);
     }
@@ -394,28 +403,36 @@ export const AddPropertyWizard: React.FC = () => {
             sortOrder: draft.images.length + i,
           });
 
-          // 4. Immediately add committed image to state with real ID
-          const newImg: WizardPropertyImage = {
-            id: committed?.id || committed?.data?.id || presigned.objectKey,
-            url: committed?.fileUrl || committed?.data?.fileUrl || presigned.downloadUrl || presigned.uploadUrl.split('?')[0],
-            sortOrder: draft.images.length + i,
-            status: 'committed',
-          };
+          // Only a canonical property_images database ID is deletable. Object keys are storage identifiers, never image IDs.
+          let newImg = toCommittedWizardImage(committed);
+          if (!newImg) {
+            const canonicalImages = await repositoryFactory.property.getPropertyImages(currentPropertyId);
+            const serverRecord = canonicalImages.find((record: unknown) => {
+              if (!record || typeof record !== 'object') return false;
+              const value = record as { objectKey?: unknown };
+              return value.objectKey === presigned.objectKey;
+            });
+            newImg = toCommittedWizardImage(serverRecord);
+          }
+          if (!newImg) {
+            showToast(`تم رفع الصورة لكن تعذر تأكيد سجلها: ${file.name}`, 'error');
+            continue;
+          }
 
           setDraft(prev => ({
             ...prev,
             images: [...prev.images, newImg],
           }));
-        } catch (uploadErr: any) {
+        } catch (uploadErr: unknown) {
           console.error('Image upload failed for file:', file.name, uploadErr);
           showToast(`فشل رفع الصورة: ${file.name}`, 'error');
         }
       }
 
       await refreshData();
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('General upload error:', err);
-      setError(err.message || 'حدث خطأ أثناء معالجة الصور.');
+      setError(getErrorMessage(err, 'حدث خطأ أثناء معالجة الصور.'));
     } finally {
       setIsBusy(false);
       if (fileInputRef.current) {
@@ -426,25 +443,24 @@ export const AddPropertyWizard: React.FC = () => {
 
   // Image Delete Handling using Real IDs (Override 5D)
   const handleImageDelete = async (image: WizardPropertyImage) => {
-    if (!draft.existingPropertyId || !image.id) {
-      setDraft(prev => ({
-        ...prev,
-        images: prev.images.filter(img => img.url !== image.url),
-      }));
+    if (!canDeleteWizardImage(draft.existingPropertyId, image)) {
+      setError('تعذر حذف الصورة لأن سجلها المؤكد غير متاح.');
       return;
     }
+    const propertyId = draft.existingPropertyId;
+    if (!propertyId) return;
 
     setIsBusy(true);
     setError('');
 
     try {
-      await repositoryFactory.property.deletePropertyImage(draft.existingPropertyId, image.id);
+      await repositoryFactory.property.deletePropertyImage(propertyId, image.id);
       setDraft(prev => ({
         ...prev,
-        images: prev.images.filter(img => img.id !== image.id),
+        images: removeWizardImageAfterCanonicalDelete(prev.images, image.id),
       }));
       showToast('تم حذف الصورة بنجاح', 'info');
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Delete image error:', err);
       setError('تعذر حذف الصورة من الخادم. يرجى المحاولة مرة أخرى.');
     } finally {
@@ -509,9 +525,9 @@ export const AddPropertyWizard: React.FC = () => {
           await refreshData();
         }
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Final submit error:', err);
-      setError(err.message || 'حدث خطأ أثناء إرسال الوحدة للمراجعة.');
+      setError(getErrorMessage(err, 'حدث خطأ أثناء إرسال الوحدة للمراجعة.'));
     } finally {
       setIsBusy(false);
     }
@@ -546,14 +562,9 @@ export const AddPropertyWizard: React.FC = () => {
           <span>إغلاق</span>
         </button>
 
-        {/* Title & Step Indicator */}
         <div className="text-center">
-          <strong className="text-sm font-black block" style={{ color: 'var(--konfrm-text-primary)' }}>
-            {draft.existingPropertyId ? 'تعديل الوحدة' : 'إضافة وحدة جديدة'}
-          </strong>
-          <span className="text-xs font-semibold" style={{ color: 'var(--konfrm-text-muted)' }}>
-            الخطوة {step} من 6 · {STEPS[step - 1]}
-          </span>
+          <span className="text-xs font-bold block" style={{ color: 'var(--konfrm-text-muted)' }}>إضافة وحدة جديدة</span>
+          <strong className="text-base font-black block" style={{ color: 'var(--konfrm-text-primary)' }}>{STEPS[step - 1]}</strong>
         </div>
 
         {/* Save Draft Action */}
@@ -561,24 +572,23 @@ export const AddPropertyWizard: React.FC = () => {
           type="button"
           onClick={handleSaveDraft}
           disabled={isBusy}
-          className="flex items-center gap-1 min-h-[44px] px-2.5 rounded-xl border text-xs font-bold transition-colors cursor-pointer"
+          aria-label="حفظ كمسودة"
+          className="w-[46px] h-[46px] rounded-[17px] border flex items-center justify-center transition-colors cursor-pointer"
           style={{
-            background: 'var(--konfrm-surface-secondary)',
+            background: 'var(--konfrm-surface-primary)',
             borderColor: 'var(--konfrm-border-default)',
             color: 'var(--konfrm-color-primary)',
           }}
           title="حفظ كمسودة"
         >
-          <Save size={15} />
-          <span className="hidden sm:inline">حفظ مسودة</span>
+          <Save size={18} />
         </button>
       </header>
 
       {/* Progress Bar */}
-      <div
-        className="w-full h-1"
-        style={{ background: 'var(--konfrm-surface-secondary)' }}
-      >
+      <div className="px-4 pt-3 max-w-lg mx-auto w-full">
+        <div className="flex items-center justify-between text-xs font-bold mb-2" style={{ color: 'var(--konfrm-text-secondary)' }}><span>الخطوة {step} من 6</span><span>{Math.round((step / 6) * 100)}%</span></div>
+      <div className="w-full h-[7px] rounded-full overflow-hidden" style={{ background: 'var(--konfrm-surface-secondary)' }}>
         <div
           className="h-full transition-all duration-300"
           style={{
@@ -586,6 +596,7 @@ export const AddPropertyWizard: React.FC = () => {
             background: 'var(--konfrm-color-primary)',
           }}
         />
+      </div>
       </div>
 
       {/* Scrollable Form Body with bottom padding for Floating Island */}
@@ -621,15 +632,15 @@ export const AddPropertyWizard: React.FC = () => {
           </section>
         )}
 
+        <div className="pt-1">
+          <span className="inline-flex rounded-full px-3 py-1 text-xs font-bold" style={{ background: 'var(--konfrm-color-primary-soft)', color: 'var(--konfrm-color-primary)' }}>{STEP_INTROS[step - 1][0]}</span>
+          <h1 className="mt-3 text-xl font-black" style={{ color: 'var(--konfrm-text-primary)' }}>{STEPS[step - 1]}</h1>
+          <p className="mt-1 text-sm font-medium" style={{ color: 'var(--konfrm-text-secondary)' }}>{STEP_INTROS[step - 1][1]}</p>
+        </div>
+
         {/* STEP 1: BASICS */}
         {step === 1 && (
-          <section
-            className="p-4 rounded-2xl border space-y-4 shadow-subtle"
-            style={{
-              background: 'var(--konfrm-surface-primary)',
-              borderColor: 'var(--konfrm-border-default)',
-            }}
-          >
+          <section className="space-y-4">
             <div>
               <h2 className="text-base font-black mb-1" style={{ color: 'var(--konfrm-text-primary)' }}>
                 البيانات الأساسية
@@ -730,13 +741,7 @@ export const AddPropertyWizard: React.FC = () => {
 
         {/* STEP 2: LOCATION */}
         {step === 2 && (
-          <section
-            className="p-4 rounded-2xl border space-y-4 shadow-subtle"
-            style={{
-              background: 'var(--konfrm-surface-primary)',
-              borderColor: 'var(--konfrm-border-default)',
-            }}
-          >
+          <section className="space-y-4">
             <div>
               <h2 className="text-base font-black mb-1" style={{ color: 'var(--konfrm-text-primary)' }}>
                 موقع الوحدة
@@ -790,13 +795,7 @@ export const AddPropertyWizard: React.FC = () => {
 
         {/* STEP 3: CAPACITY & PRICING BENTO */}
         {step === 3 && (
-          <section
-            className="p-4 rounded-2xl border space-y-4 shadow-subtle"
-            style={{
-              background: 'var(--konfrm-surface-primary)',
-              borderColor: 'var(--konfrm-border-default)',
-            }}
-          >
+          <section className="space-y-4">
             <div>
               <h2 className="text-base font-black mb-1" style={{ color: 'var(--konfrm-text-primary)' }}>
                 السعة والتسعير
@@ -807,49 +806,44 @@ export const AddPropertyWizard: React.FC = () => {
             </div>
 
             {/* Steppers Bento */}
-            <div className="space-y-3">
+            <div className="grid grid-cols-2 gap-3">
               <WizardStepper
-                label="عدد الغرف *"
+                label="غرف النوم *"
                 sublabel="0 متاح للاستوديو"
                 value={draft.bedrooms}
                 min={0}
                 max={20}
                 onChange={val => updateField('bedrooms', val)}
+                compact
               />
 
               <WizardStepper
-                label="عدد الحمامات *"
+                label="الحمامات *"
                 sublabel="0 متاح للاستوديو"
                 value={draft.bathrooms}
                 min={0}
                 max={20}
                 onChange={val => updateField('bathrooms', val)}
+                compact
               />
 
-              <WizardStepper
-                label="أقصى عدد ضيوف *"
+              <div className="col-span-2">
+                <WizardStepper
+                label="الحد الأقصى للضيوف *"
                 sublabel="الحد الأدنى 1 ضيف"
                 value={draft.maxGuests}
                 min={1}
                 max={50}
                 onChange={val => updateField('maxGuests', val)}
               />
-
-              <WizardStepper
-                label="عدد الأسرّة"
-                sublabel="اختياري"
-                value={draft.bedsCount}
-                min={0}
-                max={50}
-                onChange={val => updateField('bedsCount', val)}
-              />
+              </div>
             </div>
 
             {/* Area & Price */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
               <Input
-                type="number"
-                min="0"
+                type="text"
+                inputMode="numeric"
                 label="المساحة الإجمالية (م² - اختياري)"
                 placeholder="مثال: 120"
                 value={draft.areaSqM ?? ''}
@@ -862,14 +856,28 @@ export const AddPropertyWizard: React.FC = () => {
               />
 
               <Input
-                type="number"
-                min="1"
+                type="text"
+                inputMode="numeric"
                 label="سعر الليلة الواحدة (ج.م) *"
                 placeholder="مثال: 2500"
                 value={draft.pricePerNight ?? ''}
                 onChange={e =>
                   updateField(
                     'pricePerNight',
+                    e.target.value === '' ? undefined : Number(e.target.value)
+                  )
+                }
+              />
+
+              <Input
+                type="text"
+                inputMode="numeric"
+                label="عدد الأسرّة (اختياري)"
+                placeholder="مثال: 3"
+                value={draft.bedsCount ?? ''}
+                onChange={e =>
+                  updateField(
+                    'bedsCount',
                     e.target.value === '' ? undefined : Number(e.target.value)
                   )
                 }
@@ -893,13 +901,7 @@ export const AddPropertyWizard: React.FC = () => {
 
         {/* STEP 4: AMENITIES & RULES */}
         {step === 4 && (
-          <section
-            className="p-4 rounded-2xl border space-y-5 shadow-subtle"
-            style={{
-              background: 'var(--konfrm-surface-primary)',
-              borderColor: 'var(--konfrm-border-default)',
-            }}
-          >
+          <section className="space-y-5">
             <div>
               <h2 className="text-base font-black mb-1" style={{ color: 'var(--konfrm-text-primary)' }}>
                 المرافق وقواعد الإقامة
@@ -977,7 +979,7 @@ export const AddPropertyWizard: React.FC = () => {
                       <button
                         type="button"
                         onClick={() => updateHouseRule(ruleItem.key, currentVal === true ? undefined : true)}
-                        className={`min-h-[36px] px-3 rounded-lg text-xs font-bold border transition-all cursor-pointer ${
+                        className={`min-h-[46px] px-3 rounded-lg text-xs font-bold border transition-all cursor-pointer ${
                           currentVal === true
                             ? 'border-[var(--konfrm-border-focus)] bg-[var(--konfrm-interaction-selected)] text-[var(--konfrm-color-primary)]'
                             : 'border-[var(--konfrm-border-default)] bg-[var(--konfrm-surface-primary)] text-[var(--konfrm-text-secondary)]'
@@ -989,7 +991,7 @@ export const AddPropertyWizard: React.FC = () => {
                       <button
                         type="button"
                         onClick={() => updateHouseRule(ruleItem.key, currentVal === false ? undefined : false)}
-                        className={`min-h-[36px] px-3 rounded-lg text-xs font-bold border transition-all cursor-pointer ${
+                        className={`min-h-[46px] px-3 rounded-lg text-xs font-bold border transition-all cursor-pointer ${
                           currentVal === false
                             ? 'border-[var(--konfrm-border-focus)] bg-[var(--konfrm-interaction-selected)] text-[var(--konfrm-color-primary)]'
                             : 'border-[var(--konfrm-border-default)] bg-[var(--konfrm-surface-primary)] text-[var(--konfrm-text-secondary)]'
@@ -1036,13 +1038,7 @@ export const AddPropertyWizard: React.FC = () => {
 
         {/* STEP 5: IMAGES */}
         {step === 5 && (
-          <section
-            className="p-4 rounded-2xl border space-y-4 shadow-subtle text-right"
-            style={{
-              background: 'var(--konfrm-surface-primary)',
-              borderColor: 'var(--konfrm-border-default)',
-            }}
-          >
+          <section className="space-y-4 text-right">
             <div>
               <h2 className="text-base font-black mb-1" style={{ color: 'var(--konfrm-text-primary)' }}>
                 صور الوحدة
@@ -1112,19 +1108,19 @@ export const AddPropertyWizard: React.FC = () => {
                         className="w-full h-28 object-cover"
                       />
 
-                      <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center" />
-
                       <button
                         type="button"
                         onClick={() => handleImageDelete(img)}
-                        disabled={isBusy}
-                        className="absolute top-2 left-2 w-8 h-8 rounded-lg bg-white/90 text-rose-600 flex items-center justify-center shadow-xs cursor-pointer hover:bg-rose-50 transition-colors"
+                        disabled={isBusy || !canDeleteWizardImage(draft.existingPropertyId, img)}
+                        aria-label={`حذف الصورة ${idx + 1}`}
+                        className="absolute top-2 left-2 min-w-[44px] min-h-[44px] rounded-xl border flex items-center justify-center cursor-pointer transition-colors disabled:opacity-50"
+                        style={{ background: 'var(--konfrm-surface-primary)', borderColor: 'var(--konfrm-semantic-danger-border)', color: 'var(--konfrm-semantic-danger-text)' }}
                         title="حذف الصورة"
                       >
                         <Trash2 size={16} />
                       </button>
 
-                      <span className="absolute bottom-2 right-2 px-2 py-0.5 rounded-md bg-black/60 text-white text-[10px] font-bold">
+                      <span className="absolute bottom-2 right-2 px-2 py-1 rounded-md text-xs font-bold" style={{ background: 'var(--konfrm-surface-primary)', color: 'var(--konfrm-text-secondary)', border: '1px solid var(--konfrm-border-default)' }}>
                         صورة {idx + 1}
                       </span>
                     </div>
@@ -1132,7 +1128,7 @@ export const AddPropertyWizard: React.FC = () => {
                 </div>
               </div>
             ) : (
-              <div className="p-4 rounded-xl border border-dashed text-center text-xs font-medium text-slate-400">
+              <div className="p-4 rounded-xl border border-dashed text-center text-xs font-medium" style={{ color: 'var(--konfrm-text-muted)', borderColor: 'var(--konfrm-border-default)' }}>
                 لم يتم رفع أي صور بعد.
               </div>
             )}
@@ -1305,7 +1301,8 @@ export const AddPropertyWizard: React.FC = () => {
         <div
           role="dialog"
           aria-modal="true"
-          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/40 backdrop-blur-xs animate-fadeIn"
+          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 animate-fadeIn"
+          style={{ background: 'rgba(15, 23, 42, 0.24)' }}
         >
           <div
             className="w-full sm:max-w-md p-6 rounded-t-[28px] sm:rounded-[28px] border shadow-2xl space-y-5 text-center"
@@ -1315,10 +1312,10 @@ export const AddPropertyWizard: React.FC = () => {
             }}
           >
             <div
-              className="w-16 h-16 mx-auto rounded-full flex items-center justify-center"
+              className="w-[66px] h-[66px] mx-auto rounded-full flex items-center justify-center"
               style={{
-                background: 'var(--konfrm-semantic-success-background)',
-                color: 'var(--konfrm-semantic-success-solid)',
+                background: 'var(--konfrm-color-primary-soft)',
+                color: 'var(--konfrm-color-primary)',
               }}
             >
               <CheckCircle2 size={36} />
@@ -1329,15 +1326,13 @@ export const AddPropertyWizard: React.FC = () => {
                 className="text-lg font-black"
                 style={{ color: 'var(--konfrm-text-primary)' }}
               >
-                {isRejected
-                  ? 'تمت إعادة إرسال الوحدة للمراجعة بنجاح 🎉'
-                  : 'تم إرسال الوحدة للمراجعة بنجاح 🎉'}
+                تم إرسال الوحدة للمراجعة
               </h3>
               <p
                 className="text-xs font-medium leading-relaxed"
                 style={{ color: 'var(--konfrm-text-secondary)' }}
               >
-                سيقوم فريق الجودة بمراجعة بيانات الوحدة واعتمادها للنشر على المنصة خلال ساعات قليلة.
+                ستظهر الوحدة للإدارة بحالة قيد المراجعة. لا يتم نشرها للمستأجرين قبل اعتمادها.
               </p>
             </div>
 
@@ -1353,7 +1348,7 @@ export const AddPropertyWizard: React.FC = () => {
                   background: 'var(--konfrm-color-primary)',
                 }}
               >
-                العودة لقائمة الوحدات
+                تم
               </button>
             </div>
           </div>

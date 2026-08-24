@@ -113,7 +113,7 @@ export const PropertiesView: React.FC = () => {
           <Button
             variant="secondary"
             size="sm"
-            onClick={() => openAddPropertyWizard(currentDraft)}
+            onClick={() => openAddPropertyWizard()}
             className="text-xs py-1 px-3 shrink-0"
           >
             متابعة الإعداد

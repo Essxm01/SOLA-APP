@@ -692,7 +692,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode; ownerId: string 
         setCurrentDraft(hydratePropertyToWizard(initialData as Property) as any);
       }
     } else {
-      setCurrentDraft(createEmptyPropertyWizardDraft() as any);
+      const saved = localStorage.getItem(getOwnerDraftStorageKey(ownerId));
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          if (parsed && !parsed.existingPropertyId) {
+            setCurrentDraft(parsed);
+          } else {
+            setCurrentDraft(createEmptyPropertyWizardDraft() as any);
+          }
+        } catch {
+          setCurrentDraft(createEmptyPropertyWizardDraft() as any);
+        }
+      } else {
+        setCurrentDraft(createEmptyPropertyWizardDraft() as any);
+      }
     }
     setWizardStep(1);
     setPropertyViewMode('wizard');

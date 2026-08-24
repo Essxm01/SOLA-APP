@@ -1,13 +1,20 @@
 import type { Property, PropertyStatus, PropertyType, PropertyRules } from '../types';
 import type { CreatePropertyPayload, UpdatePropertyPayload } from '../services/contracts';
 
-export const PROPERTY_TYPE_OPTIONS: ReadonlyArray<{ value: PropertyType; label: string }> = [
-  { value: 'CHALET', label: 'شاليه' },
-  { value: 'VILLA', label: 'فيلا' },
-  { value: 'APARTMENT', label: 'شقة' },
-  { value: 'STUDIO', label: 'استوديو' },
-  { value: 'HOTEL_ROOM', label: 'غرفة فندقية' },
-  { value: 'OTHER', label: 'نوع آخر' },
+export interface PropertyTypeOption {
+  value: PropertyType;
+  label: string;
+  emoji: string;
+  description: string;
+}
+
+export const PROPERTY_TYPE_OPTIONS: ReadonlyArray<PropertyTypeOption> = [
+  { value: 'CHALET', label: 'شاليه', emoji: '🏖️', description: 'شاليه مصيفي أو شاطئي' },
+  { value: 'VILLA', label: 'فيلا', emoji: '🏡', description: 'فيلا مستقلة مع حديقة أو مسبح' },
+  { value: 'APARTMENT', label: 'شقة', emoji: '🏢', description: 'شقة سكنية مصيفية' },
+  { value: 'STUDIO', label: 'استوديو', emoji: '🛋️', description: 'استوديو مفتوح بدون غرف منفصلة' },
+  { value: 'HOTEL_ROOM', label: 'غرفة فندقية', emoji: '🏨', description: 'غرفة أو جناح فندقي' },
+  { value: 'OTHER', label: 'نوع آخر', emoji: '📍', description: 'نوع إقامة آخر' },
 ] as const;
 
 export const VALID_PROPERTY_TYPES = new Set<PropertyType>([
@@ -23,6 +30,12 @@ export function getPropertyTypeLabel(type?: PropertyType): string {
   if (!type) return '—';
   const match = PROPERTY_TYPE_OPTIONS.find(opt => opt.value === type);
   return match ? match.label : type;
+}
+
+export function getPropertyTypeEmoji(type?: PropertyType): string {
+  if (!type) return '🏠';
+  const match = PROPERTY_TYPE_OPTIONS.find(opt => opt.value === type);
+  return match ? match.emoji : '🏠';
 }
 
 export interface WizardPropertyImage {
@@ -90,7 +103,7 @@ export function hydratePropertyToWizard(property: Property): OwnerPropertyWizard
         status: 'committed' as const,
       }))
     : (property.images || []).map((url, idx) => ({
-        id: `img-${idx}`,
+        id: '', // Never fabricate fake IDs like img-0 or img-1 (Override 5D)
         url,
         sortOrder: idx,
         status: 'committed' as const,
@@ -108,6 +121,20 @@ export function hydratePropertyToWizard(property: Property): OwnerPropertyWizard
   const unitType: PropertyType | undefined = VALID_PROPERTY_TYPES.has(rawUnitType)
     ? rawUnitType
     : propertyType;
+
+  const rawHouseRules = property.houseRules;
+  const houseRules: WizardHouseRules = {};
+  if (rawHouseRules) {
+    if (typeof rawHouseRules.smokingAllowed === 'boolean') houseRules.smokingAllowed = rawHouseRules.smokingAllowed;
+    if (typeof rawHouseRules.partiesAllowed === 'boolean') houseRules.partiesAllowed = rawHouseRules.partiesAllowed;
+    if (typeof rawHouseRules.petsAllowed === 'boolean') houseRules.petsAllowed = rawHouseRules.petsAllowed;
+    if (typeof rawHouseRules.childrenAllowed === 'boolean') houseRules.childrenAllowed = rawHouseRules.childrenAllowed;
+    if (typeof rawHouseRules.checkInTime === 'string' && rawHouseRules.checkInTime) houseRules.checkInTime = rawHouseRules.checkInTime;
+    if (typeof rawHouseRules.checkOutTime === 'string' && rawHouseRules.checkOutTime) houseRules.checkOutTime = rawHouseRules.checkOutTime;
+    if (rawHouseRules.additionalRules || rawHouseRules.specialInstructions) {
+      houseRules.additionalRules = rawHouseRules.additionalRules || rawHouseRules.specialInstructions;
+    }
+  }
 
   return {
     existingPropertyId: property.id,
@@ -134,15 +161,7 @@ export function hydratePropertyToWizard(property: Property): OwnerPropertyWizard
     currency: 'EGP',
 
     amenities: Array.isArray(property.amenities) ? [...property.amenities] : [],
-    houseRules: property.houseRules ? {
-      smokingAllowed: property.houseRules.smokingAllowed,
-      partiesAllowed: property.houseRules.partiesAllowed,
-      petsAllowed: property.houseRules.petsAllowed,
-      childrenAllowed: property.houseRules.childrenAllowed,
-      checkInTime: property.houseRules.checkInTime,
-      checkOutTime: property.houseRules.checkOutTime,
-      additionalRules: property.houseRules.additionalRules || property.houseRules.specialInstructions,
-    } : {},
+    houseRules,
     images,
   };
 }
@@ -213,8 +232,9 @@ export function validateStep(step: number, draft: OwnerPropertyWizardDraft): { i
 
 export function canCreateCanonicalServerDraft(draft: OwnerPropertyWizardDraft): boolean {
   const v1 = validateStep1Basics(draft);
+  const v2 = validateStep2Location(draft);
   const v3 = validateStep3CapacityPricing(draft);
-  return v1.isValid && v3.isValid;
+  return v1.isValid && v2.isValid && v3.isValid;
 }
 
 export function validateWizardForSubmission(draft: OwnerPropertyWizardDraft): { isValid: boolean; error?: string } {
@@ -234,39 +254,58 @@ export function validateWizardForSubmission(draft: OwnerPropertyWizardDraft): { 
 }
 
 export function serializeHouseRules(rules: WizardHouseRules): PropertyRules {
-  return {
+  const serialized: any = {
     minStay: 2,
     maxStay: 30,
-    smokingAllowed: rules.smokingAllowed === true,
-    partiesAllowed: rules.partiesAllowed === true,
-    petsAllowed: rules.petsAllowed === true,
-    childrenAllowed: rules.childrenAllowed !== false,
-    checkInTime: rules.checkInTime || '14:00',
-    checkOutTime: rules.checkOutTime || '12:00',
-    specialInstructions: rules.additionalRules || '',
-    additionalRules: rules.additionalRules || '',
   };
+
+  // OVERRIDE 2: Tri-state rules preservation. Do not fabricate false or true if unset.
+  if (rules.smokingAllowed !== undefined) serialized.smokingAllowed = rules.smokingAllowed;
+  if (rules.partiesAllowed !== undefined) serialized.partiesAllowed = rules.partiesAllowed;
+  if (rules.petsAllowed !== undefined) serialized.petsAllowed = rules.petsAllowed;
+  if (rules.childrenAllowed !== undefined) serialized.childrenAllowed = rules.childrenAllowed;
+
+  // Do not fabricate checkIn/checkOut times if unset
+  if (rules.checkInTime !== undefined && rules.checkInTime.trim() !== '') serialized.checkInTime = rules.checkInTime;
+  if (rules.checkOutTime !== undefined && rules.checkOutTime.trim() !== '') serialized.checkOutTime = rules.checkOutTime;
+
+  if (rules.additionalRules !== undefined && rules.additionalRules.trim() !== '') {
+    serialized.additionalRules = rules.additionalRules;
+    serialized.specialInstructions = rules.additionalRules;
+  }
+
+  return serialized as PropertyRules;
 }
 
 export function buildCreatePropertyPayload(draft: OwnerPropertyWizardDraft): CreatePropertyPayload {
-  const propertyType: PropertyType = draft.propertyType || 'CHALET';
+  const v1 = validateStep1Basics(draft);
+  if (!v1.isValid) throw new Error(v1.error || 'PROPERTY_TYPE_AND_TITLE_REQUIRED');
+
+  const v2 = validateStep2Location(draft);
+  if (!v2.isValid) throw new Error(v2.error || 'REGION_REQUIRED');
+
+  const v3 = validateStep3CapacityPricing(draft);
+  if (!v3.isValid) throw new Error(v3.error || 'CAPACITY_AND_PRICE_REQUIRED');
+
+  // OVERRIDE 5A: No fabricated create payload defaults
+  const propertyType: PropertyType = draft.propertyType!;
   const unitType: PropertyType = draft.unitType || propertyType;
 
   return {
-    title: (draft.title || '').trim(),
+    title: draft.title!.trim(),
     unitType,
     propertyType,
     address: (draft.address || '').trim(),
-    region: draft.region || '',
+    region: draft.region!,
     resortName: draft.resortName || '',
     description: draft.description || '',
-    bedrooms: draft.bedrooms ?? 0,
-    bathrooms: draft.bathrooms ?? 0,
+    bedrooms: draft.bedrooms!,
+    bathrooms: draft.bathrooms!,
     bedsCount: draft.bedsCount,
-    maxGuests: draft.maxGuests ?? 1,
+    maxGuests: draft.maxGuests!,
     areaSqM: draft.areaSqM,
-    basePricePerNight: draft.pricePerNight ?? 0,
-    pricePerNight: draft.pricePerNight ?? 0,
+    basePricePerNight: draft.pricePerNight!,
+    pricePerNight: draft.pricePerNight!,
     images: draft.images.filter(img => img.status === 'committed').map(img => img.url),
     amenities: [...draft.amenities],
     houseRules: serializeHouseRules(draft.houseRules),

@@ -16,6 +16,7 @@
     "test:payment-01": "npx tsx server/src/tests/payment01.test.ts",
     "test:admin-truthful-state": "npx tsx server/src/tests/adminTruthfulState.test.ts",
     "test:customer-truthful-state": "npx tsx server/src/tests/customerTruthfulState.test.ts",
+    "test:owner-property-wizard-01": "npx tsx server/src/tests/ownerPropertyWizard01.test.ts",
     "check": "npx tsc --noEmit"
   },
   "dependencies": {

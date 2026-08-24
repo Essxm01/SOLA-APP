@@ -14,14 +14,14 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
     return (
       <div className="w-full flex flex-col gap-1.5 text-right">
         {label && (
-          <label htmlFor={inputId} className="text-sm font-semibold text-slate-800">
+          <label htmlFor={inputId} className="text-sm font-semibold" style={{ color: 'var(--konfrm-text-primary)' }}>
             {label}
           </label>
         )}
 
         <div className="relative flex items-center">
           {icon && (
-            <div className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">
+            <div className="absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'var(--konfrm-text-muted)' }}>
               {icon}
             </div>
           )}
@@ -29,21 +29,21 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
           <input
             id={inputId}
             ref={ref}
-            className={`w-full py-3 text-slate-900 bg-white border rounded-xl transition-all duration-200 focus:outline-none focus:ring-2 placeholder:text-slate-400 text-sm ${
+            className={`w-full py-3 border transition-all duration-200 focus:outline-none focus:ring-2 text-sm ${
               icon ? 'pr-11 pl-4' : 'px-4'
             } ${
               error
-                ? 'border-rose-400 focus:border-rose-500 focus:ring-rose-200'
-                : 'border-slate-200 focus:border-[#0059FF] focus:ring-blue-100'
+                ? '[border-color:var(--konfrm-semantic-danger-border)] [--tw-ring-color:var(--konfrm-semantic-danger-background)]'
+                : '[border-color:var(--konfrm-border-default)] focus:[border-color:var(--konfrm-border-focus)] [--tw-ring-color:var(--konfrm-interaction-focus-ring)]'
             } ${className}`}
-            {...props}
+            style={{ color: 'var(--konfrm-text-primary)', background: 'var(--konfrm-surface-primary)', borderRadius: 'var(--konfrm-radius-control)' }} {...props}
           />
         </div>
 
         {error ? (
-          <span className="text-xs font-medium text-rose-600">{error}</span>
+          <span className="text-xs font-medium" style={{ color: 'var(--konfrm-semantic-danger-text)' }}>{error}</span>
         ) : helperText ? (
-          <span className="text-xs text-slate-500">{helperText}</span>
+          <span className="text-xs" style={{ color: 'var(--konfrm-text-muted)' }}>{helperText}</span>
         ) : null}
       </div>
     );
@@ -72,21 +72,21 @@ export const PhoneInput: React.FC<PhoneInputProps> = ({
 
   return (
     <div className="w-full flex flex-col gap-1.5 text-right">
-      {label && <label className="text-sm font-semibold text-slate-800">{label}</label>}
+      {label && <label className="text-sm font-semibold" style={{ color: 'var(--konfrm-text-primary)' }}>{label}</label>}
 
       <div
-        className={`flex items-center bg-white border rounded-xl overflow-hidden transition-all duration-200 focus-within:ring-2 ${
+        className={`flex items-center border overflow-hidden transition-all duration-200 focus-within:ring-2 ${
           error
-            ? 'border-rose-400 focus-within:border-rose-500 focus-within:ring-rose-200'
-            : 'border-slate-200 focus-within:border-[#0059FF] focus-within:ring-blue-100'
-        }`}
+            ? '[border-color:var(--konfrm-semantic-danger-border)] [--tw-ring-color:var(--konfrm-semantic-danger-background)]'
+            : '[border-color:var(--konfrm-border-default)] focus-within:[border-color:var(--konfrm-border-focus)] [--tw-ring-color:var(--konfrm-interaction-focus-ring)]'
+        }`} style={{ background: 'var(--konfrm-surface-primary)', borderRadius: 'var(--konfrm-radius-control)' }}
       >
         {/* Egyptian Country Flag and Code */}
-        <div className="flex items-center gap-1.5 px-3 py-3 bg-slate-50 border-l border-slate-200 text-slate-700 font-medium text-sm select-none dir-ltr">
+        <div className="flex items-center gap-1.5 px-3 py-3 border-l font-medium text-sm select-none dir-ltr" style={{ background: 'var(--konfrm-surface-secondary)', borderColor: 'var(--konfrm-border-default)', color: 'var(--konfrm-text-secondary)' }}>
           <span className="text-base" role="img" aria-label="Egypt Flag">
             🇪🇬
           </span>
-          <span className="font-bold text-slate-900">+20</span>
+          <span className="font-bold" style={{ color: 'var(--konfrm-text-primary)' }}>+20</span>
         </div>
 
         <input
@@ -96,15 +96,16 @@ export const PhoneInput: React.FC<PhoneInputProps> = ({
           value={value}
           onChange={handleInputChange}
           maxLength={11}
-          className="w-full py-3 px-4 text-slate-900 text-left bg-transparent focus:outline-none text-base tracking-wide font-mono placeholder:text-slate-300 placeholder:font-sans"
+          className="w-full py-3 px-4 text-left bg-transparent focus:outline-none text-base tracking-wide placeholder:font-sans"
+          style={{ color: 'var(--konfrm-text-primary)' }}
           {...props}
         />
       </div>
 
       {error ? (
-        <span className="text-xs font-medium text-rose-600">{error}</span>
+        <span className="text-xs font-medium" style={{ color: 'var(--konfrm-semantic-danger-text)' }}>{error}</span>
       ) : (
-        <span className="text-xs text-slate-500">أدخل رقم الهاتف المسجل لحساب المالك (مثال: 01001234567)</span>
+        <span className="text-xs" style={{ color: 'var(--konfrm-text-muted)' }}>أدخل رقم الهاتف المسجل لحساب المالك (مثال: 01001234567)</span>
       )}
     </div>
   );

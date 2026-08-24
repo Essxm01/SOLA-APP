@@ -873,7 +873,7 @@ export class ExpressServerApp {
             !numeric(bodyPayload?.maxGuests) || bodyPayload.maxGuests <= 0 ? 'maxGuests' : false,
             !numeric(bodyPayload?.pricePerNight ?? bodyPayload?.basePricePerNight) || (bodyPayload?.pricePerNight ?? bodyPayload?.basePricePerNight) <= 0 ? 'pricePerNight' : false,
           ].filter(Boolean);
-          if (missingFields.length) return { statusCode: 400, body: { success: false, error: { code: 'PROPERTY_CREATE_REQUIRED_FIELDS_MISSING', message: 'يرجى إدخال بيانات الوحدة الأساسية بشكل صحيح.' }, data: { missingFields }, timestamp } };
+          if (missingFields.length) return { statusCode: 400, body: { success: false, error: { code: 'PROPERTY_CREATE_REQUIRED_FIELDS_MISSING', message: `يرجى إدخال بيانات الوحدة الأساسية بشكل صحيح: ${missingFields.join(', ')}.` }, timestamp } };
           const propId = isValidUuid(bodyPayload?.id) ? bodyPayload.id : crypto.randomUUID();
 
           const createdProperty = await propertyDb.create({

@@ -26,6 +26,13 @@
   background: #94a3b8;
 }
 
+.property-filter-rail {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  overscroll-behavior-inline: contain;
+}
+.property-filter-rail::-webkit-scrollbar { display: none; }
+
 /* Glassmorphism effects */
 .glass-panel {
   background: rgba(255, 255, 255, 0.85);

@@ -411,10 +411,27 @@ export const AppProvider: React.FC<{ children: React.ReactNode; ownerId: string 
         const homeFixture = import.meta.env.DEV
           ? new URLSearchParams(window.location.search).get('ownerHomeFixture')
           : null;
+        const bookingsFixture = import.meta.env.DEV
+          ? new URLSearchParams(window.location.search).get('ownerBookingsFixture')
+          : null;
         const fixtureProperties = homeFixture === 'zero-properties' ? [] : propsData;
-        const fixtureBookings = homeFixture === 'populated'
+        const homeFixtureBookings = homeFixture === 'populated'
           ? bksData.filter((booking) => booking.status !== 'PENDING_OWNER_APPROVAL')
           : homeFixture === 'zero-properties' ? [] : bksData;
+        const fixtureBookings: Booking[] = (bookingsFixture && homeFixtureBookings.length > 0
+          ? homeFixtureBookings.map((booking, index) => index === 0
+            ? {
+                ...booking,
+                status: bookingsFixture === 'request'
+                  ? 'PENDING_OWNER_APPROVAL'
+                  : bookingsFixture === 'payment'
+                    ? 'APPROVED_PENDING_PAYMENT'
+                    : bookingsFixture === 'history'
+                      ? 'REJECTED'
+                      : 'CONFIRMED',
+              }
+            : booking)
+          : homeFixtureBookings) as Booking[];
 
         setProperties(fixtureProperties);
         setBookings(fixtureBookings);
@@ -773,6 +790,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; ownerId: string 
       await refreshData();
     } catch (err: any) {
       showToast(err.message || 'تعذر قبول طلب الحجز', 'error');
+      throw err;
     }
   };
 
@@ -788,6 +806,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; ownerId: string 
       await refreshData();
     } catch (err: any) {
       showToast(err.message || 'تعذر رفض طلب الحجز', 'error');
+      throw err;
     }
   };
 
@@ -861,6 +880,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; ownerId: string 
       await refreshData();
     } catch (err: any) {
       showToast(err.message || 'تعذر قبول طلب الإلغاء', 'error');
+      throw err;
     }
   };
 
@@ -871,6 +891,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; ownerId: string 
       await refreshData();
     } catch (err: any) {
       showToast(err.message || 'تعذر رفض طلب الإلغاء', 'error');
+      throw err;
     }
   };
 

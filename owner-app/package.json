@@ -8,7 +8,8 @@
     "build": "tsc -b && vite build",
     "check": "tsc --noEmit",
     "test:first-run": "node ../backend/node_modules/tsx/dist/cli.mjs src/utils/ownerFirstRun.test.ts",
-    "test:home": "tsx src/utils/ownerHome.test.ts && tsx src/utils/ownerBootstrap.test.ts && tsx src/utils/ownerFirstRun.test.ts",
+    "test:bookings": "tsx src/utils/ownerBookings.test.ts",
+    "test:home": "tsx src/utils/ownerHome.test.ts && tsx src/utils/ownerBookings.test.ts && tsx src/utils/ownerBootstrap.test.ts && tsx src/utils/ownerFirstRun.test.ts",
     "lint": "oxlint",
     "preview": "vite preview"
   },

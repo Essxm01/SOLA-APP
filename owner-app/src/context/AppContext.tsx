@@ -28,6 +28,7 @@ import type {
 import { mockRepository } from '../services/mockRepository';
 import { repositoryFactory } from '../services/repositoryFactory';
 import { getOwnerDraftStorageKey } from '../utils/ownerIdentity';
+import { createEmptyPropertyWizardDraft, hydratePropertyToWizard } from '../utils/ownerPropertyWizard';
 
 type NavTab = 'home' | 'bookings' | 'properties' | 'messages' | 'disputes' | 'wallet' | 'profile' | 'calendar';
 type PropertyViewMode = 'list' | 'details' | 'wizard';
@@ -685,9 +686,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode; ownerId: string 
 
   const openAddPropertyWizard = (initialData?: Partial<Property>) => {
     if (initialData) {
-      setCurrentDraft(initialData);
+      if ('existingPropertyId' in initialData) {
+        setCurrentDraft(initialData as any);
+      } else {
+        setCurrentDraft(hydratePropertyToWizard(initialData as Property) as any);
+      }
     } else {
-      setCurrentDraft({ currency: 'EGP', amenities: [], images: [], houseRules: {} as any });
+      setCurrentDraft(createEmptyPropertyWizardDraft() as any);
     }
     setWizardStep(1);
     setPropertyViewMode('wizard');

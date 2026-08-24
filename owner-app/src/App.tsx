@@ -24,7 +24,9 @@ import { OwnerLaunchSkeleton } from './components/ui/LoadingSkeleton';
 import { getOwnerAuthPresentation, shouldHomeOwnDataState } from './utils/ownerBootstrap';
 
 const OwnerAppContent: React.FC = () => {
-  const { activeTab, isLoading, error, refreshData } = useApp();
+  const { activeTab, isLoading, error, refreshData, propertyViewMode } = useApp();
+
+  const isWizardActive = activeTab === 'properties' && propertyViewMode === 'wizard';
 
   const renderTabContent = () => {
     switch (activeTab) {
@@ -59,7 +61,14 @@ const OwnerAppContent: React.FC = () => {
         ? <div className="min-h-[60vh] p-6 text-center text-[var(--konfrm-text-secondary)]"><p>تعذر تحميل بيانات الشاشة.</p><button type="button" className="mt-4 font-bold text-[var(--konfrm-color-primary)]" onClick={() => void refreshData()}>إعادة المحاولة</button></div>
         : renderTabContent();
 
-  return <div className="w-full min-h-full pb-16 relative"><ErrorBoundary key={activeTab}>{tabContent}</ErrorBoundary><BottomNavigation disabled={isLoading} /><NotificationsModal /><Toast /></div>;
+  return (
+    <div className={`w-full min-h-full relative ${isWizardActive ? '' : 'pb-16'}`}>
+      <ErrorBoundary key={activeTab}>{tabContent}</ErrorBoundary>
+      {!isWizardActive && <BottomNavigation disabled={isLoading} />}
+      <NotificationsModal />
+      <Toast />
+    </div>
+  );
 };
 
 const OwnerFirstRunGate: React.FC<{ children: React.ReactNode }> = ({ children }) => {

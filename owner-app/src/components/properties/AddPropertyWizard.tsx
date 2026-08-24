@@ -1,21 +1,1078 @@
-import React,{useEffect,useRef,useState}from'react';
-import{ArrowRight,CheckCircle2,Image as ImageIcon,Trash2,Upload}from'lucide-react';
-import{useApp}from'../../context/AppContext';import type{Property,PropertyRules,PropertyType,UnitType}from'../../types';
-import{Button}from'../ui/Button';import{Input}from'../ui/Input';import{repositoryFactory}from'../../services/repositoryFactory';import{EGYPTIAN_COASTAL_REGIONS,PREDEFINED_AMENITIES,UNIT_TYPES}from'../../constants/theme';import{canCreateCanonicalServerDraft,createEmptyPropertyWizardDraft,type OwnerPropertyWizardDraft}from'../../utils/ownerPropertyWizard';
-const STEPS=['الأساسيات','الموقع','السعة والسعر','المرافق والقواعد','الصور','المراجعة والإرسال'];
-const card:React.CSSProperties={background:'var(--konfrm-surface-primary)',border:'1px solid var(--konfrm-border-default)',borderRadius:'var(--konfrm-radius-card)',padding:'var(--konfrm-space-card-padding)'};const text:React.CSSProperties={fontSize:14,fontWeight:500,lineHeight:1.65,color:'var(--konfrm-text-secondary)'};const label:React.CSSProperties={fontSize:13,fontWeight:700,color:'var(--konfrm-text-primary)'};
-export const AddPropertyWizard:React.FC=()=>{const{currentDraft,setCurrentDraft,wizardStep,setWizardStep,setPropertyViewMode,createOrUpdateProperty}=useApp();const[draft,setDraft]=useState<OwnerPropertyWizardDraft>(()=>currentDraft?{...currentDraft,currency:'EGP',amenities:currentDraft.amenities||[],images:currentDraft.images||[]}:createEmptyPropertyWizardDraft());const[error,setError]=useState('');const[busy,setBusy]=useState(false);const[submitted,setSubmitted]=useState(false);const fileInput=useRef<HTMLInputElement>(null);const step=Math.max(1,Math.min(6,wizardStep));const published=draft.status==='PUBLISHED';const rejected=draft.status==='REJECTED';useEffect(()=>setCurrentDraft(draft),[draft,setCurrentDraft]);const set=<K extends keyof Property>(k:K,v:Property[K])=>setDraft(x=>({...x,[k]:v}));const rule=<K extends keyof PropertyRules>(k:K,v:PropertyRules[K])=>setDraft(x=>({...x,houseRules:{...(x.houseRules||{} as PropertyRules),[k]:v}}));
-const valid=(submit=false)=>{const m:string[]=[];if(!draft.title?.trim())m.push('اسم الوحدة');if(!draft.propertyType||!draft.unitType)m.push('نوع الوحدة');if(draft.bedrooms==null||draft.bedrooms<0)m.push('عدد الغرف');if(draft.bathrooms==null||draft.bathrooms<0)m.push('عدد الحمامات');if(!draft.maxGuests||draft.maxGuests<1)m.push('عدد الضيوف');if(!draft.pricePerNight||draft.pricePerNight<1)m.push('سعر الليلة');if(submit&&!draft.images.length)m.push('صورة واحدة على الأقل');setError(m.length?`أكمل: ${m.join('، ')}`:'');return!m.length};
-const persist=async(submit:boolean)=>{if(!valid(submit))return;setBusy(true);setError('');try{const saved=await createOrUpdateProperty({...draft,status:draft.id?draft.status:'DRAFT'},submit);setDraft(x=>({...x,id:saved.id,status:submit?'PENDING_REVIEW':saved.status}));if(submit){setSubmitted(true);setCurrentDraft(null)}}catch{setError(submit?'تعذر إرسال الوحدة للمراجعة. حاول مرة أخرى.':'تعذر حفظ التعديلات. حاول مرة أخرى.')}finally{setBusy(false)}};
-const upload=async(e:React.ChangeEvent<HTMLInputElement>)=>{const files=Array.from(e.target.files||[]);if(!canCreateCanonicalServerDraft(draft)){setError('أكمل البيانات الأساسية والسعة والسعر قبل إضافة الصور.');setWizardStep(1);return}setBusy(true);setError('');try{let id=draft.id;if(!id){const saved=await createOrUpdateProperty({...draft,status:'DRAFT'},false);id=saved.id;setDraft(x=>({...x,id:saved.id,status:saved.status}))}const urls:string[]=[];const records:any[]=[];for(const f of files){if(!['image/jpeg','image/png','image/webp'].includes(f.type)||f.size>10*1024*1024)throw Error('image');const intent=await repositoryFactory.property.getImagePresignedUrl(id!,{fileName:f.name,mimeType:f.type,fileSize:f.size});const put=await fetch(intent.uploadUrl,{method:'PUT',headers:{'Content-Type':f.type},body:f});if(!put.ok)throw Error('upload');const committed=await repositoryFactory.property.commitPropertyImage(id!,{intentId:intent.intentId,objectKey:intent.objectKey,fileUrl:intent.downloadUrl,fileName:f.name,mimeType:f.type,fileSize:f.size,sortOrder:(draft.images.length)+urls.length});urls.push(committed.fileUrl||intent.downloadUrl);records.push(committed)}setDraft(x=>({...x,images:[...x.images,...urls],propertyImages:[...(x.propertyImages||[]),...records]}))}catch{setError('تعذر رفع الصور. لم يتم إضافة أي صورة غير مؤكدة.')}finally{setBusy(false);if(fileInput.current)fileInput.current.value=''}};
-const remove=async(url:string)=>{const image=draft.propertyImages?.find(x=>x.url===url);if(!draft.id||!image){setError('تعذر حذف صورة غير مؤكدة.');return}setBusy(true);try{await repositoryFactory.property.deletePropertyImage(draft.id,image.id);setDraft(x=>({...x,images:x.images.filter(v=>v!==url),propertyImages:(x.propertyImages||[]).filter(v=>v.id!==image.id)}))}catch{setError('تعذر حذف الصورة. حاول مرة أخرى.')}finally{setBusy(false)}};
-if(submitted)return <main dir="rtl" className="flex flex-col" style={{padding:'var(--konfrm-space-section-gap)',gap:'var(--konfrm-space-section-gap)'}}><section style={{...card,textAlign:'center'}}><CheckCircle2 size={48} style={{color:'var(--konfrm-semantic-success-solid)'}}/><h1 style={{fontSize:22,fontWeight:800,color:'var(--konfrm-text-primary)'}}>تم إرسال الوحدة للمراجعة</h1><p style={text}>سنوضح لك حالة الوحدة بعد مراجعتها من الإدارة.</p><Button fullWidth onClick={()=>setPropertyViewMode('list')}>العودة إلى وحداتك</Button></section></main>;
-const num=([k,l]:string[])=><Input key={k} type="number" min="0" label={l} value={(draft as any)[k]??''} onChange={e=>set(k as keyof Property,(e.target.value===''?undefined:Number(e.target.value))as any)}/>;
-return <main dir="rtl" className="flex flex-col" style={{padding:'var(--konfrm-space-page-horizontal)',paddingBottom:'calc(var(--konfrm-space-safe-bottom) + 76px)',gap:'var(--konfrm-space-section-gap)'}}><header className="flex items-center justify-between"><button onClick={()=>setPropertyViewMode('list')} style={{minHeight:44,border:0,background:'transparent',color:'var(--konfrm-text-secondary)',fontWeight:700}}><ArrowRight size={18}/> إغلاق</button><div><strong style={{fontSize:18,color:'var(--konfrm-text-primary)'}}>{draft.id?'تعديل الوحدة':'إضافة وحدة'}</strong><p style={{...text,fontSize:12}}>الخطوة {step} من 6 · {STEPS[step-1]}</p></div></header><div style={{height:4,background:'var(--konfrm-surface-secondary)',borderRadius:'var(--konfrm-radius-pill)'}}><div style={{height:'100%',width:`${step/6*100}%`,background:'var(--konfrm-color-primary)',borderRadius:'inherit'}}/></div>{rejected&&<section style={{...card,background:'var(--konfrm-semantic-danger-background)',borderColor:'var(--konfrm-semantic-danger-border)'}}><strong>تحتاج الوحدة إلى تعديلات</strong><p style={text}>{draft.rejectionReason||'عدّل الملاحظات المطلوبة ثم أرسل الوحدة للمراجعة مرة أخرى.'}</p></section>}<section style={card}>
-{step===1&&<div className="flex flex-col" style={{gap:'var(--konfrm-space-control-gap)'}}><Input label="اسم الوحدة" value={draft.title||''} onChange={e=>set('title',e.target.value)}/><p style={label}>نوع الوحدة</p><div className="grid grid-cols-2" style={{gap:'var(--konfrm-space-inline-gap)'}}>{UNIT_TYPES.map(t=><button key={t.id} onClick={()=>{set('propertyType',t.id as PropertyType);set('unitType',t.id as unknown as UnitType)}} style={{minHeight:44,borderRadius:'var(--konfrm-radius-control)',border:`1px solid ${draft.propertyType===t.id?'var(--konfrm-border-focus)':'var(--konfrm-border-default)'}`,background:draft.propertyType===t.id?'var(--konfrm-interaction-selected)':'var(--konfrm-surface-primary)',color:'var(--konfrm-text-primary)',fontWeight:700}}>{t.name}</button>)}</div><label style={label}>الوصف<textarea value={draft.description||''} onChange={e=>set('description',e.target.value)} className="mt-1 w-full" style={{minHeight:96,padding:'var(--konfrm-space-md)',border:'1px solid var(--konfrm-border-default)',borderRadius:'var(--konfrm-radius-control)'}}/></label></div>}
-{step===2&&<div className="flex flex-col" style={{gap:'var(--konfrm-space-control-gap)'}}><label style={label}>المنطقة<select value={draft.region||''} onChange={e=>set('region',e.target.value)} className="mt-1 w-full" style={{minHeight:48,padding:'var(--konfrm-space-md)',border:'1px solid var(--konfrm-border-default)',borderRadius:'var(--konfrm-radius-control)'}}><option value="">اختر المنطقة</option>{EGYPTIAN_COASTAL_REGIONS.map(r=><option key={r.id} value={r.name}>{r.name}</option>)}</select></label><Input label="المنتجع أو المجتمع (اختياري)" value={draft.resortName||''} onChange={e=>set('resortName',e.target.value)}/><Input label="العنوان أو وصف الوصول (اختياري)" value={draft.address||''} onChange={e=>set('address',e.target.value)}/></div>}
-{step===3&&<div className="grid grid-cols-2" style={{gap:'var(--konfrm-space-control-gap)'}}>{[['bedrooms','عدد الغرف'],['bathrooms','عدد الحمامات'],['bedsCount','عدد الأسرّة'],['maxGuests','أقصى عدد ضيوف'],['areaSqM','المساحة م²'],['pricePerNight','سعر الليلة ج.م']].map(num)}</div>}
-{step===4&&<div className="flex flex-col" style={{gap:'var(--konfrm-space-control-gap)'}}><p style={label}>المرافق</p><div className="grid grid-cols-2" style={{gap:'var(--konfrm-space-inline-gap)'}}>{PREDEFINED_AMENITIES.map(a=>{const on=draft.amenities.includes(a.id);return <button key={a.id} onClick={()=>set('amenities',on?draft.amenities.filter(x=>x!==a.id):[...draft.amenities,a.id])} style={{minHeight:44,borderRadius:'var(--konfrm-radius-control)',border:`1px solid ${on?'var(--konfrm-border-focus)':'var(--konfrm-border-default)'}`,background:on?'var(--konfrm-interaction-selected)':'var(--konfrm-surface-primary)',color:'var(--konfrm-text-primary)'}}>{a.name}</button>})}</div><p style={label}>قواعد الإقامة</p><div className="grid grid-cols-2" style={{gap:'var(--konfrm-space-inline-gap)'}}>{([['smokingAllowed','التدخين مسموح'],['partiesAllowed','الحفلات مسموحة'],['petsAllowed','الحيوانات مسموحة'],['childrenAllowed','الأطفال مسموحون']]as const).map(([k,l])=><button key={k} onClick={()=>rule(k,!((draft.houseRules||{}as PropertyRules)[k])as any)} style={{minHeight:44,borderRadius:'var(--konfrm-radius-control)',border:'1px solid var(--konfrm-border-default)',background:(draft.houseRules||{}as PropertyRules)[k]?'var(--konfrm-interaction-selected)':'var(--konfrm-surface-primary)',color:'var(--konfrm-text-primary)'}}>{l}</button>)}</div></div>}
-{step===5&&<div className="flex flex-col" style={{gap:'var(--konfrm-space-control-gap)',textAlign:'center'}}><ImageIcon size={32} style={{margin:'auto',color:'var(--konfrm-text-muted)'}}/><p style={text}>أضف صورًا حقيقية للوحدة. JPG / PNG / WEBP حتى 10 ميجابايت.</p><input ref={fileInput} type="file" accept="image/jpeg,image/png,image/webp" multiple hidden onChange={upload}/><Button isLoading={busy} onClick={()=>fileInput.current?.click()} icon={<Upload size={16}/>}>إضافة صور</Button>{draft.images.map((url,i)=><div key={url} className="flex items-center" style={{gap:'var(--konfrm-space-inline-gap)'}}><img src={url} alt="" style={{width:72,height:72,objectFit:'cover',borderRadius:'var(--konfrm-radius-control)'}}/><span style={text}>الصورة {i+1}</span><button aria-label="حذف الصورة" onClick={()=>void remove(url)} style={{minHeight:44,minWidth:44,border:0,background:'transparent',color:'var(--konfrm-semantic-danger-text)'}}><Trash2 size={18}/></button></div>)}</div>}
-{step===6&&<div className="flex flex-col" style={{gap:'var(--konfrm-space-control-gap)'}}>{[['الأساسيات',draft.title||'—'],['الموقع',draft.region||'غير محدد'],['السعة والسعر',draft.pricePerNight?`${draft.pricePerNight} ج.م / ليلة`:'—'],['المرافق والقواعد',draft.amenities.length?`${draft.amenities.length} مرافق`:'لم تحدد مرافق'],['الصور',draft.images.length?`${draft.images.length} صور`:'لا توجد صور']].map(([a,b],i)=><button key={a} onClick={()=>setWizardStep(i+1)} className="flex items-center justify-between text-right" style={{...card,padding:'var(--konfrm-space-md)',color:'var(--konfrm-text-primary)'}}><strong>{a}</strong><span style={text}>{b}</span></button>)}</div>}</section>{error&&<p style={{...text,color:'var(--konfrm-semantic-danger-text)'}}>{error}</p>}<footer className="flex items-center justify-between" style={{gap:'var(--konfrm-space-control-gap)'}}>{step>1?<Button variant="outline" onClick={()=>setWizardStep(step-1)}>السابق</Button>:<span/>}{step<6?<Button onClick={()=>{setError('');setWizardStep(step+1)}}>التالي</Button>:<Button isLoading={busy} onClick={()=>void persist(!published)}>{published?'حفظ التعديلات':rejected?'إعادة الإرسال للمراجعة':'إرسال للمراجعة'}</Button>}</footer></main>;
+import React, { useEffect, useRef, useState } from 'react';
+import {
+  ArrowRight,
+  Building,
+  Calendar,
+  CheckCircle2,
+  Image as ImageIcon,
+  Trash2,
+  Upload,
+  AlertCircle,
+  AlertTriangle,
+} from 'lucide-react';
+import { useApp } from '../../context/AppContext';
+import type { Property } from '../../types';
+import { Button } from '../ui/Button';
+import { Input } from '../ui/Input';
+import { repositoryFactory } from '../../services/repositoryFactory';
+import {
+  EGYPTIAN_COASTAL_REGIONS,
+  PREDEFINED_AMENITIES,
+} from '../../constants/theme';
+import {
+  PROPERTY_TYPE_OPTIONS,
+  getPropertyTypeLabel,
+  createEmptyPropertyWizardDraft,
+  hydratePropertyToWizard,
+  validateStep,
+  validateWizardForSubmission,
+  canCreateCanonicalServerDraft,
+  buildCreatePropertyPayload,
+  buildUpdatePropertyPayload,
+  type OwnerPropertyWizardDraft,
+  type WizardPropertyImage,
+} from '../../utils/ownerPropertyWizard';
+
+const STEPS = [
+  'الأساسيات',
+  'الموقع',
+  'السعة والسعر',
+  'المرافق والقواعد',
+  'الصور',
+  'المراجعة والإرسال',
+] as const;
+
+export const AddPropertyWizard: React.FC = () => {
+  const {
+    currentDraft,
+    setCurrentDraft,
+    wizardStep,
+    setWizardStep,
+    setPropertyViewMode,
+    refreshData,
+    showToast,
+  } = useApp();
+
+  const [draft, setDraft] = useState<OwnerPropertyWizardDraft>(() => {
+    if (currentDraft) {
+      const anyDraft = currentDraft as any;
+      if (
+        'existingPropertyId' in anyDraft &&
+        Array.isArray(anyDraft.images) &&
+        (anyDraft.images.length === 0 || typeof anyDraft.images[0] === 'object')
+      ) {
+        return anyDraft as OwnerPropertyWizardDraft;
+      }
+      return hydratePropertyToWizard(currentDraft as Property);
+    }
+    return createEmptyPropertyWizardDraft();
+  });
+
+  const [error, setError] = useState<string>('');
+  const [isBusy, setIsBusy] = useState<boolean>(false);
+  const [isSubmitted, setIsSubmitted] = useState<boolean>(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const step = Math.max(1, Math.min(6, wizardStep));
+  const isPublished = draft.canonicalStatus === 'PUBLISHED';
+  const isRejected = draft.canonicalStatus === 'REJECTED';
+
+  // Synchronize local draft to AppContext (auto-save local draft)
+  useEffect(() => {
+    if (!isSubmitted) {
+      setCurrentDraft(draft as any);
+    }
+  }, [draft, isSubmitted, setCurrentDraft]);
+
+  // Field update helpers
+  const updateField = <K extends keyof OwnerPropertyWizardDraft>(
+    key: K,
+    value: OwnerPropertyWizardDraft[K]
+  ) => {
+    setError('');
+    setDraft(prev => ({ ...prev, [key]: value }));
+  };
+
+  const updateHouseRule = (
+    ruleKey: keyof OwnerPropertyWizardDraft['houseRules'],
+    value: boolean | undefined
+  ) => {
+    setError('');
+    setDraft(prev => ({
+      ...prev,
+      houseRules: {
+        ...prev.houseRules,
+        [ruleKey]: value,
+      },
+    }));
+  };
+
+  const toggleAmenity = (amenityId: string) => {
+    setError('');
+    setDraft(prev => {
+      const exists = prev.amenities.includes(amenityId);
+      return {
+        ...prev,
+        amenities: exists
+          ? prev.amenities.filter(id => id !== amenityId)
+          : [...prev.amenities, amenityId],
+      };
+    });
+  };
+
+  // Step navigation with strict validation on "التالي"
+  const handleNextStep = () => {
+    const validation = validateStep(step, draft);
+    if (!validation.isValid) {
+      setError(validation.error || 'يرجى استكمال البيانات المطلوبة.');
+      return;
+    }
+    setError('');
+    setWizardStep(step + 1);
+  };
+
+  const handlePrevStep = () => {
+    setError('');
+    setWizardStep(Math.max(1, step - 1));
+  };
+
+  // Image Upload Handling (Individual per-file commit with partial-failure tolerance)
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
+
+    // Check if canonical server draft is allowed
+    if (!canCreateCanonicalServerDraft(draft)) {
+      setError('يرجى استكمال البيانات الأساسية والسعة وسعر الليلة قبل إضافة الصور.');
+      setWizardStep(1);
+      return;
+    }
+
+    setIsBusy(true);
+    setError('');
+
+    try {
+      let propertyId = draft.existingPropertyId;
+
+      // Create server draft if not yet existing on server
+      if (!propertyId) {
+        const createPayload = buildCreatePropertyPayload(draft);
+        const saved = await repositoryFactory.property.createProperty(createPayload);
+        propertyId = saved.id;
+        setDraft(prev => ({
+          ...prev,
+          existingPropertyId: saved.id,
+          canonicalStatus: saved.status,
+        }));
+      }
+
+      let successCount = 0;
+      let failCount = 0;
+
+      for (const file of files) {
+        // Validate format & size
+        if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || file.size > 10 * 1024 * 1024) {
+          failCount++;
+          continue;
+        }
+
+        try {
+          const intent = await repositoryFactory.property.getImagePresignedUrl(propertyId!, {
+            fileName: file.name,
+            mimeType: file.type,
+            fileSize: file.size,
+          });
+
+          const uploadRes = await fetch(intent.uploadUrl, {
+            method: 'PUT',
+            headers: { 'Content-Type': file.type },
+            body: file,
+          });
+
+          if (!uploadRes.ok) {
+            throw new Error(`Upload failed with status ${uploadRes.status}`);
+          }
+
+          const committed = await repositoryFactory.property.commitPropertyImage(propertyId!, {
+            intentId: intent.intentId,
+            objectKey: intent.objectKey,
+            fileUrl: intent.downloadUrl,
+            fileName: file.name,
+            mimeType: file.type,
+            fileSize: file.size,
+            sortOrder: draft.images.length + successCount,
+          });
+
+          const newImage: WizardPropertyImage = {
+            id: committed.id || committed.objectKey || `img-${Date.now()}-${successCount}`,
+            url: committed.fileUrl || intent.downloadUrl,
+            sortOrder: committed.sortOrder ?? (draft.images.length + successCount),
+            status: 'committed',
+          };
+
+          // Immediately update state with each committed image
+          setDraft(prev => ({
+            ...prev,
+            images: [...prev.images, newImage],
+          }));
+
+          successCount++;
+        } catch (imgErr) {
+          console.error('Image upload error:', imgErr);
+          failCount++;
+        }
+      }
+
+      if (failCount > 0 && successCount > 0) {
+        setError(`تم رفع ${successCount} صورة بنجاح، وتعذر رفع ${failCount} صورة. يمكنك المحاولة مرة أخرى.`);
+      } else if (failCount > 0 && successCount === 0) {
+        setError('تعذر رفع الصور المختارة. يرجى التأكد من صيغة وحجم الصور والمحاولة ثانية.');
+      }
+    } catch (err: any) {
+      console.error('Batch upload failed:', err);
+      setError('حدث خطأ أثناء إعداد رفع الصور. يرجى المحاولة مرة أخرى.');
+    } finally {
+      setIsBusy(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  };
+
+  // Image Delete Handling
+  const handleImageDelete = async (image: WizardPropertyImage) => {
+    if (!draft.existingPropertyId || !image.id) {
+      setDraft(prev => ({
+        ...prev,
+        images: prev.images.filter(img => img.id !== image.id),
+      }));
+      return;
+    }
+
+    setIsBusy(true);
+    setError('');
+
+    try {
+      await repositoryFactory.property.deletePropertyImage(draft.existingPropertyId, image.id);
+      setDraft(prev => ({
+        ...prev,
+        images: prev.images.filter(img => img.id !== image.id),
+      }));
+      showToast('تم حذف الصورة بنجاح', 'info');
+    } catch (err: any) {
+      console.error('Delete image error:', err);
+      setError('تعذر حذف الصورة من الخادم. يرجى المحاولة مرة أخرى.');
+    } finally {
+      setIsBusy(false);
+    }
+  };
+
+  // Final Submit / Save Handler
+  const handleFinalSubmit = async () => {
+    const validation = validateWizardForSubmission(draft);
+    if (!validation.isValid) {
+      setError(validation.error || 'يرجى مراجعة واستكمال بيانات الوحدة.');
+      return;
+    }
+
+    setIsBusy(true);
+    setError('');
+
+    try {
+      if (isPublished) {
+        // Published property: Update only
+        if (draft.existingPropertyId) {
+          const updatePayload = buildUpdatePropertyPayload(draft, false);
+          await repositoryFactory.property.updateProperty(draft.existingPropertyId, updatePayload);
+          showToast('تم حفظ تعديلات الوحدة بنجاح', 'success');
+          setCurrentDraft(null);
+          await refreshData();
+          setPropertyViewMode('list');
+        }
+      } else if (isRejected) {
+        // Rejected property: Submit for review
+        if (draft.existingPropertyId) {
+          const updatePayload = buildUpdatePropertyPayload(draft, true);
+          await repositoryFactory.property.updateProperty(draft.existingPropertyId, updatePayload);
+          await repositoryFactory.property.submitPropertyForReview(draft.existingPropertyId);
+          setIsSubmitted(true);
+          setCurrentDraft(null);
+          await refreshData();
+        }
+      } else {
+        // New or Draft property: Create if needed, then submit
+        let propertyId = draft.existingPropertyId;
+        if (propertyId) {
+          const updatePayload = buildUpdatePropertyPayload(draft, false);
+          await repositoryFactory.property.updateProperty(propertyId, updatePayload);
+        } else {
+          const createPayload = buildCreatePropertyPayload(draft);
+          const created = await repositoryFactory.property.createProperty(createPayload);
+          propertyId = created.id;
+        }
+
+        if (propertyId) {
+          await repositoryFactory.property.submitPropertyForReview(propertyId);
+          setIsSubmitted(true);
+          setCurrentDraft(null);
+          await refreshData();
+        }
+      }
+    } catch (err: any) {
+      console.error('Submit property error:', err);
+      setError(
+        err?.message ||
+          (isPublished
+            ? 'تعذر حفظ تعديلات الوحدة. يرجى المحاولة مرة أخرى.'
+            : 'تعذر إرسال الوحدة للمراجعة. يرجى المحاولة مرة أخرى.')
+      );
+    } finally {
+      setIsBusy(false);
+    }
+  };
+
+  // Success Result Screen
+  if (isSubmitted) {
+    return (
+      <main
+        dir="rtl"
+        className="flex flex-col items-center justify-center min-h-[70vh] p-6 text-center"
+        style={{ background: 'var(--konfrm-surface-canvas)' }}
+      >
+        <div
+          className="w-full max-w-md p-6 rounded-2xl flex flex-col items-center gap-4 shadow-subtle border border-[var(--konfrm-border-default)]"
+          style={{ background: 'var(--konfrm-surface-primary)' }}
+        >
+          <div
+            className="w-16 h-16 rounded-full flex items-center justify-center"
+            style={{ background: 'var(--konfrm-semantic-success-background)' }}
+          >
+            <CheckCircle2 size={36} style={{ color: 'var(--konfrm-semantic-success-solid)' }} />
+          </div>
+
+          <h1 className="text-xl font-black" style={{ color: 'var(--konfrm-text-primary)' }}>
+            تم إرسال الوحدة للمراجعة
+          </h1>
+
+          <p className="text-sm font-medium leading-relaxed" style={{ color: 'var(--konfrm-text-secondary)' }}>
+            سنوضح لك حالة الوحدة بعد مراجعتها من الإدارة.
+          </p>
+
+          <Button
+            fullWidth
+            onClick={() => {
+              setCurrentDraft(null);
+              setPropertyViewMode('list');
+            }}
+          >
+            العودة إلى وحداتك
+          </Button>
+        </div>
+      </main>
+    );
+  }
+
+  return (
+    <main
+      dir="rtl"
+      className="flex flex-col min-h-full"
+      style={{ background: 'var(--konfrm-surface-canvas)' }}
+    >
+      {/* Top Header */}
+      <header
+        className="sticky top-0 z-30 px-4 py-3 border-b flex items-center justify-between"
+        style={{
+          background: 'var(--konfrm-surface-primary)',
+          borderColor: 'var(--konfrm-border-default)',
+        }}
+      >
+        <button
+          type="button"
+          onClick={() => setPropertyViewMode('list')}
+          className="flex items-center gap-1.5 min-h-[44px] px-2 text-sm font-bold cursor-pointer transition-colors"
+          style={{ color: 'var(--konfrm-text-secondary)' }}
+        >
+          <ArrowRight size={18} />
+          <span>إغلاق</span>
+        </button>
+
+        <div className="text-left">
+          <strong className="text-sm font-black block" style={{ color: 'var(--konfrm-text-primary)' }}>
+            {draft.existingPropertyId ? 'تعديل الوحدة' : 'إضافة وحدة جديدة'}
+          </strong>
+          <span className="text-xs font-semibold" style={{ color: 'var(--konfrm-text-muted)' }}>
+            الخطوة {step} من 6 · {STEPS[step - 1]}
+          </span>
+        </div>
+      </header>
+
+      {/* Progress Bar */}
+      <div
+        className="w-full h-1"
+        style={{ background: 'var(--konfrm-surface-secondary)' }}
+      >
+        <div
+          className="h-full transition-all duration-300"
+          style={{
+            width: `${(step / 6) * 100}%`,
+            background: 'var(--konfrm-color-primary)',
+          }}
+        />
+      </div>
+
+      {/* Scrollable Form Body */}
+      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
+        {/* Rejection Banner if editing rejected property */}
+        {isRejected && (
+          <section
+            className="p-4 rounded-2xl border flex items-start gap-3"
+            style={{
+              background: 'var(--konfrm-semantic-danger-background)',
+              borderColor: 'var(--konfrm-semantic-danger-border)',
+            }}
+          >
+            <AlertTriangle
+              size={20}
+              className="shrink-0 mt-0.5"
+              style={{ color: 'var(--konfrm-semantic-danger-solid)' }}
+            />
+            <div>
+              <strong
+                className="text-xs font-black block mb-1"
+                style={{ color: 'var(--konfrm-semantic-danger-text)' }}
+              >
+                تحتاج الوحدة إلى تعديلات قبل إعادة الإرسال
+              </strong>
+              <p
+                className="text-xs font-medium leading-relaxed"
+                style={{ color: 'var(--konfrm-semantic-danger-text)' }}
+              >
+                {draft.rejectionReason || 'يرجى مراجعة وتعديل الملاحظات المطلوبة ثم إعادة إرسال الوحدة للمراجعة.'}
+              </p>
+            </div>
+          </section>
+        )}
+
+        {/* STEP 1: BASICS */}
+        {step === 1 && (
+          <section
+            className="p-4 rounded-2xl border space-y-4 shadow-subtle"
+            style={{
+              background: 'var(--konfrm-surface-primary)',
+              borderColor: 'var(--konfrm-border-default)',
+            }}
+          >
+            <div>
+              <h2 className="text-base font-black mb-1" style={{ color: 'var(--konfrm-text-primary)' }}>
+                البيانات الأساسية
+              </h2>
+              <p className="text-xs font-medium" style={{ color: 'var(--konfrm-text-muted)' }}>
+                حدد اسم ونوع الوحدة ووصفاً موجزاً للمستأجرين.
+              </p>
+            </div>
+
+            <Input
+              label="اسم الوحدة *"
+              placeholder="مثال: شاليه فاخر بإطلالة بحرية مباشرة"
+              value={draft.title || ''}
+              onChange={e => updateField('title', e.target.value)}
+            />
+
+            <div>
+              <label
+                className="text-sm font-bold block mb-2"
+                style={{ color: 'var(--konfrm-text-primary)' }}
+              >
+                نوع الوحدة *
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                {PROPERTY_TYPE_OPTIONS.map(opt => {
+                  const isSelected = draft.propertyType === opt.value;
+                  return (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => {
+                        updateField('propertyType', opt.value);
+                        updateField('unitType', opt.value);
+                      }}
+                      className={`min-h-[48px] px-3 py-2 rounded-xl text-xs font-bold border transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                        isSelected
+                          ? 'border-[var(--konfrm-border-focus)] bg-[var(--konfrm-interaction-selected)] text-[var(--konfrm-color-primary)] shadow-xs'
+                          : 'border-[var(--konfrm-border-default)] bg-[var(--konfrm-surface-primary)] text-[var(--konfrm-text-primary)] hover:border-[var(--konfrm-border-strong)]'
+                      }`}
+                    >
+                      <Building size={16} />
+                      <span>{opt.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div>
+              <label
+                className="text-sm font-bold block mb-1.5"
+                style={{ color: 'var(--konfrm-text-primary)' }}
+              >
+                وصف الوحدة (اختياري)
+              </label>
+              <textarea
+                value={draft.description || ''}
+                onChange={e => updateField('description', e.target.value)}
+                placeholder="أضف وصفاً جذاباً للوحدة ومميزاتها..."
+                rows={4}
+                className="w-full p-3 text-sm rounded-xl border focus:outline-none focus:ring-2 transition-all"
+                style={{
+                  background: 'var(--konfrm-surface-primary)',
+                  borderColor: 'var(--konfrm-border-default)',
+                  color: 'var(--konfrm-text-primary)',
+                }}
+              />
+            </div>
+          </section>
+        )}
+
+        {/* STEP 2: LOCATION */}
+        {step === 2 && (
+          <section
+            className="p-4 rounded-2xl border space-y-4 shadow-subtle"
+            style={{
+              background: 'var(--konfrm-surface-primary)',
+              borderColor: 'var(--konfrm-border-default)',
+            }}
+          >
+            <div>
+              <h2 className="text-base font-black mb-1" style={{ color: 'var(--konfrm-text-primary)' }}>
+                موقع الوحدة
+              </h2>
+              <p className="text-xs font-medium" style={{ color: 'var(--konfrm-text-muted)' }}>
+                حدد المنطقة الساحلية والمنتجع لتسهيل وصول المستأجرين.
+              </p>
+            </div>
+
+            <div>
+              <label
+                className="text-sm font-bold block mb-1.5"
+                style={{ color: 'var(--konfrm-text-primary)' }}
+              >
+                المنطقة الساحلية *
+              </label>
+              <select
+                value={draft.region || ''}
+                onChange={e => updateField('region', e.target.value)}
+                className="w-full min-h-[48px] px-3 text-sm rounded-xl border focus:outline-none focus:ring-2 transition-all cursor-pointer"
+                style={{
+                  background: 'var(--konfrm-surface-primary)',
+                  borderColor: 'var(--konfrm-border-default)',
+                  color: 'var(--konfrm-text-primary)',
+                }}
+              >
+                <option value="">اختر المنطقة الجغرافية...</option>
+                {EGYPTIAN_COASTAL_REGIONS.map(reg => (
+                  <option key={reg.id} value={reg.name}>
+                    {reg.name} ({reg.cities.join('، ')})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <Input
+              label="المنتجع أو المجتمع السكني (اختياري)"
+              placeholder="مثال: مارينا 5، مراسي، لوتس باي"
+              value={draft.resortName || ''}
+              onChange={e => updateField('resortName', e.target.value)}
+            />
+
+            <Input
+              label="العنوان أو وصف الوصول (اختياري)"
+              placeholder="مثال: الكيلو 120، بوابة 3، عمارة 15"
+              value={draft.address || ''}
+              onChange={e => updateField('address', e.target.value)}
+            />
+          </section>
+        )}
+
+        {/* STEP 3: CAPACITY & PRICE */}
+        {step === 3 && (
+          <section
+            className="p-4 rounded-2xl border space-y-4 shadow-subtle"
+            style={{
+              background: 'var(--konfrm-surface-primary)',
+              borderColor: 'var(--konfrm-border-default)',
+            }}
+          >
+            <div>
+              <h2 className="text-base font-black mb-1" style={{ color: 'var(--konfrm-text-primary)' }}>
+                السعة والتسعير
+              </h2>
+              <p className="text-xs font-medium" style={{ color: 'var(--konfrm-text-muted)' }}>
+                أدخل تفاصيل الغرف وسعر الإيجار لليلة الواحدة بالجنيه المصري.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <Input
+                type="number"
+                min="0"
+                label="عدد الغرف *"
+                placeholder="0 للاستوديو"
+                value={draft.bedrooms ?? ''}
+                onChange={e =>
+                  updateField(
+                    'bedrooms',
+                    e.target.value === '' ? undefined : Number(e.target.value)
+                  )
+                }
+              />
+
+              <Input
+                type="number"
+                min="0"
+                label="عدد الحمامات *"
+                placeholder="1"
+                value={draft.bathrooms ?? ''}
+                onChange={e =>
+                  updateField(
+                    'bathrooms',
+                    e.target.value === '' ? undefined : Number(e.target.value)
+                  )
+                }
+              />
+
+              <Input
+                type="number"
+                min="1"
+                label="أقصى عدد ضيوف *"
+                placeholder="4"
+                value={draft.maxGuests ?? ''}
+                onChange={e =>
+                  updateField(
+                    'maxGuests',
+                    e.target.value === '' ? undefined : Number(e.target.value)
+                  )
+                }
+              />
+
+              <Input
+                type="number"
+                min="1"
+                label="سعر الليلة (ج.م) *"
+                placeholder="2500"
+                value={draft.pricePerNight ?? ''}
+                onChange={e =>
+                  updateField(
+                    'pricePerNight',
+                    e.target.value === '' ? undefined : Number(e.target.value)
+                  )
+                }
+              />
+
+              <Input
+                type="number"
+                min="0"
+                label="عدد الأسرّة (اختياري)"
+                placeholder="2"
+                value={draft.bedsCount ?? ''}
+                onChange={e =>
+                  updateField(
+                    'bedsCount',
+                    e.target.value === '' ? undefined : Number(e.target.value)
+                  )
+                }
+              />
+
+              <Input
+                type="number"
+                min="0"
+                label="المساحة م² (اختياري)"
+                placeholder="120"
+                value={draft.areaSqM ?? ''}
+                onChange={e =>
+                  updateField(
+                    'areaSqM',
+                    e.target.value === '' ? undefined : Number(e.target.value)
+                  )
+                }
+              />
+            </div>
+
+            <div
+              className="p-3 rounded-xl border flex items-center gap-2 text-xs font-medium"
+              style={{
+                background: 'var(--konfrm-semantic-info-background)',
+                borderColor: 'var(--konfrm-semantic-info-border)',
+                color: 'var(--konfrm-semantic-info-text)',
+              }}
+            >
+              <Calendar size={16} className="shrink-0" />
+              <span>تنبيه: الحد الأدنى للحجز عبر صولا هو ليلتان والحد الأقصى 30 ليلة تلقائياً.</span>
+            </div>
+          </section>
+        )}
+
+        {/* STEP 4: AMENITIES & RULES */}
+        {step === 4 && (
+          <section
+            className="p-4 rounded-2xl border space-y-5 shadow-subtle"
+            style={{
+              background: 'var(--konfrm-surface-primary)',
+              borderColor: 'var(--konfrm-border-default)',
+            }}
+          >
+            <div>
+              <h2 className="text-base font-black mb-1" style={{ color: 'var(--konfrm-text-primary)' }}>
+                المرافق وقواعد الإقامة
+              </h2>
+              <p className="text-xs font-medium" style={{ color: 'var(--konfrm-text-muted)' }}>
+                اختر التجهيزات المتاحة وحدد شروط الإقامة للمستأجرين.
+              </p>
+            </div>
+
+            {/* Amenities Grid */}
+            <div>
+              <label
+                className="text-sm font-bold block mb-2"
+                style={{ color: 'var(--konfrm-text-primary)' }}
+              >
+                المرافق والتجهيزات المتوفرة
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                {PREDEFINED_AMENITIES.map(amenity => {
+                  const isSelected = draft.amenities.includes(amenity.id);
+                  return (
+                    <button
+                      key={amenity.id}
+                      type="button"
+                      onClick={() => toggleAmenity(amenity.id)}
+                      className={`min-h-[44px] px-3 py-2 rounded-xl text-xs font-bold border transition-all flex items-center justify-between cursor-pointer ${
+                        isSelected
+                          ? 'border-[var(--konfrm-border-focus)] bg-[var(--konfrm-interaction-selected)] text-[var(--konfrm-color-primary)]'
+                          : 'border-[var(--konfrm-border-default)] bg-[var(--konfrm-surface-primary)] text-[var(--konfrm-text-secondary)] hover:border-[var(--konfrm-border-strong)]'
+                      }`}
+                    >
+                      <span className="truncate">{amenity.name}</span>
+                      {isSelected && <CheckCircle2 size={14} className="shrink-0" />}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* House Rules */}
+            <div className="border-t pt-4 space-y-3" style={{ borderColor: 'var(--konfrm-border-subtle)' }}>
+              <label
+                className="text-sm font-bold block"
+                style={{ color: 'var(--konfrm-text-primary)' }}
+              >
+                قواعد الإقامة والشروط
+              </label>
+
+              {/* Binary explicit rule buttons */}
+              {[
+                { key: 'smokingAllowed' as const, label: 'التدخين داخل الوحدة' },
+                { key: 'partiesAllowed' as const, label: 'الحفلات والمناسبات' },
+                { key: 'petsAllowed' as const, label: 'اصطحاب الحيوانات الأليفة' },
+                { key: 'childrenAllowed' as const, label: 'إقامة الأطفال العائلية' },
+              ].map(ruleItem => {
+                const currentVal = draft.houseRules[ruleItem.key];
+                return (
+                  <div
+                    key={ruleItem.key}
+                    className="p-3 rounded-xl border flex items-center justify-between gap-3"
+                    style={{
+                      background: 'var(--konfrm-surface-secondary)',
+                      borderColor: 'var(--konfrm-border-default)',
+                    }}
+                  >
+                    <span className="text-xs font-bold" style={{ color: 'var(--konfrm-text-primary)' }}>
+                      {ruleItem.label}
+                    </span>
+
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => updateHouseRule(ruleItem.key, true)}
+                        className={`min-h-[36px] px-3 rounded-lg text-xs font-bold border transition-all cursor-pointer ${
+                          currentVal === true
+                            ? 'border-[var(--konfrm-border-focus)] bg-[var(--konfrm-interaction-selected)] text-[var(--konfrm-color-primary)]'
+                            : 'border-[var(--konfrm-border-default)] bg-[var(--konfrm-surface-primary)] text-[var(--konfrm-text-secondary)]'
+                        }`}
+                      >
+                        مسموح
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => updateHouseRule(ruleItem.key, false)}
+                        className={`min-h-[36px] px-3 rounded-lg text-xs font-bold border transition-all cursor-pointer ${
+                          currentVal === false
+                            ? 'border-[var(--konfrm-border-focus)] bg-[var(--konfrm-interaction-selected)] text-[var(--konfrm-color-primary)]'
+                            : 'border-[var(--konfrm-border-default)] bg-[var(--konfrm-surface-primary)] text-[var(--konfrm-text-secondary)]'
+                        }`}
+                      >
+                        غير مسموح
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        )}
+
+        {/* STEP 5: IMAGES */}
+        {step === 5 && (
+          <section
+            className="p-4 rounded-2xl border space-y-4 shadow-subtle text-right"
+            style={{
+              background: 'var(--konfrm-surface-primary)',
+              borderColor: 'var(--konfrm-border-default)',
+            }}
+          >
+            <div>
+              <h2 className="text-base font-black mb-1" style={{ color: 'var(--konfrm-text-primary)' }}>
+                صور الوحدة
+              </h2>
+              <p className="text-xs font-medium" style={{ color: 'var(--konfrm-text-muted)' }}>
+                أضف صوراً حقيقية واضحة للوحدة (صورة واحدة مؤكدة على الأقل مطلوبة للمراجعة).
+              </p>
+            </div>
+
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              multiple
+              hidden
+              onChange={handleImageUpload}
+            />
+
+            <div
+              onClick={() => !isBusy && fileInputRef.current?.click()}
+              className="p-6 rounded-2xl border-2 border-dashed flex flex-col items-center justify-center gap-2 cursor-pointer hover:border-[var(--konfrm-border-focus)] transition-colors text-center"
+              style={{
+                borderColor: 'var(--konfrm-border-strong)',
+                background: 'var(--konfrm-surface-secondary)',
+              }}
+            >
+              <div
+                className="w-12 h-12 rounded-full flex items-center justify-center"
+                style={{
+                  background: 'var(--konfrm-surface-primary)',
+                  color: 'var(--konfrm-color-primary)',
+                }}
+              >
+                <Upload size={22} />
+              </div>
+              <strong className="text-sm font-black" style={{ color: 'var(--konfrm-text-primary)' }}>
+                اضغط لاختيار الصور من جهازك
+              </strong>
+              <span className="text-xs font-medium" style={{ color: 'var(--konfrm-text-muted)' }}>
+                صيغ مدعومة: JPG، PNG، WEBP (بحد أقصى 10 ميجابايت)
+              </span>
+            </div>
+
+            {/* Committed Images List */}
+            {draft.images.length > 0 ? (
+              <div className="space-y-2 pt-2">
+                <label
+                  className="text-xs font-bold block"
+                  style={{ color: 'var(--konfrm-text-secondary)' }}
+                >
+                  الصور المرفوعة ({draft.images.length})
+                </label>
+
+                <div className="grid grid-cols-2 gap-2.5">
+                  {draft.images.map((img, idx) => (
+                    <div
+                      key={img.id || idx}
+                      className="relative rounded-xl overflow-hidden border group"
+                      style={{
+                        borderColor: 'var(--konfrm-border-default)',
+                        background: 'var(--konfrm-surface-secondary)',
+                      }}
+                    >
+                      <img
+                        src={img.url}
+                        alt={`صورة ${idx + 1}`}
+                        className="w-full h-28 object-cover"
+                      />
+
+                      <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center" />
+
+                      <button
+                        type="button"
+                        onClick={() => handleImageDelete(img)}
+                        disabled={isBusy}
+                        className="absolute top-2 left-2 w-8 h-8 rounded-lg bg-white/90 text-rose-600 flex items-center justify-center shadow-xs cursor-pointer hover:bg-rose-50 transition-colors"
+                        title="حذف الصورة"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+
+                      <span className="absolute bottom-2 right-2 px-2 py-0.5 rounded-md bg-black/60 text-white text-[10px] font-bold">
+                        صورة {idx + 1}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div
+                className="p-4 rounded-xl border text-center space-y-1"
+                style={{
+                  background: 'var(--konfrm-surface-secondary)',
+                  borderColor: 'var(--konfrm-border-subtle)',
+                }}
+              >
+                <ImageIcon size={28} className="mx-auto" style={{ color: 'var(--konfrm-text-muted)' }} />
+                <p className="text-xs font-medium" style={{ color: 'var(--konfrm-text-muted)' }}>
+                  لم تتم إضافة أي صور بعد.
+                </p>
+              </div>
+            )}
+          </section>
+        )}
+
+        {/* STEP 6: REVIEW */}
+        {step === 6 && (
+          <section className="space-y-3 text-right">
+            <div
+              className="p-4 rounded-2xl border shadow-subtle"
+              style={{
+                background: 'var(--konfrm-surface-primary)',
+                borderColor: 'var(--konfrm-border-default)',
+              }}
+            >
+              <h2 className="text-base font-black mb-1" style={{ color: 'var(--konfrm-text-primary)' }}>
+                مراجعة وتأكيد البيانات
+              </h2>
+              <p className="text-xs font-medium" style={{ color: 'var(--konfrm-text-muted)' }}>
+                تأكد من صحة كافة بيانات الوحدة قبل إرسالها لاعتماد الإدارة.
+              </p>
+            </div>
+
+            {/* Review Cards with direct edit action */}
+            {[
+              {
+                stepNum: 1,
+                title: 'الأساسيات',
+                details: `${draft.title || '—'} · ${getPropertyTypeLabel(draft.propertyType)}`,
+              },
+              {
+                stepNum: 2,
+                title: 'الموقع',
+                details: `${draft.region || 'غير محدد'}${draft.resortName ? ` · ${draft.resortName}` : ''}${draft.address ? ` · ${draft.address}` : ''}`,
+              },
+              {
+                stepNum: 3,
+                title: 'السعة والتسعير',
+                details: `${draft.bedrooms ?? 0} غرف · ${draft.bathrooms ?? 0} حمامات · ${draft.maxGuests ?? 1} ضيوف · ${draft.pricePerNight ? `${draft.pricePerNight.toLocaleString('ar-EG')} ج.م / ليلة` : '—'}`,
+              },
+              {
+                stepNum: 4,
+                title: 'المرافق والقواعد',
+                details: `${draft.amenities.length} مرافق محددة · التدخين: ${draft.houseRules.smokingAllowed === true ? 'مسموح' : draft.houseRules.smokingAllowed === false ? 'غير مسموح' : 'غير محدد'}`,
+              },
+              {
+                stepNum: 5,
+                title: 'الصور',
+                details: `${draft.images.filter(img => img.status === 'committed').length} صور مرفوعة ومؤكدة`,
+              },
+            ].map(item => (
+              <div
+                key={item.stepNum}
+                className="p-4 rounded-2xl border flex items-center justify-between gap-3 shadow-subtle"
+                style={{
+                  background: 'var(--konfrm-surface-primary)',
+                  borderColor: 'var(--konfrm-border-default)',
+                }}
+              >
+                <div className="min-w-0 flex-1">
+                  <strong className="text-xs font-black block mb-0.5" style={{ color: 'var(--konfrm-text-primary)' }}>
+                    {item.title}
+                  </strong>
+                  <p className="text-xs font-medium truncate" style={{ color: 'var(--konfrm-text-secondary)' }}>
+                    {item.details}
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setWizardStep(item.stepNum)}
+                  className="px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors shrink-0 cursor-pointer"
+                  style={{
+                    borderColor: 'var(--konfrm-border-default)',
+                    color: 'var(--konfrm-color-primary)',
+                    background: 'var(--konfrm-surface-secondary)',
+                  }}
+                >
+                  تعديل
+                </button>
+              </div>
+            ))}
+          </section>
+        )}
+
+        {/* Global Error Banner */}
+        {error && (
+          <div
+            className="p-3.5 rounded-xl border flex items-start gap-2 text-xs font-bold"
+            style={{
+              background: 'var(--konfrm-semantic-danger-background)',
+              borderColor: 'var(--konfrm-semantic-danger-border)',
+              color: 'var(--konfrm-semantic-danger-text)',
+            }}
+          >
+            <AlertCircle size={16} className="shrink-0 mt-0.5" />
+            <span>{error}</span>
+          </div>
+        )}
+      </div>
+
+      {/* Sticky Mobile Action Footer */}
+      <footer
+        className="sticky bottom-0 z-20 px-4 py-3.5 border-t flex items-center justify-between gap-3 shadow-subtle"
+        style={{
+          background: 'var(--konfrm-surface-primary)',
+          borderColor: 'var(--konfrm-border-default)',
+          paddingBottom: 'calc(var(--konfrm-space-safe-bottom, 16px) + 8px)',
+        }}
+      >
+        {step > 1 ? (
+          <Button
+            variant="outline"
+            onClick={handlePrevStep}
+            disabled={isBusy}
+          >
+            السابق
+          </Button>
+        ) : (
+          <div />
+        )}
+
+        {step < 6 ? (
+          <Button
+            onClick={handleNextStep}
+            disabled={isBusy}
+          >
+            التالي
+          </Button>
+        ) : (
+          <Button
+            isLoading={isBusy}
+            onClick={handleFinalSubmit}
+          >
+            {isPublished
+              ? 'حفظ التعديلات'
+              : isRejected
+              ? 'إعادة الإرسال للمراجعة'
+              : 'إرسال الوحدة للمراجعة'}
+          </Button>
+        )}
+      </footer>
+    </main>
+  );
 };
+

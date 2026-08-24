@@ -129,7 +129,7 @@ export type EvidenceType = 'IMAGE' | 'VIDEO' | 'DOCUMENT' | 'TEXT';
 
 export type VerificationStatus = 'NOT_VERIFIED' | 'UNVERIFIED' | 'PENDING' | 'PENDING_VERIFICATION' | 'VERIFIED' | 'REJECTED';
 
-export type UnitType = 'شاليه' | 'فيلا' | 'شقة' | 'استوديو' | 'غرفة فندقية';
+export type UnitType = PropertyType | 'شاليه' | 'فيلا' | 'شقة' | 'استوديو' | 'غرفة فندقية';
 
 export type AvailabilityStatus = 'AVAILABLE' | 'BOOKED' | 'BLOCKED' | 'PENDING';
 

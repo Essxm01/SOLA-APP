@@ -7,7 +7,7 @@ assert(empty.images.length === 0 && empty.amenities.length === 0, 'new local wiz
 
 const valid = {
   ...empty,
-  title: 'وحدة حقيقية', propertyType: 'CHALET' as const, unitType: 'شاليه' as const,
+  title: 'وحدة حقيقية', propertyType: 'CHALET' as const, unitType: 'CHALET' as any,
   bedrooms: 0, bathrooms: 1, maxGuests: 2, pricePerNight: 2000,
 };
 assert(canCreateCanonicalServerDraft(valid), 'complete owner input can create a canonical draft');

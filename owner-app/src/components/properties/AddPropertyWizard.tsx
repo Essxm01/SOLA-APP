@@ -33,6 +33,7 @@ import {
   buildUpdatePropertyPayload,
   canDeleteWizardImage,
   removeWizardImageAfterCanonicalDelete,
+  toCommittedWizardImage,
   type OwnerPropertyWizardDraft,
   type WizardPropertyImage,
 } from '../../utils/ownerPropertyWizard';
@@ -53,15 +54,6 @@ const STEP_INTROS = [
   ['صور حقيقية', 'أضف صورًا واضحة تساعد المستأجر على اتخاذ القرار.'],
   ['مراجعة نهائية', 'راجع التفاصيل قبل إرسالها للإدارة.'],
 ] as const;
-
-const toCommittedWizardImage = (value: unknown): WizardPropertyImage | null => {
-  if (!value || typeof value !== 'object') return null;
-  const record = value as { id?: unknown; fileUrl?: unknown; url?: unknown; sortOrder?: unknown; order?: unknown };
-  const id = typeof record.id === 'string' ? record.id : '';
-  const url = typeof record.fileUrl === 'string' ? record.fileUrl : typeof record.url === 'string' ? record.url : '';
-  if (!id || !url) return null;
-  return { id, url, sortOrder: typeof record.sortOrder === 'number' ? record.sortOrder : typeof record.order === 'number' ? record.order : undefined, status: 'committed' };
-};
 
 const getErrorMessage = (error: unknown, fallback: string): string =>
   error instanceof Error && error.message ? error.message : fallback;

@@ -13,6 +13,7 @@ import {
   normalizePropertyType,
   canDeleteWizardImage,
   removeWizardImageAfterCanonicalDelete,
+  toCommittedWizardImage,
   type OwnerPropertyWizardDraft,
   type WizardPropertyImage,
 } from './ownerPropertyWizard';
@@ -27,6 +28,14 @@ assert(normalizePropertyType('شاليه') === 'CHALET', 'Legacy Arabic property
 assert(normalizePropertyType('not-a-property-type') === undefined, 'Unknown property type is rejected');
 assert(!canDeleteWizardImage('prop-1', { id: '', url: 'x', status: 'committed' }), 'Missing canonical image ID cannot be deleted');
 assert(canDeleteWizardImage('prop-1', { id: 'image-1', url: 'x', status: 'committed' }), 'Canonical image ID can be deleted');
+assert(
+  toCommittedWizardImage({ objectKey: 'owner/a/image.jpg', fileUrl: 'https://storage/image.jpg' }) === null,
+  'A storage object key cannot masquerade as a canonical image ID'
+);
+assert(
+  toCommittedWizardImage({ id: 'image-1', fileUrl: 'https://storage/image.jpg' })?.id === 'image-1',
+  'A canonical image record is accepted only with its database ID'
+);
 assert(
   removeWizardImageAfterCanonicalDelete([{ id: 'image-1', url: 'x', status: 'committed' }], 'image-1').length === 0,
   'Successful canonical delete removes the confirmed image locally'

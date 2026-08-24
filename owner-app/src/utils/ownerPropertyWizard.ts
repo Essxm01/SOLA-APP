@@ -66,6 +66,35 @@ export function canDeleteWizardImage(propertyId: string | undefined, image: Wiza
   return Boolean(propertyId && image.status === 'committed' && image.id);
 }
 
+/** Accept only a real property_images record; storage keys are never image IDs. */
+export function toCommittedWizardImage(value: unknown): WizardPropertyImage | null {
+  if (!value || typeof value !== 'object') return null;
+  const record = value as {
+    id?: unknown;
+    fileUrl?: unknown;
+    url?: unknown;
+    sortOrder?: unknown;
+    order?: unknown;
+  };
+  const id = typeof record.id === 'string' ? record.id : '';
+  const url = typeof record.fileUrl === 'string'
+    ? record.fileUrl
+    : typeof record.url === 'string'
+      ? record.url
+      : '';
+  if (!id || !url) return null;
+  return {
+    id,
+    url,
+    sortOrder: typeof record.sortOrder === 'number'
+      ? record.sortOrder
+      : typeof record.order === 'number'
+        ? record.order
+        : undefined,
+    status: 'committed',
+  };
+}
+
 /** Called only after the canonical delete endpoint confirms success. */
 export function removeWizardImageAfterCanonicalDelete(
   images: WizardPropertyImage[],

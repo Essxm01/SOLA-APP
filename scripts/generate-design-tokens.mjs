@@ -21,6 +21,7 @@ const cssVariables = {
   ...Object.fromEntries(Object.entries(colors.surface).map(([key, entry]) => [`surface-${key}`, value(entry)])),
   ...Object.fromEntries(Object.entries(colors.text).map(([key, entry]) => [`text-${key}`, value(entry)])),
   ...Object.fromEntries(Object.entries(colors.border).map(([key, entry]) => [`border-${key}`, value(entry)])),
+  ...Object.fromEntries(Object.entries(colors.semantic).flatMap(([key, entry]) => Object.entries(entry).filter(([subKey]) => subKey !== 'purpose').map(([subKey, subValue]) => [`semantic-${key}-${subKey}`, subValue]))),
   ...Object.fromEntries(Object.entries(colors.interaction).map(([key, entry]) => [`interaction-${key.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)}`, value(entry)])),
   ...Object.fromEntries(Object.entries(spacing.semantic).map(([key, entry]) => [`space-${key.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)}`, entry])),
   ...Object.fromEntries(Object.entries(spacing.scale).map(([key, entry]) => [`space-${key}`, entry])),

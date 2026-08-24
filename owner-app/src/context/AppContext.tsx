@@ -558,6 +558,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; ownerId: string 
       await refreshData();
     } catch (err: any) {
       showToast(err.message || 'تعذر إيقاف الوحدة', 'error');
+      throw err;
     }
   };
 
@@ -573,6 +574,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; ownerId: string 
       await refreshData();
     } catch (err: any) {
       showToast(err.message || 'تعذر استئناف نشر الوحدة', 'error');
+      throw err;
     }
   };
 
@@ -592,6 +594,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; ownerId: string 
       await refreshData();
     } catch (err: any) {
       showToast(err.message || 'تعذر أرشفة الوحدة', 'error');
+      throw err;
     }
   };
 
@@ -607,6 +610,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; ownerId: string 
       await refreshData();
     } catch (err: any) {
       showToast(err.message || 'تعذر استرجاع الوحدة', 'error');
+      throw err;
     }
   };
 
@@ -671,6 +675,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; ownerId: string 
       await refreshData();
     } catch (err: any) {
       showToast(err.message || 'تعذر تحديث الأسعار اليومية', 'error');
+      throw err;
     }
   };
 

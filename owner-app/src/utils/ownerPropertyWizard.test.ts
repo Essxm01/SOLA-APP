@@ -12,7 +12,14 @@ import {
   buildUpdatePropertyPayload,
   normalizePropertyType,
   canDeleteWizardImage,
-  removeWizardImageAfterCanonicalDelete,
+  bindNewDraftToServerProperty,
+  clearResumableNewDraft,
+  deleteWizardImageAfterCanonicalDelete,
+  isResumableNewDraft,
+  prepareReviewEdit,
+  resubmitRejectedProperty,
+  restoreResumableNewDraft,
+  saveResumableNewDraft,
   toCommittedWizardImage,
   type OwnerPropertyWizardDraft,
   type WizardPropertyImage,
@@ -36,10 +43,12 @@ assert(
   toCommittedWizardImage({ id: 'image-1', fileUrl: 'https://storage/image.jpg' })?.id === 'image-1',
   'A canonical image record is accepted only with its database ID'
 );
-assert(
-  removeWizardImageAfterCanonicalDelete([{ id: 'image-1', url: 'x', status: 'committed' }], 'image-1').length === 0,
-  'Successful canonical delete removes the confirmed image locally'
+const imagesAfterConfirmedDelete = await deleteWizardImageAfterCanonicalDelete(
+  [{ id: 'image-1', url: 'x', status: 'committed' }],
+  'image-1',
+  async () => undefined
 );
+assert(imagesAfterConfirmedDelete.length === 0, 'Successful canonical delete removes the confirmed image locally');
 
 // 1. Six-step navigation
 const empty = createEmptyPropertyWizardDraft();
@@ -118,30 +127,31 @@ const mixedRules = serializeHouseRules({ smokingAllowed: false, petsAllowed: und
 assert(mixedRules.smokingAllowed === false, 'Test 10: explicit false preserved in mixed rules');
 assert(mixedRules.petsAllowed === undefined, 'Test 10: unset rule remains undefined in mixed rules');
 
-// 11. NEW local draft close -> reopen -> resume
-const mockStorage: Record<string, string> = {};
-const owner1 = 'owner-uuid-1';
-const storageKey = `sola_owner_property_draft:${owner1}`;
-mockStorage[storageKey] = JSON.stringify({ ...step1Valid, title: 'مسودة قيد الكتابة' });
-const resumedDraft = JSON.parse(mockStorage[storageKey]);
-assert(resumedDraft.title === 'مسودة قيد الكتابة' && !resumedDraft.existingPropertyId, 'Test 11: Local NEW draft resumed properly');
+// 11–14. New-flow storage persists independently of server-ID binding and Owner edits.
+const memory = new Map<string, string>();
+const storage = {
+  getItem: (key: string) => memory.get(key) ?? null,
+  setItem: (key: string, value: string) => memory.set(key, value),
+  removeItem: (key: string) => memory.delete(key),
+};
+const owner1Key = 'sola_owner_property_draft:owner-uuid-1';
+const owner2Key = 'sola_owner_property_draft:owner-uuid-2';
+const newFlowDraft: OwnerPropertyWizardDraft = { ...step3Valid, origin: 'NEW', title: 'مسودة قيد الكتابة' };
+saveResumableNewDraft(storage, owner1Key, newFlowDraft);
+assert(restoreResumableNewDraft(storage.getItem(owner1Key))?.title === 'مسودة قيد الكتابة', 'Test 11: NEW local draft reopens with its entered data');
+assert(storage.getItem(owner2Key) === null, 'Test 12: Owner-scoped NEW draft does not appear for another Owner');
 
-// 12. Owner-scoped draft isolation
-const owner2 = 'owner-uuid-2';
-const owner2Key = `sola_owner_property_draft:${owner2}`;
-assert(mockStorage[owner2Key] === undefined, 'Test 12: Owner 2 has no access to Owner 1 draft');
+const boundNewFlow = bindNewDraftToServerProperty(newFlowDraft, 'server-draft-99');
+saveResumableNewDraft(storage, owner1Key, boundNewFlow);
+const resumedBoundNewFlow = restoreResumableNewDraft(storage.getItem(owner1Key));
+assert(resumedBoundNewFlow?.origin === 'NEW' && resumedBoundNewFlow.existingPropertyId === 'server-draft-99', 'Test 13: Image-bound server DRAFT resumes as the same NEW flow');
 
-// 13. Successful submit clears NEW local draft
-delete mockStorage[storageKey];
-assert(mockStorage[storageKey] === undefined, 'Test 13: Local draft removed after submit');
+const existingPropDraft: OwnerPropertyWizardDraft = { ...step3Valid, origin: 'EXISTING', existingPropertyId: 'prop-exist-99' };
+saveResumableNewDraft(storage, owner2Key, existingPropDraft);
+assert(storage.getItem(owner2Key) === null && !isResumableNewDraft(existingPropDraft), 'Test 14: Existing-property edit is never exposed as an Add-New resume draft');
 
-// 14. Existing edit does not become NEW draft
-const existingPropDraft: OwnerPropertyWizardDraft = { ...step3Valid, existingPropertyId: 'prop-exist-99' };
-assert(existingPropDraft.existingPropertyId === 'prop-exist-99', 'Test 14: Existing edit keeps existingPropertyId');
-
-// 15. REJECTED update -> exactly one submit transition
-const rejectedUpdatePayload = buildUpdatePropertyPayload(existingPropDraft, false);
-assert(rejectedUpdatePayload.resubmit === undefined, 'Test 15: update payload does not include resubmit=true');
+clearResumableNewDraft(storage, owner1Key, resumedBoundNewFlow!);
+assert(restoreResumableNewDraft(storage.getItem(owner1Key)) === null, 'Test 15: Successful NEW submission clears its resume state');
 
 // 16. Existing image delete uses canonical real image ID
 const existingPropertyWithImages: Property = {
@@ -179,10 +189,24 @@ const existingPropertyWithImages: Property = {
 const hydratedExist = hydratePropertyToWizard(existingPropertyWithImages);
 assert(hydratedExist.images[0].id === 'real-img-uuid-555', 'Test 16: Hydration preserves real database image ID');
 
-// 17. Failed image delete keeps the image visible
+// 17. Failed canonical image delete never invokes the local removal result.
 const imagesBeforeDelete = [...hydratedExist.images];
-const imagesAfterFailedDelete = imagesBeforeDelete;
-assert(imagesAfterFailedDelete.length === 1 && imagesAfterFailedDelete[0].id === 'real-img-uuid-555', 'Test 17: Image remains in state on delete failure');
+let rejectedDelete = false;
+let localRemovalCalls = 0;
+try {
+  await deleteWizardImageAfterCanonicalDelete(
+    imagesBeforeDelete,
+    'real-img-uuid-555',
+    async () => { throw new Error('DELETE_FAILED'); },
+    (currentImages) => {
+      localRemovalCalls += 1;
+      return currentImages.filter(image => image.id !== 'real-img-uuid-555');
+    }
+  );
+} catch {
+  rejectedDelete = true;
+}
+assert(rejectedDelete && localRemovalCalls === 0 && imagesBeforeDelete.length === 1 && imagesBeforeDelete[0].id === 'real-img-uuid-555', 'Test 17: Failed canonical delete never invokes local removal');
 
 // 18. Partial multi-image failure keeps earlier successful commits
 const imgA: WizardPropertyImage = { id: 'img-a', url: 'https://cdn/a.jpg', status: 'committed' };
@@ -192,15 +216,21 @@ const committedInState = multiList.filter(i => i.status === 'committed');
 assert(committedInState.length === 1 && committedInState[0].id === 'img-a', 'Test 18: Earlier committed image retained on partial failure');
 
 // 19. PUBLISHED save does not submit for review
-const publishedDraft: OwnerPropertyWizardDraft = { ...step3Valid, existingPropertyId: 'prop-pub-1', canonicalStatus: 'PUBLISHED' };
+const publishedDraft: OwnerPropertyWizardDraft = { ...step3Valid, origin: 'EXISTING', existingPropertyId: 'prop-pub-1', canonicalStatus: 'PUBLISHED' };
 const pubPayload = buildUpdatePropertyPayload(publishedDraft, false);
 assert(pubPayload.resubmit === undefined, 'Test 19: Published update does not trigger resubmit flag');
 
-// 20. Review Edit returns to correct step without data loss
-let currentWizardStep = 6;
-const stepToJump = 2;
-currentWizardStep = stepToJump;
-assert(currentWizardStep === 2, 'Test 20: Jumps to Step 2');
-assert(step3Valid.region === 'الساحل الشمالي', 'Test 20: Data preserved upon jump');
+// 20. Review Edit returns to the requested step while retaining the same draft data.
+const reviewTransition = prepareReviewEdit(boundNewFlow, 2);
+assert(reviewTransition.step === 2 && reviewTransition.draft === boundNewFlow && reviewTransition.draft.region === 'الساحل الشمالي', 'Test 20: Review edit keeps the same draft while moving to its selected step');
+
+// 21. Rejected orchestration performs exactly one update then exactly one submit.
+let updateCalls = 0;
+let submitCalls = 0;
+await resubmitRejectedProperty(
+  async () => { updateCalls += 1; },
+  async () => { submitCalls += 1; }
+);
+assert(updateCalls === 1 && submitCalls === 1, 'Test 21: Rejected flow updates once and submits once');
 
 console.log('✅ ALL OWNER-PROPERTY-WIZARD-02 pure and invariant test scenarios passed.');

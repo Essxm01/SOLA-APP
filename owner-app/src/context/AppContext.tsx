@@ -28,7 +28,13 @@ import type {
 import { mockRepository } from '../services/mockRepository';
 import { repositoryFactory } from '../services/repositoryFactory';
 import { getOwnerDraftStorageKey } from '../utils/ownerIdentity';
-import { createEmptyPropertyWizardDraft, hydratePropertyToWizard, isOwnerPropertyWizardDraft, type OwnerPropertyWizardDraft } from '../utils/ownerPropertyWizard';
+import {
+  createEmptyPropertyWizardDraft,
+  hydratePropertyToWizard,
+  restoreResumableNewDraft,
+  saveResumableNewDraft,
+  type OwnerPropertyWizardDraft,
+} from '../utils/ownerPropertyWizard';
 
 type NavTab = 'home' | 'bookings' | 'properties' | 'messages' | 'disputes' | 'wallet' | 'profile' | 'calendar';
 type PropertyViewMode = 'list' | 'details' | 'wizard';
@@ -216,13 +222,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; ownerId: string 
   const [propertyViewMode, setPropertyViewMode] = useState<PropertyViewMode>('list');
   const [wizardStep, setWizardStep] = useState<number>(1);
   const [currentDraft, setCurrentDraft] = useState<OwnerPropertyWizardDraft | null>(() => {
-    const saved = localStorage.getItem(getOwnerDraftStorageKey(ownerId));
-    try {
-      const parsed: unknown = saved ? JSON.parse(saved) : null;
-      return isOwnerPropertyWizardDraft(parsed) ? parsed : null;
-    } catch {
-      return null;
-    }
+    return restoreResumableNewDraft(localStorage.getItem(getOwnerDraftStorageKey(ownerId)));
   });
 
   // Phase 3A States
@@ -469,11 +469,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; ownerId: string 
   }, [refreshData]);
 
   useEffect(() => {
-    if (currentDraft) {
-      localStorage.setItem(ownerDraftStorageKey, JSON.stringify(currentDraft));
-    } else {
-      localStorage.removeItem(ownerDraftStorageKey);
-    }
+    if (currentDraft) saveResumableNewDraft(localStorage, ownerDraftStorageKey, currentDraft);
   }, [currentDraft, ownerDraftStorageKey]);
 
   const createOrUpdateProperty = async (
@@ -689,21 +685,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode; ownerId: string 
     if (initialData) {
       setCurrentDraft(hydratePropertyToWizard(initialData));
     } else {
-      const saved = localStorage.getItem(getOwnerDraftStorageKey(ownerId));
-      if (saved) {
-        try {
-          const parsed = JSON.parse(saved);
-          if (isOwnerPropertyWizardDraft(parsed) && !parsed.existingPropertyId) {
-            setCurrentDraft(parsed);
-          } else {
-            setCurrentDraft(createEmptyPropertyWizardDraft());
-          }
-        } catch {
-          setCurrentDraft(createEmptyPropertyWizardDraft());
-        }
-      } else {
-        setCurrentDraft(createEmptyPropertyWizardDraft());
-      }
+      setCurrentDraft(
+        restoreResumableNewDraft(localStorage.getItem(getOwnerDraftStorageKey(ownerId)))
+        || createEmptyPropertyWizardDraft()
+      );
     }
     setWizardStep(1);
     setPropertyViewMode('wizard');

@@ -32,7 +32,12 @@ import {
   buildCreatePropertyPayload,
   buildUpdatePropertyPayload,
   canDeleteWizardImage,
-  removeWizardImageAfterCanonicalDelete,
+  bindNewDraftToServerProperty,
+  clearResumableNewDraft,
+  deleteWizardImageAfterCanonicalDelete,
+  prepareReviewEdit,
+  resubmitRejectedProperty,
+  saveResumableNewDraft,
   toCommittedWizardImage,
   type OwnerPropertyWizardDraft,
   type WizardPropertyImage,
@@ -203,6 +208,12 @@ export const AddPropertyWizard: React.FC = () => {
   const step = Math.max(1, Math.min(6, wizardStep));
   const isPublished = draft.canonicalStatus === 'PUBLISHED';
   const isRejected = draft.canonicalStatus === 'REJECTED';
+  const clearDraftAfterSuccessfulSubmit = () => {
+    if (draft.origin === 'NEW' && ownerId) {
+      clearResumableNewDraft(localStorage, `sola_owner_property_draft:${ownerId}`, draft);
+    }
+    setCurrentDraft(null);
+  };
 
   // If editing an existing property, fetch server image records with real IDs
   useEffect(() => {
@@ -232,9 +243,9 @@ export const AddPropertyWizard: React.FC = () => {
   useEffect(() => {
     if (!isSubmitted) {
       setCurrentDraft(draft);
-      if (!draft.existingPropertyId && ownerId) {
+      if (ownerId) {
         try {
-          localStorage.setItem(`sola_owner_property_draft:${ownerId}`, JSON.stringify(draft));
+          saveResumableNewDraft(localStorage, `sola_owner_property_draft:${ownerId}`, draft);
         } catch {
           // Ignore localStorage errors
         }
@@ -346,7 +357,7 @@ export const AddPropertyWizard: React.FC = () => {
         const createPayload = buildCreatePropertyPayload(draft);
         const created = await repositoryFactory.property.createProperty(createPayload);
         currentPropertyId = created.id;
-        updateField('existingPropertyId', created.id);
+        setDraft(previous => bindNewDraftToServerProperty(previous, created.id));
       }
 
       for (let i = 0; i < files.length; i++) {
@@ -446,10 +457,14 @@ export const AddPropertyWizard: React.FC = () => {
     setError('');
 
     try {
-      await repositoryFactory.property.deletePropertyImage(propertyId, image.id);
+      const remainingImages = await deleteWizardImageAfterCanonicalDelete(
+        draft.images,
+        image.id,
+        () => repositoryFactory.property.deletePropertyImage(propertyId, image.id)
+      );
       setDraft(prev => ({
         ...prev,
-        images: removeWizardImageAfterCanonicalDelete(prev.images, image.id),
+        images: remainingImages,
       }));
       showToast('تم حذف الصورة بنجاح', 'info');
     } catch (err: unknown) {
@@ -478,7 +493,7 @@ export const AddPropertyWizard: React.FC = () => {
           const updatePayload = buildUpdatePropertyPayload(draft, false);
           await repositoryFactory.property.updateProperty(draft.existingPropertyId, updatePayload);
           showToast('تم حفظ تعديلات الوحدة بنجاح', 'success');
-          setCurrentDraft(null);
+          clearDraftAfterSuccessfulSubmit();
           await refreshData();
           setPropertyViewMode('list');
         }
@@ -486,13 +501,16 @@ export const AddPropertyWizard: React.FC = () => {
         // Rejected property: Normal update, then submit exactly once (Override 5C)
         if (draft.existingPropertyId) {
           const updatePayload = buildUpdatePropertyPayload(draft, false);
-          await repositoryFactory.property.updateProperty(draft.existingPropertyId, updatePayload);
-          await repositoryFactory.property.submitPropertyForReview(draft.existingPropertyId);
+          await resubmitRejectedProperty(
+            async () => {
+              await repositoryFactory.property.updateProperty(draft.existingPropertyId!, updatePayload);
+            },
+            async () => {
+              await repositoryFactory.property.submitPropertyForReview(draft.existingPropertyId!);
+            }
+          );
           setIsSubmitted(true);
-          setCurrentDraft(null);
-          if (ownerId) {
-            localStorage.removeItem(`sola_owner_property_draft:${ownerId}`);
-          }
+          clearDraftAfterSuccessfulSubmit();
           await refreshData();
         }
       } else {
@@ -510,10 +528,7 @@ export const AddPropertyWizard: React.FC = () => {
         if (propertyId) {
           await repositoryFactory.property.submitPropertyForReview(propertyId);
           setIsSubmitted(true);
-          setCurrentDraft(null);
-          if (ownerId) {
-            localStorage.removeItem(`sola_owner_property_draft:${ownerId}`);
-          }
+          clearDraftAfterSuccessfulSubmit();
           await refreshData();
         }
       }
@@ -555,7 +570,9 @@ export const AddPropertyWizard: React.FC = () => {
         </button>
 
         <div className="text-center">
-          <span className="text-xs font-bold block" style={{ color: 'var(--konfrm-text-muted)' }}>إضافة وحدة جديدة</span>
+          <span className="text-xs font-bold block" style={{ color: 'var(--konfrm-text-muted)' }}>
+            {draft.origin === 'EXISTING' ? 'تعديل الوحدة' : 'إضافة وحدة جديدة'}
+          </span>
           <strong className="text-base font-black block" style={{ color: 'var(--konfrm-text-primary)' }}>{STEPS[step - 1]}</strong>
         </div>
 
@@ -1192,12 +1209,16 @@ export const AddPropertyWizard: React.FC = () => {
 
                 <button
                   type="button"
-                  onClick={() => setWizardStep(item.stepNum)}
-                  className="px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors shrink-0 cursor-pointer"
+                  onClick={() => {
+                    const transition = prepareReviewEdit(draft, item.stepNum);
+                    setDraft(transition.draft);
+                    setWizardStep(transition.step);
+                  }}
+                  className="min-h-[44px] px-3 rounded-lg text-xs font-bold border transition-colors shrink-0 cursor-pointer"
                   style={{
-                    borderColor: 'var(--konfrm-border-default)',
+                    borderColor: 'var(--konfrm-border-focus)',
                     color: 'var(--konfrm-color-primary)',
-                    background: 'var(--konfrm-surface-secondary)',
+                    background: 'var(--konfrm-interaction-selected)',
                   }}
                 >
                   تعديل

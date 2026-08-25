@@ -15,6 +15,7 @@ import {
   AlertCircle,
   FileText,
 } from 'lucide-react';
+import { isResumableNewDraft } from '../../utils/ownerPropertyWizard';
 
 export const PropertiesView: React.FC = () => {
   const {
@@ -95,7 +96,7 @@ export const PropertiesView: React.FC = () => {
       </div>
 
       {/* Resume Unsaved Draft Banner if draft exists */}
-      {currentDraft && (
+      {isResumableNewDraft(currentDraft) && (
         <div className="p-3 bg-amber-50 border border-amber-300 rounded-2xl flex items-center justify-between gap-2 shadow-xs">
           <div className="flex items-center gap-2.5 min-w-0">
             <div className="w-8 h-8 rounded-xl bg-amber-100 flex items-center justify-center text-amber-800 shrink-0">

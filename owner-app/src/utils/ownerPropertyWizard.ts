@@ -103,6 +103,24 @@ export function removeWizardImageAfterCanonicalDelete(
   return images.filter(image => image.id !== imageId);
 }
 
+export async function deleteWizardImageAfterCanonicalDelete<T>(
+  images: WizardPropertyImage[],
+  imageId: string,
+  deleteCanonicalImage: () => Promise<T>,
+  removeLocalImage: (currentImages: WizardPropertyImage[], canonicalImageId: string) => WizardPropertyImage[] = removeWizardImageAfterCanonicalDelete
+): Promise<WizardPropertyImage[]> {
+  await deleteCanonicalImage();
+  return removeLocalImage(images, imageId);
+}
+
+export async function resubmitRejectedProperty(
+  update: () => Promise<void>,
+  submit: () => Promise<void>
+): Promise<void> {
+  await update();
+  await submit();
+}
+
 export interface WizardHouseRules {
   smokingAllowed?: boolean;
   partiesAllowed?: boolean;
@@ -114,6 +132,8 @@ export interface WizardHouseRules {
 }
 
 export interface OwnerPropertyWizardDraft {
+  /** A NEW flow remains resumable even after image binding creates a server DRAFT. */
+  origin: 'NEW' | 'EXISTING';
   existingPropertyId?: string;
   canonicalStatus?: PropertyStatus;
   rejectionReason?: string;
@@ -144,6 +164,7 @@ export interface OwnerPropertyWizardDraft {
 
 export function createEmptyPropertyWizardDraft(): OwnerPropertyWizardDraft {
   return {
+    origin: 'NEW',
     currency: 'EGP',
     amenities: [],
     images: [],
@@ -154,7 +175,63 @@ export function createEmptyPropertyWizardDraft(): OwnerPropertyWizardDraft {
 export function isOwnerPropertyWizardDraft(value: unknown): value is OwnerPropertyWizardDraft {
   if (!value || typeof value !== 'object') return false;
   const draft = value as Partial<OwnerPropertyWizardDraft>;
-  return draft.currency === 'EGP' && Array.isArray(draft.amenities) && Array.isArray(draft.images) && !!draft.houseRules;
+  return (draft.origin === 'NEW' || draft.origin === 'EXISTING')
+    && draft.currency === 'EGP'
+    && Array.isArray(draft.amenities)
+    && Array.isArray(draft.images)
+    && !!draft.houseRules;
+}
+
+/** Safely read only resumable Add-New flows. Legacy drafts without an origin are ignored. */
+export function restoreResumableNewDraft(serialized: string | null): OwnerPropertyWizardDraft | null {
+  if (!serialized) return null;
+  try {
+    const parsed: unknown = JSON.parse(serialized);
+    return isOwnerPropertyWizardDraft(parsed) && parsed.origin === 'NEW' ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+export function isResumableNewDraft(draft: OwnerPropertyWizardDraft | null): draft is OwnerPropertyWizardDraft {
+  return draft?.origin === 'NEW';
+}
+
+export interface WizardDraftStorage {
+  getItem(key: string): string | null;
+  setItem(key: string, value: string): void;
+  removeItem(key: string): void;
+}
+
+export function saveResumableNewDraft(
+  storage: WizardDraftStorage,
+  key: string,
+  draft: OwnerPropertyWizardDraft
+): void {
+  if (draft.origin === 'NEW') storage.setItem(key, JSON.stringify(draft));
+}
+
+export function clearResumableNewDraft(
+  storage: WizardDraftStorage,
+  key: string,
+  draft: OwnerPropertyWizardDraft
+): void {
+  if (draft.origin === 'NEW') storage.removeItem(key);
+}
+
+/** Keep the Add-New origin while attaching the canonical server DRAFT created for image binding. */
+export function bindNewDraftToServerProperty(
+  draft: OwnerPropertyWizardDraft,
+  propertyId: string
+): OwnerPropertyWizardDraft {
+  return { ...draft, origin: 'NEW', existingPropertyId: propertyId };
+}
+
+export function prepareReviewEdit(
+  draft: OwnerPropertyWizardDraft,
+  step: number
+): { draft: OwnerPropertyWizardDraft; step: number } {
+  return { draft, step: Math.max(1, Math.min(5, step)) };
 }
 
 export function hydratePropertyToWizard(property: Property): OwnerPropertyWizardDraft {
@@ -190,6 +267,7 @@ export function hydratePropertyToWizard(property: Property): OwnerPropertyWizard
   }
 
   return {
+    origin: 'EXISTING',
     existingPropertyId: property.id,
     canonicalStatus: property.status,
     rejectionReason: property.rejectionReason,

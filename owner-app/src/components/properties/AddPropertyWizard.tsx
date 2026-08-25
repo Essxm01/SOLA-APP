@@ -101,13 +101,15 @@ const WizardStepper: React.FC<StepperProps> = ({
 
   return (
     <div
-      className={`p-3.5 rounded-2xl border flex gap-3 shadow-subtle ${compact ? 'flex-col items-stretch' : 'items-center justify-between'}`}
+      className={`p-3.5 rounded-2xl border flex gap-3 shadow-subtle ${
+        compact ? 'flex-col items-stretch' : 'flex-row flex-wrap items-center justify-between'
+      }`}
       style={{
         background: 'var(--konfrm-surface-primary)',
         borderColor: 'var(--konfrm-border-default)',
       }}
     >
-      <div className={`min-w-0 flex-1 ${compact ? 'text-center' : ''}`}>
+      <div className="min-w-0 flex-1">
         <strong className="text-sm font-black block" style={{ color: 'var(--konfrm-text-primary)' }}>
           {label}
         </strong>
@@ -118,7 +120,7 @@ const WizardStepper: React.FC<StepperProps> = ({
         )}
       </div>
 
-      <div className={`flex shrink-0 ${compact ? 'flex-col self-center' : 'items-center'}`} style={{ gap: '8px' }}>
+      <div className={`flex flex-row shrink-0 ${compact ? 'self-start' : 'items-center'}`} style={{ gap: '8px' }}>
         {/* Minus Button: 44x44 */}
         <button
           type="button"
@@ -609,7 +611,7 @@ export const AddPropertyWizard: React.FC = () => {
       </div>
 
       {/* Scrollable Form Body with bottom padding for Floating Island */}
-      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4 pb-36 max-w-lg mx-auto w-full">
+      <div className="wizard-form-shell flex-1 overflow-y-auto px-4 py-4 space-y-4 pb-36 max-w-lg mx-auto w-full">
         {/* Rejection Banner if editing rejected property */}
         {isRejected && (
           <section
@@ -804,18 +806,9 @@ export const AddPropertyWizard: React.FC = () => {
 
         {/* STEP 3: CAPACITY & PRICING BENTO */}
         {step === 3 && (
-          <section className="space-y-4">
-            <div>
-              <h2 className="text-base font-black mb-1" style={{ color: 'var(--konfrm-text-primary)' }}>
-                السعة والتسعير
-              </h2>
-              <p className="text-xs font-medium" style={{ color: 'var(--konfrm-text-muted)' }}>
-                أدخل تفاصيل الغرف والمساحة وسعر الليلة بالجنيه المصري.
-              </p>
-            </div>
-
+          <section className="space-y-5">
             {/* Steppers Bento */}
-            <div className="grid grid-cols-2 gap-3">
+            <div className="wizard-step3-counters grid grid-cols-1 gap-3">
               <WizardStepper
                 label="غرف النوم *"
                 sublabel="0 متاح للاستوديو"
@@ -836,7 +829,7 @@ export const AddPropertyWizard: React.FC = () => {
                 compact
               />
 
-              <div className="col-span-2">
+              <div className="wizard-step3-guests">
                 <WizardStepper
                 label="الحد الأقصى للضيوف *"
                 sublabel="الحد الأدنى 1 ضيف"
@@ -849,7 +842,7 @@ export const AddPropertyWizard: React.FC = () => {
             </div>
 
             {/* Area & Price */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+            <div className="grid grid-cols-1 gap-3">
               <Input
                 type="text"
                 inputMode="numeric"
@@ -1248,7 +1241,7 @@ export const AddPropertyWizard: React.FC = () => {
       <aside
         role="region"
         aria-label="إجراءات المتابعة"
-        className="fixed bottom-4 left-4 right-4 max-w-lg mx-auto z-40 p-2 rounded-[24px] border shadow-lg flex items-center gap-2"
+        className="fixed left-1/2 -translate-x-1/2 z-40 w-[calc(min(100vw,430px)-32px)] p-2 rounded-[24px] border shadow-lg flex items-center gap-2"
         style={{
           background: 'var(--konfrm-surface-primary)',
           borderColor: 'var(--konfrm-border-default)',

@@ -33,6 +33,21 @@
 }
 .property-filter-rail::-webkit-scrollbar { display: none; }
 
+/* The wizard is rendered inside a capped mobile shell even on desktop browsers. */
+.wizard-form-shell {
+  container-type: inline-size;
+}
+
+@container (min-width: 380px) {
+  .wizard-step3-counters {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .wizard-step3-guests {
+    grid-column: 1 / -1;
+  }
+}
+
 /* Glassmorphism effects */
 .glass-panel {
   background: rgba(255, 255, 255, 0.85);

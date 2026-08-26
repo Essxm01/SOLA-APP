@@ -269,10 +269,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode; ownerId: string 
         mockRepository.getOwnerWallet(),
         mockRepository.getWalletLedgerEntries(),
       ]);
-      setWallet(walletData);
-      setWalletLedger(ledgerData);
-      setWalletError(null);
-      return walletData;
+      const walletFixture = import.meta.env.DEV
+        ? new URLSearchParams(window.location.search).get('ownerWalletFixture')
+        : null;
+      const fixtureWallet = walletFixture === 'empty'
+        ? { ...walletData, availableBalance: 0, pendingBalance: 0, reservedForPayout: 0, heldBalance: 0 }
+        : walletFixture === 'no-held'
+          ? { ...walletData, heldBalance: 0 }
+          : walletData;
+      setWallet(fixtureWallet);
+      setWalletLedger(walletFixture === 'empty' ? [] : ledgerData);
+      setWalletError(walletFixture === 'error' ? 'تعذر تحميل بيانات المحفظة المالية. يرجى إعادة المحاولة.' : null);
+      return fixtureWallet;
     }
 
     const [walletResult, ledgerResult] = await Promise.allSettled([
@@ -435,6 +443,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode; ownerId: string 
             : booking)
           : homeFixtureBookings) as Booking[];
 
+        // Local-only Wallet visual-review fixtures. They use the same canonical
+        // client shapes and are eliminated from production behavior by Vite's DEV
+        // guard; no fixture can reach a deployed financial workflow.
+        const walletFixture = import.meta.env.DEV
+          ? new URLSearchParams(window.location.search).get('ownerWalletFixture')
+          : null;
+        const fixtureWallet = walletFixture === 'empty'
+          ? { ...walletData, availableBalance: 0, pendingBalance: 0, reservedForPayout: 0, heldBalance: 0 }
+          : walletFixture === 'no-held'
+            ? { ...walletData, heldBalance: 0 }
+            : walletData;
+        const fixtureLedger = walletFixture === 'empty' ? [] : ledgerData;
+        const fixtureMethods = walletFixture === 'no-method' ? [] : methodsData;
+
         setProperties(fixtureProperties);
         setBookings(fixtureBookings);
         setNotifications(notifsData);
@@ -444,11 +466,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode; ownerId: string 
         setChatConversations(convsData);
         setDisputes(dispData);
 
-        setWallet(walletData);
-        setWalletError(null);
-        setPayoutMethods(methodsData);
+        setWallet(fixtureWallet);
+        setWalletError(walletFixture === 'error' ? 'تعذر تحميل بيانات المحفظة المالية. يرجى إعادة المحاولة.' : null);
+        setPayoutMethods(fixtureMethods);
         setPayoutRequests(reqsData);
-        setWalletLedger(ledgerData);
+        setWalletLedger(fixtureLedger);
         setFinancialAnalytics(analyticsData);
         setAdvancedAnalytics(advAnalyticsData);
 

@@ -1,579 +1,104 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { ArrowUpLeft, Bell, Check, ChevronLeft, CircleDollarSign, Eye, EyeOff, ReceiptText, RefreshCw, ShieldAlert, WalletCards } from 'lucide-react';
+import { useAuth } from '../../context/AuthContext';
 import { useApp } from '../../context/AppContext';
-import type { PayoutMethodType } from '../../types';
-import { Button } from '../ui/Button';
-import { BottomSheet } from '../ui/BottomSheet';
-import {
-  MINIMUM_PAYOUT_AMOUNT,
-  PAYOUT_STATUS_CONFIG,
-  PAYOUT_METHOD_CONFIG,
-} from '../../constants/theme';
+import type { PayoutMethodType, PayoutRequest } from '../../types';
+import { MINIMUM_PAYOUT_AMOUNT, PAYOUT_METHOD_CONFIG, PAYOUT_STATUS_CONFIG } from '../../constants/theme';
 import { AnalyticsFoundationView } from '../analytics/AnalyticsFoundationView';
-import {
-  Wallet,
-  ArrowUpRight,
-  Clock,
-  Lock,
-  History,
-  CreditCard,
-  Plus,
-  Info,
-} from 'lucide-react';
+import { BottomSheet } from '../ui/BottomSheet';
+import { createPayoutSubmissionGate, filterWalletLedger, getWalletDisplayAmount, getWalletLedgerPresentation, getWalletViewState, validatePayoutAmount, type WalletLedgerFilter } from '../../utils/ownerWallet';
+
+const FILTERS: Array<{ id: WalletLedgerFilter; label: string }> = [
+  { id: 'all', label: 'الكل' }, { id: 'deposit', label: 'عربون' }, { id: 'payout', label: 'سحب' }, { id: 'held', label: 'مجمّد' },
+];
+
+const ledgerToneClass = {
+  positive: 'bg-emerald-50 text-emerald-800', neutral: 'bg-[var(--konfrm-surface-secondary)] text-[var(--konfrm-text-secondary)]', warning: 'bg-amber-50 text-amber-800', danger: 'bg-rose-50 text-rose-800',
+};
+
+const formatDate = (value?: string) => {
+  if (!value) return '';
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value : new Intl.DateTimeFormat('ar-EG', { day: 'numeric', month: 'short' }).format(date);
+};
+
+const getOwnerDisplayName = (name?: string) => name?.replace(/\s*\(المالك\)\s*/g, '').trim() || 'المالك';
 
 export const WalletFoundationView: React.FC = () => {
-  const {
-    wallet,
-    walletError,
-    refreshWallet,
-    payoutMethods,
-    payoutRequests,
-    walletLedger,
-    createPayoutRequest,
-    cancelPayoutRequestByOwner,
-    addOwnerPayoutMethod,
-    showToast,
-  } = useApp();
-
-  const [activeTabSection, setActiveTabSection] = useState<'overview' | 'payouts' | 'ledger' | 'analytics'>('overview');
-
-  // BottomSheet States
+  const { owner } = useAuth();
+  const { wallet, walletError, refreshWallet, payoutMethods, payoutRequests, walletLedger, createPayoutRequest, cancelPayoutRequestByOwner, addOwnerPayoutMethod, setIsNotificationsOpen } = useApp();
+  const [isBalanceHidden, setIsBalanceHidden] = useState(false);
+  const [activeFilter, setActiveFilter] = useState<WalletLedgerFilter>('all');
   const [isPayoutSheetOpen, setIsPayoutSheetOpen] = useState(false);
   const [isAddMethodSheetOpen, setIsAddMethodSheetOpen] = useState(false);
-
-  // Payout Form Input State
-  const [payoutAmount, setPayoutAmount] = useState<number>(MINIMUM_PAYOUT_AMOUNT);
-  const [selectedMethodId, setSelectedMethodId] = useState<string>((payoutMethods || [])[0]?.id || '');
-  const [payoutNotes, setPayoutNotes] = useState<string>('');
+  const [isSuccessSheetOpen, setIsSuccessSheetOpen] = useState(false);
+  const [secondaryView, setSecondaryView] = useState<'payouts' | 'analytics' | null>(null);
+  const [payoutAmountInput, setPayoutAmountInput] = useState('');
+  const [selectedMethodId, setSelectedMethodId] = useState('');
+  const [payoutNotes, setPayoutNotes] = useState('');
+  const [payoutError, setPayoutError] = useState<string | null>(null);
   const [isSubmittingPayout, setIsSubmittingPayout] = useState(false);
-
-  // New Method Form State
   const [newMethodType, setNewMethodType] = useState<PayoutMethodType>('INSTAPAY');
   const [newAccountTitle, setNewAccountTitle] = useState('');
   const [newAccountNumber, setNewAccountNumber] = useState('');
-  const [newBankName, setNewBankName] = useState('البنك الأهلي المصري');
+  const [newBankName, setNewBankName] = useState('');
+  const payoutSubmissionGate = useRef(createPayoutSubmissionGate());
+
+  useEffect(() => { void refreshWallet(); }, [refreshWallet]);
+  useEffect(() => { if (!selectedMethodId && payoutMethods[0]?.id) setSelectedMethodId(payoutMethods[0].id); }, [payoutMethods, selectedMethodId]);
+
+  const viewState = getWalletViewState(wallet, walletError);
   const canRequestPayout = (wallet?.availableBalance ?? 0) >= MINIMUM_PAYOUT_AMOUNT;
+  const displayAmount = (amount: number) => getWalletDisplayAmount(amount, isBalanceHidden);
+  const visibleLedger = useMemo(() => filterWalletLedger(walletLedger, activeFilter), [walletLedger, activeFilter]);
+  const ownerDisplayName = getOwnerDisplayName(owner?.name);
 
-  useEffect(() => {
-    void refreshWallet();
-  }, [refreshWallet]);
-
+  const closePayoutSheet = () => { if (!isSubmittingPayout) { setIsPayoutSheetOpen(false); setPayoutError(null); } };
   const handleRequestPayout = async () => {
-    if (payoutAmount < MINIMUM_PAYOUT_AMOUNT) {
-      showToast(`الحد الأدنى لطلب السحب هو ${MINIMUM_PAYOUT_AMOUNT.toLocaleString()} ج.م.`, 'error');
-      return;
-    }
-    if (!wallet || payoutAmount > wallet.availableBalance) {
-      showToast('المبلغ المطلوب يتجاوز رصيدك المتاح للسحب.', 'error');
-      return;
-    }
-    if (!selectedMethodId) {
-      showToast('يرجى اختيار وسيلة السحب.', 'error');
-      return;
-    }
-
+    const amount = Number(payoutAmountInput);
+    const validation = validatePayoutAmount({ amount, availableBalance: wallet?.availableBalance ?? 0, hasPayoutMethod: Boolean(selectedMethodId), minimumAmount: MINIMUM_PAYOUT_AMOUNT });
+    if (validation) { setPayoutError(validation); return; }
+    setPayoutError(null); setIsSubmittingPayout(true);
     try {
-      setIsSubmittingPayout(true);
-      await createPayoutRequest({
-        amount: Number(payoutAmount),
-        payoutMethodId: selectedMethodId,
-        notes: payoutNotes,
-      });
-      setIsPayoutSheetOpen(false);
-      setPayoutNotes('');
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setIsSubmittingPayout(false);
-    }
+      const result = await payoutSubmissionGate.current(() => createPayoutRequest({ amount, payoutMethodId: selectedMethodId, notes: payoutNotes.trim() || undefined }));
+      if (!result.started) return;
+      setIsPayoutSheetOpen(false); setIsSuccessSheetOpen(true); setPayoutAmountInput(''); setPayoutNotes('');
+    } catch { setPayoutError('تعذر إنشاء طلب السحب. حاول مرة أخرى.'); }
+    finally { setIsSubmittingPayout(false); }
   };
-
   const handleAddMethod = async () => {
-    if (!newAccountTitle || !newAccountNumber) {
-      showToast('يرجى إدخال اسم صاحب الحساب ورقم الحساب/المحفظة.', 'error');
-      return;
-    }
-
-    try {
-      await addOwnerPayoutMethod({
-        type: newMethodType,
-        accountTitle: newAccountTitle,
-        accountNumberOrIban: newAccountNumber,
-        bankName: newMethodType === 'BANK_TRANSFER' ? newBankName : undefined,
-        isDefault: payoutMethods.length === 0,
-      });
-      setIsAddMethodSheetOpen(false);
-      setNewAccountTitle('');
-      setNewAccountNumber('');
-    } catch (err) {
-      console.error(err);
-    }
+    if (!newAccountTitle.trim() || !newAccountNumber.trim()) return;
+    await addOwnerPayoutMethod({ type: newMethodType, accountTitle: newAccountTitle.trim(), accountNumberOrIban: newAccountNumber.trim(), bankName: newMethodType === 'BANK_TRANSFER' ? newBankName.trim() || undefined : undefined, isDefault: payoutMethods.length === 0 });
+    setNewAccountTitle(''); setNewAccountNumber(''); setNewBankName(''); setIsAddMethodSheetOpen(false);
   };
 
-  return (
-    <div className="p-4 space-y-4 dir-rtl text-right min-h-full pb-20">
-      {/* Title Bar */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-xl font-black text-slate-900 flex items-center gap-2">
-            <Wallet className="w-6 h-6 text-[#0059FF]" />
-            <span>محفظة الأرباح والتقارير المالية</span>
-          </h2>
-          <p className="text-xs text-slate-500">
-            متابعة مستحقاتك، طلبات السحب، الرصيد المعلق، وتدقيق العمليات المالية
-          </p>
-        </div>
+  if (viewState === 'loading') return <WalletSkeleton />;
+  if (viewState === 'error') return <section className="min-h-full px-[var(--konfrm-space-page-horizontal)] pb-28 pt-6" dir="rtl"><div className="rounded-[var(--konfrm-radius-elevated-card)] border border-rose-200 bg-rose-50 p-5 text-center"><ShieldAlert className="mx-auto h-7 w-7 text-rose-700" /><h1 className="mt-3 text-[18px] font-extrabold text-rose-900">تعذر تحميل بيانات المحفظة.</h1><p className="mt-1 text-[14px] leading-6 text-rose-800">حاول مرة أخرى.</p><button type="button" onClick={() => void refreshWallet()} className="mt-4 inline-flex min-h-11 items-center gap-2 rounded-[var(--konfrm-radius-control)] bg-[var(--konfrm-surface-primary)] px-4 text-[14px] font-bold text-[var(--konfrm-color-primary)] ring-1 ring-[var(--konfrm-border-default)]"><RefreshCw className="h-4 w-4" />إعادة المحاولة</button></div></section>;
 
-        <Button
-          variant="primary"
-          size="sm"
-          onClick={() => setIsPayoutSheetOpen(true)}
-          disabled={!canRequestPayout}
-          icon={<ArrowUpRight className="w-4 h-4" />}
-          className="bg-[#0059FF] font-bold text-xs py-2 px-3 shrink-0 shadow-xs"
-        >
-          سحب الأرباح 💸
-        </Button>
-      </div>
+  return <section className="min-h-full bg-[var(--konfrm-surface-canvas)] px-[var(--konfrm-space-page-horizontal)] pb-28 pt-5" dir="rtl">
+    <header className="mb-6 flex items-center justify-between gap-3"><div className="flex min-w-0 items-center gap-3">{owner?.avatar ? <img src={owner.avatar} alt={ownerDisplayName} className="h-12 w-12 shrink-0 rounded-[var(--konfrm-radius-round)] object-cover" /> : <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[var(--konfrm-radius-round)] bg-[var(--konfrm-color-primary-soft)] text-[17px] font-extrabold text-[var(--konfrm-color-primary)]">{ownerDisplayName.charAt(0)}</span>}<div className="min-w-0"><p className="text-[13px] text-[var(--konfrm-text-muted)]">أهلًا بعودتك</p><h1 className="truncate text-[20px] font-extrabold text-[var(--konfrm-text-primary)]">{ownerDisplayName}</h1></div></div><button type="button" onClick={() => setIsNotificationsOpen(true)} className="flex h-[46px] w-[46px] shrink-0 items-center justify-center rounded-[17px] border border-[var(--konfrm-border-default)] bg-[var(--konfrm-surface-primary)] text-[var(--konfrm-text-secondary)]" aria-label="الإشعارات"><Bell className="h-5 w-5" /></button></header>
 
-      {walletError && (
-        <div className="rounded-2xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-800 space-y-2">
-          <p className="font-bold">{walletError}</p>
-          <button onClick={() => void refreshWallet()} className="font-black text-rose-700 underline">إعادة المحاولة</button>
-        </div>
-      )}
-      {!walletError && !canRequestPayout && (
-        <p className="text-[11px] text-slate-500 font-bold">لا يوجد رصيد متاح للسحب بعد.</p>
-      )}
+    <div className="rounded-[var(--konfrm-radius-elevated-card)] border border-[var(--konfrm-border-default)] bg-[var(--konfrm-surface-primary)] p-5"><div className="flex items-center justify-between gap-3"><span className="text-[14px] font-bold text-[var(--konfrm-text-secondary)]">متاح للسحب الآن</span><button type="button" onClick={() => setIsBalanceHidden((hidden) => !hidden)} className="flex h-11 w-11 items-center justify-center rounded-[var(--konfrm-radius-control)] text-[var(--konfrm-text-muted)] hover:bg-[var(--konfrm-interaction-hover)]" aria-label={isBalanceHidden ? 'إظهار الأرصدة' : 'إخفاء الأرصدة'}>{isBalanceHidden ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}</button></div><div className="mt-3 flex items-end gap-2" dir="ltr"><span className="text-[36px] font-extrabold leading-none tracking-[-0.02em] text-[var(--konfrm-text-primary)]">{displayAmount(wallet!.availableBalance)}</span><span className="pb-1 text-[16px] font-bold text-[var(--konfrm-text-secondary)]">ج.م</span></div><p className="mt-3 text-[13px] leading-6 text-[var(--konfrm-text-muted)]">يمكنك طلب السحب عند وصول رصيدك المتاح إلى الحد الأدنى.</p></div>
+    <button type="button" onClick={() => { setPayoutError(null); setIsPayoutSheetOpen(true); }} disabled={!canRequestPayout} className="mt-4 flex h-14 w-full items-center justify-center gap-2 rounded-[18px] bg-[var(--konfrm-text-primary)] px-5 text-[15px] font-extrabold text-white transition-opacity disabled:cursor-not-allowed disabled:opacity-45"><ArrowUpLeft className="h-5 w-5" />طلب سحب</button>
+    {!canRequestPayout && <p className="mt-2 text-center text-[12px] text-[var(--konfrm-text-muted)]">لا يوجد رصيد متاح كافٍ للسحب بعد.</p>}
+    <div className="mt-6 grid grid-cols-2 gap-3"><BalanceTile label="قيد الانتظار" amount={wallet!.pendingBalance} hidden={isBalanceHidden} tone="pending" /><BalanceTile label="محجوز للسحب" amount={wallet!.reservedForPayout} hidden={isBalanceHidden} tone="reserved" /></div>
+    {wallet!.heldBalance > 0 && <div className="mt-3 flex items-center gap-3 rounded-[var(--konfrm-radius-card)] border border-amber-200 bg-amber-50 p-4"><span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[var(--konfrm-radius-control)] bg-white text-amber-800"><ShieldAlert className="h-5 w-5" /></span><div className="min-w-0 flex-1"><p className="text-[14px] font-bold text-amber-950">رصيد مجمّد</p><p className="mt-0.5 text-[12px] text-amber-900">{displayAmount(wallet!.heldBalance)} ج.م</p></div></div>}
 
-      {/* Main Balance Overview Card Stream */}
-      <div className="bg-gradient-to-br from-slate-900 via-blue-950 to-slate-900 rounded-3xl p-5 text-white shadow-xl space-y-4 relative overflow-hidden">
-        <div className="flex items-center justify-between border-b border-slate-800/80 pb-3">
-          <div className="flex items-center gap-2">
-            <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
-            <span className="text-xs font-bold text-slate-300">الرصيد المتاح للسحب الفوري</span>
-          </div>
-          <span className="text-[10px] bg-amber-400/20 text-amber-300 px-2.5 py-0.5 rounded-full font-bold border border-amber-400/30">
-            الحد الأدنى للسحب: {MINIMUM_PAYOUT_AMOUNT} ج.م
-          </span>
-        </div>
+    <section className="mt-7" aria-labelledby="recent-transactions-title"><div className="mb-3 flex items-center justify-between gap-3"><div className="flex items-center gap-2"><ReceiptText className="h-5 w-5 text-[var(--konfrm-color-primary)]" /><h2 id="recent-transactions-title" className="text-[18px] font-extrabold text-[var(--konfrm-text-primary)]">آخر الحركات</h2></div><button type="button" onClick={() => setSecondaryView('payouts')} className="min-h-11 px-1 text-[13px] font-bold text-[var(--konfrm-color-primary)]">طلبات السحب</button></div><div className="-mx-1 mb-3 flex gap-2 overflow-x-auto px-1 pb-1">{FILTERS.map((filter) => <button key={filter.id} type="button" onClick={() => setActiveFilter(filter.id)} className={`min-h-[42px] shrink-0 rounded-[var(--konfrm-radius-pill)] border px-4 text-[13px] font-bold ${activeFilter === filter.id ? 'border-[var(--konfrm-color-primary)] bg-[var(--konfrm-color-primary-soft)] text-[var(--konfrm-color-primary)]' : 'border-[var(--konfrm-border-default)] bg-[var(--konfrm-surface-primary)] text-[var(--konfrm-text-secondary)]'}`}>{filter.label}</button>)}</div>{visibleLedger.length === 0 ? <div className="rounded-[var(--konfrm-radius-card)] border border-[var(--konfrm-border-default)] bg-[var(--konfrm-surface-primary)] px-5 py-8 text-center"><WalletCards className="mx-auto h-6 w-6 text-[var(--konfrm-text-muted)]" /><p className="mt-3 text-[15px] font-bold text-[var(--konfrm-text-primary)]">لا توجد حركات مالية بعد</p><p className="mt-1 text-[13px] text-[var(--konfrm-text-muted)]">ستظهر هنا الحركات المسجلة على محفظتك.</p></div> : <div className="divide-y divide-[var(--konfrm-border-subtle)] rounded-[var(--konfrm-radius-card)] border border-[var(--konfrm-border-default)] bg-[var(--konfrm-surface-primary)] px-4">{visibleLedger.slice(0, 8).map((entry) => { const presentation = getWalletLedgerPresentation(entry); return <div key={entry.id} className="flex min-w-0 items-center gap-3 py-4"><span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[var(--konfrm-radius-control)] bg-[var(--konfrm-surface-secondary)] text-[var(--konfrm-color-primary)]"><CircleDollarSign className="h-5 w-5" /></span><div className="min-w-0 flex-1"><p className="truncate text-[14px] font-bold text-[var(--konfrm-text-primary)]">{presentation.title}</p><p className="mt-0.5 text-[12px] text-[var(--konfrm-text-muted)]">{formatDate(entry.createdAt)}</p></div><div className="shrink-0 text-left"><p className="text-[14px] font-extrabold text-[var(--konfrm-text-primary)]" dir="ltr">{displayAmount(entry.amount)} <span className="text-[11px]">ج.م</span></p><span className={`mt-1 inline-flex rounded-[var(--konfrm-radius-pill)] px-2 py-0.5 text-[10px] font-bold ${ledgerToneClass[presentation.tone]}`}>{presentation.status}</span></div></div>; })}</div>}</section>
+    <button type="button" onClick={() => setSecondaryView('analytics')} className="mt-5 flex min-h-12 w-full items-center justify-between rounded-[var(--konfrm-radius-card)] border border-[var(--konfrm-border-default)] bg-[var(--konfrm-surface-primary)] px-4 text-[14px] font-bold text-[var(--konfrm-text-primary)]"><span>التحليلات المالية</span><ChevronLeft className="h-5 w-5 text-[var(--konfrm-text-muted)]" /></button>
 
-        <div>
-          <span className="text-3xl font-black text-[#FFD700] font-mono tracking-tight block">
-            {(wallet?.availableBalance ?? 0).toLocaleString()} <span className="text-base font-normal text-slate-300">ج.م</span>
-          </span>
-          <span className="text-[11px] text-slate-400 block pt-1">
-            جاهز للتحويل الفوري إلى حسابك البنكي أو InstaPay
-          </span>
-        </div>
-
-        {/* Balance Breakdown Sub-Grid */}
-        <div className="grid grid-cols-3 gap-2.5 pt-2 text-xs">
-          <div className="bg-white/10 p-2.5 rounded-2xl backdrop-blur-xs space-y-1">
-            <span className="text-[10px] text-slate-300 flex items-center gap-1 font-bold">
-              <Clock className="w-3 h-3 text-amber-400" />
-              <span>معلق (التسكين)</span>
-            </span>
-            <span className="text-sm font-bold font-mono text-amber-300 block">
-              {(wallet?.pendingBalance ?? 0).toLocaleString()} ج.م
-            </span>
-            <span className="text-[9px] text-slate-400 block">يتاح بعد 24س من الدخول</span>
-          </div>
-
-          <div className="bg-white/10 p-2.5 rounded-2xl backdrop-blur-xs space-y-1">
-            <span className="text-[10px] text-slate-300 flex items-center gap-1 font-bold">
-              <ArrowUpRight className="w-3 h-3 text-blue-400" />
-              <span>محجوز للسحب</span>
-            </span>
-            <span className="text-sm font-bold font-mono text-blue-300 block">
-              {(wallet?.reservedForPayout ?? 0).toLocaleString()} ج.م
-            </span>
-            <span className="text-[9px] text-slate-400 block">طلبات قيد المراجعة</span>
-          </div>
-
-          <div className="bg-white/10 p-2.5 rounded-2xl backdrop-blur-xs space-y-1">
-            <span className="text-[10px] text-slate-300 flex items-center gap-1 font-bold">
-              <Lock className="w-3 h-3 text-rose-400" />
-              <span>مجمد للنزاعات</span>
-            </span>
-            <span className="text-sm font-bold font-mono text-rose-300 block">
-              {(wallet?.heldBalance ?? 0).toLocaleString()} ج.م
-            </span>
-            <span className="text-[9px] text-slate-400 block">نزاع مفتوح معلق</span>
-          </div>
-        </div>
-      </div>
-
-      {/* Navigation Sub-Tabs */}
-      <div className="bg-slate-100 p-1 rounded-2xl flex items-center justify-between text-xs font-bold">
-        <button
-          onClick={() => setActiveTabSection('overview')}
-          className={`flex-1 py-2 rounded-xl transition-all ${
-            activeTabSection === 'overview' ? 'bg-white text-[#0059FF] shadow-xs' : 'text-slate-600'
-          }`}
-        >
-          نظرة عامة
-        </button>
-        <button
-          onClick={() => setActiveTabSection('payouts')}
-          className={`flex-1 py-2 rounded-xl transition-all ${
-            activeTabSection === 'payouts' ? 'bg-white text-[#0059FF] shadow-xs' : 'text-slate-600'
-          }`}
-        >
-          طلبات السحب ({payoutRequests.length})
-        </button>
-        <button
-          onClick={() => setActiveTabSection('ledger')}
-          className={`flex-1 py-2 rounded-xl transition-all ${
-            activeTabSection === 'ledger' ? 'bg-white text-[#0059FF] shadow-xs' : 'text-slate-600'
-          }`}
-        >
-          كشف الحساب
-        </button>
-        <button
-          onClick={() => setActiveTabSection('analytics')}
-          className={`flex-1 py-2 rounded-xl transition-all ${
-            activeTabSection === 'analytics' ? 'bg-white text-[#0059FF] shadow-xs' : 'text-slate-600'
-          }`}
-        >
-          التحليلات 📊
-        </button>
-      </div>
-
-      {/* SECTION 1: OVERVIEW */}
-      {activeTabSection === 'overview' && (
-        <div className="space-y-4 animate-fade-in">
-          {/* Payout Methods List Bar */}
-          <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs space-y-3">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-              <span className="text-xs font-extrabold text-slate-900 flex items-center gap-1.5">
-                <CreditCard className="w-4 h-4 text-[#0059FF]" />
-                <span>وسائل سحب الأرباح المسجلة</span>
-              </span>
-              <button
-                onClick={() => setIsAddMethodSheetOpen(true)}
-                className="text-xs font-bold text-[#0059FF] hover:underline flex items-center gap-1"
-              >
-                <Plus className="w-3.5 h-3.5" /> إضافة حساب ➕
-              </button>
-            </div>
-
-            <div className="space-y-2">
-              {payoutMethods.map((method) => {
-                const methodConfig = PAYOUT_METHOD_CONFIG[method.type];
-                return (
-                  <div
-                    key={method.id}
-                    className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between text-xs"
-                  >
-                    <div className="flex items-center gap-2.5">
-                      <span className="text-lg">{methodConfig.icon}</span>
-                      <div>
-                        <span className="font-bold text-slate-900 block">{method.accountTitle}</span>
-                        <span className="text-[11px] text-slate-500 font-mono block">
-                          {method.accountNumberOrIban}
-                        </span>
-                      </div>
-                    </div>
-
-                    {method.isDefault && (
-                      <span className="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded-full border border-emerald-300">
-                        الافتراضي ✓
-                      </span>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Operational Metrics Cards */}
-          <div className="grid grid-cols-2 gap-3">
-            <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-xs space-y-1">
-              <span className="text-[11px] text-slate-500 font-bold block">إجمالي المسحوبات التاريخية</span>
-              <span className="text-lg font-black text-slate-900 font-mono">
-                {(wallet?.totalWithdrawnLifeTime ?? 0).toLocaleString()} ج.م
-              </span>
-              <span className="text-[10px] text-emerald-600 block font-bold">تم تحويلها بنجاح لحسابك</span>
-            </div>
-
-            <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-xs space-y-1">
-              <span className="text-[11px] text-slate-500 font-bold block">إجمالي صافي الأرباح</span>
-              <span className="text-lg font-black text-[#0059FF] font-mono">
-                {(wallet?.totalEarnedLifeTime ?? 0).toLocaleString()} ج.م
-              </span>
-              <span className="text-[10px] text-slate-400 block">بعد خصم عمولة Sola الـ 20%</span>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* SECTION 2: PAYOUT REQUESTS HISTORY */}
-      {activeTabSection === 'payouts' && (
-        <div className="space-y-3 animate-fade-in">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-800">سجل طلبات سحب المستحقات المالية</span>
-            <Button
-              variant="primary"
-              size="sm"
-              onClick={() => setIsPayoutSheetOpen(true)}
-              disabled={!canRequestPayout}
-              icon={<Plus className="w-3.5 h-3.5" />}
-              className="text-xs py-1.5 px-3"
-            >
-              طلب سحب جديد
-            </Button>
-          </div>
-
-          {payoutRequests.length === 0 ? (
-            <div className="p-8 text-center bg-white rounded-2xl border border-slate-200 text-slate-500 text-xs">
-              لا توجد طلبات سحب سابقة مسجلة.
-            </div>
-          ) : (
-            <div className="space-y-2.5">
-              {payoutRequests.map((req) => {
-                const statusCfg = PAYOUT_STATUS_CONFIG[req.status];
-                return (
-                  <div
-                    key={req.id}
-                    className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-xs space-y-2 text-xs"
-                  >
-                    <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-                      <span className="font-mono text-slate-400 text-[11px]">{req.requestedAt}</span>
-                      <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${statusCfg.bg} ${statusCfg.text} ${statusCfg.border}`}>
-                        {statusCfg.label}
-                      </span>
-                    </div>
-
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <span className="text-sm font-black text-slate-900 font-mono">
-                          {req.amount.toLocaleString()} ج.م
-                        </span>
-                        <span className="text-[11px] text-slate-500 block">
-                          الصافي بعد الرسوم: <strong className="text-slate-900 font-mono">{req.netAmount.toLocaleString()} ج.م</strong> (رسوم: {req.fee} ج.م)
-                        </span>
-                      </div>
-
-                      <div className="text-left text-[11px] text-slate-600">
-                        <span>{req.payoutMethod.accountTitle}</span>
-                        <span className="block font-mono text-slate-400">{req.payoutMethod.type}</span>
-                      </div>
-                    </div>
-
-                    {req.status === 'PENDING' && (
-                      <div className="pt-2 border-t border-slate-100 flex justify-end">
-                        <button
-                          onClick={() => cancelPayoutRequestByOwner(req.id)}
-                          className="text-[11px] text-rose-600 font-bold hover:underline"
-                        >
-                          إلغاء الطلب وتحرير المبلغ المحجوز ↩️
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* SECTION 3: WALLET STATEMENT / LEDGER */}
-      {activeTabSection === 'ledger' && (
-        <div className="space-y-3 animate-fade-in">
-          <div className="bg-slate-900 text-white p-3.5 rounded-2xl flex items-center justify-between text-xs">
-            <span className="font-bold text-amber-400 flex items-center gap-1.5">
-              <History className="w-4 h-4" />
-              <span>كشف الحساب وتدقيق المحفظة (Wallet Ledger)</span>
-            </span>
-            <span className="text-[10px] text-slate-400 font-mono">Idempotence Verified</span>
-          </div>
-
-          <div className="space-y-2">
-            {!walletError && walletLedger.length === 0 && <div className="p-6 text-center bg-white rounded-2xl border border-slate-200 text-slate-500 text-xs">لا توجد عمليات مالية مسجلة بعد.</div>}
-            {walletLedger.map((entry) => (
-              <div
-                key={entry.id}
-                className="bg-white p-3 rounded-2xl border border-slate-200 shadow-xs space-y-1 text-xs"
-              >
-                <div className="flex items-center justify-between text-[11px] border-b border-slate-100 pb-1">
-                  <span className="font-bold text-[#0059FF]">{entry.title || entry.type}</span>
-                  <span className="text-slate-400 font-mono">{entry.createdAt}</span>
-                </div>
-
-                <p className="text-slate-800 text-[11px] leading-relaxed">{entry.statusLabel || entry.description}</p>
-
-                <div className="flex items-center justify-between pt-1 text-[11px]">
-                  <span className="text-slate-500 text-[10px]">عملية مالية موثقة</span>
-                  <span className="font-black text-slate-900 font-mono">{entry.amount.toLocaleString()} ج.م</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* SECTION 4: ADVANCED PERFORMANCE ANALYTICS */}
-      {activeTabSection === 'analytics' && (
-        <AnalyticsFoundationView />
-      )}
-
-      {/* CREATE PAYOUT REQUEST BOTTOMSHEET */}
-      <BottomSheet
-        isOpen={isPayoutSheetOpen}
-        onClose={() => setIsPayoutSheetOpen(false)}
-        title="طلب سحب المستحقات المالية 💸"
-      >
-        <div className="space-y-4 dir-rtl text-right">
-          <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl text-xs text-blue-950 leading-relaxed space-y-1 font-medium">
-            <span className="font-bold block flex items-center gap-1 text-[#0059FF]">
-              <Info className="w-4 h-4" /> نظام حجز الرصيد (Payout Reservation):
-            </span>
-            <p>
-              عند تأكيد الطلب يتم آلياً حجز المبلغ المالي من <strong>الرصيد المتاح للسحب</strong> وتثبيته كـ (RESERVED_FOR_PAYOUT) لحين إتمام التحويل البنكي بواسطة Sola Admin.
-            </p>
-          </div>
-
-          <div className="space-y-1">
-            <label className="text-xs font-bold text-slate-900 block">
-              المبلغ المطلوب سحبه (بالجنيه المصري EGP):
-            </label>
-            <input
-              type="number"
-              min={MINIMUM_PAYOUT_AMOUNT}
-              max={wallet?.availableBalance || 0}
-              value={payoutAmount}
-              onChange={(e) => setPayoutAmount(Number(e.target.value))}
-              className="w-full p-3 bg-white border border-slate-300 rounded-xl text-base font-black font-mono focus:outline-none focus:border-[#0059FF]"
-            />
-            <span className="text-[10px] text-slate-500 block">
-              الحد الأدنى: {MINIMUM_PAYOUT_AMOUNT} ج.م | الرصيد المتاح حالياً: {wallet?.availableBalance.toLocaleString()} ج.م
-            </span>
-          </div>
-
-          <div className="space-y-1">
-            <label className="text-xs font-bold text-slate-900 block">اختر وسيلة السحب المفضلة:</label>
-            <div className="space-y-2">
-              {payoutMethods.map((m) => (
-                <div
-                  key={m.id}
-                  onClick={() => setSelectedMethodId(m.id)}
-                  className={`p-3 rounded-xl border cursor-pointer transition-all flex items-center justify-between text-xs ${
-                    selectedMethodId === m.id
-                      ? 'bg-blue-50 border-[#0059FF] ring-2 ring-blue-100 font-bold'
-                      : 'bg-white border-slate-200'
-                  }`}
-                >
-                  <div>
-                    <span className="block text-slate-900">{m.accountTitle}</span>
-                    <span className="text-[11px] text-slate-500 font-mono">{m.accountNumberOrIban}</span>
-                  </div>
-                  <span className="text-xs">{PAYOUT_METHOD_CONFIG[m.type].icon}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 text-xs space-y-1 font-mono">
-            <div className="flex justify-between">
-              <span className="text-slate-600">المبلغ المطلوب سحبه من الرصيد المتاح:</span>
-              <span className="font-bold text-slate-900">{payoutAmount.toLocaleString()} ج.م</span>
-            </div>
-            <div className="flex justify-between text-slate-500 text-[11px]">
-              <span>رسوم التحويل:</span>
-              <span className="font-sans text-slate-700 font-bold">رسوم التحويل الفعلية حسب مزود الخدمة</span>
-            </div>
-            <div className="flex justify-between pt-1 border-t border-slate-200 text-slate-900 font-bold text-sm">
-              <span>المبلغ المحجوز لطلب السحب:</span>
-              <span className="text-[#0059FF]">{payoutAmount.toLocaleString()} ج.م</span>
-            </div>
-          </div>
-
-          <div className="flex gap-3 pt-2">
-            <Button variant="outline" size="md" fullWidth onClick={() => setIsPayoutSheetOpen(false)}>
-              إلغاء
-            </Button>
-            <Button
-              variant="primary"
-              size="md"
-              fullWidth
-              onClick={handleRequestPayout}
-              isLoading={isSubmittingPayout}
-              className="bg-[#0059FF] font-bold"
-            >
-              تأكيد وحجز طلب السحب 🚀
-            </Button>
-          </div>
-        </div>
-      </BottomSheet>
-
-      {/* ADD PAYOUT METHOD BOTTOMSHEET */}
-      <BottomSheet
-        isOpen={isAddMethodSheetOpen}
-        onClose={() => setIsAddMethodSheetOpen(false)}
-        title="إضافة وسيلة سحب جديدة 🏦"
-      >
-        <div className="space-y-3 dir-rtl text-right text-xs">
-          <div className="space-y-1">
-            <label className="font-bold text-slate-800 block">نوع وسيلة السحب:</label>
-            <select
-              value={newMethodType}
-              onChange={(e) => setNewMethodType(e.target.value as PayoutMethodType)}
-              className="w-full p-2.5 bg-white border border-slate-300 rounded-xl text-xs"
-            >
-              <option value="INSTAPAY">أنستا باي مصر (InstaPay)</option>
-              <option value="BANK_TRANSFER">تحويل بنكي (IBAN / حساب بنكي)</option>
-              <option value="VODAFONE_CASH">محفظة فودافون كاش</option>
-              <option value="ORANGE_CASH">محفظة أورنج كاش</option>
-              <option value="ETISALAT_CASH">محفظة اتصالات كاش</option>
-            </select>
-          </div>
-
-          <div className="space-y-1">
-            <label className="font-bold text-slate-800 block">اسم صاحب الحساب الثلاثي:</label>
-            <input
-              type="text"
-              placeholder="مثال: أحمد الفاروق إبراهيم"
-              value={newAccountTitle}
-              onChange={(e) => setNewAccountTitle(e.target.value)}
-              className="w-full p-2.5 bg-white border border-slate-300 rounded-xl text-xs"
-            />
-          </div>
-
-          <div className="space-y-1">
-            <label className="font-bold text-slate-800 block">رقم الحساب / IBAN / عنوان InstaPay:</label>
-            <input
-              type="text"
-              placeholder="مثال: ahmed@instapay أو رقم IBAN"
-              value={newAccountNumber}
-              onChange={(e) => setNewAccountNumber(e.target.value)}
-              className="w-full p-2.5 bg-white border border-slate-300 rounded-xl text-xs font-mono"
-            />
-          </div>
-
-          {newMethodType === 'BANK_TRANSFER' && (
-            <div className="space-y-1">
-              <label className="font-bold text-slate-800 block">اسم البنك:</label>
-              <input
-                type="text"
-                placeholder="مثال: البنك الأهلي المصري"
-                value={newBankName}
-                onChange={(e) => setNewBankName(e.target.value)}
-                className="w-full p-2.5 bg-white border border-slate-300 rounded-xl text-xs"
-              />
-            </div>
-          )}
-
-          <div className="flex gap-3 pt-2">
-            <Button variant="outline" size="md" fullWidth onClick={() => setIsAddMethodSheetOpen(false)}>
-              إلغاء
-            </Button>
-            <Button variant="primary" size="md" fullWidth onClick={handleAddMethod} className="bg-[#0059FF] font-bold">
-              حفظ الوسيلة 💾
-            </Button>
-          </div>
-        </div>
-      </BottomSheet>
-    </div>
-  );
+    <PayoutSheet isOpen={isPayoutSheetOpen} onClose={closePayoutSheet} availableBalance={wallet!.availableBalance} isBalanceHidden={isBalanceHidden} amountInput={payoutAmountInput} setAmountInput={(value: string) => { setPayoutAmountInput(value); setPayoutError(null); }} payoutMethods={payoutMethods} selectedMethodId={selectedMethodId} setSelectedMethodId={(value: string) => { setSelectedMethodId(value); setPayoutError(null); }} notes={payoutNotes} setNotes={setPayoutNotes} error={payoutError} isSubmitting={isSubmittingPayout} onSubmit={() => void handleRequestPayout()} onAddMethod={() => setIsAddMethodSheetOpen(true)} />
+    <AddMethodSheet isOpen={isAddMethodSheetOpen} onClose={() => setIsAddMethodSheetOpen(false)} methodType={newMethodType} setMethodType={setNewMethodType} accountTitle={newAccountTitle} setAccountTitle={setNewAccountTitle} accountNumber={newAccountNumber} setAccountNumber={setNewAccountNumber} bankName={newBankName} setBankName={setNewBankName} onSubmit={() => void handleAddMethod()} />
+    <SuccessSheet isOpen={isSuccessSheetOpen} onClose={() => setIsSuccessSheetOpen(false)} />
+    <SecondarySheet view={secondaryView} onClose={() => setSecondaryView(null)} payoutRequests={payoutRequests} isBalanceHidden={isBalanceHidden} onCancel={(id) => void cancelPayoutRequestByOwner(id)} />
+  </section>;
 };
+
+const BalanceTile: React.FC<{ label: string; amount: number; hidden: boolean; tone: 'pending' | 'reserved' }> = ({ label, amount, hidden, tone }) => <div className="min-w-0 rounded-[22px] border border-[var(--konfrm-border-default)] bg-[var(--konfrm-surface-primary)] p-[14px]"><span className="flex items-center gap-1.5 text-[12px] font-bold text-[var(--konfrm-text-muted)]"><i className={`h-2.5 w-2.5 rounded-[var(--konfrm-radius-round)] ${tone === 'pending' ? 'bg-amber-500' : 'bg-[var(--konfrm-color-primary)]'}`} />{label}</span><p className="mt-3 truncate text-[20px] font-extrabold text-[var(--konfrm-text-primary)]" dir="ltr">{getWalletDisplayAmount(amount, hidden)} <span className="text-[12px]">ج.م</span></p></div>;
+const WalletSkeleton = () => <section className="min-h-full bg-[var(--konfrm-surface-canvas)] px-[var(--konfrm-space-page-horizontal)] pb-28 pt-5" dir="rtl"><div className="h-12 w-48 animate-pulse rounded-[var(--konfrm-radius-control)] bg-[var(--konfrm-surface-secondary)]" /><div className="mt-6 h-44 animate-pulse rounded-[var(--konfrm-radius-elevated-card)] bg-[var(--konfrm-surface-secondary)]" /><div className="mt-4 h-14 animate-pulse rounded-[18px] bg-[var(--konfrm-surface-secondary)]" /><div className="mt-6 grid grid-cols-2 gap-3"><div className="h-28 animate-pulse rounded-[22px] bg-[var(--konfrm-surface-secondary)]" /><div className="h-28 animate-pulse rounded-[22px] bg-[var(--konfrm-surface-secondary)]" /></div></section>;
+
+const PayoutSheet: React.FC<any> = ({ isOpen, onClose, availableBalance, isBalanceHidden, amountInput, setAmountInput, payoutMethods, selectedMethodId, setSelectedMethodId, notes, setNotes, error, isSubmitting, onSubmit, onAddMethod }) => <BottomSheet isOpen={isOpen} onClose={onClose} title="طلب سحب"><div className="space-y-5 text-right" dir="rtl"><p className="text-[14px] text-[var(--konfrm-text-secondary)]">أدخل المبلغ المطلوب.</p><div className="rounded-[var(--konfrm-radius-card)] bg-[var(--konfrm-surface-secondary)] p-4"><p className="text-[12px] font-bold text-[var(--konfrm-text-muted)]">المتاح للسحب</p><p className="mt-1 text-[20px] font-extrabold text-[var(--konfrm-text-primary)]" dir="ltr">{getWalletDisplayAmount(availableBalance, isBalanceHidden)} <span className="text-[12px]">ج.م</span></p></div><label className="block"><span className="mb-2 block text-[14px] font-bold text-[var(--konfrm-text-primary)]">المبلغ</span><input value={amountInput} onChange={(event) => setAmountInput(event.target.value.replace(/[^0-9.]/g, ''))} inputMode="decimal" type="text" placeholder={`الحد الأدنى ${MINIMUM_PAYOUT_AMOUNT.toLocaleString('en-US')} ج.م`} className="h-[52px] w-full rounded-[var(--konfrm-radius-control)] border border-[var(--konfrm-border-default)] bg-[var(--konfrm-surface-primary)] px-4 text-[17px] font-bold text-[var(--konfrm-text-primary)] outline-none focus:border-[var(--konfrm-color-primary)] focus:ring-2 focus:ring-[var(--konfrm-interaction-focus-ring)]" /></label><div><div className="mb-2 flex items-center justify-between"><span className="text-[14px] font-bold text-[var(--konfrm-text-primary)]">وسيلة السحب</span><button type="button" onClick={onAddMethod} className="min-h-11 text-[13px] font-bold text-[var(--konfrm-color-primary)]">إضافة وسيلة</button></div>{payoutMethods.length === 0 ? <div className="rounded-[var(--konfrm-radius-card)] border border-dashed border-[var(--konfrm-border-strong)] p-4 text-[13px] text-[var(--konfrm-text-secondary)]">أضف وسيلة سحب للمتابعة.</div> : <select value={selectedMethodId} onChange={(event) => setSelectedMethodId(event.target.value)} className="h-[52px] w-full rounded-[var(--konfrm-radius-control)] border border-[var(--konfrm-border-default)] bg-[var(--konfrm-surface-primary)] px-3 text-[14px] text-[var(--konfrm-text-primary)]"><option value="">اختر وسيلة السحب</option>{payoutMethods.map((method: any) => <option key={method.id} value={method.id}>{method.accountTitle}</option>)}</select>}</div><label className="block"><span className="mb-2 block text-[14px] font-bold text-[var(--konfrm-text-primary)]">ملاحظة (اختياري)</span><textarea value={notes} onChange={(event) => setNotes(event.target.value)} rows={2} className="w-full rounded-[var(--konfrm-radius-control)] border border-[var(--konfrm-border-default)] bg-[var(--konfrm-surface-primary)] p-3 text-[14px] text-[var(--konfrm-text-primary)] outline-none focus:border-[var(--konfrm-color-primary)]" /></label>{error && <p role="alert" className="rounded-[var(--konfrm-radius-card)] bg-rose-50 p-3 text-[13px] font-bold text-rose-800">{error}</p>}<button type="button" onClick={onSubmit} disabled={isSubmitting} className="flex h-14 w-full items-center justify-center rounded-[18px] bg-[var(--konfrm-text-primary)] px-5 text-[15px] font-extrabold text-white disabled:opacity-45">{isSubmitting ? 'جارٍ إرسال الطلب...' : 'تأكيد طلب السحب'}</button></div></BottomSheet>;
+
+const AddMethodSheet: React.FC<any> = ({ isOpen, onClose, methodType, setMethodType, accountTitle, setAccountTitle, accountNumber, setAccountNumber, bankName, setBankName, onSubmit }) => <BottomSheet isOpen={isOpen} onClose={onClose} title="إضافة وسيلة سحب"><div className="space-y-4" dir="rtl"><label className="block"><span className="mb-2 block text-[14px] font-bold">النوع</span><select value={methodType} onChange={(event) => setMethodType(event.target.value)} className="h-[52px] w-full rounded-[var(--konfrm-radius-control)] border border-[var(--konfrm-border-default)] bg-white px-3">{Object.entries(PAYOUT_METHOD_CONFIG).map(([type, config]) => <option key={type} value={type}>{config.label}</option>)}</select></label><label className="block"><span className="mb-2 block text-[14px] font-bold">اسم صاحب الحساب</span><input value={accountTitle} onChange={(event) => setAccountTitle(event.target.value)} className="h-[52px] w-full rounded-[var(--konfrm-radius-control)] border border-[var(--konfrm-border-default)] px-3" /></label><label className="block"><span className="mb-2 block text-[14px] font-bold">رقم الحساب أو المحفظة</span><input value={accountNumber} onChange={(event) => setAccountNumber(event.target.value)} inputMode="text" className="h-[52px] w-full rounded-[var(--konfrm-radius-control)] border border-[var(--konfrm-border-default)] px-3" /></label>{methodType === 'BANK_TRANSFER' && <label className="block"><span className="mb-2 block text-[14px] font-bold">اسم البنك (اختياري)</span><input value={bankName} onChange={(event) => setBankName(event.target.value)} className="h-[52px] w-full rounded-[var(--konfrm-radius-control)] border border-[var(--konfrm-border-default)] px-3" /></label>}<button type="button" onClick={onSubmit} disabled={!accountTitle.trim() || !accountNumber.trim()} className="flex h-14 w-full items-center justify-center rounded-[18px] bg-[var(--konfrm-color-primary)] text-[15px] font-extrabold text-white disabled:opacity-45">إضافة الوسيلة</button></div></BottomSheet>;
+const SuccessSheet: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ isOpen, onClose }) => <BottomSheet isOpen={isOpen} onClose={onClose} title=""><div className="pb-3 text-center" dir="rtl"><span className="mx-auto flex h-14 w-14 items-center justify-center rounded-[var(--konfrm-radius-round)] bg-[var(--konfrm-color-primary-soft)] text-[var(--konfrm-color-primary)]"><Check className="h-7 w-7" /></span><h2 className="mt-4 text-[20px] font-extrabold text-[var(--konfrm-text-primary)]">تم إنشاء طلب السحب</h2><p className="mt-2 text-[14px] leading-6 text-[var(--konfrm-text-secondary)]">تم إرسال طلب السحب وسيتم تحديث حالته عند بدء المعالجة.</p><button type="button" onClick={onClose} className="mt-6 flex h-14 w-full items-center justify-center rounded-[18px] bg-[var(--konfrm-color-primary)] text-[15px] font-extrabold text-white">تم</button></div></BottomSheet>;
+const SecondarySheet: React.FC<{ view: 'payouts' | 'analytics' | null; onClose: () => void; payoutRequests: PayoutRequest[]; isBalanceHidden: boolean; onCancel: (id: string) => void }> = ({ view, onClose, payoutRequests, isBalanceHidden, onCancel }) => <BottomSheet isOpen={view !== null} onClose={onClose} title={view === 'analytics' ? 'التحليلات المالية' : 'طلبات السحب'}>{view === 'analytics' ? <AnalyticsFoundationView /> : <div className="space-y-3" dir="rtl">{payoutRequests.length === 0 ? <p className="rounded-[var(--konfrm-radius-card)] bg-[var(--konfrm-surface-secondary)] p-5 text-center text-[14px] text-[var(--konfrm-text-secondary)]">لا توجد طلبات سحب سابقة.</p> : payoutRequests.map((request) => { const config = PAYOUT_STATUS_CONFIG[request.status]; return <div key={request.id} className="rounded-[var(--konfrm-radius-card)] border border-[var(--konfrm-border-default)] p-4"><div className="flex items-center justify-between gap-3"><p className="text-[14px] font-extrabold text-[var(--konfrm-text-primary)]" dir="ltr">{getWalletDisplayAmount(request.amount, isBalanceHidden)} <span className="text-[11px]">ج.م</span></p><span className={`rounded-[var(--konfrm-radius-pill)] border px-2 py-1 text-[11px] font-bold ${config.bg} ${config.text} ${config.border}`}>{config.label}</span></div><p className="mt-2 text-[12px] text-[var(--konfrm-text-muted)]">{formatDate(request.requestedAt)}</p>{request.status === 'PENDING' && <button type="button" onClick={() => onCancel(request.id)} className="mt-3 min-h-11 text-[13px] font-bold text-rose-700">إلغاء الطلب</button>}</div>; })}</div>}</BottomSheet>;

@@ -28,6 +28,7 @@ Read these selectively after the default recovery sequence. They govern planning
 | [codex/KONFRM_UI_QA_PROTOCOL.md](./codex/KONFRM_UI_QA_PROTOCOL.md) | Any visible UI/UX phase | Backend-only tasks |
 | [codex/KONFRM_CROSS_APP_MATRIX.md](./codex/KONFRM_CROSS_APP_MATRIX.md) | A shared entity/state changes across roles | A single-role static presentation change |
 | [codex/KONFRM_DOCUMENT_RECONCILIATION.md](./codex/KONFRM_DOCUMENT_RECONCILIATION.md) | Determining whether a repository document is current, historical, or superseded | Ordinary implementation after authority is already clear |
+| [codex/P1_1_SCHEMA_RLS_BASELINE_REPORT.md](./codex/P1_1_SCHEMA_RLS_BASELINE_REPORT.md) | Touching Supabase schema, RLS, grants, public RPCs, Storage, migrations, or identity persistence | UI-only work with no persistence/security effect |
 
 ## Other authorities
 

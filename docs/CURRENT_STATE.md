@@ -1,7 +1,7 @@
 # Current project state
 
 **Last updated:** 2026-08-30
-**Repository-state baseline:** P0.1 began at `main`/`origin/main` `3acb94e`; external live/deployment claims require separate read-only verification.
+**Repository-state baseline:** P1.1 began at `main`/`origin/main` `6d37b4589fca47fe56b294c4c12292b44a2db138`; external live/deployment claims require separate read-only verification.
 
 ## Current status
 
@@ -13,7 +13,7 @@ The repository contains code and migration evidence for property operations, boo
 - **Bookings:** Customer request lifecycle, Owner approve/reject, availability protection, and booking-context conversation/message persistence.
 - **Payments:** prototype deposit initiation/completion with canonical financial summaries and migration `019` atomic finalization RPC; no real-money Paymob flow.
 - **Wallet:** Owner wallet/ledger reads use `owner_wallets` and `wallet_ledger_entries`, not property-price reconstruction.
-- **Identity/access:** P0.2 locally verified signed-token role boundaries across Customer, Owner, Admin, and representative backend routes. Persisted Customer/Owner tokens are candidates until canonical validation; fake patterned JWT and Admin UI token fallbacks were removed. See [`codex/P0_2_AUTH_ACCESS_REPORT.md`](./codex/P0_2_AUTH_ACCESS_REPORT.md).
+- **Identity/access:** P0.2 is published at `6d37b4589fca47fe56b294c4c12292b44a2db138`; GitHub Actions run #129 / `33279518425` succeeded, including backend Worker deployment and public health. Signed-token role boundaries across Customer, Owner, Admin, and representative backend routes are locally verified. Persisted Customer/Owner tokens are candidates until canonical validation; fake patterned JWT and Admin UI token fallbacks were removed. See [`codex/P0_2_AUTH_ACCESS_REPORT.md`](./codex/P0_2_AUTH_ACCESS_REPORT.md).
 - **Truthful states:** Admin validates sessions before shell render; Admin overview/notifications and Customer property/payment-history fetches distinguish loading, success/empty, and error.
 - **Owner entry:** first-ever device flow is a short KONFRM splash then one-time Owner onboarding; it is independent of authentication and does not change Owner capability rules.
 - **Owner Home:** action-first Home uses canonical pending booking requests, future confirmed bookings, property status context, and direct available/pending wallet values; it does not use dashboard financial aliases as wallet truth.
@@ -31,7 +31,8 @@ Read [ARCHITECTURE.md](./ARCHITECTURE.md), [DATABASE.md](./DATABASE.md), and [BU
 ## Verified technical debt / known limits
 
 - `dbClient.ts` remains a strict SQL-to-Supabase REST/RPC compatibility layer, not a general Worker transaction/query solution. Matcher collisions are a known risk.
-- The repository’s retained migration history starts at 008; earlier core schema/RLS history is incomplete here. Do not infer full baseline schema/RLS policy from the retained migrations.
+- P1.1 reconciled retained migrations with live metadata. The live application ledger omits 013/014/017/018 despite their observed effects; 015 is repository-ahead of the observed session/OTP shape; the `000_schema_baseline` source remains unavailable. See [`codex/P1_1_SCHEMA_RLS_BASELINE_REPORT.md`](./codex/P1_1_SCHEMA_RLS_BASELINE_REPORT.md).
+- Live public tables have RLS enabled and no policies, with the backend using service-role access. However critical SECURITY DEFINER payment/KYC/registration RPCs are executable by `anon` and `authenticated`, contradicting the retained service-role-only migration intent. This is a P14.1 security prerequisite; do not modify it outside an approved security phase.
 - Payment is intentionally `PROTOTYPE`; real Paymob credentials/networking are not implemented.
 - Customer Favorites is an approved capability but persistent canonical storage is not implemented.
 - Design-system legacy drift remains inventoried under `DESIGN_SYSTEM/`; the anti-drift baseline prevents new violations but does not migrate old screens.
@@ -46,4 +47,4 @@ Read [ARCHITECTURE.md](./ARCHITECTURE.md), [DATABASE.md](./DATABASE.md), and [BU
 
 ## Next work
 
-P0.2 is complete as a local release candidate and awaits Founder publication review. The earliest unresolved prerequisite remains P1.1 schema/RLS baseline inventory; do not begin it without an approved task contract.
+P1.1 is a read-only local release candidate pending Founder review. Its evidence-based recommendation is to pull the existing P14.1 RLS/authorization/privacy remediation plan ahead of P1.2, because public SECURITY DEFINER grants are confirmed. No remediation occurs until a separately approved phase.

@@ -5,7 +5,7 @@ Only evidence-backed, deferred, or decision-blocked items belong here. This back
 | ID | Severity / type | Role / surface | Evidence | Blocks roadmap? | Recommended phase |
 | --- | --- | --- | --- | --- | --- |
 | RB-01 | Critical / Deployment | All deployed apps/Worker | Pages linkage and active Worker revision are external; repository config alone cannot certify deployment. | Yes—live claims | P0.1 / PHASE 20 |
-| RB-02 | Critical / Security + Data | Supabase schema/RLS | Migration history begins at 008; full baseline/RLS history unavailable. | Yes—security/schema assurance | P1.1 / PHASE 14 |
+| RB-02 | Critical / Security + Data | Supabase schema/RLS | P1.1 confirmed live RLS/no-policy tables and public anon/authenticated execution of critical SECURITY DEFINER payment/KYC/registration RPCs; retained 019/020 intend service-role-only. Historical baseline source remains unavailable. | Yes—remediate before P1.2 | P14.1 / PHASE 14 |
 | RB-03 | Critical / Integration + Finance | Customer, Owner, Admin, backend | Booking/payment/wallet are high-risk and historical claims are not acceptance proof. | Yes—financial closure | P8.4, P10.2, P11.1 |
 | RB-04 | High / Tech Debt | Worker DB adapter | Strict matcher is documented; general query/transaction assumptions are unsafe. | No—unless touched | P2.3 |
 | RB-05 | High / UI | All apps/design | Icon authority conflicts with current Design System wording. | Yes—icon migration only | P4.2 |

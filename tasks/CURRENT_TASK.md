@@ -1,47 +1,43 @@
-# P0.2 — Prototype authentication and access blocker audit
+# P1.1 — Live Schema / RLS Baseline Inventory & Repository Reconciliation
 
-**Parent macro phase:** PHASE 0
-**Status:** Complete — local release candidate; publication is a separate Founder approval gate.
-**Approved baseline:** `5cb7b421328004bc56e6b4eff99e79c601fead5d` (`main` = `origin/main` at start)
+**Parent macro phase:** PHASE 1
+**Status:** Complete — local release candidate; publication is a separate Founder approval gate
+**Approved baseline:** `6d37b4589fca47fe56b294c4c12292b44a2db138`
 
 ## Objective
 
-Produce executable, cross-role evidence that current prototype authentication and server-side access boundaries work for Customer, Owner, Admin, and representative protected backend routes. Repair any safe P0.2 defect found; do not redesign production authentication.
+Establish an evidence-backed, metadata-only baseline for the live Supabase schema, RLS, grants, public RPCs, storage configuration, and migration ledger; reconcile it with retained repository migrations and persistence code.
 
-## Affected systems and current implementation paths
+## Governing context
 
-- **Customer:** `customer-app/src/App.tsx`, `CustomerAuthModal.tsx`; prototype login at `/api/v1/auth/prototype-login`, browser persistence under `sola_customer_*`.
-- **Owner:** `owner-app/src/context/AuthContext.tsx`, `owner-app/src/App.tsx`, Owner login/registration entry; canonical Owner profile validation gates `AppProvider`, browser persistence under `sola_*`.
-- **Admin:** `admin-app/src/App.tsx`, `utils/adminTruthfulState.ts`, `AdminLogin.tsx`; `/api/v1/admin/auth/login` plus `/api/v1/admin/auth/session` validation gates the shell.
-- **Backend:** `backend/server/src/services/authService.ts`, `middleware/auth.ts`, `controllers/authController.ts`, `app.ts`; signed JWTs, refresh/session records, role checks, and canonical subject-derived ownership.
+- `docs/codex/KONFRM_MASTER_RULES.md`
+- `docs/DATABASE.md`, `docs/ARCHITECTURE.md`, and `docs/INTEGRATIONS.md`
+- Retained migrations `backend/database/migrations/008_*.sql` through `020_*.sql`
+- The active P1.1 execution contract and connected Supabase metadata evidence
 
-## Governing rules and non-negotiables
+## Requirements
 
-- Prototype Customer/Owner/Admin access must not be blocked by OTP/SMS; retained OTP/SMS code is audited as legacy unless reachable from the active path.
-- `users` is canonical human identity; `owners` is an optional same-UUID capability. Owner login never creates that capability.
-- A validated canonical Owner is required before the Owner `AppProvider` mounts; account-scoped Owner state must clear on logout or identity change.
-- Public Customer browsing remains public where the route contract permits it. Protected actions require canonical auth and role/ownership authorization; client IDs are never authority.
-- Auth/network/database failure must remain truthful; it must not become a valid shell, anonymous success, zero/empty business state, or a fabricated token.
-- No secrets/tokens/credentials in source or reports. No database/RLS/migration/data, infrastructure/CI, dependency, deployment, push, or live-user mutation.
+- Inventory repository and live metadata without reading business rows or private objects.
+- Reconcile every retained migration with the live `schema_migrations` ledger and observed effect.
+- Document public tables, constraints, indexes, triggers, RLS/policies/grants, relevant functions, and Storage buckets/policies.
+- Determine the actual frontend → backend → service-role database boundary and identify any contradiction between repository grant intent and live metadata.
+- Record all drift using the approved taxonomy; create the P1.1 evidence report and update current-reality, completion, rescue-backlog, execution-map, database, and current-state records.
 
-## Evidence required
+## Constraints
 
-The approved P0.2 45-item matrix: architecture and OTP classification; anonymous, valid, stale, wrong-role, logout, failure, and cross-account cases; representative backend authorization; focused executable regression tests; typechecks/builds; security/privacy; documentation and three-pass closure review.
+- SELECT/metadata inspection only. No migrations, DDL, DML, RPC invocation, grants/revokes, storage operations, deploy, push, CI/config/dependency/runtime changes, or P1.2 work.
+- Do not record names, phones, emails, tokens, document URLs/object keys, or business-row payloads.
+- Do not treat RLS enabled/no policy or a security-advisor warning as conclusive without privilege and architecture evidence.
+- Finish with one local-only commit: `chore(db): close P1.1 schema and RLS baseline`.
 
-## Explicit non-goals
+## Acceptance evidence
 
-No final production auth design, SMS provider, mandatory OTP, identity-model redesign, KYC/booking/payment/wallet/property changes, UI redesign, schema/RLS changes, CI/deployment/configuration changes, publish/deploy, or P1.1 work.
+The active P1.1 contract’s 48-item matrix, three-pass review, complete migration reconciliation, and no-mutation proof are required. A confirmed security finding is documented and routed to an existing planned phase; it is not remediated in P1.1.
 
-## Current evidence and open decisions
+## Closure
 
-- Current prototype login is OTP-free in Customer and Owner active UI paths; legacy request/verify OTP endpoints and Owner OTP screen require reachability classification.
-- Final production authentication remains an explicit product/security decision.
-- Retained migrations do not prove complete RLS history; P0.2 does not alter schema/RLS. See `docs/codex/KONFRM_DECISION_CONFLICTS.md` DC-04/DC-06.
+P1.1 inventory is complete. The approved next recommendation is P14.1 remediation planning because live anonymous/authenticated execution of critical SECURITY DEFINER RPCs contradicts retained migration intent. Do not begin that work or publish this release candidate without a separate approval.
 
-## Relevant authorities
+## Documentation impact
 
-`AGENTS.md`, `docs/INDEX.md`, `docs/CURRENT_STATE.md`, `docs/codex/KONFRM_MASTER_RULES.md`, current reality/conflicts/matrix/rescue/quality/execution-map documents, `docs/BUSINESS_RULES.md`, `docs/ARCHITECTURE.md`, `docs/INTEGRATIONS.md`, and the P0.2 execution contract.
-
-## Validation and closure
-
-Use only mock/isolated focused tests after confirming their safety. Run backend checks with Node 22 and proportionate Customer/Owner/Admin checks. Apply functional, product/UI, and adversarial review; update the P0.2 report, reality, matrix, rescue backlog, execution map, and current state from evidence. Finish with one local release-candidate commit only; do not push or deploy.
+Update only evidence/governance records required by the inventory, including `docs/codex/P1_1_SCHEMA_RLS_BASELINE_REPORT.md`. Replace this contract with the next approved task only after P1.1 closure.

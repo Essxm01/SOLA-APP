@@ -1,8 +1,12 @@
 # P0.2 — Prototype authentication and access report
 
-**Status:** Complete local release candidate (not published)  
+**Status:** Complete and published
 **Evidence date:** 2026-08-30  
 **Baseline:** `5cb7b421328004bc56e6b4eff99e79c601fead5d`
+
+## Publication evidence
+
+Published commit: `6d37b4589fca47fe56b294c4c12292b44a2db138` (`fix(auth): close P0.2 prototype access audit`). GitHub Actions run #129 / `33279518425` completed successfully; its backend job ran the critical auth/identity tests and deployed the Cloudflare Worker. The public Worker health endpoint returned 200 after the run; safe protected-route checks rejected a missing Owner credential and the removed `admin_token_valid` bypass with 401. Cloudflare Pages revisions were not inferred.
 
 ## Architecture verified
 
@@ -51,7 +55,7 @@
 
 ## Scope and limitations
 
-No database/RLS/storage/live-user change, deployment, or publication occurred. P0.2 does not certify the retained incomplete migration/RLS history, final production authentication, or exact deployed frontend revisions. Those remain routed to P1.1/P14.1/P20.1.
+No database/RLS/storage/live-user change occurred. Publication deployed the Worker through the existing CI workflow only. P0.2 does not certify the retained incomplete migration/RLS history, final production authentication, or exact deployed frontend revisions. Those remain routed to P1.1/P14.1/P20.1.
 
 ## Three-pass closure review
 

@@ -6,7 +6,7 @@
 
 | ID | Parent / outcome | Surfaces | Dependencies | Risk | Status / verification |
 | --- | --- | --- | --- | --- | --- |
-| P0.1 | **PHASE 0** — baseline, CI, deployment, and access reality | Repo, CI, Worker, Pages | None | Critical | Partial; read-only local/GitHub/Cloudflare/Supabase evidence |
+| P0.1 | **PHASE 0** — baseline, CI, deployment, and access reality | Repo, CI, Worker, Pages | None | Critical | Complete; local/GitHub/public-HTTP evidence recorded, privileged metadata remains `ACCESS_UNAVAILABLE` |
 | P0.2 | Prototype auth/access blocker audit | Customer, Owner, Admin, backend | P0.1 | High | Preserve/verify; auth regression/error verification |
 | P1.1 | **PHASE 1** — schema/RLS baseline inventory | DB, Supabase | P0.1 | Critical | Partial; read-only schema/RLS audit |
 | P1.2 | Identity/session persistence integrity | Backend, DB, all roles | P1.1 | Critical | Preserve/verify; ownership/session tests |
@@ -84,4 +84,4 @@
 
 ## Next recommended execution phase
 
-**P0.1 — baseline, CI, deployment, and access reality.** It is the earliest unresolved prerequisite and closes the highest-risk evidence gap: which exact artifacts are deployed and which baseline tests/configuration are trustworthy. It precedes Owner Bookings or any later visual/functional slice, unless a new explicit Founder priority safely narrows the work.
+**P0.2 — prototype auth/access blocker audit.** P0.1 is complete; P0.2 is the earliest unresolved prerequisite in the current dependency chain. It must begin only with a concrete approved task contract and must preserve the P0.1 evidence boundary.

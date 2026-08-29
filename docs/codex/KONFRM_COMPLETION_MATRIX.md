@@ -13,7 +13,7 @@ This is a current acceptance map, not a changelog. “Repository evidence” doe
 | KYC | P6.7, P7.3, P14.2 | Implemented but unverified | N/A | Registration, status, own private submission | Review/access path exists | KYC migration/storage/RPC paths exist | Controlled end-to-end non-production test and RLS/storage audit |
 | Chat / notifications | P9.1–P9.2, P12.1–P12.2 | Partial | Booking chat exists | Messages surface exists | Contextual access rule approved but implementation undecided | Conversation persistence exists | Canonical unread/notification model and Admin visibility authorization |
 | Design / UX | P4, P15, P16 | Partial | Partial migration | Partial migration | Partial migration | Tokens/governance exist | Icon authority, screenshot QA, legacy exception reduction |
-| Delivery / quality | P0.1, P19, P20 | Unverified historical claim | Pages external | Pages external | Pages external | CI Worker deploy config exists | Exact release/revision, live routes, and rollout evidence |
+| Delivery / quality | P0.1, P19, P20 | Partial | P0.1 local runtime baseline, public Pages URLs/Worker health, and GitHub CI run #127 verified | Pages revision metadata unavailable | Pages revision metadata unavailable | CI run #127 deployed Worker successfully; backend local baseline uses Node 22 | Authenticated Cloudflare/Supabase inspection, exact revisions, and later rollout evidence |
 
 ## Detailed acceptance inventory
 

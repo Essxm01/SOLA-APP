@@ -1,6 +1,6 @@
 # KONFRM current reality assessment
 
-**Audited repository baseline:** `main` at `6de6f92` on 2026-08-29. This is a repository/Git/configuration assessment, not live-production proof.
+**Audited repository baseline:** P0.1 began at `main`/`origin/main` `3acb94e` on 2026-08-29. This is a repository/Git/configuration assessment, not blanket live-production proof.
 
 ## Classification key
 
@@ -23,9 +23,9 @@
 | Truthful state behavior | Partial / acceptance gap | `GIT_OBSERVED` / `CODE_OBSERVED` | Corrective Customer/Admin/Owner commits exist. Systematic fetch/error/empty-state audit remains required. |
 | Design / experience governance | Implemented—repository evidence | `CODE_OBSERVED` | `DESIGN_SYSTEM/` v2.1.2, Experience documentation, tokens, and anti-drift tooling exist. Legacy drift and feature migration remain. |
 | Recent Owner migrations | Partial / acceptance gap | `GIT_OBSERVED` | Home, Wallet, Properties/Wizard, and Bookings recent commits exist. Founder visual acceptance, exact Pages revision, and closure evidence are outstanding. |
-| CI / Cloudflare / Vercel | Partial / acceptance gap | `CONFIG_OBSERVED` | GitHub Actions builds apps, checks backend, runs focused Owner tests, and deploys Worker. Pages linkage/active revision, Cloudflare runtime state, and legacy Vercel state are external facts. |
-| Connected infrastructure audit | Unverified historical claim | `ACCESS_UNAVAILABLE` | No authenticated read-only GitHub, Supabase, Cloudflare, or Vercel inspection was available during Phase Zero. Do not infer live state from repository configuration. |
-| Test infrastructure / runtime errors | Partial / acceptance gap | `CONFIG_OBSERVED` | Package scripts, focused backend/Owner tests, and design drift check exist. Phase Zero did not run product test/build suites or reproduce runtime errors; no fresh runtime-health claim is made. |
+| CI / Cloudflare / Vercel | Partial / acceptance gap | `VERIFIED` / `CONFIG_OBSERVED` | The documentation/governance-only `main` push `3acb94e9132ed9d9e9d9950916bbba3bfe806653` triggered GitHub Actions run #127; its Backend job executed the Cloudflare Worker deployment step. This is current CI/deployment evidence only, not proof of a Pages deployment or a statement that the trigger scope is intended. Public Pages URLs and Worker health resolve; Pages/Worker revision metadata and account configuration remain inaccessible. Legacy Vercel Worker health is 404. |
+| Connected infrastructure audit | Partial / access-limited | `ACCESS_UNAVAILABLE` | No authenticated Cloudflare/Supabase session is available. Supabase ref is configured and unauthenticated REST returns 401; schema/RLS/buckets remain unverified. |
+| Test infrastructure / runtime errors | Partial / environment caveat | `LOCAL_VERIFIED` | Builds/checks, focused backend suites, Vite shells, and backend localhost health now execute. Backend `.nvmrc` is 22, matching CI and the installed Supabase runtime; frontend declarations remain 20. Restricted Codex filesystem execution can still fail while resolving the Windows user profile, so use a process-scoped runtime/authorized local process for local validation. |
 | Mocks / hardcoded/legacy | Partial / acceptance gap | `CODE_OBSERVED` | Mock repositories and legacy comments/constants remain discoverable. They require scoped audit, not blanket deletion. |
 | Favorites, notifications, cancellation, disputes/reviews | Deferred / decision needed or incomplete | `DOC_OBSERVED` | Persistent Favorites is approved but not implemented; notification model, cancellation/refund matrix, remaining-balance method, and some dispute/review behavior require scoped audit/decisions. |
 

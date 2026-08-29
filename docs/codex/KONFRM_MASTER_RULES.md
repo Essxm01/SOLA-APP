@@ -2,7 +2,21 @@
 
 **Purpose:** concise execution governance for Codex. Product source documents remain preserved evidence; this file routes authority and does not rewrite them.
 
-## Required reading before major work
+## Mandatory context refresh gate
+
+Before implementing **every approved execution task**, re-establish the mandatory core context:
+
+1. `AGENTS.md`.
+2. `docs/INDEX.md`.
+3. `docs/CURRENT_STATE.md`.
+4. `tasks/CURRENT_TASK.md`.
+5. This file.
+
+For substantial or cross-system work, also review the applicable `KONFRM_CURRENT_REALITY.md`, `KONFRM_DECISION_CONFLICTS.md`, `KONFRM_COMPLETION_MATRIX.md`, `KONFRM_RESCUE_BACKLOG.md`, and `KONFRM_QUALITY_GATES.md`. Then use the Index to selectively load only the relevant business, database, architecture, integration, design, decision, UI-QA, and cross-app authorities.
+
+Before touching implementation, record or establish: objective; governing authorities; affected systems/apps; non-negotiable rules; open decisions; evidence to verify; and explicit non-goals. Historical documents, old code, mocks, constants, and previous behavior never silently override this current governing context.
+
+## Additional source reading before major work
 
 1. Root `KONFRM_CODEX_MASTER_OPERATING_PROMPT.md`.
 2. Root `KONFRM_MASTER_PROJECT_CONTEXT.md`.
@@ -65,3 +79,6 @@ Never silently “fix” a specification to match code. Record the issue in `KON
 - Complete intent, implementation, data/API, cross-app, UI/UX, RTL, failure, test, regression, security/privacy, live-evidence, and reporting gates when applicable.
 - Complete the master prompt’s functional, UI/UX, and adversarial three-pass review before closure.
 - Update reality, matrix, map, and backlog only when evidence materially changes. Git stores history; these files store current operational truth.
+- **No-extension task closure:** an approved task owns inspection, diagnosis, implementation/fix, testing, self-fix, retest, regression, context re-check, quality-gate review, and closure. A discovered safe in-scope defect remains in the same task; do not require a continuation or mini-phase merely to finish it.
+- Stop before closure only for an unresolved Founder/Product decision, unavailable required external access, approval-required destructive/live mutation, explicitly unauthorized architecture/business/financial change, or an external dependency that cannot safely be resolved. The blocker report must state the exact blocker, attempted safe actions, why they failed, and the minimum Founder action.
+- **Closure context re-check:** immediately before declaring complete, re-read the active task, this file, relevant domain authority, and applicable Quality Gates; resolve divergence, retest, then report concise Context Compliance Evidence.

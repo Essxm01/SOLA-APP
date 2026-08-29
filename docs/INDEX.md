@@ -1,6 +1,6 @@
 # Repository knowledge index
 
-Read selectively. The default fresh-session sequence is `../AGENTS.md` → this index → `CURRENT_STATE.md` → `../tasks/CURRENT_TASK.md`; then load only the documents below that match the task.
+Read selectively. Before implementing any approved task, the mandatory core sequence is `../AGENTS.md` → this index → `CURRENT_STATE.md` → `../tasks/CURRENT_TASK.md` → `codex/KONFRM_MASTER_RULES.md`; then load only the documents below that match the task.
 
 | Document | Read when | Usually skip when |
 | --- | --- | --- |
@@ -19,7 +19,7 @@ Read these selectively after the default recovery sequence. They govern planning
 
 | Document | Read when | Usually skip when |
 | --- | --- | --- |
-| [codex/KONFRM_MASTER_RULES.md](./codex/KONFRM_MASTER_RULES.md) | Planning substantial work, resolving source conflicts, or determining phase authority | A tightly scoped follow-up whose contract and authority are already clear |
+| [codex/KONFRM_MASTER_RULES.md](./codex/KONFRM_MASTER_RULES.md) | Every approved execution task; source conflicts; phase authority | Never skip before implementation; it is part of the mandatory core refresh |
 | [codex/KONFRM_CURRENT_REALITY.md](./codex/KONFRM_CURRENT_REALITY.md) | Assessing whether a feature is actually verified, partial, or only historically claimed | A local change with fresh direct evidence |
 | [codex/KONFRM_EXECUTION_MAP.md](./codex/KONFRM_EXECUTION_MAP.md) | Selecting or sequencing work across roadmap phases | Completing an already-approved narrow task |
 | [codex/KONFRM_COMPLETION_MATRIX.md](./codex/KONFRM_COMPLETION_MATRIX.md) | Checking cross-app readiness, dependencies, or acceptance gaps | Isolated documentation-only work |

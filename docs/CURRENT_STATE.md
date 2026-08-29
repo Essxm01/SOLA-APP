@@ -1,7 +1,7 @@
 # Current project state
 
 **Last updated:** 2026-08-29
-**Repository-state baseline:** `main` at `6de6f92`; external live/deployment claims require separate read-only verification.
+**Repository-state baseline:** P0.1 began at `main`/`origin/main` `3acb94e`; external live/deployment claims require separate read-only verification.
 
 ## Current status
 
@@ -36,6 +36,7 @@ Read [ARCHITECTURE.md](./ARCHITECTURE.md), [DATABASE.md](./DATABASE.md), and [BU
 - Customer Favorites is an approved capability but persistent canonical storage is not implemented.
 - Design-system legacy drift remains inventoried under `DESIGN_SYSTEM/`; the anti-drift baseline prevents new violations but does not migrate old screens.
 - Cloudflare Pages project linkage/revision state is external to repository configuration and requires live verification after frontend deployment work.
+- Local baseline runtime: Customer, Owner, and Admin retain Node 20 declarations; the backend now declares Node 22 to match CI and the installed Supabase runtime's native-WebSocket requirement. The Codex restricted filesystem context can fail while resolving the Windows user profile, but portable Node 20/22 and host Node 25 work in an authorized local process context. The user-prefix PowerShell `npm` remains inaccessible; use bundled `npm.cmd` or a process-scoped official runtime rather than treating that shell shim as the project authority.
 
 ## Open product/implementation decisions
 
@@ -45,4 +46,4 @@ Read [ARCHITECTURE.md](./ARCHITECTURE.md), [DATABASE.md](./DATABASE.md), and [BU
 
 ## Next work
 
-The Phase Zero governance bootstrap and documentation reconciliation are complete and awaiting Founder review. No product execution phase is in progress. [P0.1](./codex/KONFRM_EXECUTION_MAP.md) — baseline, CI, deployment, and access reality — is the recommended next phase only; do not start it without a concrete approved task contract.
+P0.1 baseline is complete; see [`codex/P0_1_BASELINE_REPORT.md`](./codex/P0_1_BASELINE_REPORT.md). Do not start P0.2 without a concrete approved task contract.

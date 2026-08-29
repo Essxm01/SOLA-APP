@@ -8,8 +8,8 @@ export function getApiBaseUrl(): string {
   if (envUrl && typeof envUrl === 'string' && envUrl.trim().length > 0) {
     return envUrl.trim().replace(/\/+$/, '');
   }
-  // Default to live production API server URL when VITE_API_BASE_URL is not set
-  return 'https://sola-backend-api.vercel.app/api/v1';
+  // Default to the current prototype backend when a Pages build has no injected base URL.
+  return 'https://sola-backend-api.essxm01.workers.dev/api/v1';
 }
 
 export function getApiUrl(path: string): string {

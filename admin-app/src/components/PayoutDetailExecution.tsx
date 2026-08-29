@@ -44,7 +44,7 @@ export function PayoutDetailExecution({ payoutId, onBack }: PayoutDetailExecutio
     setLoading(true);
     setError(null);
     try {
-      const token = localStorage.getItem('sola_admin_access_token') || 'admin_token_valid';
+      const token = localStorage.getItem('sola_admin_access_token') || '';
       const response = await fetch(getApiUrl(`/admin/payouts/${payoutId}`), {
         headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/json' },
       });
@@ -82,7 +82,7 @@ export function PayoutDetailExecution({ payoutId, onBack }: PayoutDetailExecutio
     setPiiLoading(true);
     setError(null);
     try {
-      const token = localStorage.getItem('sola_admin_access_token') || 'admin_token_valid';
+      const token = localStorage.getItem('sola_admin_access_token') || '';
       const response = await fetch(getApiUrl(`/admin/payouts/${payoutId}/reveal-pii`), {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
@@ -110,7 +110,7 @@ export function PayoutDetailExecution({ payoutId, onBack }: PayoutDetailExecutio
         throw new Error('رسوم المزود يجب أن تنحصر بين 0 و 100 ج.م');
       }
 
-      const token = localStorage.getItem('sola_admin_access_token') || 'admin_token_valid';
+      const token = localStorage.getItem('sola_admin_access_token') || '';
       const response = await fetch(getApiUrl(`/admin/payouts/${payoutId}/approve`), {
         method: 'POST',
         headers: {
@@ -140,7 +140,7 @@ export function PayoutDetailExecution({ payoutId, onBack }: PayoutDetailExecutio
     setError(null);
     setIsSubmitting(true);
     try {
-      const token = localStorage.getItem('sola_admin_access_token') || 'admin_token_valid';
+      const token = localStorage.getItem('sola_admin_access_token') || '';
       const response = await fetch(getApiUrl(`/admin/payouts/${payoutId}/reject`), {
         method: 'POST',
         headers: {

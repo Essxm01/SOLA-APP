@@ -7,7 +7,7 @@
 | ID | Parent / outcome | Surfaces | Dependencies | Risk | Status / verification |
 | --- | --- | --- | --- | --- | --- |
 | P0.1 | **PHASE 0** — baseline, CI, deployment, and access reality | Repo, CI, Worker, Pages | None | Critical | Complete; local/GitHub/public-HTTP evidence recorded, privileged metadata remains `ACCESS_UNAVAILABLE` |
-| P0.2 | Prototype auth/access blocker audit | Customer, Owner, Admin, backend | P0.1 | High | Preserve/verify; auth regression/error verification |
+| P0.2 | Prototype auth/access blocker audit | Customer, Owner, Admin, backend | P0.1 | High | Complete local release candidate; signed-token/role/bootstrap/error evidence in `P0_2_AUTH_ACCESS_REPORT.md`, publication intentionally pending |
 | P1.1 | **PHASE 1** — schema/RLS baseline inventory | DB, Supabase | P0.1 | Critical | Partial; read-only schema/RLS audit |
 | P1.2 | Identity/session persistence integrity | Backend, DB, all roles | P1.1 | Critical | Preserve/verify; ownership/session tests |
 | P1.3 | Property and media persistence integrity | Owner, Admin, Customer, DB/storage | P1.1 | Critical | Preserve/verify; cross-app/media tests |
@@ -84,4 +84,4 @@
 
 ## Next recommended execution phase
 
-**P0.2 — prototype auth/access blocker audit.** P0.1 is complete; P0.2 is the earliest unresolved prerequisite in the current dependency chain. It must begin only with a concrete approved task contract and must preserve the P0.1 evidence boundary.
+**P1.1 — schema/RLS baseline inventory.** P0.2 is complete locally; P1.1 is the earliest unresolved critical prerequisite. It requires a separate approved read-only contract and must preserve the migration/RLS evidence boundary.

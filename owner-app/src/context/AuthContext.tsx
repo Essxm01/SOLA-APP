@@ -3,6 +3,7 @@ import type { Owner } from '../types';
 import { mockRepository } from '../services/mockRepository';
 import { repositoryFactory } from '../services/repositoryFactory';
 import { getCanonicalOwnerPhone, isValidOwnerLogin, unwrapOwnerLoginResponse } from '../utils/ownerIdentity';
+import { isInvalidOwnerSessionFailure } from '../utils/ownerBootstrap';
 
 interface AuthContextType {
   isAuthenticated: boolean;
@@ -16,6 +17,8 @@ interface AuthContextType {
   verifyOTP: (code: string) => Promise<boolean>;
   logout: () => void;
   isLoadingAuth: boolean;
+  authError: string | null;
+  retryAuth: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -38,11 +41,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const [owner, setOwner] = useState<Owner | null>(null);
   const [isLoadingAuth, setIsLoadingAuth] = useState<boolean>(true);
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [restoreAttempt, setRestoreAttempt] = useState(0);
 
   const clearLocalOwnerSession = () => {
     setIsAuthenticated(false);
     setOwner(null);
     setPhoneNumber('');
+    setAuthError(null);
     localStorage.removeItem('sola_owner_authenticated');
     localStorage.removeItem('sola_access_token');
     localStorage.removeItem('sola_refresh_token');
@@ -59,11 +65,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     localStorage.setItem('sola_owner_phone', canonicalPhone);
     localStorage.setItem('sola_owner_authenticated', 'true');
     setIsAuthenticated(true);
+    setAuthError(null);
   };
 
   useEffect(() => {
     const loadProfile = async () => {
       setIsLoadingAuth(true);
+      setAuthError(null);
       try {
         const repo = repositoryFactory;
         const hasToken = !!localStorage.getItem('sola_access_token');
@@ -86,12 +94,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                     return;
                   }
                 } catch (refreshErr) {
-                  // Refresh token revoked or expired -> clean logout
-                  clearLocalOwnerSession();
+                  if (isInvalidOwnerSessionFailure(refreshErr)) {
+                    clearLocalOwnerSession();
+                  } else {
+                    setIsAuthenticated(false);
+                    setOwner(null);
+                    setAuthError('تعذر التحقق من جلسة المالك. تحقق من الاتصال ثم أعد المحاولة.');
+                  }
                   return;
                 }
               }
-              clearLocalOwnerSession();
+              if (isInvalidOwnerSessionFailure(err)) {
+                clearLocalOwnerSession();
+              } else {
+                setIsAuthenticated(false);
+                setOwner(null);
+                setAuthError('تعذر التحقق من جلسة المالك. تحقق من الاتصال ثم أعد المحاولة.');
+              }
             }
           } else {
             const profile = await mockRepository.getOwnerProfile();
@@ -101,13 +120,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           clearLocalOwnerSession();
         }
       } catch (err) {
-        clearLocalOwnerSession();
+        setIsAuthenticated(false);
+        setOwner(null);
+        setAuthError('تعذر التحقق من جلسة المالك. تحقق من الاتصال ثم أعد المحاولة.');
       } finally {
         setIsLoadingAuth(false);
       }
     };
     loadProfile();
-  }, []);
+  }, [restoreAttempt]);
+
+  const retryAuth = () => setRestoreAttempt((attempt) => attempt + 1);
 
   const loginWithPhone = async (phone: string): Promise<{ success: boolean; ownerOnboardingRequired?: boolean; error?: string }> => {
     const repo = repositoryFactory;
@@ -252,6 +275,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         verifyOTP,
         logout,
         isLoadingAuth,
+        authError,
+        retryAuth,
       }}
     >
       {children}

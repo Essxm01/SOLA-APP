@@ -112,7 +112,9 @@ export class HttpRepository implements
 
     if (!res.ok) {
       const serverMessage = data?.error?.message || data?.message || `HTTP_ERROR_${res.status}`;
-      throw new Error(serverMessage);
+      const error = new Error(serverMessage) as Error & { status?: number };
+      error.status = res.status;
+      throw error;
     }
 
     if (data && typeof data === 'object' && !Array.isArray(data)) {

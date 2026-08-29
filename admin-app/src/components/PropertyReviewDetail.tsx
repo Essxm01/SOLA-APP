@@ -92,7 +92,7 @@ export function PropertyReviewDetail({ propertyId, onBack, onSessionExpired }: P
     setError(null);
     setIsSubmitting(true);
     try {
-      const token = localStorage.getItem('sola_admin_access_token') || 'admin_token_valid';
+      const token = localStorage.getItem('sola_admin_access_token') || '';
       const response = await fetch(getApiUrl(`/admin/properties/${propertyId}/approve`), {
         method: 'POST',
         headers: {
@@ -121,7 +121,7 @@ export function PropertyReviewDetail({ propertyId, onBack, onSessionExpired }: P
     try {
       if (!rejectionNote.trim()) throw new Error('يرجى كتابة سبب رفض الوحدة العقارية');
 
-      const token = localStorage.getItem('sola_admin_access_token') || 'admin_token_valid';
+      const token = localStorage.getItem('sola_admin_access_token') || '';
       const response = await fetch(getApiUrl(`/admin/properties/${propertyId}/review`), {
         method: 'POST',
         headers: {

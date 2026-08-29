@@ -30,12 +30,15 @@ import {
 } from 'lucide-react';
 
 export function App() {
-  const [authToken, setAuthToken] = useState<string | null>(localStorage.getItem('sola_customer_access_token'));
+  // Persisted credentials are only candidates. Public browsing can render while
+  // restoration runs, but protected Customer UI waits for canonical validation.
+  const [authToken, setAuthToken] = useState<string | null>(null);
   const [customerPhone, setCustomerPhone] = useState<string | null>(localStorage.getItem('sola_customer_phone'));
   const [userProfile, setUserProfile] = useState<CustomerUserProfile | null>(() => {
     const saved = localStorage.getItem('sola_customer_profile');
-    return saved ? JSON.parse(saved) : null;
+    try { return saved ? JSON.parse(saved) : null; } catch { return null; }
   });
+  const [customerAuthError, setCustomerAuthError] = useState<string | null>(null);
 
   // Dedicated Full-Screen Edit Account View State
   const [isEditingAccount, setIsEditingAccount] = useState<boolean>(false);
@@ -249,7 +252,6 @@ export function App() {
       const refreshToken = localStorage.getItem('sola_customer_refresh_token');
 
       if (storedToken) {
-        setAuthToken(storedToken);
         try {
           const profileRes = await fetch(getApiUrl('/customer/profile'), {
             headers: { Authorization: `Bearer ${storedToken}` },
@@ -265,12 +267,19 @@ export function App() {
             };
             setUserProfile(mergedProfile);
             localStorage.setItem('sola_customer_profile', JSON.stringify(mergedProfile));
+            setAuthToken(storedToken);
+            setCustomerAuthError(null);
             fetchAccountSummary(storedToken);
             void fetchBookings(storedToken).catch(() => undefined);
             return;
           }
+          if (profileRes.status !== 401 && profileRes.status !== 403) {
+            setCustomerAuthError('تعذر التحقق من جلسة حسابك. تحقق من الاتصال ثم أعد المحاولة.');
+            return;
+          }
         } catch {
-          // Fall through to refresh if token expired or network failed
+          setCustomerAuthError('تعذر التحقق من جلسة حسابك. تحقق من الاتصال ثم أعد المحاولة.');
+          return;
         }
       }
 
@@ -292,7 +301,9 @@ export function App() {
             handleLogout();
           }
         } catch {
-          // Network error: preserve existing state
+          // Keep the persisted candidate for a later retry, but never render it
+          // as an authenticated Customer session.
+          setCustomerAuthError('تعذر استعادة جلسة حسابك. تحقق من الاتصال ثم أعد المحاولة.');
         }
       } else if (!storedToken) {
         setAuthToken(null);
@@ -355,6 +366,7 @@ export function App() {
     }
     localStorage.setItem('sola_customer_phone', phone);
     setAuthToken(token);
+    setCustomerAuthError(null);
     setCustomerPhone(phone);
 
     if (user) {
@@ -400,6 +412,7 @@ export function App() {
     setCustomerBookings([]);
     setBookingDetailId(null);
     setBookingsError(null);
+    setCustomerAuthError(null);
     setActiveTab('EXPLORE');
   };
 
@@ -824,6 +837,11 @@ export function App() {
                     <span>تسجيل الخروج</span>
                   </button>
                 </div>
+              </div>
+            ) : customerAuthError ? (
+              <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-center">
+                <p className="text-sm font-bold text-rose-800">{customerAuthError}</p>
+                <button type="button" onClick={() => window.location.reload()} className="mt-3 min-h-11 rounded-xl bg-[var(--konfrm-color-primary)] px-4 text-xs font-bold text-white">إعادة المحاولة</button>
               </div>
             ) : (
               /* Logged-Out State */

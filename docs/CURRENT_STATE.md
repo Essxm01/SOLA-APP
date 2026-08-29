@@ -1,6 +1,6 @@
 # Current project state
 
-**Last updated:** 2026-08-29
+**Last updated:** 2026-08-30
 **Repository-state baseline:** P0.1 began at `main`/`origin/main` `3acb94e`; external live/deployment claims require separate read-only verification.
 
 ## Current status
@@ -13,7 +13,7 @@ The repository contains code and migration evidence for property operations, boo
 - **Bookings:** Customer request lifecycle, Owner approve/reject, availability protection, and booking-context conversation/message persistence.
 - **Payments:** prototype deposit initiation/completion with canonical financial summaries and migration `019` atomic finalization RPC; no real-money Paymob flow.
 - **Wallet:** Owner wallet/ledger reads use `owner_wallets` and `wallet_ledger_entries`, not property-price reconstruction.
-- **Identity:** Owner app authenticates against canonical Owner capability, scopes `AppProvider` to canonical Owner identity, and clears local state before best-effort revoke.
+- **Identity/access:** P0.2 locally verified signed-token role boundaries across Customer, Owner, Admin, and representative backend routes. Persisted Customer/Owner tokens are candidates until canonical validation; fake patterned JWT and Admin UI token fallbacks were removed. See [`codex/P0_2_AUTH_ACCESS_REPORT.md`](./codex/P0_2_AUTH_ACCESS_REPORT.md).
 - **Truthful states:** Admin validates sessions before shell render; Admin overview/notifications and Customer property/payment-history fetches distinguish loading, success/empty, and error.
 - **Owner entry:** first-ever device flow is a short KONFRM splash then one-time Owner onboarding; it is independent of authentication and does not change Owner capability rules.
 - **Owner Home:** action-first Home uses canonical pending booking requests, future confirmed bookings, property status context, and direct available/pending wallet values; it does not use dashboard financial aliases as wallet truth.
@@ -46,4 +46,4 @@ Read [ARCHITECTURE.md](./ARCHITECTURE.md), [DATABASE.md](./DATABASE.md), and [BU
 
 ## Next work
 
-P0.1 baseline is complete; see [`codex/P0_1_BASELINE_REPORT.md`](./codex/P0_1_BASELINE_REPORT.md). Do not start P0.2 without a concrete approved task contract.
+P0.2 is complete as a local release candidate and awaits Founder publication review. The earliest unresolved prerequisite remains P1.1 schema/RLS baseline inventory; do not begin it without an approved task contract.

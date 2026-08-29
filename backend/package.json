@@ -11,6 +11,7 @@
     "test:booking-01-1": "npx tsx server/src/tests/booking011.test.ts",
     "test:hotfix-02": "npx tsx server/src/tests/m03Hotfix02.test.ts",
     "test:owner-identity-01": "npx tsx server/src/tests/ownerIdentity01.test.ts",
+    "test:auth-p02": "npx tsx server/src/tests/prototypeAuthAccessP02.test.ts",
     "test:owner-registration-kyc-01": "npx tsx server/src/tests/ownerRegistrationKyc01.test.ts",
     "test:owner-wallet-01": "npx tsx server/src/tests/ownerWallet01.test.ts",
     "test:payment-01": "npx tsx server/src/tests/payment01.test.ts",

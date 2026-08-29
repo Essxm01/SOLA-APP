@@ -252,7 +252,7 @@ export class AuthService {
         id: newUserId,
         phoneNumber: canonicalPhone,
         status: 'ACTIVE',
-      }).catch(() => null);
+      });
 
       if (createdDbUser) {
         user = createdDbUser;
@@ -334,7 +334,7 @@ export class AuthService {
       deviceInfo,
       ipAddress,
       expiresAt: expiresAtIso,
-    }).catch(() => null);
+    });
 
     dbUserSessionsStore.set(refreshToken, sessionRecord);
     dbUserSessionsStore.set(refreshTokenHash, sessionRecord);
@@ -475,7 +475,7 @@ export class AuthService {
         deviceInfo,
         ipAddress,
         expiresAt: expiresAtIso,
-      }).catch(() => null);
+      });
 
       dbUserSessionsStore.set(refreshToken, sessionRecord);
       dbUserSessionsStore.set(refreshTokenHash, sessionRecord);
@@ -574,7 +574,7 @@ export class AuthService {
       deviceInfo,
       ipAddress,
       expiresAt: expiresAtIso,
-    }).catch(() => null);
+    });
 
     dbUserSessionsStore.set(refreshToken, sessionRecord);
     dbUserSessionsStore.set(refreshTokenHash, sessionRecord);

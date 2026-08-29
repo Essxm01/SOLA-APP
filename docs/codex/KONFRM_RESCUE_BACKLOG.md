@@ -16,3 +16,7 @@ Only evidence-backed, deferred, or decision-blocked items belong here. This back
 | RB-10 | Medium / Data | Test fixtures | Roadmap’s realistic data task risks unsafe production mutation. | No | P18.1 |
 | RB-11 | Medium / UX + UI | All role audits | Audit inventories predate recent migration commits. | No | P15.1 / P16.1 |
 | RB-12 | Medium / Local tooling ergonomics | Local PowerShell/Codex runner | The user-prefix PowerShell npm shim remains inaccessible; restricted Codex filesystem execution can fail while resolving the Windows user profile. Portable Node 20/22 runtimes and an authorized local process provide a non-destructive workaround; backend requires Node 22, matching CI. | No—P0.1 baseline is complete | Maintenance only if developer experience requires it |
+
+## Resolved by P0.2 (not backlog items)
+
+- Patterned non-production JWT strings and matching Admin detail-screen fallback tokens were removed. Persisted Customer/Owner tokens now remain unauthenticated candidates until canonical validation or an explicit retryable failure state. See `P0_2_AUTH_ACCESS_REPORT.md`.

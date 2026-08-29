@@ -13,3 +13,9 @@ export const getOwnerAuthPresentation = (
 };
 
 export const shouldHomeOwnDataState = (activeTab: string) => activeTab === 'home';
+
+export const isInvalidOwnerSessionFailure = (error: unknown): boolean => {
+  const candidate = error as { status?: number; message?: string } | null;
+  if (candidate?.status === 401 || candidate?.status === 403) return true;
+  return /UNAUTHORIZED|FORBIDDEN|INVALID_TOKEN|EXPIRED|SESSION_REVOKED/i.test(candidate?.message || '');
+};

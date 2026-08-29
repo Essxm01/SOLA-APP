@@ -90,10 +90,13 @@ const OwnerFirstRunGate: React.FC<{ children: React.ReactNode }> = ({ children }
 };
 
 const OwnerAuthGate: React.FC = () => {
-  const { isLoadingAuth, isAuthenticated, owner } = useAuth();
+  const { isLoadingAuth, isAuthenticated, owner, authError, retryAuth } = useAuth();
   const [showRegistration, setShowRegistration] = useState(false);
   const authPresentation = getOwnerAuthPresentation(isLoadingAuth, isAuthenticated, !!owner?.id, !!owner?.ownerOnboardingCompletedAt);
   if (authPresentation === 'NEUTRAL_LAUNCH') return <MobileContainer><OwnerLaunchSkeleton /></MobileContainer>;
+  if (authError) {
+    return <MobileContainer><main className="min-h-screen px-6 py-8 text-center" dir="rtl"><h1 className="text-xl font-bold text-[var(--konfrm-text-primary)]">تعذر التحقق من الجلسة</h1><p className="mt-3 text-[var(--konfrm-text-secondary)]">{authError}</p><button type="button" className="mt-6 min-h-11 rounded-[var(--konfrm-radius-control)] bg-[var(--konfrm-color-primary)] px-5 font-bold text-white" onClick={retryAuth}>إعادة المحاولة</button></main></MobileContainer>;
+  }
   if (authPresentation === 'LOGIN') {
     return <MobileContainer>{showRegistration ? <CreateOwnerAccountScreen onBack={() => setShowRegistration(false)} /> : <LoginScreen onCreateOwnerAccount={() => setShowRegistration(true)} />}</MobileContainer>;
   }

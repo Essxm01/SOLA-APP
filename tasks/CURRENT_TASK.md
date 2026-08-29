@@ -1,67 +1,47 @@
-# P0.1 — Baseline, CI, deployment, and access reality
+# P0.2 — Prototype authentication and access blocker audit
 
 **Parent macro phase:** PHASE 0
-**Status:** Complete — P0.1 baseline evidence and local runtime remediation recorded; do not start P0.2 without a new approved contract.
+**Status:** Complete — local release candidate; publication is a separate Founder approval gate.
+**Approved baseline:** `5cb7b421328004bc56e6b4eff99e79c601fead5d` (`main` = `origin/main` at start)
 
-## Why this phase exists / objective
+## Objective
 
-Establish the trustworthy current technical baseline for KONFRM from repository, local-runtime, CI, and safe read-only external evidence. Classify every external fact rather than treating configuration, a build, or an old delivery report as live proof.
+Produce executable, cross-role evidence that current prototype authentication and server-side access boundaries work for Customer, Owner, Admin, and representative protected backend routes. Repair any safe P0.2 defect found; do not redesign production authentication.
 
-## Exact in-scope flows
+## Affected systems and current implementation paths
 
-- Verify Git baseline, working tree, package/toolchain state, scripts, environment templates, and deployment configuration without printing secrets.
-- Diagnose and, only when unambiguous and local, repair the broken standard npm command path.
-- Establish local build/check/test/dev-runtime baselines for Customer, Owner, Admin, and backend; identify API target/mock/auth behavior.
-- Inspect GitHub Actions workflow and accessible recent runs, public non-mutating HTTP routes, Cloudflare/Vercel references, and Supabase metadata only through authorized read-only access.
-- Produce the P0.1 cross-system configuration and acceptance matrices; update current evidence/reality documentation.
+- **Customer:** `customer-app/src/App.tsx`, `CustomerAuthModal.tsx`; prototype login at `/api/v1/auth/prototype-login`, browser persistence under `sola_customer_*`.
+- **Owner:** `owner-app/src/context/AuthContext.tsx`, `owner-app/src/App.tsx`, Owner login/registration entry; canonical Owner profile validation gates `AppProvider`, browser persistence under `sola_*`.
+- **Admin:** `admin-app/src/App.tsx`, `utils/adminTruthfulState.ts`, `AdminLogin.tsx`; `/api/v1/admin/auth/login` plus `/api/v1/admin/auth/session` validation gates the shell.
+- **Backend:** `backend/server/src/services/authService.ts`, `middleware/auth.ts`, `controllers/authController.ts`, `app.ts`; signed JWTs, refresh/session records, role checks, and canonical subject-derived ownership.
 
-## Affected roles and systems
+## Governing rules and non-negotiables
 
-Customer App, Owner App, Admin App, backend Worker/Node entry, GitHub Actions, Cloudflare Pages/Worker, Supabase PostgreSQL/Storage, and legacy Vercel references.
+- Prototype Customer/Owner/Admin access must not be blocked by OTP/SMS; retained OTP/SMS code is audited as legacy unless reachable from the active path.
+- `users` is canonical human identity; `owners` is an optional same-UUID capability. Owner login never creates that capability.
+- A validated canonical Owner is required before the Owner `AppProvider` mounts; account-scoped Owner state must clear on logout or identity change.
+- Public Customer browsing remains public where the route contract permits it. Protected actions require canonical auth and role/ownership authorization; client IDs are never authority.
+- Auth/network/database failure must remain truthful; it must not become a valid shell, anonymous success, zero/empty business state, or a fabricated token.
+- No secrets/tokens/credentials in source or reports. No database/RLS/migration/data, infrastructure/CI, dependency, deployment, push, or live-user mutation.
 
-## Authority and current evidence
+## Evidence required
 
-- `AGENTS.md`, `docs/INDEX.md`, `docs/codex/KONFRM_MASTER_RULES.md`
-- `docs/codex/KONFRM_CURRENT_REALITY.md`, `KONFRM_EXECUTION_MAP.md`, `KONFRM_COMPLETION_MATRIX.md`, `KONFRM_RESCUE_BACKLOG.md`, `KONFRM_QUALITY_GATES.md`
-- `docs/ARCHITECTURE.md`, `docs/INTEGRATIONS.md`, `docs/DATABASE.md`
-- `KONFRM_CODEX_MASTER_OPERATING_PROMPT.md` P0.1 contract and `docs/codex/KONFRM_PHASE_TEMPLATE.md`
+The approved P0.2 45-item matrix: architecture and OTP classification; anonymous, valid, stale, wrong-role, logout, failure, and cross-account cases; representative backend authorization; focused executable regression tests; typechecks/builds; security/privacy; documentation and three-pass closure review.
 
 ## Explicit non-goals
 
-No P0.2 or later phase; no product feature/design/business-rule work; no database/schema/RLS/storage/data mutation; no deployment, push, commit, dependency upgrade, secret rotation, or Cloudflare/Supabase/Vercel configuration mutation.
+No final production auth design, SMS provider, mandatory OTP, identity-model redesign, KYC/booking/payment/wallet/property changes, UI redesign, schema/RLS changes, CI/deployment/configuration changes, publish/deploy, or P1.1 work.
 
-## Product, financial, privacy, and safety guardrails
+## Current evidence and open decisions
 
-Prototype access must remain testable without OTP/SMS blocking it. Preserve canonical identity/authorization boundaries, never print or expose secrets, and make only non-destructive HTTP/read-only infrastructure checks. Configuration is not live proof.
+- Current prototype login is OTP-free in Customer and Owner active UI paths; legacy request/verify OTP endpoints and Owner OTP screen require reachability classification.
+- Final production authentication remains an explicit product/security decision.
+- Retained migrations do not prove complete RLS history; P0.2 does not alter schema/RLS. See `docs/codex/KONFRM_DECISION_CONFLICTS.md` DC-04/DC-06.
 
-## Exact acceptance matrix
+## Relevant authorities
 
-Record PASS / FAIL / BLOCKED / ACCESS_UNAVAILABLE with evidence for all 30 P0.1 items in the approved phase contract: Git/toolchain; each local app/backend and routing/auth baseline; CI/runs/limitations; Pages/Worker; live routing; Supabase/schema/storage/RLS limits; Vercel classification; cross-system matrix; secret safety; self-fix; and documentation updates.
+`AGENTS.md`, `docs/INDEX.md`, `docs/CURRENT_STATE.md`, `docs/codex/KONFRM_MASTER_RULES.md`, current reality/conflicts/matrix/rescue/quality/execution-map documents, `docs/BUSINESS_RULES.md`, `docs/ARCHITECTURE.md`, `docs/INTEGRATIONS.md`, and the P0.2 execution contract.
 
-## Failure, conflict, and edge cases
+## Validation and closure
 
-Record inaccessible Cloudflare/Supabase/GitHub evidence as `ACCESS_UNAVAILABLE`; do not invent live status. A local toolchain repair must be unambiguous and non-destructive. Stop for Founder direction before any live-infrastructure, database, auth-architecture, dependency, or product-rule mutation.
-
-## Applicable quality gates
-
-Functional/technical, operational/product, and adversarial reviews from `KONFRM_QUALITY_GATES.md`; only relevant tests/builds; exact deployment evidence when accessible.
-
-## Verification and evidence plan
-
-Inspect config/scripts and run actual safe local commands; exercise minimal non-mutating runtime paths; query public GitHub REST and HTTP endpoints where access permits; use authenticated read-only Cloudflare/Supabase tooling only if available; maintain a cross-system evidence matrix.
-
-## Test and regression plan
-
-Run baseline checks/builds/tests that the discovered toolchain supports. Diagnose any command failure to root cause rather than misclassifying it as a product failure. Do not run mutation-heavy tests against live systems.
-
-## Self-fix loop
-
-Detect → diagnose root cause → fix only an unambiguous in-scope local/repository baseline defect → retest → reinspect. Otherwise record the exact blocker.
-
-## Documentation impact
-
-Updated `docs/CURRENT_STATE.md` and applicable P0.1 evidence/matrix/backlog documents. P0.2 remains next only; do not start it without approval. See `docs/codex/P0_1_BASELINE_REPORT.md` for the completed evidence and remaining access-limited facts.
-
-## Stop / Founder-decision conditions
-
-Stop before live configuration/data/schema/RLS changes, destructive cleanup, production-auth redesign, major dependency upgrades, or unresolved product/financial decisions. Do not commit, push, deploy, or begin P0.2.
+Use only mock/isolated focused tests after confirming their safety. Run backend checks with Node 22 and proportionate Customer/Owner/Admin checks. Apply functional, product/UI, and adversarial review; update the P0.2 report, reality, matrix, rescue backlog, execution map, and current state from evidence. Finish with one local release-candidate commit only; do not push or deploy.

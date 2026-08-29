@@ -39,7 +39,7 @@ export function DisputeDetailExecution({ disputeId, onBack }: DisputeDetailExecu
     setLoading(true);
     setError(null);
     try {
-      const token = localStorage.getItem('sola_admin_access_token') || 'admin_token_valid';
+      const token = localStorage.getItem('sola_admin_access_token') || '';
       const response = await fetch(getApiUrl(`/admin/disputes/${disputeId}`), {
         headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/json' },
       });
@@ -69,7 +69,7 @@ export function DisputeDetailExecution({ disputeId, onBack }: DisputeDetailExecu
         throw new Error('ملاحظات القرار الإداري إجبارية وتتطلب 20 حرفاً على الأقل لتوثيق الحسم');
       }
 
-      const token = localStorage.getItem('sola_admin_access_token') || 'admin_token_valid';
+      const token = localStorage.getItem('sola_admin_access_token') || '';
       const response = await fetch(getApiUrl(`/admin/disputes/${disputeId}/resolve`), {
         method: 'POST',
         headers: {
@@ -102,7 +102,7 @@ export function DisputeDetailExecution({ disputeId, onBack }: DisputeDetailExecu
   const handleReconcile = async () => {
     setError(null);
     try {
-      const token = localStorage.getItem('sola_admin_access_token') || 'admin_token_valid';
+      const token = localStorage.getItem('sola_admin_access_token') || '';
       const response = await fetch(getApiUrl(`/admin/disputes/${disputeId}/reconcile`), {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${token}`, 'Idempotency-Key': `reconcile_${Date.now()}` },

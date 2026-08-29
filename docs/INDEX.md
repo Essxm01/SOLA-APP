@@ -13,6 +13,21 @@ Read selectively. The default fresh-session sequence is `../AGENTS.md` → this 
 | [DECISIONS.md](./DECISIONS.md) | Questioning an intentional architectural choice or considering reversal/migration | The choice is not relevant to the task |
 | [CURRENT_STATE.md](./CURRENT_STATE.md) | Onboarding, handoff, current debt, implemented areas, or likely next work | Never skip during a fresh-session recovery |
 
+## Operating-system documents
+
+Read these selectively after the default recovery sequence. They govern planning and evidence classification; they do not replace product, database, or design authorities.
+
+| Document | Read when | Usually skip when |
+| --- | --- | --- |
+| [codex/KONFRM_MASTER_RULES.md](./codex/KONFRM_MASTER_RULES.md) | Planning substantial work, resolving source conflicts, or determining phase authority | A tightly scoped follow-up whose contract and authority are already clear |
+| [codex/KONFRM_CURRENT_REALITY.md](./codex/KONFRM_CURRENT_REALITY.md) | Assessing whether a feature is actually verified, partial, or only historically claimed | A local change with fresh direct evidence |
+| [codex/KONFRM_EXECUTION_MAP.md](./codex/KONFRM_EXECUTION_MAP.md) | Selecting or sequencing work across roadmap phases | Completing an already-approved narrow task |
+| [codex/KONFRM_COMPLETION_MATRIX.md](./codex/KONFRM_COMPLETION_MATRIX.md) | Checking cross-app readiness, dependencies, or acceptance gaps | Isolated documentation-only work |
+| [codex/KONFRM_RESCUE_BACKLOG.md](./codex/KONFRM_RESCUE_BACKLOG.md) | Looking for verified defects, gaps, or deferred work | When the active task already sets scope |
+| [codex/KONFRM_QUALITY_GATES.md](./codex/KONFRM_QUALITY_GATES.md) | Defining validation and closure evidence | Read-only discovery with no phase closure |
+| [codex/KONFRM_UI_QA_PROTOCOL.md](./codex/KONFRM_UI_QA_PROTOCOL.md) | Any visible UI/UX phase | Backend-only tasks |
+| [codex/KONFRM_CROSS_APP_MATRIX.md](./codex/KONFRM_CROSS_APP_MATRIX.md) | A shared entity/state changes across roles | A single-role static presentation change |
+
 ## Other authorities
 
 - [`../DESIGN_SYSTEM/`](../DESIGN_SYSTEM/) is the detailed visual and product-experience authority; read its router before UI work.
@@ -21,4 +36,4 @@ Read selectively. The default fresh-session sequence is `../AGENTS.md` → this 
 
 ## Historical/reference material
 
-`../implementation_plan.md`, `../SOLA_EXECUTION_TASKS.md`, app-level implementation plans/readmes, and `../backend/docs/` may explain prior intent, but are not current authority. Use them only to reconstruct history and verify against code, migrations, current docs, and Git.
+`../implementation_plan.md`, `../SOLA_EXECUTION_TASKS.md`, app-level implementation plans/readmes, and `../backend/docs/` may explain prior intent, but are not current authority. Use them only to reconstruct history and verify against code, migrations, current docs, and Git. The root Product Context, Arabic PHASE 0–22 roadmap, and mobile UX guide are preserved source documents; their authority and conflicts are routed by `codex/KONFRM_MASTER_RULES.md`.

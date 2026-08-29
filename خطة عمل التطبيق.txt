@@ -1,0 +1,1251 @@
+# خطة عمل KONFRM التنفيذية — من الوضع الحالي إلى Prototype متكامل
+
+سأعتبر هذه المحادثة من الآن **مرجع خطة التنفيذ**: لا ننتقل لمرحلة جديدة لمجرد أن الكود اتكتب أو الـBuild نجح؛ ننتقل فقط عندما تنتهي المرحلة وظيفيًا ويتم اختبارها فعليًا.
+
+بنيت الخطة على الـMaster Project Context الحالي وعلى قواعد تصميم الـMobile الموجودة في المشروع، خصوصًا أن هدفنا الحالي **Functional Prototype حقيقي لا Production نهائي**، وأن التطبيقات الثلاثة يجب أن تعتمد على Backend/Database مشتركة لا حالات وهمية منفصلة. fileciteturn0file0L1-L20 كما سأعامل الاتساق في المكونات، الـNavigation، الـTypography، الألوان، الأيقونات، الـSpacing والـFeedback كجزء من جودة المنتج نفسها، وليس تجميلًا أخيرًا. fileciteturn0file1L183-L196
+
+---
+
+# أولًا: ترتيب الأولويات
+
+لن نمشي App-by-App؛ أي لا ننهي تطبيق المستأجر بالكامل ثم ننتقل للمالك. هذا خطأ لأنه قد ينتج ثلاثة تطبيقات جميلة لكن غير مترابطة.
+
+الترتيب سيكون:
+
+**قاعدة البيانات → Backend contracts → Cross-App Core Flows → Design System → UI/UX → الحالات الاستثنائية → Security الأساسية → Integration → Live QA → Demo Readiness.**
+
+وسنستخدم **Clusters كبيرة نسبيًا ومترابطة** حتى نقلل استهلاك Antigravity. كل Cluster قد يحتوي عدة Tasks صغيرة، لكن غالبًا أعطيه Prompt واحدًا متماسكًا لينفذها دفعة واحدة، ثم نراجع النتيجة بدل 10 Prompts لنفس المنطقة.
+
+---
+
+# PHASE 0 — تثبيت نقطة البداية
+
+### Task 0.1 — Baseline Audit
+
+قبل إضافة أي Feature جديدة، Antigravity يعمل فحصًا واحدًا شاملًا:
+
+- التطبيقات الأربعة البرمجية الحالية:
+  - `customer-app`
+  - `owner-app`
+  - `admin-app`
+  - `backend`
+- Supabase schema الحالي.
+- APIs الحالية.
+- Authentication الحالي بعد قرار إزالة OTP من الـPrototype.
+- Cloudflare Pages.
+- Cloudflare Worker.
+- GitHub Actions.
+- Environment variables.
+- Storage.
+- البيانات الحقيقية الموجودة.
+- الـMocks والـhardcoded data المتبقية.
+- أخطاء Console/API الحالية.
+- حالة كل Flow حالي.
+
+**الناتج:** خريطة دقيقة لما يعمل وما لا يعمل وما هو Mock وما هو Real.
+
+### Task 0.2 — إزالة OTP كعائق Prototype
+
+طبقًا لقرارنا الأخير:
+
+**لا نضيّع وقتًا حاليًا في OTP.**
+
+نريد Authentication بسيطًا ومستقرًا يسمح لنا بإنشاء حسابات وتجربة التطبيقات مرارًا بدون SMS limits أو OTP rate limits.
+
+لكن Antigravity **لا يحذف معمارية Auth عشوائيًا** بحيث يكسر إمكانية إعادتها لاحقًا؛ المطلوب Prototype authentication مناسب للاختبار.
+
+### Task 0.3 — تنظيف blockers فقط
+
+نعالج:
+
+- Broken API endpoints.
+- Auth loops.
+- CORS.
+- Environment mismatch.
+- Wrong production API URLs.
+- runtime crashes.
+- أخطاء تمنع التجربة.
+
+ولا نقوم الآن بـ:
+
+- mass refactor.
+- dependency upgrades لمجرد أنها أحدث.
+- إعادة تسمية SOLA → KONFRM في كل repository.
+- تحسين architecture غير مؤثر على الـPrototype.
+
+**Gate 0:** أستطيع فتح التطبيقات الثلاثة والدخول والخروج والتجربة بدون blocker تقني أساسي.
+
+---
+
+# PHASE 1 — قاعدة البيانات: العمود الفقري
+
+هذه **أعلى أولوية تقنية**.
+
+## Task 1.1 — Database Schema Audit
+
+نفحص كل الجداول والعلاقات الحالية ونقارنها بالمنتج الحقيقي.
+
+الكيانات الأساسية التي يجب التأكد منها تشمل:
+
+- Users
+- Owner profiles
+- Properties
+- Property images
+- Property verification
+- Availability / blocks
+- Bookings
+- Booking snapshots
+- Financial summaries
+- Favorites
+- Wallet
+- Ledger
+- Payouts
+- Disputes
+- Notifications
+- Conversations
+- Messages
+- Reviews
+- Admin users
+- Audit logs
+
+لا ننشئ جداول فقط لأن القائمة موجودة؛ أي شيء غير مطلوب للـPrototype الحالي يمكن تأجيله.
+
+---
+
+## Task 1.2 — Unified Identity
+
+نحدد نموذج هوية واحد.
+
+نفس الشخص يجب ألا يصبح:
+
+`customer_123` في تطبيق المستأجر
+
+وشخصًا مختلفًا:
+
+`owner_847` في تطبيق المالك.
+
+نريد:
+
+**User Identity واحدة → Roles/Profiles مختلفة.**
+
+حتى لو التطبيقات منفصلة بصريًا.
+
+---
+
+## Task 1.3 — Property Source of Truth
+
+الوحدة الواحدة لها Record حقيقي واحد.
+
+Owner يعدلها → Database تتغير → Admin يراها → بعد النشر Renter يراها.
+
+لا يوجد نسخ مختلفة من الوحدة داخل كل App.
+
+---
+
+## Task 1.4 — Availability Source of Truth
+
+توحيد مصادر:
+
+- Owner manual blocks.
+- External bookings.
+- Approved bookings.
+- Confirmed bookings.
+
+ثم Customer calendar يقرأ منها.
+
+القواعد الحالية:
+
+`PENDING_OWNER_APPROVAL` لا يحجب التاريخ.
+
+`APPROVED_PENDING_PAYMENT` يحجبه.
+
+`CONFIRMED` يحجبه.
+
+---
+
+## Task 1.5 — Booking Data Model
+
+Booking واحد يجب أن يربط:
+
+`Renter ↔ Property ↔ Owner ↔ Dates ↔ Guests ↔ Pricing ↔ Status`
+
+ويكون هو نفس الـBooking الذي تراه التطبيقات الثلاثة.
+
+---
+
+## Task 1.6 — Financial Model
+
+نتأكد أن DB تستطيع تمثيل:
+
+- Total.
+- Deposit.
+- Remaining.
+- KONFRM commission.
+- Owner entitlement.
+- Payment state.
+
+مع الالتزام:
+
+**العربون = سعر أول ليلة.**
+
+**عمولة KONFRM = 20% من العربون فقط.**
+
+**لا عمولة على المتبقي.**
+
+ولا يظهر التقسيم الداخلي للمستأجر.
+
+---
+
+## Task 1.7 — Notifications Model
+
+نحتاج Event/Notification model يستطيع تسجيل:
+
+> حدث ماذا؟ لمن؟ بسبب أي Entity؟ هل قُرئ؟ ومتى؟
+
+مثال:
+
+`Booking Requested → Owner notification`
+
+`Owner Approved → Renter notification`
+
+`Property Submitted → Admin notification`
+
+---
+
+## Task 1.8 — Integrity Audit
+
+اختبارات:
+
+- orphan records.
+- duplicate identities.
+- invalid property-owner relationships.
+- invalid booking dates.
+- impossible booking states.
+- broken foreign keys.
+- stale fake records.
+
+**Gate 1:** نستطيع رسم رحلة أي Property أو Booking عبر التطبيقات الثلاثة من نفس Records في Supabase.
+
+---
+
+# PHASE 2 — Backend Contract
+
+هنا نحول الـDatabase إلى نظام حقيقي بدل أن يتعامل كل Frontend معها بطريقته.
+
+## Task 2.1 — Public APIs
+
+للمستأجر غير المسجل:
+
+- Explore.
+- Search.
+- Property details.
+- Property media.
+- Availability.
+- Quote.
+
+## Task 2.2 — Renter APIs
+
+- Profile.
+- Favorites.
+- Booking creation.
+- My bookings.
+- Booking details.
+- Payment لاحقًا.
+- Notifications.
+- Chat لاحقًا.
+
+## Task 2.3 — Owner APIs
+
+- Profile.
+- Properties.
+- Create/edit property.
+- Images.
+- Availability.
+- Booking requests.
+- Accept/reject.
+- Wallet.
+- Payout.
+- Notifications.
+- Chat.
+
+## Task 2.4 — Admin APIs
+
+- Overview.
+- Owner verification.
+- Property review.
+- Bookings supervision.
+- Payouts.
+- Disputes.
+- Audit.
+
+## Task 2.5 — Server Authority
+
+خصوصًا:
+
+- Pricing.
+- Availability.
+- Booking state transitions.
+- Financial calculations.
+
+الـFrontend **يعرض ويطلب**؛ لا يقرر الحقيقة المالية أو حالة الحجز.
+
+## Task 2.6 — Error Contract
+
+نوحد أخطاء الـAPI.
+
+بدل كل App يتصرف بطريقة مختلفة عند:
+
+- Offline.
+- timeout.
+- unauthorized.
+- validation.
+- conflict.
+- server error.
+
+**Gate 2:** Frontends الثلاثة تعتمد على Backend واحد بعقود واضحة.
+
+---
+
+# PHASE 3 — أول Cross-App Vertical Slice
+
+هذه أهم مرحلة في المشروع.
+
+لن نبني Features كثيرة. سنثبت أولًا أن **KONFRM نظام واحد بالفعل.**
+
+المسار:
+
+**Owner → Admin → Renter**
+
+## Task 3.1
+
+إنشاء Owner حقيقي.
+
+## Task 3.2
+
+إنشاء Property حقيقية من Owner App.
+
+## Task 3.3
+
+رفع صور حقيقية إلى Storage.
+
+## Task 3.4
+
+Submit للمراجعة.
+
+## Task 3.5
+
+ظهورها فورًا في Admin queue.
+
+## Task 3.6
+
+Admin يفتح التفاصيل.
+
+## Task 3.7
+
+Admin يعتمد الوحدة.
+
+## Task 3.8
+
+Database تصبح `PUBLISHED`.
+
+## Task 3.9
+
+Owner App يرى الحالة الجديدة.
+
+## Task 3.10
+
+Renter Explore يعرض الوحدة.
+
+## Task 3.11
+
+Renter Details تعرض نفس:
+
+- الصور.
+- الاسم.
+- الموقع.
+- السعر.
+- السعة.
+- المرافق.
+
+**Gate 3:** نغيّر شيئًا في مصدره الصحيح ونرى أثره في الأطراف الأخرى دون refresh hacks أو fake state.
+
+---
+
+# PHASE 4 — Design System موحد للتطبيقات الثلاثة
+
+هنا لن أطلب من Antigravity إصلاح زر ثم Card ثم Icon كل مرة.
+
+نعمل **Design System Batch واحد كبير**.
+
+المرجع الحالي للهوية: White dominant، أزرق `#0059FF`، وSummer Yellow `#FFD700` بصورة محدودة. fileciteturn0file0L238-L265
+
+## Task 4.1 — Design Tokens
+
+إنشاء مصدر مركزي/متطابق للقيم:
+
+### Colors
+
+- Primary Blue.
+- Summer Yellow.
+- White.
+- Background.
+- Surface.
+- Border.
+- Text Primary.
+- Text Secondary.
+- Success.
+- Warning.
+- Error.
+- Disabled.
+
+## Task 4.2 — Typography
+
+اعتماد خط واحد أساسي في التطبيقات الثلاثة.
+
+للـPrototype:
+
+**Cairo** مناسب حاليًا.
+
+توحيد:
+
+- Display.
+- Page title.
+- Section title.
+- Body.
+- Caption.
+- Button.
+- Numeric emphasis.
+
+---
+
+## Task 4.3 — Spacing
+
+نظام ثابت مبني أساسًا على:
+
+`4 / 8 / 12 / 16 / 24 / 32 / 48`
+
+بدل قيم عشوائية في كل شاشة. وهذا متوافق مع مرجع تصميم الـMobile الخاص بالمشروع. fileciteturn0file1L99-L119
+
+## Task 4.4 — Radius
+
+تحديد:
+
+- Button radius.
+- Input radius.
+- Card radius.
+- Modal radius.
+- Sheet radius.
+
+بدون تحويل كل شيء إلى Capsules.
+
+## Task 4.5 — Icons
+
+**Lucide فقط** في التطبيقات الثلاثة حيث أمكن.
+
+نحدد icon mapping ثابتًا:
+
+- Home.
+- Search.
+- Favorite.
+- Booking.
+- Calendar.
+- User.
+- Property.
+- Wallet.
+- Notifications.
+- Settings.
+- Back.
+- Close.
+- More.
+- Approve.
+- Reject.
+- Warning.
+
+نمنع خلط Lucide مع Emoji أو SVGs عشوائية أو icon libraries أخرى إلا لضرورة حقيقية.
+
+## Task 4.6 — Core Components
+
+توحيد:
+
+- Primary button.
+- Secondary button.
+- Destructive button.
+- Text input.
+- Search field.
+- Cards.
+- Badges.
+- Status chips.
+- Modal.
+- Bottom sheet.
+- Dialog.
+- Tabs.
+- Empty state.
+- Error state.
+- Skeleton.
+- Toast.
+- Avatar.
+- Image placeholder.
+- Header.
+
+## Task 4.7 — Motion
+
+توحيد:
+
+- transition duration.
+- sheet behavior.
+- modal opening.
+- button feedback.
+- loading behavior.
+
+بدون animations استعراضية.
+
+## Task 4.8 — App Startup
+
+Renter وOwner خصوصًا:
+
+- نفس مستوى Splash polish.
+- نفس Logo treatment.
+- نفس loading language.
+- نفس transition philosophy.
+
+Admin يتبع نفس Brand، لكن Form Factor Web.
+
+**Gate 4:** Screenshot من أي شاشة يجب أن يبدو فورًا أنها جزء من KONFRM، حتى لو لم يظهر Logo.
+
+---
+
+# PHASE 5 — Renter UI/UX Complete Pass
+
+نعمل التطبيق كـ**رحلة مستخدم كاملة** وليس Screens منفصلة.
+
+### Cluster 5A — Explore
+
+- App header.
+- Search.
+- Destinations.
+- Property cards.
+- Favorites interaction.
+- Bottom navigation.
+- Skeleton.
+- Empty.
+- Error.
+- retry.
+
+### Cluster 5B — Search
+
+- Destination.
+- Dates.
+- Guests.
+- Filters.
+- Results.
+- no-results.
+- edit search.
+
+### Cluster 5C — Property Details
+
+مراجعة كاملة:
+
+- gallery.
+- title.
+- location.
+- verification.
+- quick facts.
+- description.
+- amenities.
+- calendar.
+- guest selector.
+- price.
+- sticky CTA.
+
+مع منع fake information.
+
+### Cluster 5D — Booking Decision
+
+- Date selection.
+- blocked dates.
+- 2–30 nights.
+- guests.
+- server quote.
+- review.
+- submit.
+
+### Cluster 5E — My Bookings
+
+Human states:
+
+- قيد المراجعة.
+- بانتظار الدفع.
+- مؤكد.
+- سابق.
+- مرفوض/ملغي.
+
+### Cluster 5F — Favorites + Account
+
+إكمالها بنفس الـDesign System.
+
+**Gate 5:** شخص يستخدم التطبيق لأول مرة يستطيع البحث وفهم الوحدة واتخاذ قرار الحجز دون شرح مني.
+
+---
+
+# PHASE 6 — Owner UI/UX Complete Pass
+
+نراجع Owner بعقلية مختلفة عن Renter.
+
+المالك يريد:
+
+**سيطرة + سرعة + معرفة ما يحتاج انتباهه الآن.**
+
+### Cluster 6A — Home
+
+- أهم الحالات.
+- requests تحتاج قرار.
+- properties تحتاج إجراء.
+- calendar alerts.
+- wallet summary عند الحاجة.
+
+لا Dashboard مليء بأرقام لا تساعده.
+
+### Cluster 6B — Properties
+
+- list.
+- states.
+- create.
+- edit.
+- images.
+- pricing.
+- submit.
+- rejected/resubmit.
+
+### Cluster 6C — Calendar
+
+- available.
+- blocked.
+- bookings.
+- external blocks.
+- pricing حيث يلزم.
+
+### Cluster 6D — Booking Requests
+
+- renter request.
+- property.
+- dates.
+- guests.
+- amount.
+- approve/reject.
+
+### Cluster 6E — Wallet
+
+- Pending.
+- Available.
+- Held.
+- Reserved.
+
+بدون double counting.
+
+### Cluster 6F — Profile/Verification
+
+بقدر ما نحتاجه للـPrototype.
+
+**Gate 6:** المالك يعرف خلال ثوانٍ: ماذا حدث؟ ما الذي يحتاج قراري؟ وما حالة وحداتي؟
+
+---
+
+# PHASE 7 — Admin UI/UX Complete Pass
+
+Admin مختلف؛ هنا الأولوية:
+
+**Operational clarity + density محسوبة + سرعة اتخاذ القرار.**
+
+### Cluster 7A — Shell
+
+- Sidebar.
+- Header.
+- responsive web layout.
+- navigation states.
+- unified icons.
+- typography.
+- breadcrumbs عند الحاجة.
+
+لا Pill navigation.
+
+### Cluster 7B — Overview
+
+Real metrics فقط.
+
+### Cluster 7C — Owner Verification
+
+Queue → Detail → Approve/Reject.
+
+### Cluster 7D — Property Review
+
+Queue → Detail → Images/Data → Approve/Reject.
+
+### Cluster 7E — Payout
+
+Queue → validation → decision.
+
+### Cluster 7F — Disputes
+
+Case → evidence → financial context → resolution.
+
+### Cluster 7G — Audit/Feedback
+
+كل Admin action مهم:
+
+- confirmation.
+- loading.
+- success.
+- error.
+- reason.
+- audit.
+
+**Gate 7:** الإدارة تستطيع تشغيل الـCore operations دون الرجوع إلى Supabase يدويًا.
+
+---
+
+# PHASE 8 — Booking Integration الكامل
+
+الآن نصل لأهم رحلة Cross-App.
+
+## Task 8.1
+
+Renter يختار:
+
+Property + dates + guests.
+
+## Task 8.2
+
+Server Quote.
+
+## Task 8.3
+
+Booking Review.
+
+## Task 8.4
+
+Submit real booking.
+
+## Task 8.5
+
+DB:
+
+`PENDING_OWNER_APPROVAL`
+
+## Task 8.6
+
+Owner يتلقى الطلب.
+
+## Task 8.7
+
+Owner Approve.
+
+## Task 8.8
+
+DB:
+
+`APPROVED_PENDING_PAYMENT`
+
+## Task 8.9
+
+Renter يرى الحالة الجديدة.
+
+## Task 8.10
+
+التواريخ تصبح blocked.
+
+## Task 8.11
+
+Owner Reject path.
+
+## Task 8.12
+
+Renter يرى الرفض.
+
+## Task 8.13
+
+Admin يستطيع رؤية الرحلة.
+
+**Gate 8:** نجرب الرحلة بأنفسنا من ثلاثة Browsers/Sessions مختلفة وتتحرك الحالة فعليًا بينها.
+
+---
+
+# PHASE 9 — Notification Engine
+
+هنا نحقق فكرة:
+
+> **"كله بيسمع على كله."**
+
+لكن ليس معنى ذلك إرسال Notification على كل click.
+
+نحدد **Business Events المهمة فقط**.
+
+| Event | Renter | Owner | Admin |
+|---|---|---|---|
+| Property submitted | — | ✓ | ✓ |
+| Property approved | — | ✓ | Audit |
+| Property rejected | — | ✓ | Audit |
+| Booking requested | ✓ confirmation | ✓ | visibility |
+| Owner approved | ✓ | ✓ | visibility |
+| Owner rejected | ✓ | ✓ | visibility |
+| Payment success | ✓ | ✓ | visibility |
+| Cancellation | ✓ | ✓ | حسب الحالة |
+| Dispute opened | ✓ | ✓ | ✓ |
+| Payout request | — | ✓ | ✓ |
+
+ثم:
+
+- unread count.
+- read/unread.
+- timestamps.
+- deep linking إلى العنصر المعني.
+
+Push Notifications الحقيقية يمكن تأجيلها إذا كانت ستستهلك وقتًا دون قيمة للـPrototype؛ **In-app notifications أولًا**.
+
+---
+
+# PHASE 10 — Payment Prototype
+
+لا نلمسه قبل نجاح Phase 8.
+
+### Task 10.1
+
+Payment CTA لا يظهر إلا في:
+
+`APPROVED_PENDING_PAYMENT`
+
+### Task 10.2
+
+المبلغ يأتي Server-side.
+
+### Task 10.3
+
+Deposit = first night.
+
+### Task 10.4
+
+Payment success.
+
+### Task 10.5
+
+`CONFIRMED`.
+
+### Task 10.6
+
+Renter updated.
+
+### Task 10.7
+
+Owner updated.
+
+### Task 10.8
+
+Availability remains blocked.
+
+### Task 10.9
+
+Financial records generated correctly.
+
+Paymob Live integration لا نجعله blocker إذا احتاج credentials/contract غير جاهزين؛ المهم فصل Simulation الواضح عن Financial truth وعدم ادعاء أنه Payment production.
+
+---
+
+# PHASE 11 — Wallet + Payout + Financial Integrity
+
+Batch واحد لأن الأجزاء مترابطة.
+
+- Pending balance.
+- Available balance.
+- Held balance.
+- Reserved payout.
+- Ledger.
+- payout request.
+- Admin payout queue.
+- completed/rejected.
+- provider fee.
+- no duplicate money.
+- idempotency.
+- correct booking references.
+
+هذه مرحلة تحتاج تشددًا أكبر لأن الخطأ المالي أخطر من خطأ UI.
+
+---
+
+# PHASE 12 — Chat
+
+بعد Core Booking.
+
+نبني:
+
+`Booking/User context → Conversation → Messages`
+
+ونلتزم بالاتجاه الحالي:
+
+**In-app only.**
+
+لا كشف أرقام.
+
+لا Calls.
+
+ولا نبني Chat architecture ضخمة للـPrototype إذا Polling/حل بسيط يؤدي الغرض التجريبي بشكل مقنع.
+
+---
+
+# PHASE 13 — Cancellation / Disputes / Reviews
+
+هذه المرحلة **لن ينفذ Antigravity فيها Business Rules من نفسه.**
+
+قبل التنفيذ نحسم نحن أي قواعد ما زالت Open.
+
+ثم:
+
+### Cancellation
+حالات الإلغاء المسموحة ونتيجتها.
+
+### Disputes
+Open → Evidence → Admin → Resolution.
+
+### Reviews
+فقط:
+
+`COMPLETED → Review eligible`
+
+**STOP CONDITION:** أي Refund policy غير محسومة ترجع لي ولا يخترع Antigravity إجابة.
+
+---
+
+# PHASE 14 — Security & Privacy Pass
+
+للـPrototype فقط، وليس Enterprise Security Theater.
+
+نراجع:
+
+- Service role لا يوجد في frontend.
+- secrets ليست client-side.
+- authorization.
+- ownership checks.
+- Admin isolation.
+- unpublished property privacy.
+- renter financial DTO.
+- IDOR.
+- input validation.
+- SQL safety.
+- storage permissions.
+- sensitive errors.
+- session/logout.
+
+ولا نهدر الكوتا في Production security infrastructure ستعيد الشركة بناءه أصلًا.
+
+---
+
+# PHASE 15 — Full Visual Consistency Audit
+
+بعد اكتمال الرحلات، نعمل **Visual QA كبيرًا مرة واحدة** بدل تعديلات UI متناثرة.
+
+نراجع التطبيقات الثلاثة جنبًا إلى جنب:
+
+- Logo.
+- Blue.
+- Yellow.
+- backgrounds.
+- fonts.
+- weights.
+- icon family.
+- icon sizes.
+- buttons.
+- fields.
+- cards.
+- radius.
+- shadows.
+- borders.
+- status colors.
+- spacing.
+- loading.
+- skeletons.
+- empty states.
+- errors.
+- dialogs.
+- image treatment.
+- Arabic terminology.
+
+ونراجع خصوصًا Mobile على widths صغيرة، لأن مرجع التصميم يشترط أيضًا وضوح الـhierarchy، touch targets المناسبة، consistency، وتصميم loading/error/empty/success وليس الـhappy path وحده. fileciteturn0file1L269-L296
+
+---
+
+# PHASE 16 — UX Audit حسب كل Role
+
+هذه مختلفة عن Visual Audit.
+
+## المستأجر
+
+نسأل:
+
+> هل أثق في الوحدة؟  
+> هل أعرف السعر؟  
+> هل أعرف المتاح؟  
+> هل أعرف ماذا سيحدث بعد إرسال الطلب؟
+
+## المالك
+
+> ماذا يحتاج انتباهي الآن؟  
+> هل أعرف حالة وحداتي؟  
+> هل أعرف حجوزاتي؟  
+> هل أفهم أموالي؟
+
+## الإدارة
+
+> ما الـQueues التي تحتاج تدخلًا؟  
+> هل أستطيع اتخاذ القرار بسرعة؟  
+> هل أعرف أثر قراري؟
+
+أي شاشة لا تجيب سؤالًا مهمًا للمستخدم إما تُعدل أو تُحذف.
+
+---
+
+# PHASE 17 — Edge Cases & Failure States
+
+نعمل Matrix واحدة كبيرة:
+
+- no internet.
+- API unavailable.
+- expired session.
+- deleted property.
+- unpublished property.
+- image failure.
+- unavailable dates.
+- availability changes أثناء الحجز.
+- duplicate booking submission.
+- double owner approval.
+- payment retry.
+- duplicate webhook.
+- empty favorites.
+- empty bookings.
+- rejected verification.
+- rejected property.
+- payout failure.
+- dispute during payout.
+
+والهدف ليس اختبار كل شيء في الكون؛ الهدف كشف الحالات التي تجعل الـDemo يبدو كأنه يعمل فقط عندما كل الظروف مثالية.
+
+---
+
+# PHASE 18 — بيانات الاختبار الواقعية
+
+بعد استقرار النظام، ننشئ Dataset محترمة في Supabase.
+
+مثلًا:
+
+- عدة Renters.
+- عدة Owners.
+- 2–4 Properties لكل Owner حسب الحاجة.
+- صور حقيقية للاختبار.
+- Published/Pending/Rejected properties.
+- available/blocked dates.
+- bookings في حالات مختلفة.
+- notifications.
+- wallet transactions.
+
+وبذلك نستطيع رؤية المنتج كMarketplace حقيقي وليس شاشة عليها Card واحدة.
+
+---
+
+# PHASE 19 — End-to-End Scenario Testing
+
+نكتب سيناريوهات واضحة وننفذها.
+
+### Scenario A — Supply
+
+`Owner → Property → Admin → Publish → Renter`
+
+### Scenario B — Booking
+
+`Renter → Request → Owner Approves → Renter Updated`
+
+### Scenario C — Rejection
+
+`Renter → Request → Owner Rejects → Renter Updated`
+
+### Scenario D — Availability
+
+`Confirmed/Approved Booking → Calendar blocked everywhere`
+
+### Scenario E — Finance
+
+`Payment → Booking → Wallet → Ledger`
+
+### Scenario F — Payout
+
+`Owner request → Admin → Financial state`
+
+### Scenario G — Failure
+
+Network/API/error/retry.
+
+لا يكفي Playwright أو Unit tests؛ **نجرب المنتج فعليًا.**
+
+---
+
+# PHASE 20 — Live Deployment Verification
+
+هنا فقط نراجع:
+
+GitHub → CI → Cloudflare Worker → Pages → Supabase.
+
+ثم نتأكد أن Revision التي اختبرناها هي فعلًا الموجودة Live.
+
+قاعدة ثابتة:
+
+> **CI Green ≠ Live Verified.**
+
+وهي أصلًا قاعدة صريحة في مرجع المشروع. fileciteturn0file0L52-L59
+
+---
+
+# PHASE 21 — Demo Polish
+
+بعد أن يعمل النظام، وليس قبله:
+
+- microcopy.
+- animation polish.
+- loading polish.
+- transitions.
+- success feedback.
+- realistic data.
+- image quality.
+- final spacing.
+- mobile overflow.
+- scroll behavior.
+- keyboard behavior.
+- safe areas.
+- desktop presentation للـAdmin.
+
+---
+
+# PHASE 22 — Final Product Blueprint
+
+في النهاية نريد أن يتحول الـPrototype إلى **مواصفات يمكن إعطاؤها للشركة**.
+
+نستخرج منه:
+
+- Screen inventory.
+- User flows.
+- Business Rules.
+- Database entities.
+- State machines.
+- API requirements.
+- Notification matrix.
+- Financial rules.
+- Roles/permissions.
+- Edge cases.
+- UX rules.
+- Design system.
+- Security requirements.
+- Open questions.
+- Production requirements.
+
+وهنا تصبح قيمة الـPrototype أكبر من قيمة الكود نفسه.
+
+---
+
+# ما سنفعله يدويًا بدل إهدار كوتا Antigravity
+
+هناك أشياء **لا أريد Antigravity يضيع وقته فيها**.
+
+أنت تستطيع تنفيذ الأمور البشرية البسيطة عندما أطلبها، مثل:
+
+- إنشاء Test account.
+- إدخال OTP لو أعدناه لاحقًا.
+- أخذ Screenshot.
+- تجربة Flow.
+- إعطائي شعورك عن الشاشة.
+- فتح Supabase/Cloudflare لإعداد بسيط عند الضرورة.
+- إضافة Secret إذا احتجنا.
+- توفير صور عقارات حقيقية.
+- اختبار التطبيق كمالك/مستأجر.
+- اتخاذ Business decision.
+
+أما Antigravity:
+
+**Code + DB + API + debugging + tests + Git + deploy + technical verification.**
+
+---
+
+# استراتيجية توفير كوتا Antigravity
+
+لن أعطيه أوامر مثل:
+
+> غير شكل الزر.
+
+ثم Prompt آخر:
+
+> غير الـCard.
+
+ثم:
+
+> غير الـIcons.
+
+سنستخدم **Logical Batches**.
+
+تقريبًا سيكون تقسيم التنفيذ الكبير:
+
+1. **Baseline + Auth blockers**
+2. **Database + Backend foundation**
+3. **Owner → Admin → Renter integration**
+4. **Unified Design System**
+5. **Renter complete UX/UI**
+6. **Owner complete UX/UI**
+7. **Admin complete UX/UI**
+8. **Booking cross-app integration**
+9. **Notifications**
+10. **Payments + Financial integration**
+11. **Wallet/Payout**
+12. **Chat + secondary transactional flows**
+13. **Security + Edge cases**
+14. **Visual/UX audit**
+15. **E2E + Live verification**
+16. **Demo polish + Handoff**
+
+يعني بدل عشرات الأوامر الصغيرة غير المنظمة، نعمل حوالي **15–16 Milestones قوية**، وداخل كل واحدة Antigravity يفحص وينفذ ويختبر ويصلح نفسه قبل الرجوع إلينا.
+
+---
+
+# ولكن أين نبدأ الآن تحديدًا؟
+
+هنا نقطة مهمة جدًا:
+
+**لن نبدأ من Task 0 وكأن المشروع جديد.**
+
+لدينا شغل موجود بالفعل. والـMaster Context يقول إن Owner → Admin → Published تم إثباته تاريخيًا، بينما آخر blocker مسجل كان Renter Availability وعدم إثبات الـWorker Live. fileciteturn0file0L1044-L1089
+
+لكن بعد ذلك حدثت أعمال Auth في محادثتنا الأخيرة وإزالة OTP أصبحت قرارًا أحدث.
+
+لذلك **أول مهمة فعلية من هذه الخطة** ستكون:
+
+### `MILESTONE 01 — Current Reality & Prototype Access Stabilization`
+
+Antigravity يفحص **الوضع الحالي فقط** بعد آخر تعديلاتنا، ثم:
+
+**يثبت Auth التجريبي بدون OTP → يتأكد من الـDatabase/API → يتأكد من Availability → يثبت Owner/Admin/Renter connectivity → ولا يبني Feature جديدة.**
+
+بعد نجاحها نضع أمامها:
+
+**✅ CLOSED — LIVE VERIFIED**
+
+ثم ننتقل مباشرة للـDatabase/Integration Audit، وليس لأي Feature جانبية.
+
+---
+
+## القاعدة التي سألتزم بها معك في هذه المحادثة
+
+من الآن كلما تنتهي مهمة وتبعث لي تقرير Antigravity:
+
+**أنا أحدد هل المهمة فعلًا انتهت → أحدّث موقعنا في الخطة → أعطيك الـTask التالي فقط.**
+
+لن أقفز بنا إلى أفكار جديدة، ولن أجعل تحسين صغير يفتح إعادة بناء كاملة، ولن أسمح لـAntigravity أن يخترع Business Rules لأن شيئًا أسهل برمجيًا.
+
+**المسار الحاكم:**
+
+**Real Data → Integration → Core Flows → Unified UI → UX → Money → Edge Cases → Polish → Handoff.**
+
+وهذا يتفق مع الهدف الأصلي للـPrototype: تجربة الأدوار الثلاثة، كشف الـEdge Cases، وبناء Product Blueprint واضح قبل أن تتولى شركة التطوير إعادة بناء النسخة Production-grade. fileciteturn0file0L795-L817
+
+**الخطوة التالية في هذه المحادثة:** عندما نبدأ التنفيذ، سأكتب لك **Prompt رقم M01** لـAntigravity بصيغة تنفيذية كاملة، وبعد تقريره لن ننتقل إلى M02 إلا بعد إغلاق M01 فعليًا.

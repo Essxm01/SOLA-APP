@@ -1,42 +1,39 @@
 # Current Task
 
-**Status:** In progress — Owner Bookings UX and truthful-state migration
+**Status:** Complete — Phase Zero documentation reconciliation awaiting Founder review
 
 ## Objective
 
-Rebuild the Owner Bookings screen around truthful requests, active bookings, and history without changing booking, payment, cancellation, or chat business rules.
+Reconcile current repository documentation against the approved KONFRM governance hierarchy without changing product behavior.
 
 ## Context
 
-The accepted Owner Home is the visual baseline. Current Bookings incorrectly groups approved/unpaid and expired entries as new requests, exposes legacy financial language, and closes action sheets after a failed write.
+The former Owner Bookings task remains implementation evidence only. The approved execution map identifies P0.1 as the recommended next phase; it is not in progress.
 
 ## Requirements
 
-- Keep `PENDING_OWNER_APPROVAL` as the only request-decision state.
-- Present `APPROVED_PENDING_PAYMENT` and future/current `CONFIRMED` bookings as active; past confirmed and inactive outcomes as history.
-- Use canonical booking/financial data; never fabricate financial values, remaining-balance method, guest identity, or booking success.
-- Failed booking/cancellation writes must keep the confirmation sheet open with a retryable error.
+- Preserve foundational and historical source documents.
+- Reconcile current/routing/domain documents with Founder-first authority.
+- Record unresolved policy rather than inventing it.
 
 ## Relevant Areas
 
-- `owner-app/src/components/bookings/BookingsFoundationView.tsx`
-- `owner-app/src/utils/ownerBookings.ts`, `owner-app/src/context/AppContext.tsx`
-- Owner booking repository/API contracts and `DESIGN_SYSTEM/EXPERIENCE/OWNER_EXPERIENCE.md`
+- `AGENTS.md`, `docs/`, `docs/codex/`, `DESIGN_SYSTEM/`, and historical/reference documentation.
 
 ## Constraints
 
-Follow `../AGENTS.md`, [DESIGN_SYSTEM.md](../docs/DESIGN_SYSTEM.md), and [BUSINESS_RULES.md](../docs/BUSINESS_RULES.md). No backend/database/migration changes; no production writes or real booking decisions.
+No product/runtime/backend/database/migration/infrastructure/deployment/dependency/live changes. No commit or push pending Founder review.
 
 ## Acceptance Criteria
 
-- Three clear Arabic segments: الطلبات / الحجوزات / السجل.
-- Human Arabic dates/statuses and no visible legacy SOLA or technical financial claims in Bookings.
-- Owner build/focused tests pass; live read-only review and Founder visual screenshot handoff complete.
+- Current documents no longer contradict higher-authority decisions where safely resolvable.
+- Historical documents remain preserved and clearly routed as evidence.
+- P0.1 is recommended next, not started.
 
 ## Validation
 
-Run Owner Bookings/Home/identity focused tests, typecheck/build, and design check; verify live read-only booking rendering at mobile widths. No production mutation.
+Inventory/review every repository-authored Markdown file; validate links, scope, PHASE 0–22 traceability, and governance self-review.
 
 ## Documentation Impact
 
-Update `docs/CURRENT_STATE.md` only if the completed booking UX materially changes the handoff state.
+This task is the documentation impact. The next task must replace this contract with one approved execution phase.

@@ -30,7 +30,7 @@ flowchart LR
 
 ## Data and deployment boundaries
 
-- Supabase PostgreSQL is the canonical persistent store; Supabase Storage stores property media.
+- Supabase PostgreSQL is the canonical persistent store; Supabase Storage stores public property media and private Owner KYC evidence through separate paths.
 - `backend/wrangler.json` is the Worker configuration used by the GitHub Actions deployment (`workingDirectory: backend`). The root `wrangler.json` also exists; treat it as an alternate/legacy configuration until a deployment task verifies which configuration is active.
 - `.github/workflows/ci-validation.yml` builds changed app areas and deploys the backend Worker on pushes to `main`. Cloudflare Pages project linkage is external to this repository and must be verified after frontend deployment work.
 - Vercel configuration artifacts exist in the repository. The current source alone does not prove that Vercel is an active production deployment path.

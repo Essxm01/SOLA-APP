@@ -7,7 +7,7 @@
 
 `DESIGN_SYSTEM/` governs Customer, Owner and Admin. No app is a visual or product-experience authority, including Owner. A production screen cannot promote its own one-off colour, component, typography, radius, shadow, gradient, navigation or interaction pattern into the global system.
 
-When code and the design system disagree, the design system wins. A genuinely new requirement follows: **propose → central approval → central documentation/token → version → app consumption**. Never reverse this order.
+Within an approved visual/product-experience contract, when code and the design system disagree, the design system wins. A newer explicit Founder/Product decision and the KONFRM governing source-precedence rule take priority over this directory; reconcile that decision centrally before app implementation. A genuinely new requirement follows: **propose → central approval → central documentation/token → version → app consumption**. Never reverse this order.
 
 ## Founder/Product authority
 
@@ -19,6 +19,8 @@ Product-level visual decisions are Founder/Product decisions. Coding agents may 
 - introduce a new radius or shadow family, decorative gradients, or new role-UX principles.
 
 The v2 approved foundations are listed in [`README.md`](./README.md). Exact component dimensions and neutral tones marked as implementation defaults are technical defaults, not retrospective Founder approval; changes to them follow this governance process.
+
+Existing apps commonly use Lucide React. This is implementation evidence, not a new Founder-approved icon-family mandate; retain consistency in a touched surface and do not start a project-wide icon migration without explicit approval.
 
 ## Versioning
 

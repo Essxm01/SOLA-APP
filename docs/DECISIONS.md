@@ -48,7 +48,7 @@ The same human may be Customer and Owner, while a pure Customer must not enter O
 `users` is the human identity; `owners` is an optional extension using the same UUID. Owner app state mounts only after canonical Owner validation and is scoped by `owner.id`.
 
 ### Consequences
-Typed phone/local storage is not authority. Logout and account changes destroy Owner-scoped state. Owner account creation remains a separate product flow.
+Typed phone/local storage is not authority. Logout and account changes destroy Owner-scoped state. Explicit Owner registration is separate from login and can add the Owner extension without duplicating the human identity; KYC/onboarding remains separate from verification approval.
 
 ### Related
 `backend/database/migrations/014_unified_identity_users_schema.sql`, `owner-app/src/context/AuthContext.tsx`, `owner-app/src/App.tsx`

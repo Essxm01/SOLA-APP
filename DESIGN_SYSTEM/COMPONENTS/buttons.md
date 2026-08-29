@@ -12,4 +12,4 @@ All buttons use Cairo, `radius.control`, a visible focus ring and a minimum `44p
 
 Yellow is never the normal primary CTA. All variants specify default, hover, pressed, focus, disabled and loading states. Loading disables repeat submission while retaining an accessible label. Button labels use `typography.button`; icon-and-label buttons use `space.inlineGap` and RTL-leading icon order.
 
-`IconButton` is an icon-only Button: 44px target, Lucide icon, visible focus, and an `aria-label`/tooltip. It may not use an emoji as its action icon.
+`IconButton` is an icon-only Button: 44px target, visible focus, and an `aria-label`/tooltip. In surfaces already using Lucide, use the existing icon consistently; this does not approve a project-wide icon-library migration. It may not use an emoji as its action icon.

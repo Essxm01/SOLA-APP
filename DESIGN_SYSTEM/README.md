@@ -11,7 +11,7 @@
      Customer App          Owner App            Admin App
 ```
 
-Applications consume this system. They do not define it, and no production application is a source from which global rules are automatically extracted. Existing screens are implementation evidence only. If an implementation conflicts with this directory, **DESIGN_SYSTEM wins**.
+Applications consume this system. They do not define it, and no production application is a source from which global rules are automatically extracted. Existing screens are implementation evidence only. Within an already approved visual/product-experience contract, if an implementation conflicts with this directory, **DESIGN_SYSTEM wins**. A newer explicit Founder/Product decision or the governing KONFRM source-precedence rule wins over this directory and must be reconciled here before app implementation.
 
 ## Approved foundations
 
@@ -20,7 +20,7 @@ Applications consume this system. They do not define it, and no production appli
 - Primary Blue: `#0059FF`; Summer Yellow: `#FFD700`, used sparingly as an accent.
 - UI font: Cairo; Arabic-first, RTL-native.
 - Customer and Owner are mobile-first. Admin is desktop operational.
-- 8pt-derived spacing, restrained elevation, Lucide React icons, and 44px minimum mobile touch targets.
+- 8pt-derived spacing, restrained elevation, and 44px minimum mobile touch targets. Existing implementation uses Lucide React; preserve local consistency, but do not treat it as Founder approval for a project-wide icon migration.
 
 Infrastructure identifiers that still contain `SOLA` are outside this design-system scope and remain unchanged.
 

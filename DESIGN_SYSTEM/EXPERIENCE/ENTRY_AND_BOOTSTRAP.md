@@ -1,6 +1,8 @@
 # Entry and bootstrap policy
 
-## Current reality (audited 2026-08-23)
+## Historical audit snapshot (2026-08-23)
+
+The table below preserves the pre-migration audit evidence. It is **not** a statement of current runtime behavior: later Owner first-run and Admin truthful-state work exists in the repository. Use [`../../docs/codex/KONFRM_CURRENT_REALITY.md`](../../docs/codex/KONFRM_CURRENT_REALITY.md) and the Completion Matrix before treating any row as an active defect.
 
 | App | Current entry | Authentication/bootstrap reality | Finding |
 |---|---|---|---|

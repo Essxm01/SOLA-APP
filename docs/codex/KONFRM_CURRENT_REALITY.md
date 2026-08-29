@@ -1,6 +1,6 @@
 # KONFRM current reality assessment
 
-**Audited repository baseline:** `main` at `089202c` on 2026-08-29. This is a repository/Git/configuration assessment, not live-production proof.
+**Audited repository baseline:** `main` at `6de6f92` on 2026-08-29. This is a repository/Git/configuration assessment, not live-production proof.
 
 ## Classification key
 

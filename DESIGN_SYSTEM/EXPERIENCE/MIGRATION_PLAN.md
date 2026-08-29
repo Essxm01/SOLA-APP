@@ -1,4 +1,6 @@
-# Controlled UX migration plan — recommendation
+# Historical controlled UX migration recommendation — superseded for sequencing
+
+> This 2026-08-23 recommendation is preserved to explain earlier migration order. It is not the current execution authority: Phase Zero established the subordinate PHASE 0–22 execution map in [`../../docs/codex/KONFRM_EXECUTION_MAP.md`](../../docs/codex/KONFRM_EXECUTION_MAP.md), where P0.1 is the recommended next phase. Do not treat the “first migration slice” below as active work.
 
 No phase starts before Phase 0 approval. Each implemented slice must name user job, current pain, target UX, applicable design/experience contracts, business rules that cannot change, Founder acceptance steps and legacy exceptions removed.
 

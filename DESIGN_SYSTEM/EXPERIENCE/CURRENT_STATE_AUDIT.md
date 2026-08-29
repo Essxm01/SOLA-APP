@@ -2,6 +2,8 @@
 
 **Scope:** current production entry screens were observed on 2026-08-23 and the Customer, Owner and Admin source structure was audited. This is a structural UX audit, not a claim of complete accessibility or live endpoint verification.
 
+> **Historical audit snapshot:** subsequent repository work addressed parts of the listed P0/P1 findings. Preserve this document as evidence of why migration slices were created; use [`../../docs/codex/KONFRM_CURRENT_REALITY.md`](../../docs/codex/KONFRM_CURRENT_REALITY.md), [`../../docs/codex/KONFRM_COMPLETION_MATRIX.md`](../../docs/codex/KONFRM_COMPLETION_MATRIX.md), and current code to determine whether a finding remains active.
+
 ## Summary
 
 | App | P0 | P1 | P2 | P3 | Primary concern |

@@ -1,7 +1,7 @@
 # Current project state
 
 **Last updated:** 2026-08-29
-**Repository-state baseline:** `main` at `089202c`; external live/deployment claims require separate read-only verification.
+**Repository-state baseline:** `main` at `6de6f92`; external live/deployment claims require separate read-only verification.
 
 ## Current status
 
@@ -45,4 +45,4 @@ Read [ARCHITECTURE.md](./ARCHITECTURE.md), [DATABASE.md](./DATABASE.md), and [BU
 
 ## Next work
 
-`tasks/CURRENT_TASK.md` remains the active delivery contract. Do not assume its historical “in progress” label is verified completion; use the operating-system execution map and completion matrix to sequence work after a current-reality review.
+The Phase Zero governance bootstrap and documentation reconciliation are complete and awaiting Founder review. No product execution phase is in progress. [P0.1](./codex/KONFRM_EXECUTION_MAP.md) — baseline, CI, deployment, and access reality — is the recommended next phase only; do not start it without a concrete approved task contract.

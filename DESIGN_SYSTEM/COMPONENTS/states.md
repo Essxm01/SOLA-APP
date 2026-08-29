@@ -12,4 +12,4 @@ Every data-driven screen consciously supports: **Loading, Empty, Error, Offline,
 | Selected | Pair selected surface/border with text or control semantics. |
 | Success | Confirm canonical completed state; refresh server-authoritative data where required. |
 
-Skeleton, EmptyState, ErrorState and LoadingState use light surfaces, readable Cairo text, a relevant Lucide icon when helpful, and no decorative illustration requirement.
+Skeleton, EmptyState, ErrorState and LoadingState use light surfaces, readable Cairo text, a relevant existing-system icon when helpful, and no decorative illustration requirement.

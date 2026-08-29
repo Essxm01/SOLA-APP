@@ -1,4 +1,6 @@
-# Current screen inventory
+# Historical screen inventory — 2026-08-23 snapshot
+
+> This inventory predates later Owner, Customer, and Admin slices. It remains useful implementation evidence, but it is not a current acceptance register. Current sequencing and status live in [`../../docs/codex/KONFRM_EXECUTION_MAP.md`](../../docs/codex/KONFRM_EXECUTION_MAP.md) and [`../../docs/codex/KONFRM_COMPLETION_MATRIX.md`](../../docs/codex/KONFRM_COMPLETION_MATRIX.md).
 
 | App | Screen / entry | User job | Primary action | Key data | Current state support | Known UX issue | Target direction | Priority |
 |---|---|---|---|---|---|---|---|---|

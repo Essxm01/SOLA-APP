@@ -1,43 +1,52 @@
-# P1.1 — Live Schema / RLS Baseline Inventory & Repository Reconciliation
+# P14.1 — RLS / authorization / privacy remediation
 
-**Parent macro phase:** PHASE 1
-**Status:** Complete — local release candidate; publication is a separate Founder approval gate
-**Approved baseline:** `6d37b4589fca47fe56b294c4c12292b44a2db138`
+**Parent macro phase:** PHASE 14
+**Status:** Complete — local release candidate pending Founder review
+**Approved baseline:** `d7462f13eb8783a2d5422f574ec11a451d69b9d9`
 
 ## Objective
 
-Establish an evidence-backed, metadata-only baseline for the live Supabase schema, RLS, grants, public RPCs, storage configuration, and migration ledger; reconcile it with retained repository migrations and persistence code.
+Prepare a minimal, auditable migration that restores the intended service-role-only execution boundary for the four critical payment and Owner registration/KYC `SECURITY DEFINER` RPCs. Review and safely harden the related RLS event-trigger function and dispute-evidence trigger search path where evidence permits.
 
 ## Governing context
 
 - `docs/codex/KONFRM_MASTER_RULES.md`
-- `docs/DATABASE.md`, `docs/ARCHITECTURE.md`, and `docs/INTEGRATIONS.md`
-- Retained migrations `backend/database/migrations/008_*.sql` through `020_*.sql`
-- The active P1.1 execution contract and connected Supabase metadata evidence
+- `docs/codex/P1_1_SCHEMA_RLS_BASELINE_REPORT.md`
+- `docs/DATABASE.md`, `docs/ARCHITECTURE.md`, `docs/INTEGRATIONS.md`, and `docs/BUSINESS_RULES.md`
+- DC-13 in `docs/codex/KONFRM_DECISION_CONFLICTS.md`
+- Retained migrations `009`, `019`, and `020`
 
 ## Requirements
 
-- Inventory repository and live metadata without reading business rows or private objects.
-- Reconcile every retained migration with the live `schema_migrations` ledger and observed effect.
-- Document public tables, constraints, indexes, triggers, RLS/policies/grants, relevant functions, and Storage buckets/policies.
-- Determine the actual frontend → backend → service-role database boundary and identify any contradiction between repository grant intent and live metadata.
-- Record all drift using the approved taxonomy; create the P1.1 evidence report and update current-reality, completion, rescue-backlog, execution-map, database, and current-state records.
+- Diagnose the live ACL divergence with read-only metadata only.
+- Add the next unique, narrow migration without rewriting 019/020 or changing function business logic.
+- Proposed critical-RPC ACL: no execute for `PUBLIC`, `anon`, or `authenticated`; execute retained for `service_role` and administrative owner access.
+- Preserve the backend `/api/v1` → service-role Supabase boundary, RLS model, payment semantics, KYC semantics, and same-UUID identity rule.
+- Add proportionate repeatable privilege-contract evidence and run focused regressions.
+- Update current operating-state records and create the P14.1 report.
 
 ## Constraints
 
-- SELECT/metadata inspection only. No migrations, DDL, DML, RPC invocation, grants/revokes, storage operations, deploy, push, CI/config/dependency/runtime changes, or P1.2 work.
-- Do not record names, phones, emails, tokens, document URLs/object keys, or business-row payloads.
-- Do not treat RLS enabled/no policy or a security-advisor warning as conclusive without privilege and architecture evidence.
-- Finish with one local-only commit: `chore(db): close P1.1 schema and RLS baseline`.
+- Local release candidate only: no live migration/ACL/RLS/storage/data change, deployment, push, or CI/configuration change.
+- Do not invoke mutating payment, registration, or KYC RPCs against live Supabase.
+- Do not invent RLS policies, alter broad table grants, repair historical migration-ledger gaps, or start P1.2/P14.2/P14.3.
 
-## Acceptance evidence
+## Acceptance criteria
 
-The active P1.1 contract’s 48-item matrix, three-pass review, complete migration reconciliation, and no-mutation proof are required. A confirmed security finding is documented and routed to an existing planned phase; it is not remediated in P1.1.
+- The 38-item P14.1 acceptance matrix is recorded with evidence.
+- The final local commit is clean, scoped, and ready for Founder review.
+- Documentation explicitly distinguishes repository readiness from the still-open live security gap.
 
-## Closure
+## Validation
 
-P1.1 inventory is complete. The approved next recommendation is P14.1 remediation planning because live anonymous/authenticated execution of critical SECURITY DEFINER RPCs contradicts retained migration intent. Do not begin that work or publish this release candidate without a separate approval.
+- Static migration/ACL contract checks and focused backend auth/identity/KYC/payment/Worker tests.
+- Backend Node 22 typecheck; relevant dispute-trigger regression if metadata is changed.
+- Whitespace/link/security checks and three-pass closure review.
 
 ## Documentation impact
 
-Update only evidence/governance records required by the inventory, including `docs/codex/P1_1_SCHEMA_RLS_BASELINE_REPORT.md`. Replace this contract with the next approved task only after P1.1 closure.
+Update only the relevant task, current-state, database, and `docs/codex/` reality/matrix/backlog/map/conflict/report records.
+
+## Closure
+
+The repository remediation is complete and locally validated. Publication, live migration 021 application, and post-application ACL verification require a separate explicit Founder approval. Do not start P1.2, P14.2, or P14.3.

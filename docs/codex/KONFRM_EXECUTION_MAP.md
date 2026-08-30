@@ -8,7 +8,7 @@
 | --- | --- | --- | --- | --- | --- |
 | P0.1 | **PHASE 0** — baseline, CI, deployment, and access reality | Repo, CI, Worker, Pages | None | Critical | Complete; local/GitHub/public-HTTP evidence recorded, privileged metadata remains `ACCESS_UNAVAILABLE` |
 | P0.2 | Prototype auth/access blocker audit | Customer, Owner, Admin, backend | P0.1 | High | Complete local release candidate; signed-token/role/bootstrap/error evidence in `P0_2_AUTH_ACCESS_REPORT.md`, publication intentionally pending |
-| P1.1 | **PHASE 1** — schema/RLS baseline inventory | DB, Supabase | P0.1 | Critical | Complete local release candidate; live metadata/report and migration reconciliation recorded |
+| P1.1 | **PHASE 1** — schema/RLS baseline inventory | DB, Supabase | P0.1 | Critical | Closed + published at `d7462f13…`; Actions #130 / `33305295499` and Worker health succeeded |
 | P1.2 | Identity/session persistence integrity | Backend, DB, all roles | P1.1 | Critical | Preserve/verify; ownership/session tests |
 | P1.3 | Property and media persistence integrity | Owner, Admin, Customer, DB/storage | P1.1 | Critical | Preserve/verify; cross-app/media tests |
 | P1.4 | Availability persistence and blocking integrity | Customer, Owner, backend, DB | P1.1 | Critical | Preserve/verify; date/blocking tests |
@@ -61,7 +61,7 @@
 | P13.1 | **PHASE 13** — cancellation/refund policy decision and contract | All roles, backend, DB | DC-08 | Critical | Deferred; Founder decision required |
 | P13.2 | Dispute lifecycle and operational UX | All roles, backend, DB | P13.1, P7.5 | High | Deferred; policy and audit prerequisites |
 | P13.3 | Completed-stay review eligibility and reputation flow | Customer, Owner, Admin, backend, DB | P13.1 | High | Deferred; completion/review contract audit required |
-| P14.1 | **PHASE 14** — RLS/authorization/privacy remediation plan | Backend, DB/storage, all roles | P1.1 | Critical | Pulled forward recommendation: P1.1 confirmed public SECURITY DEFINER grants contradicting repository intent |
+| P14.1 | **PHASE 14** — RLS/authorization/privacy remediation plan | Backend, DB/storage, all roles | P1.1 | Critical | Local release candidate prepared: migration 021 restores service-role-only critical RPC ACL intent; live application/verification remains Founder-gated |
 | P14.2 | Sensitive storage/media access verification | Owner, Admin, backend, storage | P14.1 | Critical | Partial; bucket/access checks |
 | P14.3 | Auth/session/secret/config security pass | All apps, backend, CI | P14.1 | High | Planned; static + controlled live checks |
 | P15.1 | **PHASE 15** — refresh visual drift inventory from current screens | All apps, Design System | P4.1, P5–P7 evidence | Medium | Partial; screenshot/static audit |
@@ -84,4 +84,4 @@
 
 ## Next recommended execution phase
 
-**P14.1 — RLS/authorization/privacy remediation plan.** P1.1 is now complete as a local release candidate and confirmed a security-configuration gap: public `anon`/`authenticated` EXECUTE grants on critical SECURITY DEFINER RPCs contradict migrations 019/020. Founder review should decide/approve P14.1 before P1.2; no live remediation is implied by this recommendation.
+**P14.1 publication and live application gate.** P1.1 is closed + published and P14.1 has a local release candidate. Founder approval must cover publishing the exact commit, applying migration 021 live, and read-only post-application ACL verification before P1.2. No live remediation is implied by repository readiness.

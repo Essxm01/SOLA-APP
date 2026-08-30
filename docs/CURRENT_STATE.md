@@ -1,7 +1,7 @@
 # Current project state
 
 **Last updated:** 2026-08-30
-**Repository-state baseline:** P1.1 began at `main`/`origin/main` `6d37b4589fca47fe56b294c4c12292b44a2db138`; external live/deployment claims require separate read-only verification.
+**Repository-state baseline:** P1.1 is published at `main`/`origin/main` `d7462f13eb8783a2d5422f574ec11a451d69b9d9`; external live/deployment claims require separate read-only verification.
 
 ## Current status
 
@@ -32,7 +32,7 @@ Read [ARCHITECTURE.md](./ARCHITECTURE.md), [DATABASE.md](./DATABASE.md), and [BU
 
 - `dbClient.ts` remains a strict SQL-to-Supabase REST/RPC compatibility layer, not a general Worker transaction/query solution. Matcher collisions are a known risk.
 - P1.1 reconciled retained migrations with live metadata. The live application ledger omits 013/014/017/018 despite their observed effects; 015 is repository-ahead of the observed session/OTP shape; the `000_schema_baseline` source remains unavailable. See [`codex/P1_1_SCHEMA_RLS_BASELINE_REPORT.md`](./codex/P1_1_SCHEMA_RLS_BASELINE_REPORT.md).
-- Live public tables have RLS enabled and no policies, with the backend using service-role access. However critical SECURITY DEFINER payment/KYC/registration RPCs are executable by `anon` and `authenticated`, contradicting the retained service-role-only migration intent. This is a P14.1 security prerequisite; do not modify it outside an approved security phase.
+- Live public tables have RLS enabled and no policies, with the backend using service-role access. P14.1 has prepared a local, unapplied remediation migration for critical SECURITY DEFINER payment/KYC/registration RPC ACLs; until Founder-approved live application and verification, those RPCs remain executable by `anon` and `authenticated`.
 - Payment is intentionally `PROTOTYPE`; real Paymob credentials/networking are not implemented.
 - Customer Favorites is an approved capability but persistent canonical storage is not implemented.
 - Design-system legacy drift remains inventoried under `DESIGN_SYSTEM/`; the anti-drift baseline prevents new violations but does not migrate old screens.
@@ -47,4 +47,4 @@ Read [ARCHITECTURE.md](./ARCHITECTURE.md), [DATABASE.md](./DATABASE.md), and [BU
 
 ## Next work
 
-P1.1 is a read-only local release candidate pending Founder review. Its evidence-based recommendation is to pull the existing P14.1 RLS/authorization/privacy remediation plan ahead of P1.2, because public SECURITY DEFINER grants are confirmed. No remediation occurs until a separately approved phase.
+P14.1 is a local release candidate pending Founder review. It prepares migration `021_harden_critical_rpc_privileges.sql` only; the live security gap remains open until the Founder separately approves publication, migration application, and read-only ACL verification. Do not start P1.2, P14.2, or P14.3 from this state.

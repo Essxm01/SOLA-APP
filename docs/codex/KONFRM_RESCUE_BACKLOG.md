@@ -1,5 +1,7 @@
 # KONFRM rescue backlog
 
+> **RB-02 / DC-13 update (2026-08-30):** P14.1's critical RPC privilege finding is resolved live. Retain the broader no-policy RLS and storage-object authorization work as separately routed security debt; do not reopen the resolved critical RPC grant issue.
+
 Only evidence-backed, deferred, or decision-blocked items belong here. This backlog does not authorize implementation.
 
 | ID | Severity / type | Role / surface | Evidence | Blocks roadmap? | Recommended phase |

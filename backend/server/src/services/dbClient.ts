@@ -1711,7 +1711,7 @@ async function queryViaSupabaseRest(text: string, params: any[] | undefined, url
   if (lowerSql.startsWith('insert into user_sessions')) {
     const id = params?.[0] || crypto.randomUUID();
     const userId = params?.[1];
-    const ownerId = params?.[2] || userId;
+    const ownerId = params?.[2] ?? null;
     const surface = params?.[3] || 'CUSTOMER';
     const role = params?.[4] || 'ROLE_CUSTOMER';
     const refreshTokenHash = params?.[5];
@@ -1719,39 +1719,40 @@ async function queryViaSupabaseRest(text: string, params: any[] | undefined, url
     const ipAddress = params?.[7] || null;
     const expiresAt = params?.[8];
 
-    const packedDeviceInfo = JSON.stringify({
-      surface,
-      role,
-      userId,
-      clientInfo: clientDeviceInfo,
-    });
-
     const payload = {
       id,
+      user_id: userId,
       owner_id: ownerId,
+      surface,
+      role,
       refresh_token_hash: refreshTokenHash,
-      device_info: packedDeviceInfo,
+      device_info: clientDeviceInfo,
       ip_address: ipAddress,
       is_revoked: false,
       expires_at: expiresAt,
     };
 
-    let res = await fetch(`${url}/rest/v1/user_sessions`, {
+    const res = await fetch(`${url}/rest/v1/user_sessions`, {
       method: 'POST',
       headers: { ...headers, 'Prefer': 'return=representation' },
       body: JSON.stringify(payload),
     });
 
-    let raw: any = await res.json().catch(() => []);
-    const rows = Array.isArray(raw) ? raw : [raw];
+    if (!res.ok) {
+      const body = await res.text().catch(() => '');
+      throw new Error(`REST_SESSION_INSERT_FAILED: HTTP ${res.status} — ${body.slice(0, 240)}`);
+    }
+    const raw: any = await res.json().catch(() => []);
+    const rows = (Array.isArray(raw) ? raw : [raw]).filter(Boolean);
+    if (rows.length !== 1) throw new Error('REST_SESSION_INSERT_DID_NOT_RETURN_CANONICAL_ROW');
     const mapped = rows.map(s => ({
       id: s.id || id,
       userId: s.user_id || userId,
-      ownerId: s.owner_id || ownerId,
+      ownerId: s.owner_id ?? ownerId,
       surface,
       role,
       refreshTokenHash: s.refresh_token_hash || refreshTokenHash,
-      deviceInfo: s.device_info || packedDeviceInfo,
+      deviceInfo: s.device_info || clientDeviceInfo,
       ipAddress: s.ip_address || ipAddress,
       isRevoked: s.is_revoked ?? false,
       expiresAt: s.expires_at || expiresAt,
@@ -1764,26 +1765,16 @@ async function queryViaSupabaseRest(text: string, params: any[] | undefined, url
   if (lowerSql.includes('from user_sessions') && lowerSql.includes('refresh_token_hash = $1')) {
     const hash = params?.[0];
     const res = await fetch(`${url}/rest/v1/user_sessions?refresh_token_hash=eq.${encodeURIComponent(hash)}`, { headers });
+    if (!res.ok) throw new Error(`REST_SESSION_SELECT_FAILED: HTTP ${res.status}`);
     const raw: any = await res.json().catch(() => []);
     const rows: any[] = Array.isArray(raw) ? raw : [];
     const mapped = rows.map(s => {
-      let surface: 'CUSTOMER' | 'OWNER' = (s.surface as any) || 'CUSTOMER';
-      let role = s.role || 'ROLE_CUSTOMER';
-      let userId = s.user_id || s.owner_id;
-      if (s.device_info) {
-        try {
-          const parsed = JSON.parse(s.device_info);
-          if (parsed.surface) surface = parsed.surface;
-          if (parsed.role) role = parsed.role;
-          if (parsed.userId) userId = parsed.userId;
-        } catch {}
-      }
       return {
         id: s.id,
-        userId,
+        userId: s.user_id,
         ownerId: s.owner_id,
-        surface,
-        role,
+        surface: s.surface,
+        role: s.role,
         refreshTokenHash: s.refresh_token_hash,
         deviceInfo: s.device_info,
         ipAddress: s.ip_address,
@@ -1800,10 +1791,12 @@ async function queryViaSupabaseRest(text: string, params: any[] | undefined, url
     const hash = params?.[0];
     const res = await fetch(`${url}/rest/v1/user_sessions?refresh_token_hash=eq.${encodeURIComponent(hash)}`, {
       method: 'PATCH',
-      headers,
+      headers: { ...headers, 'Prefer': 'return=representation' },
       body: JSON.stringify({ is_revoked: true }),
     });
-    return { rows: [], command: 'UPDATE', rowCount: res.ok ? 1 : 0, oid: 0, fields: [] };
+    if (!res.ok) throw new Error(`REST_SESSION_REVOKE_FAILED: HTTP ${res.status}`);
+    const raw: any = await res.json().catch(() => []);
+    return { rows: [], command: 'UPDATE', rowCount: Array.isArray(raw) ? raw.length : 0, oid: 0, fields: [] };
   }
 
   // 16. UPDATE user_sessions SET is_revoked = TRUE WHERE user_id = $1
@@ -1811,10 +1804,12 @@ async function queryViaSupabaseRest(text: string, params: any[] | undefined, url
     const userId = params?.[0];
     const res = await fetch(`${url}/rest/v1/user_sessions?owner_id=eq.${encodeURIComponent(userId)}`, {
       method: 'PATCH',
-      headers,
+      headers: { ...headers, 'Prefer': 'return=representation' },
       body: JSON.stringify({ is_revoked: true }),
     });
-    return { rows: [], command: 'UPDATE', rowCount: res.ok ? 1 : 0, oid: 0, fields: [] };
+    if (!res.ok) throw new Error(`REST_SESSION_REVOKE_ALL_FAILED: HTTP ${res.status}`);
+    const raw: any = await res.json().catch(() => []);
+    return { rows: [], command: 'UPDATE', rowCount: Array.isArray(raw) ? raw.length : 0, oid: 0, fields: [] };
   }
 
   return null;

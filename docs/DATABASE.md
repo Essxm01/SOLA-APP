@@ -4,7 +4,7 @@
 
 Supabase PostgreSQL is KONFRM's canonical persistence store. The live baseline was read-only inventoried on 2026-08-30 against project `zrbmbjgcsowfqklmxbyn` (PostgreSQL 17); detailed evidence is in [P1.1 schema/RLS report](./codex/P1_1_SCHEMA_RLS_BASELINE_REPORT.md). Application memory, mocks, and API fallbacks must never manufacture production success.
 
-The retained repository migration history begins at `backend/database/migrations/008_*.sql` and now includes the local, unapplied `021_harden_critical_rpc_privileges.sql`. It is **not** a complete historical baseline: `000_schema_baseline` exists only in the live application ledger, and several retained effects exist without a corresponding application-ledger record. Do not infer missing history, RLS policies, or intended grants from filenames alone.
+The retained repository migration history begins at `backend/database/migrations/008_*.sql`. Migration `021_harden_critical_rpc_privileges.sql` is applied live; migration `022_identity_session_persistence_integrity.sql` is local-only pending Founder Round 2 approval. This is **not** a complete historical baseline: `000_schema_baseline` exists only in the live application ledger, and several retained effects exist without a corresponding application-ledger record. Do not infer missing history, RLS policies, or intended grants from filenames alone.
 
 ## Canonical domains
 
@@ -29,7 +29,7 @@ The retained repository migration history begins at `backend/database/migrations
 
 The apps call `/api/v1`; repository search found no frontend direct Supabase client. The backend/Worker uses `SUPABASE_SERVICE_ROLE_KEY` or `SUPABASE_SECRET_KEY` through `dbClient.ts`'s narrow REST/RPC adapter. All inventoried public application tables have RLS enabled, are not FORCE RLS, have no policy, and currently have broad table privileges. With RLS and no policies, ordinary `anon`/`authenticated` direct table access is denied; service-role access bypasses RLS for the backend path.
 
-This does **not** make the live RPC grants safe. The live `konfrm_complete_deposit_payment`, `konfrm_register_owner`, `konfrm_submit_owner_kyc`, `konfrm_review_owner_kyc`, and `rls_auto_enable` functions are SECURITY DEFINER and executable by `anon` and `authenticated`. Retained migrations 019/020 explicitly revoke public access and grant only `service_role`; live metadata contradicts that intent. P14.1 has prepared migration 021 to revoke ordinary-role access explicitly, retain the four application RPCs for `service_role`, revoke direct `rls_auto_enable` access, and pin the dispute-evidence trigger search path. It is a repository fix only until a separately approved live application and ACL recheck. See [P14.1 report](./codex/P14_1_AUTHORIZATION_REMEDIATION_REPORT.md).
+P14.1 closed the critical RPC grant mismatch live on 2026-08-30: migration `021_harden_critical_rpc_privileges.sql` grants the four application `SECURITY DEFINER` RPCs only to `service_role`, closes direct ordinary-role `rls_auto_enable` execution, and pins the dispute-evidence trigger function's `search_path`. Read [P14.1 report](./codex/P14_1_AUTHORIZATION_REMEDIATION_REPORT.md) for exact evidence. The broader RLS-no-policy model remains an open architecture/security concern.
 
 ## Storage baseline
 

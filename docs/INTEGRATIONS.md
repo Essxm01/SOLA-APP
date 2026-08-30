@@ -9,7 +9,7 @@ Never place secrets in this document. Environment-variable names below are names
 | Cloudflare Workers | Backend Worker runtime | `backend/wrangler.json`, `backend/server/src/worker.ts`; CI deploys with `CLOUDFLARE_API_TOKEN`. `PAYMENT_MODE=PROTOTYPE` is set in the tracked Worker vars. |
 | Cloudflare Pages | Frontend hosting expected for the three apps | Build/project linkage is external to the repository; verify the actual deployment/revision after frontend changes. Do not create replacement projects casually. |
 | Paymob abstraction | Future live payment boundary; current flow is prototype only | `PAYMENT_MODE`, `PAYMOB_API_KEY`, `PAYMOB_HMAC_SECRET`, `PAYMOB_INTEGRATION_ID_CARD`, `PAYMOB_IFRAME_ID`. Live mode must fail closed when real configuration/implementation is absent. |
-| JWT/session service | Role-scoped access and refresh/revoke flow | `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`; never put fallback or production values in source/docs. |
+| JWT/session service | Role-scoped access and persistence-backed Customer/Owner refresh/revoke flow | `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`; never put fallback or production values in source/docs. P1.2 prepares migration `022` locally; live `user_sessions` remains legacy owner-scoped until Founder-approved application. |
 | CORS | Backend origin control | `CORS_ALLOWED_ORIGINS`; Worker also applies its request-origin policy. |
 | GitHub Actions | Build validation and Worker deployment on `main` | `.github/workflows/ci-validation.yml`; Node versions and deployment behavior are defined there. |
 

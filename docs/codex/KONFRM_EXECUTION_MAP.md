@@ -1,5 +1,7 @@
 # KONFRM execution map
 
+> **Active sequence update (2026-08-30):** P14.1 was pulled forward and is closed live. P1.2 is the current local-only Round 1; its Round 2 publication/migration approval must occur before P1.3.
+
 `خطة عمل التطبيق.txt` supplies the immutable PHASE 0–22 macro roadmap. The **75** detailed execution boundaries below were derived from current repository evidence, dependency boundaries, risk, and independent acceptance scope—not from a target quota. The Phase Zero hardening review split mixed property/availability, booking/financial, role-shell, and E2E boundaries where they require different acceptance evidence; future phases change only when new evidence creates a real dependency or acceptance boundary.
 
 **Status key:** `Preserve/verify` = implementation evidence exists but closure is unverified; `Partial` = material gap remains; `Deferred` = decision/prerequisite missing; `Planned` = no completion evidence yet.

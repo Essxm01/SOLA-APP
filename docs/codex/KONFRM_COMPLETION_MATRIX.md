@@ -1,5 +1,7 @@
 # KONFRM completion matrix
 
+> **P1.2 status (2026-08-30):** Round-1 repository remediation is local-ready; live schema application is intentionally pending Founder approval. P14.1 is no longer pending: it is live verified at `5decd03f59f3bd3039e12e00caf234f28def5201`.
+
 This is a current acceptance map, not a changelog. “Repository evidence” does not mean live accepted. A row can be **verified** only with concrete applicable functional, data/API, cross-app, failure-state, regression, security/privacy, visual, and live evidence.
 
 | Domain | Execution map | Classification | Customer | Owner | Admin | Backend / DB / Storage | Evidence gap / next gate |

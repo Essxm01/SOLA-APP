@@ -1,5 +1,7 @@
 # KONFRM current reality assessment
 
+> **2026-08-30 P1.2 reconciliation:** P14.1 is closed, published, and live-verified at `5decd03f59f3bd3039e12e00caf234f28def5201`; migration 021 is applied. P1.2 is local-fix-ready only: live `user_sessions` still has the legacy owner-scoped shape until Founder-approved Round 2 applies migration 022. See [P1.2 report](./P1_2_IDENTITY_SESSION_PERSISTENCE_REPORT.md).
+
 **Audited repository baseline:** P0.1 began at `main`/`origin/main` `3acb94e` on 2026-08-29. This is a repository/Git/configuration assessment, not blanket live-production proof.
 
 ## Classification key

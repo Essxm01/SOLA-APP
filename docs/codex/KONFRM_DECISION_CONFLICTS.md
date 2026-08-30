@@ -1,5 +1,7 @@
 # KONFRM decision and conflict register
 
+> **DC-13 operational state (2026-08-30): RESOLVED.** P14.1 migration 021 was applied and verified live. Historical descriptions of the critical four `SECURITY DEFINER` RPCs as anon/authenticated executable are superseded by the P14.1 report; unrelated RLS-policy architecture questions remain open.
+
 **Status vocabulary:** `Active`, `Resolved by higher authority`, `Needs Founder decision`, `Evidence gap`.
 
 | ID | Subject | Source A | Source B | Current precedence assessment | Impact | Blocks execution? | Founder decision? |

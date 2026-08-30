@@ -7,6 +7,7 @@
  */
 
 import { MockSmsProvider, type ISmsProvider } from './smsProvider.js';
+import { createHash } from 'node:crypto';
 import { signAccessToken, signRefreshToken, verifyRefreshToken } from './jwtService.js';
 import { userDb, ownerDb, otpDb, sessionDb } from './dbRepository.js';
 import { normalizePhoneNumber } from '../utils/phoneNormalizer.js';
@@ -110,6 +111,13 @@ export class AuthService {
   }
 
   private hashToken(token: string): string {
+    return `sha256:${createHash('sha256').update(token).digest('hex')}`;
+  }
+
+  // Existing live rows use the historical non-cryptographic format. Keep this
+  // lookup-only compatibility path until their safely mapped sessions expire;
+  // new sessions are always stored with the SHA-256 digest above.
+  private legacyHashToken(token: string): string {
     let hash = 0;
     for (let i = 0; i < token.length; i++) {
       hash = (hash << 5) - hash + token.charCodeAt(i);
@@ -530,13 +538,29 @@ export class AuthService {
 
     if (!user || !ownerRecord) {
       // Unknown phone or pure customer trying to login to Owner app -> Do not create owner silently
+      if (user) {
+        const role: UserRole = 'ROLE_CUSTOMER';
+        const refreshToken = signRefreshToken({ sub: user.id, role });
+        const refreshTokenHash = this.hashToken(refreshToken);
+        const expiresAtIso = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+        await sessionDb.create({
+          id: crypto.randomUUID(), userId: user.id, ownerId: null, surface: 'OWNER', role,
+          refreshTokenHash, deviceInfo, ipAddress, expiresAt: expiresAtIso,
+        });
+        const sessionRecord: UserSessionRecord = {
+          id: `session_${Date.now()}`, userId: user.id, ownerId: null, surface: 'OWNER', role,
+          refreshTokenHash, deviceInfo, ipAddress, isRevoked: false, expiresAt: expiresAtIso, createdAt: new Date().toISOString(),
+        };
+        dbUserSessionsStore.set(refreshToken, sessionRecord);
+        dbUserSessionsStore.set(refreshTokenHash, sessionRecord);
+        return {
+          tokens: { accessToken: signAccessToken({ sub: user.id, role, phone: canonicalPhone }), refreshToken, expiresIn: 900 },
+          user, owner: null, isOwner: false, ownerOnboardingRequired: true,
+        };
+      }
       return {
-        tokens: user ? {
-          accessToken: signAccessToken({ sub: user.id, role: 'ROLE_CUSTOMER', phone: canonicalPhone }),
-          refreshToken: signRefreshToken({ sub: user.id, role: 'ROLE_CUSTOMER' }),
-          expiresIn: 900,
-        } : null,
-        user: user || null,
+        tokens: null,
+        user: null,
         owner: null,
         isOwner: false,
         ownerOnboardingRequired: true,
@@ -696,32 +720,39 @@ export class AuthService {
 
     // 1. Verify cryptographic token signature
     const decoded = verifyRefreshToken(refreshToken);
+    if (decoded.role === 'ROLE_ADMIN') {
+      throw new Error('ADMIN_REFRESH_NOT_SUPPORTED');
+    }
     const tokenHash = this.hashToken(refreshToken);
 
-    // 2. Query persistent DB session or in-memory fallback
-    const dbSession = await sessionDb.getByRefreshTokenHash(tokenHash).catch(() => null);
-    const memSession = dbUserSessionsStore.get(refreshToken) || dbUserSessionsStore.get(tokenHash);
-
-    const session = dbSession || memSession;
-    if (session) {
-      if (session.isRevoked) {
-        throw new Error('SESSION_REVOKED');
-      }
-
-      if (new Date() > new Date(session.expiresAt)) {
-        throw new Error('REFRESH_TOKEN_EXPIRED');
-      }
+    // Canonical database persistence is the authority. In-memory state is
+    // retained only for explicit test/runtime bookkeeping and cannot refresh a
+    // token after a canonical lookup misses or fails.
+    let session = await sessionDb.getByRefreshTokenHash(tokenHash);
+    if (!session) {
+      session = await sessionDb.getByRefreshTokenHash(this.legacyHashToken(refreshToken));
     }
-
-    // Resolve user ID and original role accurately
-    const userId = session?.userId || session?.ownerId || decoded.sub;
-    const role: UserRole = (session?.role as UserRole) || decoded.role || 'ROLE_CUSTOMER';
+    if (!session) throw new Error('SESSION_NOT_FOUND');
+    if (session.isRevoked) throw new Error('SESSION_REVOKED');
+    if (new Date() > new Date(session.expiresAt)) throw new Error('REFRESH_TOKEN_EXPIRED');
+    if (session.userId !== decoded.sub) throw new Error('SESSION_SUBJECT_MISMATCH');
+    if (session.role !== decoded.role) throw new Error('SESSION_ROLE_MISMATCH');
+    if (session.role !== 'ROLE_CUSTOMER' && session.role !== 'ROLE_OWNER') {
+      throw new Error('SESSION_ROLE_INVALID');
+    }
+    const userId = session.userId;
+    const role = session.role as UserRole;
 
     // Retrieve user phone to embed in access token
     let phone: string | undefined;
-    const user = await userDb.getById(userId).catch(() => null);
-    if (user && user.phoneNumber) {
-      phone = user.phoneNumber;
+    const user = await userDb.getById(userId);
+    if (!user) throw new Error('SESSION_USER_NOT_FOUND');
+    phone = user.phoneNumber;
+    if (role === 'ROLE_OWNER') {
+      const owner = await ownerDb.getById(userId);
+      if (!owner || owner.id !== userId || session.ownerId !== userId) throw new Error('SESSION_OWNER_CAPABILITY_INVALID');
+    } else if (session.ownerId) {
+      throw new Error('SESSION_CUSTOMER_OWNER_INCONSISTENT');
     }
 
     const newAccessToken = signAccessToken({ sub: userId, role, phone });
@@ -736,7 +767,8 @@ export class AuthService {
     if (!refreshToken) return { success: true };
 
     const tokenHash = this.hashToken(refreshToken);
-    await sessionDb.revokeByRefreshTokenHash(tokenHash).catch(() => null);
+    let revoked = await sessionDb.revokeByRefreshTokenHash(tokenHash);
+    if (!revoked) revoked = await sessionDb.revokeByRefreshTokenHash(this.legacyHashToken(refreshToken));
 
     const session1 = dbUserSessionsStore.get(refreshToken);
     if (session1) session1.isRevoked = true;

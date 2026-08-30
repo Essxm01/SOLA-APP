@@ -123,6 +123,12 @@ jobs:
           npm run test:owner-registration-kyc-01
           npm run test:owner-identity-01
           npm run test:owner-property-wizard-01
+          npm run test:p13-property-persistence
+          npm run test:p13-property-media
+          npm run test:p13-worker-adapter
+          npm run test:p13-atomic-media
+          npm run test:p12-identity-session
+          npm run test:p14-rpc-privileges
       - name: Deploy to Cloudflare Workers
         if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
         uses: cloudflare/wrangler-action@v3

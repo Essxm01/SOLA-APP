@@ -1,7 +1,7 @@
 # Current project state
 
-**Last updated:** 2026-08-30
-**Repository-state baseline:** P14.1 is published and live-verified at `main`/`origin/main` `5decd03f59f3bd3039e12e00caf234f28def5201`; P1.2 is a local-only session-persistence release candidate until Founder approves Round 2.
+**Last updated:** 2026-08-31
+**Repository-state baseline:** P1.2 is published/live-verified at `main`/`origin/main` `92dc3916afe7a8e7d15620efee31afa58e826870`; P1.3 remains an open validation-branch remediation after review found Worker lifecycle and media-atomicity defects in its earlier candidate.
 
 ## Current status
 
@@ -13,7 +13,7 @@ The repository contains code and migration evidence for property operations, boo
 - **Bookings:** Customer request lifecycle, Owner approve/reject, availability protection, and booking-context conversation/message persistence.
 - **Payments:** prototype deposit initiation/completion with canonical financial summaries and migration `019` atomic finalization RPC; no real-money Paymob flow.
 - **Wallet:** Owner wallet/ledger reads use `owner_wallets` and `wallet_ledger_entries`, not property-price reconstruction.
-- **Identity/access:** P0.2 is published at `6d37b4589fca47fe56b294c4c12292b44a2db138`; GitHub Actions run #129 / `33279518425` succeeded, including backend Worker deployment and public health. Signed-token role boundaries across Customer, Owner, Admin, and representative backend routes are locally verified. Persisted Customer/Owner tokens are candidates until canonical validation; fake patterned JWT and Admin UI token fallbacks were removed. See [`codex/P0_2_AUTH_ACCESS_REPORT.md`](./codex/P0_2_AUTH_ACCESS_REPORT.md).
+- **Identity/access:** P0.2 is published at `6d37b4589fca47fe56b294c4c12292b44a2db138`; P1.2 subsequently closed the canonical session-persistence migration/live verification at `92dc3916…`. See [`codex/P1_2_IDENTITY_SESSION_PERSISTENCE_REPORT.md`](./codex/P1_2_IDENTITY_SESSION_PERSISTENCE_REPORT.md).
 - **Truthful states:** Admin validates sessions before shell render; Admin overview/notifications and Customer property/payment-history fetches distinguish loading, success/empty, and error.
 - **Owner entry:** first-ever device flow is a short KONFRM splash then one-time Owner onboarding; it is independent of authentication and does not change Owner capability rules.
 - **Owner Home:** action-first Home uses canonical pending booking requests, future confirmed bookings, property status context, and direct available/pending wallet values; it does not use dashboard financial aliases as wallet truth.
@@ -47,4 +47,4 @@ Read [ARCHITECTURE.md](./ARCHITECTURE.md), [DATABASE.md](./DATABASE.md), and [BU
 
 ## Next work
 
-P1.2 is the active local-only identity/session persistence round. Read `tasks/CURRENT_TASK.md` and `docs/codex/P1_2_IDENTITY_SESSION_PERSISTENCE_REPORT.md`. Its staged migrations `022` and `023` must not be applied live until a separately approved publication and migration round.
+P1.3 is open on its temporary validation branch. Read `tasks/CURRENT_TASK.md` and [`codex/P1_3_PROPERTY_MEDIA_PERSISTENCE_REPORT.md`](./codex/P1_3_PROPERTY_MEDIA_PERSISTENCE_REPORT.md). Do not publish, merge, deploy, or perform live storage/schema/data operations without separate Founder approval.

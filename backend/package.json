@@ -21,6 +21,10 @@
     "test:admin-truthful-state": "npx tsx server/src/tests/adminTruthfulState.test.ts",
     "test:customer-truthful-state": "npx tsx server/src/tests/customerTruthfulState.test.ts",
     "test:owner-property-wizard-01": "npx tsx server/src/tests/ownerPropertyWizard01.test.ts",
+    "test:p13-property-persistence": "npx tsx server/src/tests/p13PropertyPersistence.test.ts",
+    "test:p13-property-media": "npx tsx server/src/tests/p13PropertyMedia.test.ts",
+    "test:p13-worker-adapter": "npx tsx server/src/tests/p13WorkerAdapter.test.ts",
+    "test:p13-atomic-media": "npx tsx server/src/tests/p13AtomicMediaContract.test.ts",
     "check": "npx tsc --noEmit"
   },
   "dependencies": {

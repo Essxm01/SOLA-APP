@@ -308,11 +308,11 @@ export class AdminDomainController {
 // ==========================================
 export class CustomerDomainController {
   static filterPublishedProperties(properties: Property[]): Property[] {
-    return properties.filter((p) => p.status === 'PUBLISHED');
+    return properties.filter((p) => p.status === 'PUBLISHED' && p.verificationStatus === 'VERIFIED');
   }
 
   static sanitizePropertyForCustomer(property: Property) {
-    if (property.status !== 'PUBLISHED') {
+    if (property.status !== 'PUBLISHED' || property.verificationStatus !== 'VERIFIED') {
       throw new Error('PROPERTY_NOT_PUBLISHED');
     }
 
@@ -329,7 +329,7 @@ export class CustomerDomainController {
     checkOut: string,
     totalGuests: number
   ) {
-    if (property.status !== 'PUBLISHED') {
+    if (property.status !== 'PUBLISHED' || property.verificationStatus !== 'VERIFIED') {
       throw new Error('CANNOT_BOOK_UNPUBLISHED_PROPERTY');
     }
 

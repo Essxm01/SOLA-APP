@@ -11,7 +11,7 @@ The retained repository migration history begins at `backend/database/migrations
 | Domain | Canonical live entities | Important model rule |
 | --- | --- | --- |
 | Identity | `users`, `owners`, `user_sessions`, `otp_challenges`, `admin_users`, `audit_logs` | `owners.id` is a restrictive FK to `users.id`: an Owner is an optional same-UUID capability, not a second human identity. |
-| Supply/media | `properties`, `property_availability`, `property_images`, `upload_intents`, `property_verification_documents` | Property image/object and upload-intent identifiers are unique; public property media remains separate from identity evidence. |
+| Supply/media | `properties`, `property_availability`, `property_images`, `upload_intents`, `property_verification_documents` | Property image/object and upload-intent identifiers are unique; public property media remains separate from identity evidence. P1.3 prepares an unapplied atomic image/intent RPC migration (`024`); it requires a separate read-only duplicate preflight and approved rollout. |
 | Booking/chat | `bookings`, financial summaries/snapshots, conversations/messages | The live exclusion constraint blocks overlapping `APPROVED_PENDING_PAYMENT` or `CONFIRMED` stays only. |
 | Money | payment transactions, owner wallets/ledger, payout methods/requests | Payment, upload, payout, and ledger identifiers carry uniqueness/idempotency protections. |
 | KYC/operations | owner verification documents, notifications, disputes/evidence/holds, refund saga/attempts | KYC supports front, back, and live-face types; dispute evidence has an append-only trigger. |

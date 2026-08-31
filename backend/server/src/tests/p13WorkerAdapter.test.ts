@@ -50,6 +50,16 @@ try {
     'zero-row lifecycle PATCH must not be success',
   );
 
+  globalThis.fetch = (async () => json([
+    propertyRow('PENDING_REVIEW', 'PENDING_VERIFICATION'),
+    propertyRow('PENDING_REVIEW', 'PENDING_VERIFICATION'),
+  ])) as typeof fetch;
+  await assert.rejects(
+    propertyDb.updateStatusForOwner(propertyId, ownerId, 'PENDING_REVIEW', 'PENDING_VERIFICATION'),
+    /REST_PROPERTY_OWNER_LIFECYCLE_UPDATE_MULTIPLE_ROWS/,
+    'multiple-row lifecycle PATCH must not be success',
+  );
+
   globalThis.fetch = (async () => json({ error: 'failure' }, 500)) as typeof fetch;
   await assert.rejects(
     propertyDb.updateStatusForOwner(propertyId, ownerId, 'PENDING_REVIEW', 'PENDING_VERIFICATION'),
@@ -72,8 +82,9 @@ try {
     return new Response(null, { status: 200, headers: { 'content-range': '0-0/0' } });
   }) as typeof fetch;
   await propertyDb.getAdminStats();
-  assert.ok(statsCalls.some(url => url.includes('status=eq.DRAFT&verification_status=eq.REJECTED')));
-  assert.ok(!statsCalls.some(url => url.includes('status=eq.REJECTED')));
+  const statsQueries = statsCalls.map(url => new URL(url).searchParams);
+  assert.ok(statsQueries.some(query => query.get('status') === 'eq.DRAFT' && query.get('verification_status') === 'eq.REJECTED'));
+  assert.ok(!statsQueries.some(query => query.get('status') === 'eq.REJECTED'));
 
   const rpcCalls: Array<{ url: string; init: RequestInit }> = [];
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -91,6 +102,16 @@ try {
   assert.equal(rpcPayload.p_owner_id, ownerId);
   assert.equal(rpcPayload.p_property_id, propertyId);
   assert.equal(rpcPayload.p_object_key, objectKey);
+
+  globalThis.fetch = (async () => json({ message: 'rpc unavailable' }, 500)) as typeof fetch;
+  await assert.rejects(
+    imageDb.commitPropertyMediaAtomic({
+      uploadIntentId: intentId, ownerId, propertyId, objectKey,
+      fileUrl: `https://media.test/${objectKey}`, fileName: 'image.png', mimeType: 'image/png', fileSize: 4,
+    }),
+    /REST_PROPERTY_MEDIA_COMMIT_RPC_FAILED/,
+    'PostgREST RPC failure must propagate',
+  );
 
   let zeroReadCount = 0;
   globalThis.fetch = (async () => {

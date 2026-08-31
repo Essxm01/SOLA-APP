@@ -1,6 +1,6 @@
 # P1.3 — Property & media persistence integrity
 
-**Status:** Open — same-task PR review remediation
+**Status:** Cloud implementation ready for handoff — unpublished, unapplied, and awaiting separate remote validation
 **Published baseline:** `92dc3916afe7a8e7d15620efee31afa58e826870`
 **Validation branch:** `validation/p1-3-rc` → `main`, PR #1 (unmerged)
 **Closure boundary:** no main publication, merge, deployment, migration application, Storage mutation, or production data mutation.
@@ -26,6 +26,23 @@ The in-progress corrected candidate now:
 - removes property-image read `catch(() => [])` fallback from canonical repository paths and returns scoped errors for Admin/Customer media reads;
 - makes an already soft-deleted image record available only to its Owner for repeatable public-object cleanup. This is retryable cleanup, not a claim that Supabase Storage deletion and database soft-delete are one transaction.
 
+## Final Cloud remediation evidence
+
+- The CI #135 test defect now inspects parsed URL query parameters, so `status=eq.REJECTED` is rejected without falsely matching the canonical `verification_status=eq.REJECTED` parameter.
+- Owner lifecycle PATCHes require exactly one returned row; zero rows, multiple rows, and HTTP failure all fail explicitly.
+- Migration `024` now follows the repository transaction/ledger convention. Its RPC locks the upload intent first as the serialization point, validates its binding, then locks and validates the active image. Replay succeeds only for the consistent pair `COMMITTED intent + matching ACTIVE image`; every contradictory half-state fails with `MEDIA_COMMIT_INCONSISTENT` and is not repaired automatically.
+- Property rejection is represented across Owner and Admin surfaces as `DRAFT + REJECTED verification`; the legacy property-only `REJECTED` status was removed from the Owner property type and focused derivation tests distinguish rejected drafts from ordinary drafts.
+- No live schema, data, Storage, property, media, or upload-intent mutation was performed. Migration `024` remains unapplied.
+
+## Future rollout compatibility analysis
+
+- **S0 — old Worker + current schema:** unchanged current behavior; it retains the known non-atomic two-write risk.
+- **S1 — old Worker + migration 024:** additive RPC availability is compatible, but the partial unique index can reject an old-Worker duplicate ACTIVE insert that previously could persist. This is safer persistence failure, not evidence that migration-first is universally risk-free; preflight must prove no existing duplicate-active group before application.
+- **S2-invalid — new Worker + no migration 024:** media commit RPC calls fail; this sequence is prohibited.
+- **S3 — new Worker + migration 024:** intended atomic path, subject to separate live verification.
+
+The future Round-2 order is: read-only duplicate-active preflight aggregates → apply `024` → verify RPC/index/ACL/application ledger → verify old Worker health → verify persistence aggregates → publish/deploy the new Worker → verify Worker behavior → post-deploy persistence aggregates. This report does not authorize or claim execution of that sequence.
+
 ## Required live rollout preflight
 
 Migration 024 is local/PR only. Before a separate Founder-approved rollout, perform a read-only duplicate-active-image-per-upload-intent aggregate. Apply the additive migration first only if compatible, verify the old Worker remains healthy, then publish the Worker that calls the RPC and verify the deployed atomic path. Do not apply the migration or create/delete any property media during P1.3 validation.
@@ -39,7 +56,7 @@ The final candidate must execute these isolated suites in PR CI before closure:
 - `test:p13-worker-adapter` — real `queryDb` Worker REST/RPC adapter with mocked fetch, including exact lifecycle PATCH filters/payload, zero/failure truthfulness, public eligibility, rejected metric, RPC invocation, and truthful image reads.
 - `test:p13-atomic-media` — isolated atomic/replay/concurrent/failure contract plus migration security/structure checks.
 
-The restricted local Codex runner still cannot start `tsx` because Windows user-profile resolution fails before any test loads (`uv_os_get_passwd` / `ENOMEM`), including under the portable Node 22 runtime. Backend TypeScript checking succeeds. GitHub pull-request CI is the independent execution authority for these safe, mocked tests; deployment remains skipped for PR events.
+The Cloud runner executed the focused mocked suites, Owner/Admin derivation tests, affected typechecks/builds, and design validation successfully. GitHub pull-request CI on the final handoff SHA remains separate evidence and was deliberately not queried in this run; deployment remains unauthorized.
 
 ## Final remote-validation evidence policy
 

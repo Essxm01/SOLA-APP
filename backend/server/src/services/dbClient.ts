@@ -848,7 +848,8 @@ async function queryViaSupabaseRest(text: string, params: any[] | undefined, url
     if (!res.ok) throw new Error(`REST_PROPERTY_OWNER_LIFECYCLE_UPDATE_FAILED: HTTP ${res.status}`);
     const raw: any = await res.json().catch(() => []);
     const rows = Array.isArray(raw) ? raw : (raw ? [raw] : []);
-    if (rows.length !== 1) throw new Error('REST_PROPERTY_OWNER_LIFECYCLE_UPDATE_ZERO_ROWS');
+    if (rows.length === 0) throw new Error('REST_PROPERTY_OWNER_LIFECYCLE_UPDATE_ZERO_ROWS');
+    if (rows.length !== 1) throw new Error('REST_PROPERTY_OWNER_LIFECYCLE_UPDATE_MULTIPLE_ROWS');
     const mapped = rows.map((p: any) => ({ id: p.id, ownerId: p.owner_id, title: p.title, status: p.status, verificationStatus: p.verification_status, updatedAt: p.updated_at }));
     return { rows: mapped, command: 'UPDATE', rowCount: mapped.length, oid: 0, fields: [] };
   }

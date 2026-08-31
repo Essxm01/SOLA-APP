@@ -4,6 +4,8 @@
 -- P1.3 validation branch. It replaces the Worker-unsafe two-write sequence
 -- (insert image, then PATCH upload intent) with one database transaction.
 
+BEGIN;
+
 CREATE UNIQUE INDEX IF NOT EXISTS property_images_one_active_per_upload_intent_idx
   ON public.property_images (upload_intent_id)
   WHERE upload_intent_id IS NOT NULL AND status = 'ACTIVE';
@@ -43,26 +45,8 @@ DECLARE
   v_intent public.upload_intents%ROWTYPE;
   v_image public.property_images%ROWTYPE;
 BEGIN
-  -- A committed image is the idempotent canonical replay result. Lock it so
-  -- concurrent identical commits cannot manufacture another active image.
-  SELECT * INTO v_image
-  FROM public.property_images
-  WHERE upload_intent_id = p_upload_intent_id AND status = 'ACTIVE'
-  FOR UPDATE;
-
-  IF FOUND THEN
-    IF v_image.owner_id <> p_owner_id
-       OR v_image.property_id <> p_property_id
-       OR v_image.object_key <> p_object_key THEN
-      RAISE EXCEPTION 'PROPERTY_MEDIA_COMMIT_BINDING_MISMATCH';
-    END IF;
-    RETURN QUERY SELECT v_image.id, v_image.property_id, v_image.owner_id,
-      v_image.object_key, v_image.file_url, v_image.file_name, v_image.mime_type,
-      v_image.file_size_bytes, v_image.sort_order, v_image.upload_intent_id,
-      v_image.sha256_checksum, v_image.status, v_image.uploaded_at;
-    RETURN;
-  END IF;
-
+  -- The intent is the serialization point. Lock it before inspecting the
+  -- image so concurrent commits validate one canonical pair in one order.
   SELECT * INTO v_intent
   FROM public.upload_intents
   WHERE id = p_upload_intent_id
@@ -74,14 +58,21 @@ BEGIN
      OR v_intent.object_key <> p_object_key THEN
     RAISE EXCEPTION 'PROPERTY_MEDIA_COMMIT_BINDING_MISMATCH';
   END IF;
-  -- A concurrent first commit can become visible only after the initial
-  -- active-image lookup. Once the intent lock is acquired, read the canonical
-  -- row again and return it instead of treating the replay as a conflict.
+
+  SELECT * INTO v_image
+  FROM public.property_images
+  WHERE upload_intent_id = p_upload_intent_id AND status = 'ACTIVE'
+  FOR UPDATE;
+
+  IF FOUND AND (
+    v_image.owner_id <> p_owner_id
+    OR v_image.property_id <> p_property_id
+    OR v_image.object_key <> p_object_key
+  ) THEN
+    RAISE EXCEPTION 'PROPERTY_MEDIA_COMMIT_BINDING_MISMATCH';
+  END IF;
+
   IF v_intent.status = 'COMMITTED' THEN
-    SELECT * INTO v_image
-    FROM public.property_images
-    WHERE upload_intent_id = p_upload_intent_id AND status = 'ACTIVE'
-    FOR UPDATE;
     IF NOT FOUND THEN RAISE EXCEPTION 'MEDIA_COMMIT_INCONSISTENT'; END IF;
     RETURN QUERY SELECT v_image.id, v_image.property_id, v_image.owner_id,
       v_image.object_key, v_image.file_url, v_image.file_name, v_image.mime_type,
@@ -89,6 +80,7 @@ BEGIN
       v_image.sha256_checksum, v_image.status, v_image.uploaded_at;
     RETURN;
   END IF;
+  IF FOUND THEN RAISE EXCEPTION 'MEDIA_COMMIT_INCONSISTENT'; END IF;
   IF v_intent.status <> 'PENDING_UPLOAD' THEN
     RAISE EXCEPTION 'UPLOAD_INTENT_NOT_PENDING';
   END IF;
@@ -134,3 +126,9 @@ REVOKE ALL ON FUNCTION public.konfrm_commit_property_media(
 GRANT EXECUTE ON FUNCTION public.konfrm_commit_property_media(
   uuid, uuid, uuid, text, text, text, text, bigint, integer, text
 ) TO service_role;
+
+INSERT INTO public.schema_migrations (version)
+VALUES ('024_atomic_property_media_commit.sql')
+ON CONFLICT (version) DO NOTHING;
+
+COMMIT;

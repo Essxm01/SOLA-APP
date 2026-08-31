@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "test:truthful-state": "npx tsx src/utils/adminTruthfulState.test.ts",
+    "test:truthful-state": "node ../backend/node_modules/tsx/dist/cli.mjs src/utils/adminTruthfulState.test.ts",
+    "test:property-review-state": "node ../backend/node_modules/tsx/dist/cli.mjs src/utils/propertyReviewState.test.ts",
     "build": "tsc -b && vite build",
     "preview": "vite preview"
   },

@@ -1,7 +1,7 @@
 # Current project state
 
 **Last updated:** 2026-08-31
-**Repository-state baseline:** P1.2 is published/live-verified at `main`/`origin/main` `92dc3916afe7a8e7d15620efee31afa58e826870`; P1.3 remains an open validation-branch remediation after review found Worker lifecycle and media-atomicity defects in its earlier candidate.
+**Repository-state baseline:** P1.2 is published/live-verified at `main`/`origin/main` `92dc3916afe7a8e7d15620efee31afa58e826870`; P1.3 remediation is locally implementation-ready for handoff, but remains unpublished and unapplied pending separate remote CI/review and rollout authority.
 
 ## Current status
 
@@ -47,4 +47,4 @@ Read [ARCHITECTURE.md](./ARCHITECTURE.md), [DATABASE.md](./DATABASE.md), and [BU
 
 ## Next work
 
-P1.3 is open on its temporary validation branch. Read `tasks/CURRENT_TASK.md` and [`codex/P1_3_PROPERTY_MEDIA_PERSISTENCE_REPORT.md`](./codex/P1_3_PROPERTY_MEDIA_PERSISTENCE_REPORT.md). Do not publish, merge, deploy, or perform live storage/schema/data operations without separate Founder approval.
+P1.3 is locally implementation-ready on its temporary validation branch. Read `tasks/CURRENT_TASK.md` and [`codex/P1_3_PROPERTY_MEDIA_PERSISTENCE_REPORT.md`](./codex/P1_3_PROPERTY_MEDIA_PERSISTENCE_REPORT.md). Remote CI/review and any rollout remain separate; do not publish, merge, deploy, or perform live storage/schema/data operations without separate Founder approval.

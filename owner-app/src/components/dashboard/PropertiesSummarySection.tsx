@@ -1,21 +1,22 @@
 import React from 'react';
 import { ArrowLeft, Building2, MapPin } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
-import { getPropertyHomeSummary, getRelevantProperties } from '../../utils/ownerHome';
+import { getPropertyHomeSummary, getRelevantProperties, isRejectedProperty } from '../../utils/ownerHome';
 import type { Property, PropertyStatus } from '../../types';
 
 const propertyPresentation: Record<PropertyStatus, { label: string; className: string; note?: string }> = {
   DRAFT: { label: 'مسودة', className: 'bg-slate-100 text-slate-700', note: 'أكمل بيانات الوحدة' },
   PENDING_REVIEW: { label: 'قيد المراجعة', className: 'bg-amber-50 text-amber-800', note: 'قيد مراجعة الإدارة' },
   PUBLISHED: { label: 'منشورة', className: 'bg-emerald-50 text-emerald-800' },
-  REJECTED: { label: 'تحتاج تعديلات', className: 'bg-rose-50 text-rose-800', note: 'راجع التعديلات المطلوبة' },
   PAUSED: { label: 'موقوفة مؤقتاً', className: 'bg-blue-50 text-blue-800' },
   SUSPENDED: { label: 'معلقة إدارياً', className: 'bg-slate-100 text-slate-700' },
   ARCHIVED: { label: 'مؤرشفة', className: 'bg-slate-100 text-slate-600' },
 };
 
 const PropertyCard: React.FC<{ property: Property; onOpen: () => void }> = ({ property, onOpen }) => {
-  const presentation = propertyPresentation[property.status];
+  const presentation = isRejectedProperty(property)
+    ? { label: 'تحتاج تعديلات', className: 'bg-rose-50 text-rose-800', note: 'راجع التعديلات المطلوبة' }
+    : propertyPresentation[property.status];
   const location = property.locationName || property.address || property.region;
   return <button type="button" onClick={onOpen} className="flex w-full items-center gap-3 rounded-[var(--konfrm-radius-card)] border border-[var(--konfrm-border-default)] bg-[var(--konfrm-surface-primary)] p-4 text-right [box-shadow:var(--konfrm-shadow-subtle)]">
     {property.images?.[0] ? <img src={property.images[0]} alt="" className="h-20 w-20 shrink-0 rounded-[var(--konfrm-radius-control)] object-cover" /> : <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-[var(--konfrm-radius-control)] bg-[var(--konfrm-surface-secondary)] text-[var(--konfrm-text-muted)]"><Building2 className="h-6 w-6" /></div>}

@@ -2,7 +2,7 @@ import { strict as assert } from 'node:assert';
 import fs from 'node:fs';
 import path from 'node:path';
 
-type Intent = { id: string; ownerId: string; propertyId: string; objectKey: string; status: 'PENDING_UPLOAD' | 'COMMITTED'; expiresAt: number };
+type Intent = { id: string; ownerId: string; propertyId: string; objectKey: string; status: 'PENDING_UPLOAD' | 'COMMITTED' | 'EXPIRED' | 'CANCELLED'; expiresAt: number };
 type Image = { id: string; uploadIntentId: string; ownerId: string; propertyId: string; objectKey: string };
 
 // This isolated model mirrors the database function contract. The separate
@@ -15,11 +15,13 @@ class AtomicMediaModel {
   failAfterValidation = false;
   constructor(intent: Intent) { this.intent = { ...intent }; }
   commit(ownerId: string, propertyId: string, objectKey: string) {
-    if (this.image) {
-      if (this.image.ownerId !== ownerId || this.image.propertyId !== propertyId || this.image.objectKey !== objectKey) throw new Error('PROPERTY_MEDIA_COMMIT_BINDING_MISMATCH');
+    if (this.intent.ownerId !== ownerId || this.intent.propertyId !== propertyId || this.intent.objectKey !== objectKey) throw new Error('PROPERTY_MEDIA_COMMIT_BINDING_MISMATCH');
+    if (this.image && (this.image.ownerId !== ownerId || this.image.propertyId !== propertyId || this.image.objectKey !== objectKey)) throw new Error('PROPERTY_MEDIA_COMMIT_BINDING_MISMATCH');
+    if (this.intent.status === 'COMMITTED') {
+      if (!this.image) throw new Error('MEDIA_COMMIT_INCONSISTENT');
       return this.image;
     }
-    if (this.intent.ownerId !== ownerId || this.intent.propertyId !== propertyId || this.intent.objectKey !== objectKey) throw new Error('PROPERTY_MEDIA_COMMIT_BINDING_MISMATCH');
+    if (this.image) throw new Error('MEDIA_COMMIT_INCONSISTENT');
     if (this.intent.status !== 'PENDING_UPLOAD') throw new Error('UPLOAD_INTENT_NOT_PENDING');
     if (this.intent.expiresAt <= Date.now()) throw new Error('UPLOAD_INTENT_EXPIRED');
     if (this.failAfterValidation) throw new Error('FORCED_DATABASE_FAILURE');
@@ -61,8 +63,17 @@ const failed = make(); failed.failAfterValidation = true;
 assert.throws(() => failed.commit(ownerId, propertyId, objectKey), /FORCED_DATABASE_FAILURE/);
 assert.equal(failed.image, null); assert.equal(failed.intent.status, 'PENDING_UPLOAD', 'forced failure has no active image + pending intent half-state');
 
+for (const status of ['PENDING_UPLOAD', 'EXPIRED', 'CANCELLED'] as const) {
+  const inconsistent = make(); inconsistent.intent.status = status; inconsistent.image = { ...canonical };
+  assert.throws(() => inconsistent.commit(ownerId, propertyId, objectKey), /MEDIA_COMMIT_INCONSISTENT/, `active image + ${status} must fail`);
+}
+const missingImage = make(); missingImage.intent.status = 'COMMITTED';
+assert.throws(() => missingImage.commit(ownerId, propertyId, objectKey), /MEDIA_COMMIT_INCONSISTENT/, 'committed intent without active image must fail');
+const badImageBinding = make(); badImageBinding.intent.status = 'COMMITTED'; badImageBinding.image = { ...canonical, objectKey: 'wrong-key' };
+assert.throws(() => badImageBinding.commit(ownerId, propertyId, objectKey), /BINDING_MISMATCH/, 'active image binding mismatch must fail');
+
 const migration = fs.readFileSync(path.resolve('database/migrations/024_atomic_property_media_commit.sql'), 'utf8');
-for (const required of ['konfrm_commit_property_media', 'FOR UPDATE', "status = 'COMMITTED'", 'property_images_one_active_per_upload_intent_idx', 'SECURITY INVOKER', 'REVOKE ALL', 'GRANT EXECUTE']) {
+for (const required of ['BEGIN;', 'konfrm_commit_property_media', 'FOR UPDATE', "status = 'COMMITTED'", 'MEDIA_COMMIT_INCONSISTENT', 'property_images_one_active_per_upload_intent_idx', 'SECURITY INVOKER', 'SET search_path = public, pg_temp', 'REVOKE ALL', 'FROM PUBLIC, anon, authenticated', 'TO service_role', "VALUES ('024_atomic_property_media_commit.sql')", 'COMMIT;']) {
   assert.ok(migration.includes(required), `atomic migration must contain ${required}`);
 }
 

@@ -18,6 +18,7 @@ import { TableSkeleton, EmptyState, AlertBanner } from './ui/StateViews';
 import { getApiUrl } from '../utils/api';
 import { clearAdminSession } from '../utils/adminSession';
 import { sortPropertyReviewItems, type PropertyReviewSortOrder } from '../utils/propertyReviewSort';
+import { isRejectedPropertyReview, matchesPropertyReviewFilter } from '../utils/propertyReviewState';
 
 export interface PropertyItem {
   id: string;
@@ -25,8 +26,8 @@ export interface PropertyItem {
   unitType: string;
   address: string;
   pricePerNight: number;
-  status: 'PENDING_REVIEW' | 'PUBLISHED' | 'REJECTED';
-  verificationStatus: string;
+  status: 'DRAFT' | 'PENDING_REVIEW' | 'PUBLISHED';
+  verificationStatus: 'UNVERIFIED' | 'PENDING_VERIFICATION' | 'VERIFIED' | 'REJECTED';
   createdAt: string;
   updatedAt: string;
   ownerId: string;
@@ -126,7 +127,7 @@ export function PropertyReviewQueue({ onSelectProperty, onStatusChange, onSessio
       item.ownerName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
       item.address?.toLowerCase().includes(searchQuery.toLowerCase());
     
-    const matchesStatus = statusFilter === 'ALL' || item.status === statusFilter;
+    const matchesStatus = matchesPropertyReviewFilter(item, statusFilter);
     return matchesSearch && matchesStatus;
   });
 
@@ -134,7 +135,7 @@ export function PropertyReviewQueue({ onSelectProperty, onStatusChange, onSessio
 
   const pendingCount = items.filter(item => item.status === 'PENDING_REVIEW').length;
   const publishedCount = items.filter(item => item.status === 'PUBLISHED').length;
-  const rejectedCount = items.filter(item => item.status === 'REJECTED').length;
+  const rejectedCount = items.filter(isRejectedPropertyReview).length;
 
   return (
     <div className="space-y-6 animate-fade-in dir-rtl" dir="rtl">
@@ -347,7 +348,7 @@ export function PropertyReviewQueue({ onSelectProperty, onStatusChange, onSessio
                     </td>
 
                     <td className="px-5 py-4">
-                      <StatusBadge status={item.status} />
+                      <StatusBadge status={item.verificationStatus === 'REJECTED' ? 'REJECTED' : item.status} />
                     </td>
 
                     <td className="px-5 py-4 text-slate-500 font-mono">

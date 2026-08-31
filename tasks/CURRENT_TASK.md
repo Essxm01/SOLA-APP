@@ -1,7 +1,7 @@
 # P1.3 — Property & Media Persistence Integrity
 
 **Parent macro phase:** PHASE 1 — Database Backbone
-**Status:** Open — same-task PR review remediation in progress on `validation/p1-3-rc`; do not merge or publish
+**Status:** Cloud implementation ready for handoff — final remote CI/publication remains outside this run; do not merge or publish
 **Approved baseline:** `92dc3916afe7a8e7d15620efee31afa58e826870`
 
 ## Objective

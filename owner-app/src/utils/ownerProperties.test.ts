@@ -1,8 +1,10 @@
-import { getOwnerPropertyCollections, isPropertyActionRequired, primaryPropertyAction } from './ownerProperties';
+import { getOwnerPropertyCollections, isPropertyActionRequired, isRejectedProperty, primaryPropertyAction } from './ownerProperties';
 import type { Property } from '../types';
 const assert=(ok:boolean,message:string)=>{if(!ok)throw new Error(message)};
-const p=(status:Property['status'])=>({id:status,status,updatedAt:'2026-08-24',images:[],title:status} as unknown as Property);
-const all=['PUBLISHED','PENDING_REVIEW','DRAFT','REJECTED','PAUSED','SUSPENDED','ARCHIVED'].map(x=>p(x as Property['status']));
-assert(isPropertyActionRequired('DRAFT'),'draft action');assert(isPropertyActionRequired('REJECTED'),'rejected action');assert(!isPropertyActionRequired('PENDING_REVIEW'),'review passive');
-assert(getOwnerPropertyCollections(all,'action').map(x=>x.status).join(',')==='REJECTED,DRAFT','action filter');assert(getOwnerPropertyCollections(all,'review').length===1,'review filter');assert(getOwnerPropertyCollections(all,'other').length===3,'other filter');assert(primaryPropertyAction(p('DRAFT'))==='استكمال الوحدة','draft CTA');
+const p=(status:Property['status'], verificationStatus:Property['verificationStatus']='UNVERIFIED')=>({id:status,status,verificationStatus,updatedAt:'2026-08-24',images:[],title:status} as unknown as Property);
+const rejected=p('DRAFT','REJECTED');
+const all=[p('PUBLISHED'),p('PENDING_REVIEW'),p('DRAFT'),rejected,p('PAUSED'),p('SUSPENDED'),p('ARCHIVED')];
+assert(isPropertyActionRequired(p('DRAFT')),'draft action');assert(isPropertyActionRequired(rejected),'rejected action');assert(!isPropertyActionRequired(p('PENDING_REVIEW')),'review passive');
+assert(isRejectedProperty(rejected),'rejection is draft plus rejected verification');assert(!isRejectedProperty(p('DRAFT')),'normal draft is not rejected');
+assert(getOwnerPropertyCollections(all,'action')[0]===rejected,'rejected draft is action priority');assert(getOwnerPropertyCollections(all,'review').length===1,'review filter');assert(getOwnerPropertyCollections(all,'other').length===3,'other filter');assert(primaryPropertyAction(p('DRAFT'))==='استكمال الوحدة','draft CTA');assert(primaryPropertyAction(rejected)==='مراجعة التعديلات','rejected CTA');
 console.log('OWNER-PROPERTIES-01 derivations passed.');

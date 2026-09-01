@@ -203,7 +203,10 @@ export const propertyDb = {
     );
 
     const properties = await Promise.all(res.rows.map(async p => {
-      const dbImages = await imageDb.getImagesByPropertyId(p.id).catch(() => []);
+      // Images are canonical persistence, not optional decoration. A failed
+      // image read must propagate to the route rather than masquerading as an
+      // honest zero-image property.
+      const dbImages = await imageDb.getImagesByPropertyId(p.id);
       const images = dbImages.map(img => img.fileUrl);
       return {
         ...p,
@@ -238,7 +241,7 @@ export const propertyDb = {
     }
 
     const p = res.rows[0];
-    const dbImages = await imageDb.getImagesByPropertyId(p.id).catch(() => []);
+    const dbImages = await imageDb.getImagesByPropertyId(p.id);
     const images = dbImages.map(img => img.fileUrl);
 
     return {
@@ -253,6 +256,12 @@ export const propertyDb = {
       location: { governorate: '', city: p.region || '', district: p.resortName || '', address: p.address || '' },
       capacity: { baseGuests: p.maxGuests, maxGuests: p.maxGuests, bedrooms: p.bedrooms, beds: p.bedsCount || p.bedrooms, bathrooms: p.bathrooms },
     };
+  },
+
+  async getByOwnerAndId(id: string, ownerId: string) {
+    const property = await this.getById(id);
+    if (!property || property.ownerId !== ownerId) return null;
+    return property;
   },
 
   async create(prop: any) {
@@ -305,10 +314,27 @@ export const propertyDb = {
     return res.rows[0] || null;
   },
 
+  async updateStatusForOwner(id: string, ownerId: string, status: string, verificationStatus?: string) {
+    const res = await queryDb(
+      `UPDATE properties
+       SET status = COALESCE($3, status),
+           verification_status = COALESCE($4, verification_status),
+           updated_at = NOW()
+       WHERE id = $1 AND owner_id = $2 AND deleted_at IS NULL
+       RETURNING id, owner_id AS "ownerId", title, status, verification_status AS "verificationStatus", updated_at AS "updatedAt"`,
+      [id, ownerId, status, verificationStatus || null]
+    );
+    return res.rows[0] || null;
+  },
+
   async getAllForAdmin(statusFilter?: string) {
     const params: any[] = [];
     let whereClause = 'WHERE p.deleted_at IS NULL';
-    if (statusFilter) {
+    if (statusFilter === 'REJECTED') {
+      // A rejected property is schema-valid DRAFT + rejected verification;
+      // properties.status never has a REJECTED value.
+      whereClause += ` AND p.status = 'DRAFT' AND p.verification_status = 'REJECTED'`;
+    } else if (statusFilter) {
       params.push(statusFilter);
       whereClause += ` AND p.status = $${params.length}`;
     }
@@ -334,6 +360,20 @@ export const propertyDb = {
     }));
   },
 
+  async getAllForPublic() {
+    const res = await queryDb(
+      `SELECT id, owner_id AS "ownerId", title, unit_type AS "unitType", property_type AS "propertyType",
+              address, bedrooms, bathrooms, max_guests AS "maxGuests", base_price_per_night AS "pricePerNight",
+              base_price_per_night AS "basePricePerNight", description, region, resort_name AS "resortName",
+              area_sq_m AS "areaSqM", beds_count AS "bedsCount", amenities, house_rules AS "houseRules",
+              status, verification_status AS "verificationStatus", created_at AS "createdAt", updated_at AS "updatedAt"
+       FROM properties
+       WHERE deleted_at IS NULL AND status = 'PUBLISHED' AND verification_status = 'VERIFIED'
+       ORDER BY created_at DESC`
+    );
+    return res.rows.map((p: any) => ({ ...p, pricePerNight: Number(p.pricePerNight), basePricePerNight: Number(p.basePricePerNight) }));
+  },
+
   async getPendingForAdmin() {
     const res = await queryDb(
       `SELECT p.id, p.title, p.unit_type AS "unitType", p.property_type AS "propertyType",
@@ -348,8 +388,10 @@ export const propertyDb = {
               COALESCE(o.verification_status, 'UNVERIFIED') AS "ownerVerificationStatus"
        FROM properties p
        LEFT JOIN owners o ON p.owner_id = o.id
-       WHERE p.deleted_at IS NULL AND (p.status = 'PENDING_REVIEW' OR p.status = 'REJECTED')
-       ORDER BY CASE WHEN p.status = 'PENDING_REVIEW' THEN 0 ELSE 1 END, p.created_at ASC`
+       WHERE p.deleted_at IS NULL
+         AND (p.status = 'PENDING_REVIEW'
+              OR (p.status = 'DRAFT' AND p.verification_status = 'REJECTED'))
+       ORDER BY p.created_at ASC`
     );
     return res.rows.map(r => ({
       ...r,
@@ -436,7 +478,7 @@ export const propertyDb = {
       `SELECT
         COUNT(*) FILTER (WHERE status = 'PENDING_REVIEW') AS "pendingReview",
         COUNT(*) FILTER (WHERE status = 'PUBLISHED') AS "published",
-        COUNT(*) FILTER (WHERE status = 'REJECTED') AS "rejected",
+        COUNT(*) FILTER (WHERE status = 'DRAFT' AND verification_status = 'REJECTED') AS "rejected",
         COUNT(*) AS "total"
        FROM properties WHERE deleted_at IS NULL`
     );
@@ -950,10 +992,16 @@ export const uploadIntentDb = {
     return res.rows[0] || null;
   },
 
-  async commitIntent(id: string) {
+  async commitIntent(id: string, ownerId?: string, propertyId?: string, objectKey?: string) {
+    if (!ownerId || !propertyId || !objectKey) {
+      throw new Error('UPLOAD_INTENT_COMMIT_SCOPE_REQUIRED');
+    }
     const res = await queryDb(
-      `UPDATE upload_intents SET status = 'COMMITTED' WHERE id = $1 RETURNING id, status`,
-      [id]
+      `UPDATE upload_intents SET status = 'COMMITTED'
+       WHERE id = $1 AND owner_id = $2 AND property_id = $3 AND object_key = $4
+         AND status = 'PENDING_UPLOAD' AND expires_at > NOW()
+       RETURNING id, status`,
+      [id, ownerId, propertyId, objectKey]
     );
     return res.rows[0] || null;
   },
@@ -970,6 +1018,36 @@ export const uploadIntentDb = {
 // 8. PROPERTY IMAGES REPOSITORY (REMEDIATED)
 // ----------------------------------------------------------------------------
 export const imageDb = {
+  async commitPropertyMediaAtomic(img: {
+    uploadIntentId: string;
+    propertyId: string;
+    ownerId: string;
+    objectKey: string;
+    fileUrl: string;
+    fileName: string;
+    mimeType: string;
+    fileSize: number;
+    sortOrder?: number;
+    sha256Checksum?: string;
+  }) {
+    const res = await queryDb(
+      `SELECT * FROM konfrm_commit_property_media($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+      [
+        img.uploadIntentId,
+        img.ownerId,
+        img.propertyId,
+        img.objectKey,
+        img.fileUrl,
+        img.fileName,
+        img.mimeType,
+        Number(img.fileSize),
+        Number(img.sortOrder || 0),
+        img.sha256Checksum || null,
+      ]
+    );
+    return res.rows[0] || null;
+  },
+
   async addImage(img: {
     propertyId: string;
     ownerId: string;
@@ -1030,6 +1108,31 @@ export const imageDb = {
     return res.rows;
   },
 
+  async getImageByUploadIntentId(uploadIntentId: string) {
+    const res = await queryDb(
+      `SELECT id, property_id AS "propertyId", owner_id AS "ownerId", object_key AS "objectKey",
+              file_url AS "fileUrl", file_name AS "fileName", mime_type AS "mimeType",
+              file_size_bytes AS "fileSize", sort_order AS "sortOrder", upload_intent_id AS "uploadIntentId",
+              sha256_checksum AS "sha256Checksum", status, uploaded_at AS "uploadedAt"
+       FROM property_images WHERE upload_intent_id = $1 AND status = 'ACTIVE'`,
+      [uploadIntentId]
+    );
+    return res.rows[0] || null;
+  },
+
+  async getImageForOwnerIncludingDeleted(imageId: string, ownerId: string) {
+    const res = await queryDb(
+      `SELECT id, property_id AS "propertyId", owner_id AS "ownerId", object_key AS "objectKey",
+              file_url AS "fileUrl", file_name AS "fileName", mime_type AS "mimeType",
+              file_size_bytes AS "fileSize", sort_order AS "sortOrder",
+              upload_intent_id AS "uploadIntentId", sha256_checksum AS "sha256Checksum",
+              status, uploaded_at AS "uploadedAt", deleted_at AS "deletedAt"
+       FROM property_images WHERE id = $1 AND owner_id = $2`,
+      [imageId, ownerId]
+    );
+    return res.rows[0] || null;
+  },
+
   async deleteImage(imageId: string, ownerId: string) {
     const res = await queryDb(
       `UPDATE property_images
@@ -1051,7 +1154,7 @@ export const adminStatsDb = {
       queryDb(`SELECT
         COUNT(*) FILTER (WHERE status = 'PENDING_REVIEW') AS "pendingProperties",
         COUNT(*) FILTER (WHERE status = 'PUBLISHED') AS "publishedProperties",
-        COUNT(*) FILTER (WHERE status = 'REJECTED') AS "rejectedProperties",
+        COUNT(*) FILTER (WHERE status = 'DRAFT' AND verification_status = 'REJECTED') AS "rejectedProperties",
         COUNT(*) AS "totalProperties"
        FROM properties WHERE deleted_at IS NULL`),
       queryDb(`SELECT

@@ -1,12 +1,12 @@
 # KONFRM completion matrix
 
-> **P1.2 status (2026-08-30):** Round-1 repository remediation is local-ready; live schema application is intentionally pending Founder approval. P14.1 is no longer pending: it is live verified at `5decd03f59f3bd3039e12e00caf234f28def5201`.
+> **P1.2/P14.1 status (2026-09-01):** P14.1 is published/live verified at `5decd03f59f3bd3039e12e00caf234f28def5201`; P1.2 is subsequently published/live verified at `92dc3916afe7a8e7d15620efee31afa58e826870`.
 
 This is a current acceptance map, not a changelog. “Repository evidence” does not mean live accepted. A row can be **verified** only with concrete applicable functional, data/API, cross-app, failure-state, regression, security/privacy, visual, and live evidence.
 
 | Domain | Execution map | Classification | Customer | Owner | Admin | Backend / DB / Storage | Evidence gap / next gate |
 | --- | --- | --- | --- | --- | --- | --- |
-| Identity and session | P0.2, P1.2, P2.2, P14.3 | Implemented—published/local verification | Candidate-token bootstrap/public/protected behavior tested | Canonical Owner gate, clear-on-logout, and failure distinction tested | Validated session/shell truthfulness tested | P0.2 published at `6d37b458…`; signed JWT role gates and representative subject authority tested | P14.1 must remediate confirmed public SECURITY DEFINER exposure before P1.2 |
+| Identity and session | P0.2, P1.2, P2.2, P14.3 | Implemented—published/live-verified baseline | Candidate-token bootstrap/public/protected behavior tested | Canonical Owner gate, clear-on-logout, and failure distinction tested | Validated session/shell truthfulness tested | P0.2 published at `6d37b458…`; P1.2 session migration/live verification closed at `92dc3916…` | Broader role/ownership audit remains P2.2/P14.3 work |
 | Property | P1.3, P3.1–P3.3 | Implemented but unverified | Discovery/property detail code exists | Wizard, local/canonical draft and media code have recent commits | Review queue code exists | Property/media persistence and storage contracts exist | Verify current cross-app publication/rejection/media behavior |
 | Availability | P1.4, P6.4, P8.2 | Partial | Consumer calendar/quote code exists | Owner calendar controls exist | Operational visibility needs audit | Booking/availability models exist | Fail-closed and competing-request acceptance matrix |
 | Booking | P1.5, P8.1–P8.5 | Implemented but unverified | Request/detail/payment CTA code exists | Home/Bookings migration work exists | Operational review visibility needs audit | Lifecycle, financial summary, conversations exist | Full status propagation and failure/retry acceptance |
@@ -47,7 +47,7 @@ This inventory prevents a later phase from rebuilding a slice merely because it 
 | Public/customer API contract | P2.1 | Partial | Backend route surface and Customer repositories | Exact success/error/ownership contract inventory | Customer surfaces | Verify; repair only if evidence fails |
 | Owner/Admin API contract | P2.2–P2.3 | Partial | Authenticated route families/repositories | Role/ownership/error inventory | Owner/Admin surfaces | Verify; repair only if evidence fails |
 | Worker REST/RPC compatibility | P2.4 | Partial | `dbClient` strict matcher and Worker config | Touched-operation coverage/matcher collision tests | Every Worker-backed flow | Repair only when scoped evidence fails |
-| DB baseline/RLS | P1.1, P14.1 | Repository remediation ready; live remediation pending | N/A | N/A | N/A | P1.1 published at `d7462f13…`; P14.1 migration 021 and ACL-contract test prepared | Founder-approved live application and post-migration ACL verification are required before P1.2 |
+| DB baseline/RLS | P1.1, P14.1 | P14.1 critical RPC ACL remediation published/live verified | N/A | N/A | N/A | P1.1 published at `d7462f13…`; P14.1 migration 021 was applied and ACL-verified at `5decd03f…` | Broader no-policy RLS and sensitive Storage verification remain P14.2 work |
 | Property media/private KYC storage | P1.3, P14.2 | Implemented but unverified | Public property-media/private owner-verification code and migration evidence | Bucket policy/object access live verification | Owner/Admin/Customer | Preserve; verify |
 | Booking/payment/wallet integrity | P1.5–P1.6, P8.1–P8.4, P10.1, P11.1 | Implemented but unverified | Migrations/RPCs/financial summaries/ledger code | Cross-app idempotency/amount/availability/privacy evidence | All roles | Preserve; verify |
 | Payout release / minimum / fee | P11.2–P11.4 | Partial | Current Product Context confirms 24h release, 500 EGP minimum, Owner actual fee | Current implementation, scheduling, provider/audit proof; final production revalidation | Owner/Admin/wallet | Verify/complete current prototype rule; defer production revalidation |

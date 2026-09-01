@@ -46,6 +46,7 @@ export interface IObjectStorageProvider {
   getProviderName(): string;
   generateSignedUploadUrl(params: SignedUploadParams): Promise<SignedUploadResult>;
   generateSignedReadUrl(objectKey: string, expiresInSeconds?: number): Promise<string>;
+  getPublicObjectUrl(objectKey: string): string;
   verifyObjectExists(objectKey: string): Promise<ObjectVerificationResult>;
   putObject(objectKey: string, buffer: Buffer, mimeType: string): Promise<{ success: boolean; objectKey: string; sizeBytes: number; sha256Checksum: string; downloadUrl: string }>;
   getObject(objectKey: string): Promise<{ buffer: Buffer; mimeType: string; sizeBytes: number }>;
@@ -154,6 +155,10 @@ export class LocalStorageEngineProvider implements IObjectStorageProvider {
     return `${this.cdnHost}/files/${encodeURIComponent(objectKey)}`;
   }
 
+  getPublicObjectUrl(objectKey: string): string {
+    return `${this.cdnHost}/files/${encodeURIComponent(objectKey)}`;
+  }
+
   async verifyObjectExists(objectKey: string): Promise<ObjectVerificationResult> {
     const target = this.getPhysicalPath(objectKey);
     if (!fs.existsSync(target)) {
@@ -215,7 +220,9 @@ export class LocalStorageEngineProvider implements IObjectStorageProvider {
       fs.unlinkSync(target);
       return true;
     }
-    return false;
+    // Deletion is intentionally idempotent so a retry can complete a
+    // previously soft-deleted metadata record whose object was already gone.
+    return true;
   }
 }
 
@@ -292,6 +299,13 @@ export class SupabaseStorageProvider implements IObjectStorageProvider {
       throw new Error(`SUPABASE_SIGNED_READ_URL_ERROR: ${error?.message || 'Failed to create signed read URL'}`);
     }
     return data.signedUrl;
+  }
+
+  getPublicObjectUrl(objectKey: string): string {
+    if (!this.isPublicBucket) {
+      throw new Error('PRIVATE_STORAGE_HAS_NO_PUBLIC_OBJECT_URL');
+    }
+    return `${this.supabaseUrl}/storage/v1/object/public/${this.bucketName}/${objectKey}`;
   }
 
   async verifyObjectExists(objectKey: string): Promise<ObjectVerificationResult> {

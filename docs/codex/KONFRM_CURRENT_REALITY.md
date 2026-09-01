@@ -1,6 +1,6 @@
 # KONFRM current reality assessment
 
-> **2026-08-30 P1.2 reconciliation:** P14.1 is closed, published, and live-verified at `5decd03f59f3bd3039e12e00caf234f28def5201`; migration 021 is applied. P1.2 is local-fix-ready only: live `user_sessions` still has the legacy owner-scoped shape until Founder-approved Round 2 applies migration 022. See [P1.2 report](./P1_2_IDENTITY_SESSION_PERSISTENCE_REPORT.md).
+> **2026-08-31 reconciliation:** P14.1 remains closed/live-verified. P1.2 subsequently published and completed its staged session alignment at `92dc3916afe7a8e7d15620efee31afa58e826870`; the authoritative evidence is [the P1.2 report](./P1_2_IDENTITY_SESSION_PERSISTENCE_REPORT.md). P1.3 remains open on its temporary validation branch after review found in-scope Worker lifecycle and media-atomicity gaps; see [P1.3 report](./P1_3_PROPERTY_MEDIA_PERSISTENCE_REPORT.md).
 
 **Audited repository baseline:** P0.1 began at `main`/`origin/main` `3acb94e` on 2026-08-29. This is a repository/Git/configuration assessment, not blanket live-production proof.
 
@@ -29,7 +29,7 @@
 | Connected infrastructure audit | Partial / security prerequisite | `LIVE_DB_OBSERVED` | P1.1 connected Supabase metadata confirmed project health/PostgreSQL 17, table/RLS/grant/storage baseline, and a live PUBLIC-RPC grant contradiction. Cloudflare account revision metadata remains unavailable. |
 | Test infrastructure / runtime errors | Partial / environment caveat | `LOCAL_VERIFIED` | Builds/checks, focused backend suites, Vite shells, and backend localhost health now execute. Backend `.nvmrc` is 22, matching CI and the installed Supabase runtime; frontend declarations remain 20. Restricted Codex filesystem execution can still fail while resolving the Windows user profile, so use a process-scoped runtime/authorized local process for local validation. |
 | Mocks / hardcoded/legacy | Partial / acceptance gap | `CODE_OBSERVED` | Mock repositories and legacy comments/constants remain discoverable. They require scoped audit, not blanket deletion. |
-| RLS / public RPC exposure | Broken live state; repository remediation ready | `LIVE_DB_OBSERVED` / `REPOSITORY_FIX_READY` | All public app tables are RLS-enabled/no-policy; backend uses service role. Four critical KONFRM SECURITY DEFINER RPCs plus `rls_auto_enable` remain executable by anon/authenticated live. P14.1 prepared, but did not apply, migration 021; Founder approval is required before live remediation and ACL verification. |
+| RLS / public RPC exposure | Partial / residual architecture concern | `LIVE_DB_OBSERVED` / `LIVE_VERIFIED` | P14.1 applied migration 021 and verified that the four critical KONFRM RPCs are no longer executable by anon/authenticated; service-role access remains. Public app tables remain RLS-enabled/no-policy and object-level Storage access remains P14.2 work. |
 | Favorites, notifications, cancellation, disputes/reviews | Deferred / decision needed or incomplete | `DOC_OBSERVED` | Persistent Favorites is approved but not implemented; notification model, cancellation/refund matrix, remaining-balance method, and some dispute/review behavior require scoped audit/decisions. |
 
 ## What not to assume

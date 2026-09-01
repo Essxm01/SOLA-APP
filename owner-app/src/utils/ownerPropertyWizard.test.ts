@@ -180,7 +180,7 @@ const existingPropertyWithImages: Property = {
   maxGuests: 6,
   amenities: [],
   houseRules: { minStay: 2, maxStay: 30, smokingAllowed: false, partiesAllowed: false, petsAllowed: false, checkInTime: '14:00', checkOutTime: '12:00' },
-  status: 'REJECTED',
+  status: 'DRAFT',
   verificationStatus: 'REJECTED',
   rejectionReason: 'يرجى توفير صور للغرفة',
   createdAt: '2026-08-01',

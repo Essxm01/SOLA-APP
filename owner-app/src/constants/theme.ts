@@ -164,13 +164,6 @@ export const PROPERTY_STATUS_CONFIG: Record<
     border: 'border-blue-300',
     description: 'الوحدة موقوفة بطلب المالك عن الحجوزات الجديدة (الحجوزات المؤكدة سارية).',
   },
-  REJECTED: {
-    label: 'مرفوضة',
-    bg: 'bg-rose-50',
-    text: 'text-rose-800',
-    border: 'border-rose-300',
-    description: 'الوحدة مرفوضة من إدارة Sola وتطلب تعديل أسباب الرفض.',
-  },
   SUSPENDED: {
     label: 'معلقة إدارياً',
     bg: 'bg-slate-900',

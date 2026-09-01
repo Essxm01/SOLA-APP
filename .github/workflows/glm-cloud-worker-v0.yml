@@ -1,6 +1,9 @@
 name: KONFRM GLM Cloud Worker V0
 
 on:
+  push:
+    branches:
+      - infra/glm-cloud-worker-v0
   workflow_dispatch:
 
 permissions:

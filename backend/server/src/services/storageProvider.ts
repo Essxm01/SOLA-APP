@@ -1,7 +1,6 @@
 /**
  * Sola Vacation Rentals — Authoritative Object Storage Provider (Supabase Storage & Local Engine)
  * Location: server/src/services/storageProvider.ts
- * Master Source of Truth: PHASE_7_MASTER_SPECIFICATION.md
  */
 
 import fs from 'node:fs';
@@ -107,10 +106,8 @@ export class LocalStorageEngineProvider implements IObjectStorageProvider {
   private secretKey: string;
 
   constructor() {
-    const isVercel = Boolean(process.env.VERCEL);
-    this.baseDir = isVercel
-      ? path.join(process.env.TMPDIR || '/tmp', 'storage_volume')
-      : path.resolve(process.cwd(), 'storage_volume');
+    // Use standard Node.js working directory
+    this.baseDir = path.resolve(process.cwd(), 'storage_volume');
     this.cdnHost = process.env.STORAGE_CDN_HOST || 'http://localhost:4000/storage';
     this.secretKey = process.env.STORAGE_SECRET_KEY || 'sola_storage_secret_key_2026';
     try {
@@ -239,7 +236,7 @@ export class SupabaseStorageProvider implements IObjectStorageProvider {
     this.isPublicBucket = options.public ?? true;
 
     if (!url || !key) {
-      throw new Error('FATAL_MISSING_SUPABASE_STORAGE_CREDENTIALS: SUPABASE_URL and SUPABASE_SECRET_KEY (or SUPABASE_SERVICE_ROLE_KEY) environment variables are required when OBJECT_STORAGE_PROVIDER=supabase.');
+      throw new Error('FATAL_MISSING_SUPABASE_STORAGE_CREDENTIALS: SUPABASE_URL and SUPABASE_SECRET_KEY (or SUPABASE_SERVICE_ROLE_KEY) environment variables are required when OBJECT_STORAGE_PROVIDER is supabase');
     }
 
     this.supabaseUrl = url;
@@ -366,8 +363,7 @@ export class SupabaseStorageProvider implements IObjectStorageProvider {
  * Storage Provider Factory (Strict Policy: No Silent Fallback)
  */
 export function createStorageProvider(options: { bucketName?: string; public?: boolean } = {}): IObjectStorageProvider {
-  const defaultProvider = process.env.VERCEL ? 'supabase' : 'local';
-  const providerType = (process.env.OBJECT_STORAGE_PROVIDER || defaultProvider).toLowerCase().trim();
+  const providerType = (process.env.OBJECT_STORAGE_PROVIDER || 'local').toLowerCase().trim();
 
   if (providerType === 'supabase') {
     return new SupabaseStorageProvider(options);

@@ -138,6 +138,36 @@ async function queryViaSupabaseRest(text: string, params: any[] | undefined, url
     return { rows, command: 'SELECT', rowCount: rows.length, oid: 0, fields: [] };
   }
 
+  // P1.3: property image metadata and upload-intent state are committed by
+  // one Postgres transaction. Keep this explicit RPC mapping narrow; Worker
+  // code must never emulate this transaction with REST PATCH/POST calls.
+  if (lowerSql.includes('konfrm_commit_property_media')) {
+    const res = await fetch(`${url}/rest/v1/rpc/konfrm_commit_property_media`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        p_upload_intent_id: params?.[0],
+        p_owner_id: params?.[1],
+        p_property_id: params?.[2],
+        p_object_key: params?.[3],
+        p_file_url: params?.[4],
+        p_file_name: params?.[5],
+        p_mime_type: params?.[6],
+        p_file_size_bytes: params?.[7],
+        p_sort_order: params?.[8],
+        p_sha256_checksum: params?.[9] ?? null,
+      }),
+    });
+    if (!res.ok) {
+      const body = await res.text().catch(() => '');
+      throw new Error(`REST_PROPERTY_MEDIA_COMMIT_RPC_FAILED: HTTP ${res.status} — ${body.slice(0, 240)}`);
+    }
+    const raw: any = await res.json().catch(() => []);
+    const rows = Array.isArray(raw) ? raw : (raw ? [raw] : []);
+    if (rows.length !== 1) throw new Error('REST_PROPERTY_MEDIA_COMMIT_RPC_ZERO_ROWS');
+    return { rows, command: 'SELECT', rowCount: rows.length, oid: 0, fields: [] };
+  }
+
   if (lowerSql.includes('konfrm_register_owner')) {
     const res = await fetch(`${url}/rest/v1/rpc/konfrm_register_owner`, {
       method: 'POST', headers, body: JSON.stringify({ p_phone_number: params?.[0], p_full_name: params?.[1] }),
@@ -254,10 +284,21 @@ async function queryViaSupabaseRest(text: string, params: any[] | undefined, url
     const [pendingProperties, publishedProperties, rejectedProperties, totalProperties] = await Promise.all([
       countRows('properties', 'deleted_at=is.null&status=eq.PENDING_REVIEW'),
       countRows('properties', 'deleted_at=is.null&status=eq.PUBLISHED'),
-      countRows('properties', 'deleted_at=is.null&status=eq.REJECTED'),
+      countRows('properties', 'deleted_at=is.null&status=eq.DRAFT&verification_status=eq.REJECTED'),
       countRows('properties', 'deleted_at=is.null'),
     ]);
     return { rows: [{ pendingProperties, publishedProperties, rejectedProperties, totalProperties }], command: 'SELECT', rowCount: 1, oid: 0, fields: [] };
+  }
+
+  // P1.3 property repository summary (Owner/Admin property overview).
+  if (lowerSql.startsWith('select') && lowerSql.includes('from properties where deleted_at is null') && lowerSql.includes('pendingreview') && lowerSql.includes('published') && lowerSql.includes('rejected')) {
+    const [pendingReview, published, rejected, total] = await Promise.all([
+      countRows('properties', 'deleted_at=is.null&status=eq.PENDING_REVIEW'),
+      countRows('properties', 'deleted_at=is.null&status=eq.PUBLISHED'),
+      countRows('properties', 'deleted_at=is.null&status=eq.DRAFT&verification_status=eq.REJECTED'),
+      countRows('properties', 'deleted_at=is.null'),
+    ]);
+    return { rows: [{ pendingReview, published, rejected, total }], command: 'SELECT', rowCount: 1, oid: 0, fields: [] };
   }
 
   if (lowerSql.startsWith('select') && lowerSql.includes('from bookings') && lowerSql.includes('pendingbookings') && lowerSql.includes('confirmedbookings')) {
@@ -632,6 +673,22 @@ async function queryViaSupabaseRest(text: string, params: any[] | undefined, url
     return { rows: mapped, command: 'UPDATE', rowCount: mapped.length, oid: 0, fields: [] };
   }
 
+  // 1P. SELECT public property inventory: only canonically published and verified.
+  if (lowerSql.startsWith('select') && lowerSql.includes('from properties') && lowerSql.includes("status = 'published'") && lowerSql.includes("verification_status = 'verified'")) {
+    const res = await fetch(`${url}/rest/v1/properties?deleted_at=is.null&status=eq.PUBLISHED&verification_status=eq.VERIFIED&order=created_at.desc`, { headers });
+    if (!res.ok) throw new Error(`REST_PUBLIC_PROPERTIES_SELECT_FAILED: HTTP ${res.status}`);
+    const rows: any[] = await res.json().catch(() => []);
+    const mapped = rows.map(p => ({
+      id: p.id, ownerId: p.owner_id, title: p.title, unitType: p.unit_type, propertyType: p.property_type,
+      address: p.address, bedrooms: p.bedrooms, bathrooms: p.bathrooms, maxGuests: p.max_guests,
+      pricePerNight: p.base_price_per_night, basePricePerNight: p.base_price_per_night,
+      description: p.description || null, region: p.region || null, resortName: p.resort_name || null,
+      areaSqM: p.area_sq_m || null, bedsCount: p.beds_count || null, amenities: p.amenities || [], houseRules: p.house_rules || {},
+      status: p.status, verificationStatus: p.verification_status, createdAt: p.created_at, updatedAt: p.updated_at,
+    }));
+    return { rows: mapped, command: 'SELECT', rowCount: mapped.length, oid: 0, fields: [] };
+  }
+
   // 1A. SELECT properties WHERE owner_id = $1 (Strict regex matching)
   if (lowerSql.startsWith('select') && lowerSql.includes('from properties') && (/\b(p\.)?owner_id\s*=\s*\$1\b/i.test(text))) {
     const ownerId = params?.[0];
@@ -663,11 +720,6 @@ async function queryViaSupabaseRest(text: string, params: any[] | undefined, url
       verificationStatus: p.verification_status,
       createdAt: p.created_at,
       updatedAt: p.updated_at,
-      ownerName: 'مالك صولا',
-      ownerPhone: '',
-      ownerEmail: 'owner@sola.eg',
-      ownerVerificationStatus: 'UNVERIFIED',
-      ownerStatus: 'ACTIVE'
     }));
     return { rows: mapped, command: 'SELECT', rowCount: mapped.length, oid: 0, fields: [] };
   }
@@ -703,11 +755,6 @@ async function queryViaSupabaseRest(text: string, params: any[] | undefined, url
       verificationStatus: p.verification_status,
       createdAt: p.created_at,
       updatedAt: p.updated_at,
-      ownerName: 'مالك صولا',
-      ownerPhone: '',
-      ownerEmail: 'owner@sola.eg',
-      ownerVerificationStatus: 'UNVERIFIED',
-      ownerStatus: 'ACTIVE'
     }));
     return { rows: mapped, command: 'SELECT', rowCount: mapped.length, oid: 0, fields: [] };
   }
@@ -786,7 +833,28 @@ async function queryViaSupabaseRest(text: string, params: any[] | undefined, url
     return { rows: mapped, command: 'INSERT', rowCount: mapped.length, oid: 0, fields: [] };
   }
 
-  // 3A. UPDATE properties WHERE id = $1 AND owner_id = $2 (Strict M03 Dynamic REST PATCH)
+  // 3A. P1.3 exact owner lifecycle state write. This is deliberately before
+  // the generic owner PATCH parser because COALESCE expressions are not
+  // generic assignment syntax. A missing returned row is never success.
+  if (lowerSql.startsWith('update properties') && lowerSql.includes('set status = coalesce($3, status)') && lowerSql.includes('verification_status = coalesce($4, verification_status)') && lowerSql.includes('where id = $1 and owner_id = $2 and deleted_at is null')) {
+    const propId = params?.[0];
+    const ownerId = params?.[1];
+    const payload: any = { updated_at: new Date().toISOString() };
+    if (params?.[2] !== null && params?.[2] !== undefined) payload.status = params[2];
+    if (params?.[3] !== null && params?.[3] !== undefined) payload.verification_status = params[3];
+    const res = await fetch(`${url}/rest/v1/properties?id=eq.${encodeURIComponent(propId)}&owner_id=eq.${encodeURIComponent(ownerId)}&deleted_at=is.null`, {
+      method: 'PATCH', headers: { ...headers, Prefer: 'return=representation' }, body: JSON.stringify(payload),
+    });
+    if (!res.ok) throw new Error(`REST_PROPERTY_OWNER_LIFECYCLE_UPDATE_FAILED: HTTP ${res.status}`);
+    const raw: any = await res.json().catch(() => []);
+    const rows = Array.isArray(raw) ? raw : (raw ? [raw] : []);
+    if (rows.length === 0) throw new Error('REST_PROPERTY_OWNER_LIFECYCLE_UPDATE_ZERO_ROWS');
+    if (rows.length > 1) throw new Error('REST_PROPERTY_OWNER_LIFECYCLE_UPDATE_MULTIPLE_ROWS');
+    const mapped = rows.map((p: any) => ({ id: p.id, ownerId: p.owner_id, title: p.title, status: p.status, verificationStatus: p.verification_status, updatedAt: p.updated_at }));
+    return { rows: mapped, command: 'UPDATE', rowCount: mapped.length, oid: 0, fields: [] };
+  }
+
+  // 3B. UPDATE properties WHERE id = $1 AND owner_id = $2 (Strict M03 Dynamic REST PATCH)
   if (lowerSql.startsWith('update properties') && lowerSql.includes('where id = $1 and owner_id = $2')) {
     const propId = params?.[0];
     const ownerId = params?.[1];
@@ -921,9 +989,19 @@ async function queryViaSupabaseRest(text: string, params: any[] | undefined, url
   }
 
 
-  // 6. Admin Pending Properties Queue
+  // 6. Admin Property rejected list: the schema-valid representation is
+  // DRAFT plus a rejected verification state, not a REJECTED status value.
+  if (lowerSql.includes('from properties p') && lowerSql.includes("p.status = 'draft'") && lowerSql.includes("p.verification_status = 'rejected'") && lowerSql.includes('order by p.created_at desc')) {
+    const res = await fetch(`${url}/rest/v1/properties?deleted_at=is.null&status=eq.DRAFT&verification_status=eq.REJECTED&order=created_at.desc`, { headers });
+    if (!res.ok) throw new Error(`REST_ADMIN_REJECTED_PROPERTIES_FAILED: HTTP ${res.status}`);
+    const rows: any[] = await res.json().catch(() => []);
+    return { rows: rows.map(p => ({ ...p, ownerId: p.owner_id, pricePerNight: p.base_price_per_night, verificationStatus: p.verification_status })), command: 'SELECT', rowCount: rows.length, oid: 0, fields: [] };
+  }
+
+  // 6. Admin Pending Properties Queue. Rejected properties remain visible as
+  // historical outcome context but are not pending review until resubmitted.
   if (lowerSql.includes('from properties') && (lowerSql.includes('pending_review') || lowerSql.includes('rejected'))) {
-    const res = await fetch(`${url}/rest/v1/properties?deleted_at=is.null&status=in.(PENDING_REVIEW,REJECTED)&order=created_at.asc`, { headers });
+    const res = await fetch(`${url}/rest/v1/properties?deleted_at=is.null&or=(status.eq.PENDING_REVIEW,and(status.eq.DRAFT,verification_status.eq.REJECTED))&order=created_at.asc`, { headers });
     if (!res.ok) {
       throw new Error(`REST_ADMIN_PENDING_PROPERTIES_FAILED: HTTP ${res.status}`);
     }
@@ -957,7 +1035,34 @@ async function queryViaSupabaseRest(text: string, params: any[] | undefined, url
     return { rows: mapped, command: 'SELECT', rowCount: mapped.length, oid: 0, fields: [] };
   }
 
-  // 6B. SELECT FROM property_images WHERE property_id = $1
+  // 6B0. SELECT active property image by upload intent (idempotent media commit)
+  if (lowerSql.includes('from property_images') && lowerSql.includes('upload_intent_id = $1')) {
+    const intentId = params?.[0];
+    const res = await fetch(`${url}/rest/v1/property_images?upload_intent_id=eq.${encodeURIComponent(intentId)}&status=eq.ACTIVE`, { headers });
+    if (!res.ok) throw new Error(`REST_PROPERTY_IMAGE_BY_INTENT_SELECT_FAILED: HTTP ${res.status}`);
+    const rows: any[] = await res.json().catch(() => []);
+    const mapped = rows.map(img => ({
+      id: img.id, propertyId: img.property_id, ownerId: img.owner_id, objectKey: img.object_key,
+      fileUrl: img.file_url, fileName: img.file_name, mimeType: img.mime_type,
+      fileSize: img.file_size_bytes, sortOrder: img.sort_order, uploadIntentId: img.upload_intent_id,
+      sha256Checksum: img.sha256_checksum, status: img.status, uploadedAt: img.uploaded_at,
+    }));
+    return { rows: mapped, command: 'SELECT', rowCount: mapped.length, oid: 0, fields: [] };
+  }
+
+  // 6B. Exact Owner image lookup includes deleted rows solely to make public
+  // object cleanup retryable after the canonical metadata soft-delete.
+  if (lowerSql.includes('from property_images') && lowerSql.includes('where id = $1 and owner_id = $2')) {
+    const imageId = params?.[0];
+    const ownerId = params?.[1];
+    const res = await fetch(`${url}/rest/v1/property_images?id=eq.${encodeURIComponent(imageId)}&owner_id=eq.${encodeURIComponent(ownerId)}`, { headers });
+    if (!res.ok) throw new Error(`REST_PROPERTY_IMAGE_OWNER_SELECT_FAILED: HTTP ${res.status}`);
+    const rows: any[] = await res.json().catch(() => []);
+    const mapped = rows.map(img => ({ id: img.id, propertyId: img.property_id, ownerId: img.owner_id, objectKey: img.object_key, fileUrl: img.file_url, fileName: img.file_name, mimeType: img.mime_type, fileSize: img.file_size_bytes, sortOrder: img.sort_order, uploadIntentId: img.upload_intent_id, sha256Checksum: img.sha256_checksum, status: img.status, uploadedAt: img.uploaded_at, deletedAt: img.deleted_at }));
+    return { rows: mapped, command: 'SELECT', rowCount: mapped.length, oid: 0, fields: [] };
+  }
+
+  // 6C. SELECT FROM property_images WHERE property_id = $1
   if (lowerSql.includes('from property_images') && lowerSql.includes('property_id = $1')) {
     const propId = params?.[0];
     const res = await fetch(`${url}/rest/v1/property_images?property_id=eq.${encodeURIComponent(propId)}&status=eq.ACTIVE&order=sort_order.asc,uploaded_at.asc`, { headers });
@@ -1066,7 +1171,15 @@ async function queryViaSupabaseRest(text: string, params: any[] | undefined, url
   // 6E. UPDATE upload_intents SET status = 'COMMITTED' WHERE id = $1
   if (lowerSql.startsWith('update upload_intents') && lowerSql.includes('status = \'committed\'') && lowerSql.includes('where id = $1')) {
     const id = params?.[0];
-    const res = await fetch(`${url}/rest/v1/upload_intents?id=eq.${encodeURIComponent(id)}`, {
+    const ownerId = params?.[1];
+    const propertyId = params?.[2];
+    const objectKey = params?.[3];
+    const filters = [`id=eq.${encodeURIComponent(id)}`, 'status=eq.PENDING_UPLOAD'];
+    if (ownerId) filters.push(`owner_id=eq.${encodeURIComponent(ownerId)}`);
+    if (propertyId) filters.push(`property_id=eq.${encodeURIComponent(propertyId)}`);
+    if (objectKey) filters.push(`object_key=eq.${encodeURIComponent(objectKey)}`);
+    filters.push(`expires_at=gt.${encodeURIComponent(new Date().toISOString())}`);
+    const res = await fetch(`${url}/rest/v1/upload_intents?${filters.join('&')}`, {
       method: 'PATCH',
       headers: { ...headers, 'Prefer': 'return=representation' },
       body: JSON.stringify({ status: 'COMMITTED' }),

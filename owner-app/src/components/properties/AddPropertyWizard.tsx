@@ -209,7 +209,10 @@ export const AddPropertyWizard: React.FC = () => {
 
   const step = Math.max(1, Math.min(6, wizardStep));
   const isPublished = draft.canonicalStatus === 'PUBLISHED';
-  const isRejected = draft.canonicalStatus === 'REJECTED';
+  // PostgreSQL keeps a rejected property editable as DRAFT with a rejected
+  // verification result; rejected properties remain DRAFT in the canonical
+  // property lifecycle rather than using a property-only REJECTED status.
+  const isRejected = draft.canonicalVerificationStatus === 'REJECTED';
   const clearDraftAfterSuccessfulSubmit = () => {
     if (draft.origin === 'NEW' && ownerId) {
       clearResumableNewDraft(localStorage, `sola_owner_property_draft:${ownerId}`, draft);

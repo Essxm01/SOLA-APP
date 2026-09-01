@@ -18,6 +18,7 @@ import { TableSkeleton, EmptyState, AlertBanner } from './ui/StateViews';
 import { getApiUrl } from '../utils/api';
 import { clearAdminSession } from '../utils/adminSession';
 import { sortPropertyReviewItems, type PropertyReviewSortOrder } from '../utils/propertyReviewSort';
+import { getPropertyReviewStatus, type PropertyReviewStatus } from '../utils/propertyReviewStatus';
 
 export interface PropertyItem {
   id: string;
@@ -25,7 +26,7 @@ export interface PropertyItem {
   unitType: string;
   address: string;
   pricePerNight: number;
-  status: 'PENDING_REVIEW' | 'PUBLISHED' | 'REJECTED';
+  status: string;
   verificationStatus: string;
   createdAt: string;
   updatedAt: string;
@@ -45,7 +46,7 @@ export function PropertyReviewQueue({ onSelectProperty, onStatusChange, onSessio
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState<string>('');
-  const [statusFilter, setStatusFilter] = useState<'ALL' | 'PENDING_REVIEW' | 'PUBLISHED' | 'REJECTED'>('ALL');
+  const [statusFilter, setStatusFilter] = useState<'ALL' | PropertyReviewStatus>('ALL');
   const [sortOrder, setSortOrder] = useState<PropertyReviewSortOrder>('OLDEST_FIRST');
 
   const fetchQueue = async () => {
@@ -126,15 +127,16 @@ export function PropertyReviewQueue({ onSelectProperty, onStatusChange, onSessio
       item.ownerName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
       item.address?.toLowerCase().includes(searchQuery.toLowerCase());
     
-    const matchesStatus = statusFilter === 'ALL' || item.status === statusFilter;
+    const reviewStatus = getPropertyReviewStatus(item);
+    const matchesStatus = statusFilter === 'ALL' || reviewStatus === statusFilter;
     return matchesSearch && matchesStatus;
   });
 
   const sortedItems = sortPropertyReviewItems(filteredItems, sortOrder);
 
-  const pendingCount = items.filter(item => item.status === 'PENDING_REVIEW').length;
-  const publishedCount = items.filter(item => item.status === 'PUBLISHED').length;
-  const rejectedCount = items.filter(item => item.status === 'REJECTED').length;
+  const pendingCount = items.filter(item => getPropertyReviewStatus(item) === 'PENDING_REVIEW').length;
+  const publishedCount = items.filter(item => getPropertyReviewStatus(item) === 'PUBLISHED').length;
+  const rejectedCount = items.filter(item => getPropertyReviewStatus(item) === 'REJECTED').length;
 
   return (
     <div className="space-y-6 animate-fade-in dir-rtl" dir="rtl">
@@ -347,7 +349,7 @@ export function PropertyReviewQueue({ onSelectProperty, onStatusChange, onSessio
                     </td>
 
                     <td className="px-5 py-4">
-                      <StatusBadge status={item.status} />
+                      <StatusBadge status={getPropertyReviewStatus(item) || item.status} label={getPropertyReviewStatus(item) === 'REJECTED' ? 'تحتاج تعديلات' : undefined} />
                     </td>
 
                     <td className="px-5 py-4 text-slate-500 font-mono">

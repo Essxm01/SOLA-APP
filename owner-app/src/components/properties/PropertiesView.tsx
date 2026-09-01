@@ -16,6 +16,7 @@ import {
   FileText,
 } from 'lucide-react';
 import { isResumableNewDraft } from '../../utils/ownerPropertyWizard';
+import { isRejectedProperty } from '../../utils/ownerProperties';
 
 export const PropertiesView: React.FC = () => {
   const {
@@ -27,7 +28,7 @@ export const PropertiesView: React.FC = () => {
   } = useApp();
 
   const [searchQuery, setSearchQuery] = useState('');
-  const [activeFilter, setActiveFilter] = useState<PropertyStatus | 'ALL'>('ALL');
+  const [activeFilter, setActiveFilter] = useState<PropertyStatus | 'REJECTED' | 'ALL'>('ALL');
 
   // Filter properties logic
   const filteredProperties = properties.filter((p) => {
@@ -40,12 +41,12 @@ export const PropertiesView: React.FC = () => {
       p.region.toLowerCase().includes(searchQuery.toLowerCase());
 
     // Status filter
-    const matchesStatus = activeFilter === 'ALL' || p.status === activeFilter;
+    const matchesStatus = activeFilter === 'ALL' || (activeFilter === 'REJECTED' ? isRejectedProperty(p) : p.status === activeFilter);
 
     return matchesSearch && matchesStatus;
   });
 
-  const filterTabs: { id: PropertyStatus | 'ALL'; label: string; count?: number }[] = [
+  const filterTabs: { id: PropertyStatus | 'REJECTED' | 'ALL'; label: string; count?: number }[] = [
     { id: 'ALL', label: 'الكل', count: properties.length },
     {
       id: 'PUBLISHED',
@@ -65,12 +66,12 @@ export const PropertiesView: React.FC = () => {
     {
       id: 'DRAFT',
       label: 'مسودة',
-      count: properties.filter((p) => p.status === 'DRAFT').length,
+      count: properties.filter((p) => p.status === 'DRAFT' && !isRejectedProperty(p)).length,
     },
     {
       id: 'REJECTED',
       label: 'مرفوضة',
-      count: properties.filter((p) => p.status === 'REJECTED').length,
+      count: properties.filter(isRejectedProperty).length,
     },
   ];
 
@@ -183,7 +184,7 @@ export const PropertiesView: React.FC = () => {
               key={p.id}
               onClick={() => openPropertyDetails(p.id)}
               className={`bg-white rounded-2xl border transition-all duration-200 shadow-xs hover:shadow-md cursor-pointer overflow-hidden ${
-                p.status === 'REJECTED'
+                isRejectedProperty(p)
                   ? 'border-rose-200 bg-rose-50/10'
                   : p.status === 'PENDING_REVIEW'
                   ? 'border-amber-200'
@@ -197,7 +198,7 @@ export const PropertiesView: React.FC = () => {
                   className="w-full h-full object-cover"
                 />
                 <div className="absolute top-3 right-3 z-10">
-                  <PropertyStatusChip status={p.status} />
+                  <PropertyStatusChip property={p} />
                 </div>
                 <div className="absolute bottom-3 left-3 bg-slate-900/85 backdrop-blur-md text-white text-xs font-bold px-3 py-1 rounded-xl dir-ltr shadow-md">
                   {p.pricePerNight.toLocaleString()} {p.currency} / ليلة
@@ -227,7 +228,7 @@ export const PropertiesView: React.FC = () => {
                 </p>
 
                 {/* Rejection Warning Box if REJECTED */}
-                {p.status === 'REJECTED' && p.rejectionReason && (
+                {isRejectedProperty(p) && p.rejectionReason && (
                   <div className="p-2.5 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-800 flex items-start gap-2">
                     <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
                     <div>

@@ -1,6 +1,6 @@
 # KONFRM execution map
 
-> **Active sequence update (2026-08-30):** P14.1 was pulled forward and is closed live. P1.2 is the current local-only Round 1; its Round 2 publication/migration approval must occur before P1.3.
+> **Active sequence update (2026-09-01):** P14.1 is published/live verified at `5decd03f59f3bd3039e12e00caf234f28def5201`; P1.2 is published/live verified at `92dc3916afe7a8e7d15620efee31afa58e826870`. P1.3 is the active unmerged validation-branch task.
 
 `خطة عمل التطبيق.txt` supplies the immutable PHASE 0–22 macro roadmap. The **75** detailed execution boundaries below were derived from current repository evidence, dependency boundaries, risk, and independent acceptance scope—not from a target quota. The Phase Zero hardening review split mixed property/availability, booking/financial, role-shell, and E2E boundaries where they require different acceptance evidence; future phases change only when new evidence creates a real dependency or acceptance boundary.
 
@@ -9,10 +9,10 @@
 | ID | Parent / outcome | Surfaces | Dependencies | Risk | Status / verification |
 | --- | --- | --- | --- | --- | --- |
 | P0.1 | **PHASE 0** — baseline, CI, deployment, and access reality | Repo, CI, Worker, Pages | None | Critical | Complete; local/GitHub/public-HTTP evidence recorded, privileged metadata remains `ACCESS_UNAVAILABLE` |
-| P0.2 | Prototype auth/access blocker audit | Customer, Owner, Admin, backend | P0.1 | High | Complete local release candidate; signed-token/role/bootstrap/error evidence in `P0_2_AUTH_ACCESS_REPORT.md`, publication intentionally pending |
+| P0.2 | Prototype auth/access blocker audit | Customer, Owner, Admin, backend | P0.1 | High | Closed + published at `6d37b458…`; signed-token/role/bootstrap/error evidence in `P0_2_AUTH_ACCESS_REPORT.md` |
 | P1.1 | **PHASE 1** — schema/RLS baseline inventory | DB, Supabase | P0.1 | Critical | Closed + published at `d7462f13…`; Actions #130 / `33305295499` and Worker health succeeded |
-| P1.2 | Identity/session persistence integrity | Backend, DB, all roles | P1.1 | Critical | Preserve/verify; ownership/session tests |
-| P1.3 | Property and media persistence integrity | Owner, Admin, Customer, DB/storage | P1.1 | Critical | Preserve/verify; cross-app/media tests |
+| P1.2 | Identity/session persistence integrity | Backend, DB, all roles | P1.1 | Critical | Closed + published/live-verified at `92dc3916…`; ownership/session tests and staged migration evidence retained |
+| P1.3 | Property and media persistence integrity | Owner, Admin, Customer, DB/storage | P1.1 | Critical | Open on `validation/p1-3-rc`; final remote validation and Founder publication gate remain |
 | P1.4 | Availability persistence and blocking integrity | Customer, Owner, backend, DB | P1.1 | Critical | Preserve/verify; date/blocking tests |
 | P1.5 | Booking and financial-summary persistence integrity | Backend, DB, all roles | P1.1 | Critical | Preserve/verify; status/quote/idempotency tests |
 | P1.6 | Wallet and immutable-ledger persistence integrity | Backend, DB, Owner/Admin | P1.1 | Critical | Preserve/verify; balance/ledger/privacy tests |
@@ -63,7 +63,7 @@
 | P13.1 | **PHASE 13** — cancellation/refund policy decision and contract | All roles, backend, DB | DC-08 | Critical | Deferred; Founder decision required |
 | P13.2 | Dispute lifecycle and operational UX | All roles, backend, DB | P13.1, P7.5 | High | Deferred; policy and audit prerequisites |
 | P13.3 | Completed-stay review eligibility and reputation flow | Customer, Owner, Admin, backend, DB | P13.1 | High | Deferred; completion/review contract audit required |
-| P14.1 | **PHASE 14** — RLS/authorization/privacy remediation plan | Backend, DB/storage, all roles | P1.1 | Critical | Local release candidate prepared: migration 021 restores service-role-only critical RPC ACL intent; live application/verification remains Founder-gated |
+| P14.1 | **PHASE 14** — RLS/authorization/privacy remediation plan | Backend, DB/storage, all roles | P1.1 | Critical | Closed + published/live-verified at `5decd03f…`; migration 021 restored service-role-only critical RPC ACL intent |
 | P14.2 | Sensitive storage/media access verification | Owner, Admin, backend, storage | P14.1 | Critical | Partial; bucket/access checks |
 | P14.3 | Auth/session/secret/config security pass | All apps, backend, CI | P14.1 | High | Planned; static + controlled live checks |
 | P15.1 | **PHASE 15** — refresh visual drift inventory from current screens | All apps, Design System | P4.1, P5–P7 evidence | Medium | Partial; screenshot/static audit |
@@ -86,4 +86,4 @@
 
 ## Next recommended execution phase
 
-**P14.1 publication and live application gate.** P1.1 is closed + published and P14.1 has a local release candidate. Founder approval must cover publishing the exact commit, applying migration 021 live, and read-only post-application ACL verification before P1.2. No live remediation is implied by repository readiness.
+**P1.3 property/media persistence integrity.** P14.1 and P1.2 are closed/live verified; P1.3 remains the earliest open prerequisite. Its local migration 024 requires a separate approved migration-first rollout only after final validation and duplicate-active-image preflight.

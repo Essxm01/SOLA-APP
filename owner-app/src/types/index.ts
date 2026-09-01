@@ -3,7 +3,6 @@ export type PropertyStatus =
   | 'PENDING_REVIEW'
   | 'PUBLISHED'
   | 'PAUSED'
-  | 'REJECTED'
   | 'SUSPENDED'
   | 'ARCHIVED';
 

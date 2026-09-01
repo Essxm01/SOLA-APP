@@ -91,7 +91,16 @@ export class ExpressServerApp {
           return;
         }
 
-        const intent = await uploadIntentDb.getIntentById(intentId).catch(() => null);
+        // Keep a failed canonical read distinct from a successful "not found".
+        // A database outage must never masquerade as an invalid upload intent.
+        let intent: any;
+        try {
+          intent = await uploadIntentDb.getIntentById(intentId);
+        } catch {
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ success: false, error: { code: 'UPLOAD_INTENT_QUERY_FAILED', message: 'تعذر التحقق من طلب الرفع. حاول مرة أخرى.' } }));
+          return;
+        }
         if (!intent || intent.objectKey !== objectKey) {
           res.writeHead(403, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ success: false, error: { code: 'INVALID_UPLOAD_INTENT', message: 'طلب الرفع غير صالح أو غير موجود' } }));
@@ -417,6 +426,26 @@ export class ExpressServerApp {
 
         // Owner ID is extracted STRICTLY from verified JWT (Server Authoritative)
         const ownerId = jwt.sub;
+
+        // Keep a failed canonical read distinct from a successful "not found".
+        // Owner property routes must never translate a database outage into 404.
+        const loadOwnerProperty = async (propertyId: string): Promise<{ property: any; failure: any | null }> => {
+          try {
+            return { property: await propertyDb.getById(propertyId), failure: null };
+          } catch {
+            return {
+              property: null,
+              failure: {
+                statusCode: 500,
+                body: {
+                  success: false,
+                  error: { code: 'PROPERTY_QUERY_FAILED', message: 'تعذر تحميل بيانات الوحدة. حاول مرة أخرى.' },
+                  timestamp,
+                },
+              },
+            };
+          }
+        };
 
         // --- A0. Real Owner Profile Endpoints (PostgreSQL Driven) ---
         if (path === '/api/v1/owner/profile' && method === 'GET') {
@@ -849,7 +878,19 @@ export class ExpressServerApp {
         // --- E. Property Domain Endpoints (PostgreSQL Authoritative Driven — M03) ---
         if (path === '/api/v1/owner/properties' && method === 'POST') {
           // Verify canonical authenticated owner exists
-          const canonicalOwner = await ownerDb.getById(ownerId).catch(() => null);
+          let canonicalOwner: any;
+          try {
+            canonicalOwner = await ownerDb.getById(ownerId);
+          } catch {
+            return {
+              statusCode: 500,
+              body: {
+                success: false,
+                error: { code: 'OWNER_QUERY_FAILED', message: 'تعذر التحقق من حساب المالك. حاول مرة أخرى.' },
+                timestamp,
+              },
+            };
+          }
           if (!canonicalOwner) {
             return {
               statusCode: 403,
@@ -861,7 +902,6 @@ export class ExpressServerApp {
             };
           }
 
-          const isValidUuid = (val?: string) => val && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val);
           const propertyTypes = new Set(['CHALET', 'VILLA', 'APARTMENT', 'STUDIO', 'HOTEL_ROOM', 'OTHER']);
           const numeric = (value: unknown) => typeof value === 'number' && Number.isFinite(value);
           const missingFields = [
@@ -874,7 +914,8 @@ export class ExpressServerApp {
             !numeric(bodyPayload?.pricePerNight ?? bodyPayload?.basePricePerNight) || (bodyPayload?.pricePerNight ?? bodyPayload?.basePricePerNight) <= 0 ? 'pricePerNight' : false,
           ].filter(Boolean);
           if (missingFields.length) return { statusCode: 400, body: { success: false, error: { code: 'PROPERTY_CREATE_REQUIRED_FIELDS_MISSING', message: `يرجى إدخال بيانات الوحدة الأساسية بشكل صحيح: ${missingFields.join(', ')}.` }, timestamp } };
-          const propId = isValidUuid(bodyPayload?.id) ? bodyPayload.id : crypto.randomUUID();
+          // Property identity is server-generated. A client draft identifier is never canonical.
+          const propId = crypto.randomUUID();
 
           const createdProperty = await propertyDb.create({
             id: propId,
@@ -913,20 +954,28 @@ export class ExpressServerApp {
           }
 
           // Canonical Read-After-Write Verification
-          const persistedProperty = await propertyDb.getById(createdProperty.id).catch(() => null);
+          const persistedProperty = await propertyDb.getByOwnerAndId(createdProperty.id, ownerId).catch(() => null);
+          if (!persistedProperty) {
+            return { statusCode: 500, body: { success: false, error: { code: 'PROPERTY_READ_AFTER_WRITE_FAILED', message: 'تعذر تأكيد حفظ الوحدة.' }, timestamp } };
+          }
 
           return {
             statusCode: 201,
             body: {
               success: true,
-              data: persistedProperty || createdProperty,
+              data: persistedProperty,
               timestamp,
             },
           };
         }
 
-        if (path.startsWith('/api/v1/owner/properties') && method === 'GET') {
-          const ownerProperties = await propertyDb.getByOwnerId(ownerId).catch(() => []);
+        if (path === '/api/v1/owner/properties' && method === 'GET') {
+          let ownerProperties: any[];
+          try {
+            ownerProperties = await propertyDb.getByOwnerId(ownerId);
+          } catch {
+            return { statusCode: 500, body: { success: false, error: { code: 'OWNER_PROPERTIES_QUERY_FAILED', message: 'تعذر تحميل الوحدات.' }, timestamp } };
+          }
           return {
             statusCode: 200,
             body: {
@@ -960,42 +1009,35 @@ export class ExpressServerApp {
           if (bodyPayload?.bedsCount !== undefined) updates.bedsCount = bodyPayload.bedsCount;
           if (bodyPayload?.amenities !== undefined) updates.amenities = bodyPayload.amenities;
           if (bodyPayload?.houseRules !== undefined) updates.houseRules = bodyPayload.houseRules;
-          if (bodyPayload?.status !== undefined) updates.status = bodyPayload.status;
-          if (bodyPayload?.verificationStatus !== undefined) updates.verificationStatus = bodyPayload.verificationStatus;
-
-          // If resubmitting, set status back to PENDING_REVIEW
-          if (bodyPayload?.resubmit === true) {
-            updates.status = 'PENDING_REVIEW';
-            updates.verificationStatus = 'PENDING_VERIFICATION';
+          // Lifecycle and verification status are exclusively transitioned by submit/review routes.
+          // A property edit cannot publish, reject, or resubmit itself.
+          if (bodyPayload?.resubmit === true || bodyPayload?.status !== undefined || bodyPayload?.verificationStatus !== undefined) {
+            return { statusCode: 400, body: { success: false, error: { code: 'PROPERTY_LIFECYCLE_WRITE_FORBIDDEN', message: 'استخدم مسار الإرسال للمراجعة لتغيير حالة الوحدة.' }, timestamp } };
           }
+
+          const existingRead = await loadOwnerProperty(propertyId);
+          if (existingRead.failure) return existingRead.failure;
+          const existing = existingRead.property;
+          if (!existing) return { statusCode: 404, body: { success: false, error: { code: 'PROPERTY_NOT_FOUND', message: 'الوحدة غير موجودة.' }, timestamp } };
+          if (existing.ownerId !== ownerId) return { statusCode: 403, body: { success: false, error: { code: 'FORBIDDEN_PROPERTY_ACCESS', message: 'غير مصرح بتعديل هذه الوحدة.' }, timestamp } };
 
           const updated = await propertyDb.update(propertyId, ownerId, updates).catch(() => null);
           if (!updated) {
             return {
-              statusCode: 404,
-              body: { success: false, error: { code: 'PROPERTY_NOT_FOUND', message: 'الوحدة غير موجودة أو غير مصرح بالتعديل' }, timestamp },
+              statusCode: 500,
+              body: { success: false, error: { code: 'PROPERTY_UPDATE_FAILED', message: 'تعذر حفظ تعديلات الوحدة.' }, timestamp },
             };
           }
 
           // Canonical Read-After-Write Verification
-          const persistedProperty = await propertyDb.getById(propertyId).catch(() => null);
-
-          // If resubmitting, notify admin
-          if (bodyPayload?.resubmit === true) {
-            await notificationDb.create({
-              ownerId: 'admin',
-              title: 'إعادة تقديم وحدة للمراجعة 🔄',
-              message: `قام المالك بتعديل وإعادة تقديم وحدة (${persistedProperty?.title || updated.title}) للمراجعة`,
-              type: 'PROPERTY_REVIEW_PENDING',
-              actionRoute: '/properties',
-            }).catch(() => null);
-          }
+          const persistedProperty = await propertyDb.getByOwnerAndId(propertyId, ownerId).catch(() => null);
+          if (!persistedProperty) return { statusCode: 500, body: { success: false, error: { code: 'PROPERTY_READ_AFTER_WRITE_FAILED', message: 'تعذر تأكيد حفظ تعديلات الوحدة.' }, timestamp } };
 
           return {
             statusCode: 200,
             body: {
               success: true,
-              data: persistedProperty || updated,
+              data: persistedProperty,
               timestamp,
             },
           };
@@ -1006,7 +1048,9 @@ export class ExpressServerApp {
           const parts = path.split('/');
           const propertyId = parts[5];
 
-          const prop = await propertyDb.getById(propertyId).catch(() => null);
+          const propertyRead = await loadOwnerProperty(propertyId);
+          if (propertyRead.failure) return propertyRead.failure;
+          const prop = propertyRead.property;
 
           if (!prop) {
             return {
@@ -1019,7 +1063,7 @@ export class ExpressServerApp {
             };
           }
 
-          if (prop.ownerId && prop.ownerId !== ownerId) {
+          if (prop.ownerId !== ownerId) {
             return {
               statusCode: 403,
               body: {
@@ -1028,6 +1072,12 @@ export class ExpressServerApp {
                 timestamp,
               },
             };
+          }
+
+          try {
+            PropertyDomainController.submitForReview(prop as any);
+          } catch {
+            return { statusCode: 409, body: { success: false, error: { code: 'INVALID_PROPERTY_SUBMISSION_STATE', message: 'لا يمكن إرسال الوحدة للمراجعة في حالتها الحالية.' }, timestamp } };
           }
 
           // Validate submission criteria
@@ -1045,7 +1095,12 @@ export class ExpressServerApp {
           }
 
           // At least ONE committed image required
-          const committedImages = await imageDb.getImagesByPropertyId(propertyId).catch(() => []);
+          let committedImages: any[];
+          try {
+            committedImages = await imageDb.getImagesByPropertyId(propertyId);
+          } catch {
+            return { statusCode: 500, body: { success: false, error: { code: 'PROPERTY_IMAGES_QUERY_FAILED', message: 'تعذر التحقق من صور الوحدة.' }, timestamp } };
+          }
           if (committedImages.length === 0) {
             return {
               statusCode: 400,
@@ -1057,7 +1112,7 @@ export class ExpressServerApp {
             };
           }
 
-          const updated = await propertyDb.updateStatus(propertyId, 'PENDING_REVIEW', 'PENDING_VERIFICATION').catch(() => null);
+          const updated = await propertyDb.updateStatusForOwner(propertyId, ownerId, 'PENDING_REVIEW', 'PENDING_VERIFICATION').catch(() => null);
           if (!updated) {
             return {
               statusCode: 500,
@@ -1069,12 +1124,13 @@ export class ExpressServerApp {
             };
           }
 
-          const finalProp = await propertyDb.getById(propertyId).catch(() => null);
+          const finalProp = await propertyDb.getByOwnerAndId(propertyId, ownerId).catch(() => null);
+          if (!finalProp) return { statusCode: 500, body: { success: false, error: { code: 'SUBMIT_READ_AFTER_WRITE_FAILED', message: 'تعذر تأكيد إرسال الوحدة للمراجعة.' }, timestamp } };
 
           await notificationDb.create({
             ownerId: 'admin',
             title: 'طلب مراجعة وحدة جديدة 🏠',
-            message: `قام المالك بإرسال وحدة (${finalProp?.title || prop.title}) للمراجعة والاعتماد`,
+            message: `قام المالك بإرسال وحدة (${finalProp.title}) للمراجعة والاعتماد`,
             type: 'PROPERTY_REVIEW_PENDING',
             actionRoute: '/properties',
           }).catch(() => null);
@@ -1083,7 +1139,7 @@ export class ExpressServerApp {
             statusCode: 200,
             body: {
               success: true,
-              data: finalProp || updated,
+              data: finalProp,
               timestamp,
             },
           };
@@ -1095,35 +1151,18 @@ export class ExpressServerApp {
           const propertyId = parts[5];
           const { fileName, mimeType, fileSize, idempotencyKey } = bodyPayload || {};
 
-          // Cross-Owner Authorization Barrier
-          if (propertyId.includes('foreign_owner') || propertyId.includes('other_owner')) {
-            return {
-              statusCode: 403,
-              body: {
-                success: false,
-                error: { code: 'FORBIDDEN_PROPERTY_ACCESS', message: 'غير مصرح برفع صور لعين مملوكة لمالك آخر' },
-                timestamp,
-              },
-            };
-          }
-
-          const prop = await propertyDb.getById(propertyId).catch(() => dbPropertiesStore.get(propertyId));
-          if (prop && prop.ownerId && prop.ownerId !== ownerId && !propertyId.includes('prop-pub-')) {
-            return {
-              statusCode: 403,
-              body: {
-                success: false,
-                error: { code: 'FORBIDDEN_PROPERTY_ACCESS', message: 'غير مصرح برفع صور لعين مملوكة لمالك آخر' },
-                timestamp,
-              },
-            };
-          }
+          const propertyRead = await loadOwnerProperty(propertyId);
+          if (propertyRead.failure) return propertyRead.failure;
+          const prop = propertyRead.property;
+          if (!prop) return { statusCode: 404, body: { success: false, error: { code: 'PROPERTY_NOT_FOUND', message: 'الوحدة غير موجودة.' }, timestamp } };
+          if (prop.ownerId !== ownerId) return { statusCode: 403, body: { success: false, error: { code: 'FORBIDDEN_PROPERTY_ACCESS', message: 'غير مصرح برفع صور لهذه الوحدة.' }, timestamp } };
 
           const sizeNum = Number(fileSize);
           if (!fileName || typeof fileName !== 'string') {
             return { statusCode: 400, body: { success: false, error: { code: 'INVALID_FILE_NAME', message: 'اسم الملف غير صالح' }, timestamp } };
           }
-          if (!mimeType || !['image/jpeg', 'image/png', 'image/webp', 'application/pdf'].includes(mimeType.toLowerCase())) {
+          const normalizedMimeType = typeof mimeType === 'string' ? mimeType.toLowerCase() : '';
+          if (!normalizedMimeType || !['image/jpeg', 'image/png', 'image/webp'].includes(normalizedMimeType)) {
             return { statusCode: 400, body: { success: false, error: { code: 'UNSUPPORTED_MIME_TYPE', message: 'نوع صيغة الصور غير مصرح به' }, timestamp } };
           }
           if (isNaN(sizeNum) || sizeNum <= 0 || sizeNum > 10 * 1024 * 1024) {
@@ -1140,20 +1179,27 @@ export class ExpressServerApp {
               ownerId,
               propertyId,
               objectKey,
-              mimeType,
+              mimeType: normalizedMimeType,
               sizeBytes: sizeNum,
               idempotencyKey: keyIdempotent,
               expiresAt,
             });
 
+            if (intent.ownerId !== ownerId || intent.propertyId !== propertyId || intent.expectedMimeType !== normalizedMimeType || Number(intent.expectedSizeBytes) !== sizeNum) {
+              return { statusCode: 409, body: { success: false, error: { code: 'UPLOAD_INTENT_IDEMPOTENCY_CONFLICT', message: 'مفتاح إعادة المحاولة مرتبط بطلب رفع مختلف.' }, timestamp } };
+            }
+            if (intent.status !== 'PENDING_UPLOAD' || new Date(intent.expiresAt).getTime() <= Date.now()) {
+              return { statusCode: 409, body: { success: false, error: { code: 'UPLOAD_INTENT_NOT_ACTIVE', message: 'انتهت صلاحية طلب الرفع. أنشئ طلب رفع جديدًا.' }, timestamp } };
+            }
+
             const presigned = await this.storageService.generateSignedUploadUrl({
               intentId: intent.id,
               ownerId,
               propertyId,
-              objectKey,
-              mimeType,
-              sizeBytes: sizeNum,
-              expiresAt,
+              objectKey: intent.objectKey,
+              mimeType: intent.expectedMimeType,
+              sizeBytes: Number(intent.expectedSizeBytes),
+              expiresAt: new Date(intent.expiresAt),
             });
 
             return {
@@ -1165,7 +1211,7 @@ export class ExpressServerApp {
                   intentNumber: intent.intentNumber,
                   uploadUrl: presigned.uploadUrl,
                   downloadUrl: presigned.downloadUrl,
-                  objectKey,
+                  objectKey: intent.objectKey,
                   headers: presigned.headers,
                   expiresInSeconds: presigned.expiresInSeconds,
                 },
@@ -1174,7 +1220,7 @@ export class ExpressServerApp {
             };
           } catch (err: any) {
             return {
-              statusCode: 400,
+              statusCode: 500,
               body: {
                 success: false,
                 error: { code: err.message || 'INVALID_UPLOAD_INTENT', message: 'خطأ في إنشاء طلب الرفع الموقّع' },
@@ -1188,9 +1234,9 @@ export class ExpressServerApp {
         if (path.includes('/images') && !path.includes('presigned-url') && method === 'POST') {
           const parts = path.split('/');
           const propertyId = parts[5];
-          const { intentId, objectKey, fileUrl, fileName, mimeType, fileSize, sortOrder } = bodyPayload || {};
+          const { intentId, objectKey, sortOrder } = bodyPayload || {};
 
-          if (!objectKey) {
+          if (!intentId || !objectKey) {
             return {
               statusCode: 400,
               body: {
@@ -1201,33 +1247,44 @@ export class ExpressServerApp {
             };
           }
 
-          // Cross-Owner Authorization Barrier
-          if (propertyId.includes('foreign_owner') || propertyId.includes('other_owner')) {
-            return {
-              statusCode: 403,
-              body: {
-                success: false,
-                error: { code: 'FORBIDDEN_PROPERTY_ACCESS', message: 'غير مصرح بربط صور بعين مملوكة لمالك آخر' },
-                timestamp,
-              },
-            };
-          }
+          const propertyRead = await loadOwnerProperty(propertyId);
+          if (propertyRead.failure) return propertyRead.failure;
+          const prop = propertyRead.property;
+          if (!prop) return { statusCode: 404, body: { success: false, error: { code: 'PROPERTY_NOT_FOUND', message: 'الوحدة غير موجودة.' }, timestamp } };
+          if (prop.ownerId !== ownerId) return { statusCode: 403, body: { success: false, error: { code: 'FORBIDDEN_PROPERTY_ACCESS', message: 'غير مصرح بربط صور لهذه الوحدة.' }, timestamp } };
 
-          const prop = await propertyDb.getById(propertyId).catch(() => dbPropertiesStore.get(propertyId));
-          if (prop && prop.ownerId && prop.ownerId !== ownerId && !propertyId.includes('prop-pub-')) {
-            return {
-              statusCode: 403,
-              body: {
-                success: false,
-                error: { code: 'FORBIDDEN_PROPERTY_ACCESS', message: 'غير مصرح بربط صور بعين مملوكة لمالك آخر' },
-                timestamp,
-              },
-            };
+          // A failed canonical read is distinct from a successful missing intent.
+          let intent: any;
+          try {
+            intent = await uploadIntentDb.getIntentById(intentId);
+          } catch {
+            return { statusCode: 500, body: { success: false, error: { code: 'UPLOAD_INTENT_QUERY_FAILED', message: 'تعذر التحقق من طلب الرفع. حاول مرة أخرى.' }, timestamp } };
+          }
+          if (!intent) return { statusCode: 404, body: { success: false, error: { code: 'UPLOAD_INTENT_NOT_FOUND', message: 'طلب الرفع غير موجود.' }, timestamp } };
+          if (intent.ownerId !== ownerId || intent.propertyId !== propertyId || intent.objectKey !== objectKey) {
+            return { statusCode: 403, body: { success: false, error: { code: 'FORBIDDEN_UPLOAD_INTENT_ACCESS', message: 'طلب الرفع لا يخص هذه الوحدة أو هذا المالك.' }, timestamp } };
+          }
+          if (intent.status === 'COMMITTED') {
+            let existingImage: any;
+            try {
+              existingImage = await imageDb.getImageByUploadIntentId(intent.id);
+            } catch {
+              // Replay verification read failed at the persistence layer; this is
+              // not evidence of an inconsistent commit.
+              return { statusCode: 500, body: { success: false, error: { code: 'MEDIA_COMMIT_QUERY_FAILED', message: 'تعذر التحقق من ربط الصورة من قاعدة البيانات. حاول مرة أخرى.' }, timestamp } };
+            }
+            if (existingImage && existingImage.propertyId === propertyId && existingImage.ownerId === ownerId && existingImage.objectKey === objectKey) {
+              return { statusCode: 200, body: { success: true, data: existingImage, timestamp } };
+            }
+            return { statusCode: 409, body: { success: false, error: { code: 'MEDIA_COMMIT_INCONSISTENT', message: 'تعذر تأكيد ربط الصورة السابق.' }, timestamp } };
+          }
+          if (intent.status !== 'PENDING_UPLOAD' || new Date(intent.expiresAt).getTime() <= Date.now()) {
+            return { statusCode: 409, body: { success: false, error: { code: 'UPLOAD_INTENT_EXPIRED', message: 'انتهت صلاحية طلب الرفع.' }, timestamp } };
           }
 
           // Verify Object Existence in Storage
           const storageCheck = await this.storageService.verifyObjectExists(objectKey);
-          if (!storageCheck.exists) {
+          if (!storageCheck.exists || Number(storageCheck.sizeBytes) !== Number(intent.expectedSizeBytes)) {
             return {
               statusCode: 400,
               body: {
@@ -1238,24 +1295,27 @@ export class ExpressServerApp {
             };
           }
 
-          if (intentId) {
-            await uploadIntentDb.commitIntent(intentId).catch(() => null);
-          }
-
-          const finalFileUrl = fileUrl || `${process.env.STORAGE_CDN_HOST || 'http://localhost:4000/storage'}/files/${objectKey}`;
-
-          const imageRecord = await imageDb.addImage({
+          const fileName = objectKey.split('/').pop() || 'image';
+          let imageRecord: any;
+          try {
+            // The database RPC owns the all-or-nothing image + intent state
+            // change. The Worker REST layer is not a transaction engine.
+            imageRecord = await imageDb.commitPropertyMediaAtomic({
+            uploadIntentId: intent.id,
             propertyId,
             ownerId,
             objectKey,
-            fileUrl: finalFileUrl,
-            fileName: fileName || 'property_image.jpg',
-            mimeType: mimeType || 'image/jpeg',
-            fileSize: storageCheck.sizeBytes || Number(fileSize) || 102400,
-            sortOrder: Number(sortOrder) || 0,
-            uploadIntentId: intentId || undefined,
+            fileUrl: this.storageService.getPublicObjectUrl(objectKey),
+            fileName,
+            mimeType: intent.expectedMimeType,
+            fileSize: Number(storageCheck.sizeBytes),
+            sortOrder: Number.isFinite(Number(sortOrder)) ? Number(sortOrder) : 0,
             sha256Checksum: storageCheck.sha256Checksum,
           });
+          } catch {
+            return { statusCode: 500, body: { success: false, error: { code: 'PROPERTY_MEDIA_ATOMIC_COMMIT_FAILED', message: 'تعذر تأكيد ربط الصورة. يمكنك المحاولة مجددًا.' }, timestamp } };
+          }
+          if (!imageRecord) return { statusCode: 409, body: { success: false, error: { code: 'PROPERTY_MEDIA_ATOMIC_COMMIT_FAILED', message: 'تعذر تأكيد ربط الصورة. يمكنك المحاولة مجددًا.' }, timestamp } };
 
           return {
             statusCode: 201,
@@ -1271,7 +1331,13 @@ export class ExpressServerApp {
         if (path.includes('/images') && !path.includes('presigned-url') && method === 'GET') {
           const parts = path.split('/');
           const propertyId = parts[5];
-          const images = await imageDb.getImagesByPropertyId(propertyId).catch(() => []);
+          const propertyRead = await loadOwnerProperty(propertyId);
+          if (propertyRead.failure) return propertyRead.failure;
+          const property = propertyRead.property;
+          if (!property) return { statusCode: 404, body: { success: false, error: { code: 'PROPERTY_NOT_FOUND', message: 'الوحدة غير موجودة.' }, timestamp } };
+          if (property.ownerId !== ownerId) return { statusCode: 403, body: { success: false, error: { code: 'FORBIDDEN_PROPERTY_ACCESS', message: 'غير مصرح بعرض صور هذه الوحدة.' }, timestamp } };
+          let images: any[];
+          try { images = await imageDb.getImagesByPropertyId(propertyId); } catch { return { statusCode: 500, body: { success: false, error: { code: 'PROPERTY_IMAGES_QUERY_FAILED', message: 'تعذر تحميل صور الوحدة.' }, timestamp } }; }
           return {
             statusCode: 200,
             body: {
@@ -1288,19 +1354,31 @@ export class ExpressServerApp {
           const propertyId = parts[5];
           const imageId = parts[7];
 
-          // Cross-Owner Barrier
-          if (propertyId.includes('foreign_owner') || propertyId.includes('other_owner')) {
-            return { statusCode: 403, body: { success: false, error: { code: 'FORBIDDEN_PROPERTY_ACCESS', message: 'غير مصرح بحذف صور لعين مملوكة لمالك آخر' }, timestamp } };
-          }
+          const propertyRead = await loadOwnerProperty(propertyId);
+          if (propertyRead.failure) return propertyRead.failure;
+          const property = propertyRead.property;
+          if (!property) return { statusCode: 404, body: { success: false, error: { code: 'PROPERTY_NOT_FOUND', message: 'الوحدة غير موجودة.' }, timestamp } };
+          if (property.ownerId !== ownerId) return { statusCode: 403, body: { success: false, error: { code: 'FORBIDDEN_PROPERTY_ACCESS', message: 'غير مصرح بحذف صور هذه الوحدة.' }, timestamp } };
 
-          const deletedRecord = await imageDb.deleteImage(imageId, ownerId);
-          if (!deletedRecord) {
+          let imageRecord: any;
+          try {
+            imageRecord = await imageDb.getImageForOwnerIncludingDeleted(imageId, ownerId);
+          } catch {
+            return { statusCode: 500, body: { success: false, error: { code: 'PROPERTY_IMAGE_QUERY_FAILED', message: 'تعذر التحقق من الصورة.' }, timestamp } };
+          }
+          if (!imageRecord || imageRecord.propertyId !== propertyId) {
             return { statusCode: 404, body: { success: false, error: { code: 'IMAGE_NOT_FOUND', message: 'الصورة غير موجودة أو غير مصرح بحذفها' }, timestamp } };
           }
 
-          // Purge Storage Object
+          const deletedRecord = imageRecord.status === 'ACTIVE'
+            ? await imageDb.deleteImage(imageId, ownerId)
+            : imageRecord;
+          if (!deletedRecord) return { statusCode: 500, body: { success: false, error: { code: 'PROPERTY_IMAGE_DELETE_FAILED', message: 'تعذر إخفاء الصورة من السجل.' }, timestamp } };
+
+          // Canonical metadata is now hidden. Storage cleanup failure is explicit, never a fake success.
           if (deletedRecord.objectKey) {
-            await this.storageService.deleteObject(deletedRecord.objectKey).catch(() => null);
+            const removed = await this.storageService.deleteObject(deletedRecord.objectKey).catch(() => false);
+            if (!removed) return { statusCode: 500, body: { success: false, error: { code: 'PROPERTY_IMAGE_STORAGE_DELETE_FAILED', message: 'حُذفت الصورة من السجل لكن تعذر تنظيف الملف. سيتم التعامل معه بأمان.' }, timestamp } };
           }
 
           return {
@@ -1314,22 +1392,40 @@ export class ExpressServerApp {
         }
 
         if (path.endsWith('/archive') && method === 'POST') {
+          const propertyId = path.split('/')[5];
+          const propertyRead = await loadOwnerProperty(propertyId);
+          if (propertyRead.failure) return propertyRead.failure;
+          const property = propertyRead.property;
+          if (!property) return { statusCode: 404, body: { success: false, error: { code: 'PROPERTY_NOT_FOUND', message: 'الوحدة غير موجودة.' }, timestamp } };
+          if (property.ownerId !== ownerId) return { statusCode: 403, body: { success: false, error: { code: 'FORBIDDEN_PROPERTY_ACCESS', message: 'غير مصرح بأرشفة هذه الوحدة.' }, timestamp } };
+          try { PropertyDomainController.archiveProperty(property as any); } catch { return { statusCode: 409, body: { success: false, error: { code: 'PROPERTY_ALREADY_ARCHIVED', message: 'الوحدة مؤرشفة بالفعل.' }, timestamp } }; }
+          const updated = await propertyDb.updateStatusForOwner(propertyId, ownerId, 'ARCHIVED').catch(() => null);
+          if (!updated) return { statusCode: 500, body: { success: false, error: { code: 'PROPERTY_ARCHIVE_FAILED', message: 'تعذر أرشفة الوحدة.' }, timestamp } };
           return {
             statusCode: 200,
             body: {
               success: true,
-              data: { id: path.split('/')[4], status: 'ARCHIVED', updatedAt: timestamp },
+              data: updated,
               timestamp,
             },
           };
         }
 
         if (path.endsWith('/restore') && method === 'POST') {
+          const propertyId = path.split('/')[5];
+          const propertyRead = await loadOwnerProperty(propertyId);
+          if (propertyRead.failure) return propertyRead.failure;
+          const property = propertyRead.property;
+          if (!property) return { statusCode: 404, body: { success: false, error: { code: 'PROPERTY_NOT_FOUND', message: 'الوحدة غير موجودة.' }, timestamp } };
+          if (property.ownerId !== ownerId) return { statusCode: 403, body: { success: false, error: { code: 'FORBIDDEN_PROPERTY_ACCESS', message: 'غير مصرح باستعادة هذه الوحدة.' }, timestamp } };
+          try { PropertyDomainController.restoreProperty(property as any); } catch { return { statusCode: 409, body: { success: false, error: { code: 'PROPERTY_NOT_ARCHIVED', message: 'يمكن استعادة وحدة مؤرشفة فقط.' }, timestamp } }; }
+          const updated = await propertyDb.updateStatusForOwner(propertyId, ownerId, 'DRAFT', 'UNVERIFIED').catch(() => null);
+          if (!updated) return { statusCode: 500, body: { success: false, error: { code: 'PROPERTY_RESTORE_FAILED', message: 'تعذر استعادة الوحدة.' }, timestamp } };
           return {
             statusCode: 200,
             body: {
               success: true,
-              data: { id: path.split('/')[4], status: 'DRAFT', updatedAt: timestamp }, // Strict RULE-4C-01 DRAFT
+              data: updated,
               timestamp,
             },
           };
@@ -1338,38 +1434,9 @@ export class ExpressServerApp {
         if (path.startsWith('/api/v1/owner/properties/') && method === 'DELETE') {
           const propertyId = path.split('/')[5];
 
-          // IDOR barrier check
-          if (propertyId.includes('foreign_owner') || propertyId.includes('other_owner')) {
-            return {
-              statusCode: 403,
-              body: {
-                success: false,
-                error: { code: 'OWNER_RESOURCE_IDOR_VIOLATION', message: 'غير مصرح بحذف عقار خاص بمالك آخر' },
-                timestamp,
-              },
-            };
-          }
-
-          // Active Bookings Barrier (RULE-4C-02)
-          if (propertyId.includes('active_booking') || propertyId.includes('has_bookings')) {
-            return {
-              statusCode: 400,
-              body: {
-                success: false,
-                error: { code: 'CANNOT_DELETE_PROPERTY_WITH_ACTIVE_BOOKINGS', message: 'لا يمكن حذف العقار لوجود حجوزات نشطة مرتبطة به (RULE-4C-02)' },
-                timestamp,
-              },
-            };
-          }
-
-          return {
-            statusCode: 200,
-            body: {
-              success: true,
-              data: { id: propertyId, deleted: true },
-              timestamp,
-            },
-          };
+          // Hard delete is intentionally not exposed until its active-booking protection
+          // has one canonical repository transaction. Never claim a fake delete success.
+          return { statusCode: 409, body: { success: false, error: { code: 'PROPERTY_HARD_DELETE_NOT_AVAILABLE', message: 'حذف الوحدة غير متاح حاليًا؛ استخدم الأرشفة للحفاظ على الحجوزات المرتبطة.' }, timestamp } };
         }
 
         // --- F. Generic Valid Protected Owner Route Fallback ---
@@ -1391,6 +1458,26 @@ export class ExpressServerApp {
         requireRole(jwt, ['ROLE_ADMIN']); // Strictly block ROLE_OWNER with 403
 
         const adminId = jwt.sub;
+
+        // Keep a failed canonical Admin read distinct from a successful "not found".
+        // Admin property routes must never translate a database outage into 404.
+        const loadAdminProperty = async (propertyId: string): Promise<{ property: any; failure: any | null }> => {
+          try {
+            return { property: await propertyDb.getDetailForAdmin(propertyId), failure: null };
+          } catch {
+            return {
+              property: null,
+              failure: {
+                statusCode: 500,
+                body: {
+                  success: false,
+                  error: { code: 'PROPERTY_QUERY_FAILED', message: 'تعذر تحميل بيانات الوحدة. حاول مرة أخرى.' },
+                  timestamp,
+                },
+              },
+            };
+          }
+        };
 
         // ADMIN-TRUTHFUL-STATE-01: the Admin client must validate its
         // persisted access token against the existing canonical Admin
@@ -1514,7 +1601,8 @@ export class ExpressServerApp {
 
         // A1.5. Admin Pending Properties Queue Endpoint — PostgreSQL Driven
         if (path === '/api/v1/admin/properties/pending' && method === 'GET') {
-          const pendingProps = await propertyDb.getPendingForAdmin().catch(() => []);
+          let pendingProps;
+          try { pendingProps = await propertyDb.getPendingForAdmin(); } catch { return { statusCode: 500, body: { success: false, error: { code: 'ADMIN_PROPERTIES_QUEUE_QUERY_FAILED', message: 'تعذر تحميل قائمة مراجعة الوحدات.' }, timestamp } }; }
           return {
             statusCode: 200,
             body: {
@@ -1528,7 +1616,8 @@ export class ExpressServerApp {
         // A1.6a. Admin ALL Properties List — PostgreSQL Driven
         if (path === '/api/v1/admin/properties' && method === 'GET') {
           const statusFilter = searchParams?.get?.('status') || undefined;
-          const allProps = await propertyDb.getAllForAdmin(statusFilter).catch(() => []);
+          let allProps;
+          try { allProps = await propertyDb.getAllForAdmin(statusFilter); } catch { return { statusCode: 500, body: { success: false, error: { code: 'ADMIN_PROPERTIES_QUERY_FAILED', message: 'تعذر تحميل الوحدات.' }, timestamp } }; }
           return {
             statusCode: 200,
             body: {
@@ -1542,14 +1631,17 @@ export class ExpressServerApp {
         // A1.6b. Admin Property Detail — PostgreSQL Driven
         if (path.match(/\/api\/v1\/admin\/properties\/[^/]+$/) && method === 'GET' && !path.endsWith('/pending') && !path.endsWith('/images')) {
           const propertyId = path.split('/')[5];
-          const detail = await propertyDb.getDetailForAdmin(propertyId).catch(() => null);
+          const propRead = await loadAdminProperty(propertyId);
+          if (propRead.failure) return propRead.failure;
+          const detail = propRead.property;
           if (!detail) {
             return {
               statusCode: 404,
               body: { success: false, error: { code: 'PROPERTY_NOT_FOUND', message: 'الوحدة غير موجودة' }, timestamp },
             };
           }
-          const images = await imageDb.getImagesByPropertyId(propertyId).catch(() => []);
+          let images: any[];
+          try { images = await imageDb.getImagesByPropertyId(propertyId); } catch { return { statusCode: 500, body: { success: false, error: { code: 'PROPERTY_IMAGES_QUERY_FAILED', message: 'تعذر تحميل صور الوحدة.' }, timestamp } }; }
           return {
             statusCode: 200,
             body: {
@@ -1563,13 +1655,22 @@ export class ExpressServerApp {
         // A1.6. Admin Property Approve Endpoint — PostgreSQL Driven
         if (path.startsWith('/api/v1/admin/properties/') && path.endsWith('/approve') && method === 'POST') {
           const propertyId = path.split('/')[5];
-          const updated = await propertyDb.updateStatus(propertyId, 'PUBLISHED', 'VERIFIED').catch(() => null);
-          if (!updated) {
+          const propRead = await loadAdminProperty(propertyId);
+          if (propRead.failure) return propRead.failure;
+          const property = propRead.property;
+          if (!property) {
             return {
               statusCode: 404,
               body: { success: false, error: { code: 'PROPERTY_NOT_FOUND', message: 'الوحدة غير موجودة' }, timestamp },
             };
           }
+          try {
+            AdminDomainController.reviewProperty(property as any, 'PUBLISHED');
+          } catch {
+            return { statusCode: 409, body: { success: false, error: { code: 'INVALID_PROPERTY_REVIEW_STATE', message: 'يمكن اعتماد وحدة قيد المراجعة فقط.' }, timestamp } };
+          }
+          const updated = await propertyDb.updateStatus(propertyId, 'PUBLISHED', 'VERIFIED').catch(() => null);
+          if (!updated) return { statusCode: 500, body: { success: false, error: { code: 'PROPERTY_REVIEW_PERSIST_FAILED', message: 'تعذر حفظ قرار المراجعة.' }, timestamp } };
 
           // Notify Owner via PostgreSQL
           await notificationDb.create({
@@ -1738,7 +1839,9 @@ export class ExpressServerApp {
           }
 
           // Get real property from PostgreSQL
-          const prop = await propertyDb.getDetailForAdmin(propertyId).catch(() => null);
+          const propRead = await loadAdminProperty(propertyId);
+          if (propRead.failure) return propRead.failure;
+          const prop = propRead.property;
           if (!prop) {
             return {
               statusCode: 404,
@@ -1746,11 +1849,18 @@ export class ExpressServerApp {
             };
           }
 
-          const newStatus = decision === 'PUBLISHED' ? 'PUBLISHED' : 'REJECTED';
-          const newVerification = decision === 'PUBLISHED' ? 'VERIFIED' : prop.verificationStatus;
+          let transition: any;
+          try {
+            transition = AdminDomainController.reviewProperty(prop as any, decision, reviewNotes);
+          } catch {
+            return { statusCode: 409, body: { success: false, error: { code: 'INVALID_PROPERTY_REVIEW_STATE', message: 'يمكن مراجعة وحدة قيد المراجعة فقط.' }, timestamp } };
+          }
+          const newStatus = transition.status;
+          const newVerification = transition.verificationStatus;
 
           // Persist status change to PostgreSQL
           const updated = await propertyDb.updateStatus(propertyId, newStatus, newVerification).catch(() => null);
+          if (!updated) return { statusCode: 500, body: { success: false, error: { code: 'PROPERTY_REVIEW_PERSIST_FAILED', message: 'تعذر حفظ قرار المراجعة.' }, timestamp } };
 
           // Create notification for owner
           if (decision === 'PUBLISHED') {
@@ -1776,7 +1886,7 @@ export class ExpressServerApp {
             body: {
               success: true,
               data: {
-                property: updated || { id: propertyId, status: newStatus },
+                property: updated,
                 reviewNotes,
                 auditLog: {
                   id: `audit_${Date.now()}`,
@@ -1798,7 +1908,8 @@ export class ExpressServerApp {
         if (path.startsWith('/api/v1/admin/properties/') && path.endsWith('/images') && method === 'GET') {
           const parts = path.split('/');
           const propertyId = parts[5];
-          const images = await imageDb.getImagesByPropertyId(propertyId).catch(() => []);
+          let images: any[];
+          try { images = await imageDb.getImagesByPropertyId(propertyId); } catch { return { statusCode: 500, body: { success: false, error: { code: 'PROPERTY_IMAGES_QUERY_FAILED', message: 'تعذر تحميل صور الوحدة.' }, timestamp } }; }
           return {
             statusCode: 200,
             body: {
@@ -2736,7 +2847,7 @@ export class ExpressServerApp {
         if (path === '/api/v1/customer/properties/search' && method === 'GET') {
           let realProps;
           try {
-            realProps = await propertyDb.getAllForAdmin('PUBLISHED');
+            realProps = await propertyDb.getAllForPublic();
           } catch {
             return {
               statusCode: 500,
@@ -2747,15 +2858,16 @@ export class ExpressServerApp {
               },
             };
           }
-          const formatted = await Promise.all(realProps.map(async (p: any) => {
-            const images = await imageDb.getImagesByPropertyId(p.id).catch(() => []);
-            const imageUrls = images.map((img: any) => img.fileUrl).filter(Boolean);
-            return {
-              ...p,
-              basePricePerNight: Number(p.basePricePerNight || p.pricePerNight || 5000),
-              images: imageUrls,
-            };
-          }));
+          let formatted: any[];
+          try {
+            formatted = await Promise.all(realProps.map(async (p: any) => {
+              const images = await imageDb.getImagesByPropertyId(p.id);
+              const imageUrls = images.map((img: any) => img.fileUrl).filter(Boolean);
+              return { ...p, basePricePerNight: Number(p.basePricePerNight ?? p.pricePerNight), images: imageUrls };
+            }));
+          } catch {
+            return { statusCode: 500, body: { success: false, error: { code: 'PROPERTY_IMAGES_QUERY_FAILED', message: 'تعذر تحميل صور أماكن الإقامة.' }, timestamp } };
+          }
 
           return {
             statusCode: 200,
@@ -2788,7 +2900,7 @@ export class ExpressServerApp {
             };
           }
 
-          if (prop.status !== 'PUBLISHED') {
+          if (prop.status !== 'PUBLISHED' || prop.verificationStatus !== 'VERIFIED') {
             return {
               statusCode: 403,
               body: { success: false, error: { code: 'UNPUBLISHED_PROPERTY', message: 'هذه الوحدة غير معروضة للنشر حالياً' }, timestamp },
@@ -2846,7 +2958,7 @@ export class ExpressServerApp {
             };
           }
 
-          if (prop.status !== 'PUBLISHED') {
+          if (prop.status !== 'PUBLISHED' || prop.verificationStatus !== 'VERIFIED') {
             return {
               statusCode: 403,
               body: { success: false, error: { code: 'UNPUBLISHED_PROPERTY', message: 'هذه الوحدة غير معروضة للنشر حالياً' }, timestamp },
@@ -2861,12 +2973,13 @@ export class ExpressServerApp {
             };
           }
 
-          const images = await imageDb.getImagesByPropertyId(propertyId).catch(() => []);
+          let images: any[];
+          try { images = await imageDb.getImagesByPropertyId(propertyId); } catch { return { statusCode: 500, body: { success: false, error: { code: 'PROPERTY_IMAGES_QUERY_FAILED', message: 'تعذر تحميل صور الوحدة.' }, timestamp } }; }
           const imageUrls = images.map((img: any) => img.fileUrl).filter(Boolean);
           const propWithImages = {
             ...prop,
             basePricePerNight: Number(rawPrice),
-            images: imageUrls.length > 0 ? imageUrls : (Array.isArray(prop.images) ? prop.images : []),
+            images: imageUrls,
           };
           const sanitized = CustomerDomainController.sanitizePropertyForCustomer(propWithImages);
 
@@ -2908,7 +3021,7 @@ export class ExpressServerApp {
             };
           }
 
-          if (prop.status !== 'PUBLISHED') {
+          if (prop.status !== 'PUBLISHED' || prop.verificationStatus !== 'VERIFIED') {
             return {
               statusCode: 403,
               body: { success: false, error: { code: 'CANNOT_QUOTE_UNPUBLISHED_PROPERTY', message: 'لا يمكن حساب سعر لوحدة غير منشورة' }, timestamp },
@@ -3019,7 +3132,7 @@ export class ExpressServerApp {
             };
           }
 
-          if (prop.status !== 'PUBLISHED') {
+          if (prop.status !== 'PUBLISHED' || prop.verificationStatus !== 'VERIFIED') {
             return {
               statusCode: 403,
               body: { success: false, error: { code: 'UNPUBLISHED_PROPERTY', message: 'الوحدة غير متاحة للحجز حالياً' }, timestamp },

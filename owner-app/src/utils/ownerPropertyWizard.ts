@@ -136,6 +136,7 @@ export interface OwnerPropertyWizardDraft {
   origin: 'NEW' | 'EXISTING';
   existingPropertyId?: string;
   canonicalStatus?: PropertyStatus;
+  canonicalVerificationStatus?: Property['verificationStatus'];
   rejectionReason?: string;
 
   title?: string;
@@ -270,6 +271,7 @@ export function hydratePropertyToWizard(property: Property): OwnerPropertyWizard
     origin: 'EXISTING',
     existingPropertyId: property.id,
     canonicalStatus: property.status,
+    canonicalVerificationStatus: property.verificationStatus,
     rejectionReason: property.rejectionReason,
 
     title: property.title || '',

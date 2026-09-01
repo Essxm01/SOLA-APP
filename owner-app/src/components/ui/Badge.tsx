@@ -1,22 +1,26 @@
 import React from 'react';
-import type { PropertyStatus, BookingStatus, VerificationStatus } from '../../types';
+import type { Property, BookingStatus, VerificationStatus } from '../../types';
 import {
   PROPERTY_STATUS_CONFIG,
   BOOKING_STATUS_CONFIG,
   VERIFICATION_STATUS_CONFIG,
 } from '../../constants/theme';
 import { CheckCircle2, AlertCircle, Clock, XCircle } from 'lucide-react';
+import { getPropertyStatusPresentation } from '../../utils/ownerProperties';
 
 interface PropertyStatusChipProps {
-  status: PropertyStatus;
+  property: Property;
   className?: string;
 }
 
 export const PropertyStatusChip: React.FC<PropertyStatusChipProps> = ({
-  status,
+  property,
   className = '',
 }) => {
-  const config = PROPERTY_STATUS_CONFIG[status];
+  const composite = getPropertyStatusPresentation(property);
+  const config = composite.label === 'تحتاج تعديلات'
+    ? { bg: 'bg-rose-50', text: 'text-rose-800', border: 'border-rose-200', label: composite.label }
+    : PROPERTY_STATUS_CONFIG[property.status];
   return (
     <span
       className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold border transition-colors ${config.bg} ${config.text} ${config.border} ${className}`}

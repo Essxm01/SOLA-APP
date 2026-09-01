@@ -11,7 +11,7 @@ permissions:
 
 concurrency:
   group: konfrm-glm-cloud-worker-read-only
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   read-only-repo-test:

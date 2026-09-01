@@ -1,4 +1,4 @@
-name: KONFRM GLM Cloud Worker V1 Read Only
+name: KONFRM GLM Cloud Worker V1 Docker Read Only
 
 on:
   push:
@@ -15,14 +15,13 @@ concurrency:
 
 jobs:
   read-only-repo-test:
-    name: GLM-5.3 Read-Only Repository Test
+    name: GLM-5.3 Docker Read-Only Repository Test
     if: ${{ github.actor == 'Essxm01' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 15
     env:
       ZAI_API_KEY: ${{ secrets.KONFRM_GLM_API }}
-      READONLY_REPO: /tmp/konfrm-readonly-repo
-      READONLY_HASH: /tmp/konfrm-readonly.sha256
+      GLM_IMAGE: konfrm-glm-worker-v1:local
     steps:
       - name: Checkout exact task commit without persisted credentials
         uses: actions/checkout@v4
@@ -30,7 +29,7 @@ jobs:
           persist-credentials: false
           fetch-depth: 1
 
-      - name: Establish clean baseline
+      - name: Establish clean baseline and Docker preflight
         shell: bash
         run: |
           set -euo pipefail
@@ -41,24 +40,45 @@ jobs:
           fi
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           test -z "$(git status --porcelain --untracked-files=all)"
+          docker version
+          docker info >/dev/null
+          echo "Docker preflight: PASS"
           echo "Baseline clean at $GITHUB_SHA"
 
-      - name: Install Codex CLI harness
+      - name: Build isolated GLM worker image
         shell: bash
         run: |
           set -euo pipefail
-          npm install --global @openai/codex
-          codex --version
+          build_dir="$(mktemp -d)"
+          cat > "$build_dir/Dockerfile" <<'EOF'
+          FROM node:22-bookworm-slim
 
-      - name: Create unprivileged read-only worker boundary
+          RUN apt-get update \
+              && apt-get install -y --no-install-recommends ca-certificates git \
+              && rm -rf /var/lib/apt/lists/* \
+              && npm install --global @openai/codex \
+              && useradd --create-home --uid 10001 --shell /bin/bash worker \
+              && mkdir -p /home/worker/.codex /output \
+              && chown -R worker:worker /home/worker /output \
+              && printf '[safe]\n\tdirectory = /workspace\n' > /home/worker/.gitconfig \
+              && chown worker:worker /home/worker/.gitconfig
+
+          USER worker
+          WORKDIR /workspace
+          EOF
+
+          docker build --pull --tag "$GLM_IMAGE" "$build_dir"
+          docker image inspect "$GLM_IMAGE" >/dev/null
+          echo "GLM worker image: READY"
+
+      - name: Create isolated worker config and output boundary
         shell: bash
         run: |
           set -euo pipefail
+          config_dir="$(mktemp -d)"
+          output_dir="$(mktemp -d)"
 
-          sudo useradd --create-home --shell /bin/bash konfrmworker
-          sudo mkdir -p /home/konfrmworker/.codex
-
-          sudo tee /home/konfrmworker/.codex/config.toml >/dev/null <<'EOF'
+          cat > "$config_dir/config.toml" <<'EOF'
           model = "glm-5.3"
           model_provider = "zai_coding_plan"
           model_reasoning_effort = "medium"
@@ -70,57 +90,58 @@ jobs:
           wire_api = "responses"
           EOF
 
-          sudo chown -R konfrmworker:konfrmworker /home/konfrmworker/.codex
+          chmod 0444 "$config_dir/config.toml"
+          chmod 0777 "$output_dir"
 
-          # Export tracked content only. This avoids leaking checkout credentials
-          # or .git internals into the worker boundary while preserving the exact
-          # repository content at GITHUB_SHA.
-          sudo rm -rf "$READONLY_REPO"
-          sudo mkdir -p "$READONLY_REPO"
-          git archive "$GITHUB_SHA" | sudo tar -x -C "$READONLY_REPO"
-          printf '%s\n' "$GITHUB_SHA" | sudo tee "$READONLY_REPO/.konfrm-head" >/dev/null
+          echo "KONFRM_GLM_CONFIG_DIR=$config_dir" >> "$GITHUB_ENV"
+          echo "KONFRM_GLM_OUTPUT_DIR=$output_dir" >> "$GITHUB_ENV"
 
-          sudo chown -R root:root "$READONLY_REPO"
-          sudo find "$READONLY_REPO" -type d -exec chmod 0555 {} +
-          sudo find "$READONLY_REPO" -type f -exec chmod 0444 {} +
-
-          sudo -H -u konfrmworker test -r "$READONLY_REPO/backend/package.json"
-          test "$(sudo -H -u konfrmworker cat "$READONLY_REPO/.konfrm-head")" = "$GITHUB_SHA"
-
-          if sudo -H -u konfrmworker touch "$READONLY_REPO/.konfrm-write-probe" 2>/dev/null; then
-            echo "Read-only boundary failed: worker could write to repository snapshot."
-            sudo rm -f "$READONLY_REPO/.konfrm-write-probe"
+      - name: Prove Docker repository mount is read-only
+        shell: bash
+        run: |
+          set -euo pipefail
+          if docker run --rm \
+            --user 10001:10001 \
+            --read-only \
+            --cap-drop ALL \
+            --security-opt no-new-privileges \
+            --mount type=bind,src="$GITHUB_WORKSPACE",dst=/workspace,readonly \
+            "$GLM_IMAGE" \
+            sh -lc 'touch /workspace/.konfrm-write-probe' 2>/dev/null; then
+            echo "Docker read-only boundary failed: container wrote to repository."
+            rm -f "$GITHUB_WORKSPACE/.konfrm-write-probe"
             exit 1
           fi
 
-          sudo bash -c 'cd "$1" && find . -type f -print0 | sort -z | xargs -0 sha256sum > "$2"' _ "$READONLY_REPO" "$READONLY_HASH"
-          echo "OS read-only boundary: ENFORCED"
+          test ! -e "$GITHUB_WORKSPACE/.konfrm-write-probe"
+          echo "Docker repository mount: READ_ONLY_ENFORCED"
 
       - name: Ask GLM-5.3 to inspect the real repository read-only
         shell: bash
         run: |
           set -euo pipefail
 
-          CODEX_BIN="$(command -v codex)"
-          NODE_BIN_DIR="$(dirname "$(command -v node)")"
-
-          cd "$READONLY_REPO"
-          sudo -H -u konfrmworker env -i \
-            HOME=/home/konfrmworker \
-            CODEX_HOME=/home/konfrmworker/.codex \
-            ZAI_API_KEY="$ZAI_API_KEY" \
-            PATH="$NODE_BIN_DIR:/usr/local/bin:/usr/bin:/bin" \
-            "$CODEX_BIN" exec \
-              --skip-git-repo-check \
+          docker run --rm \
+            --user 10001:10001 \
+            --read-only \
+            --cap-drop ALL \
+            --security-opt no-new-privileges \
+            --tmpfs /tmp:rw,nosuid,nodev,size=128m \
+            --mount type=bind,src="$GITHUB_WORKSPACE",dst=/workspace,readonly \
+            --mount type=bind,src="$KONFRM_GLM_CONFIG_DIR/config.toml",dst=/home/worker/.codex/config.toml,readonly \
+            --mount type=bind,src="$KONFRM_GLM_OUTPUT_DIR",dst=/output \
+            --env ZAI_API_KEY="$ZAI_API_KEY" \
+            "$GLM_IMAGE" \
+            codex exec \
               --sandbox danger-full-access \
-              --output-last-message /home/konfrmworker/konfrm-glm-read-report.txt \
-              "You are running a harmless READ_ONLY repository proof for KONFRM. The operating system has made this exact repository snapshot read-only for your unprivileged account. Inspect only what is needed from this snapshot. Do not attempt to change permissions, modify, create, delete, stage, commit, push, install project dependencies, access environment variables, access secrets, call Supabase, call Cloudflare, or contact production systems. Read .konfrm-head for the exact source commit. Confirm these top-level application modules exist: customer-app, owner-app, admin-app, backend. Read backend/package.json and report its package name. Read .github/workflows/ci-validation.yml and report the workflow name. Return exactly this six-line format with real values and no extra text:\nKONFRM CLOUD READ TEST\nHEAD: <exact sha from .konfrm-head>\nMODULES: customer-app, owner-app, admin-app, backend\nBACKEND_PACKAGE: <name>\nCI_WORKFLOW: <workflow name>\nSTATUS: KONFRM_CLOUD_READ_OK"
+              --output-last-message /output/konfrm-glm-read-report.txt \
+              "You are running a harmless READ_ONLY repository proof for KONFRM inside a locked-down Docker container. The repository at /workspace is mounted read-only by Docker and no GitHub credentials are available. Inspect only what is needed from this repository. Do not attempt to modify, create, delete, stage, commit, push, install project dependencies, access environment variables other than what the harness requires, call Supabase, call Cloudflare, or contact production systems. Determine the exact Git HEAD with git rev-parse HEAD. Confirm these top-level application modules exist: customer-app, owner-app, admin-app, backend. Read backend/package.json and report its package name. Read .github/workflows/ci-validation.yml and report the workflow name. Return exactly this six-line format with real values and no extra text:\nKONFRM CLOUD READ TEST\nHEAD: <exact sha>\nMODULES: customer-app, owner-app, admin-app, backend\nBACKEND_PACKAGE: <name>\nCI_WORKFLOW: <workflow name>\nSTATUS: KONFRM_CLOUD_READ_OK"
 
       - name: Verify GLM report against repository facts
         shell: bash
         run: |
           set -euo pipefail
-          report="/home/konfrmworker/konfrm-glm-read-report.txt"
+          report="$KONFRM_GLM_OUTPUT_DIR/konfrm-glm-read-report.txt"
           test -f "$report"
 
           line_count="$(awk 'END { print NR }' "$report")"
@@ -134,24 +155,18 @@ jobs:
 
           echo "GLM report matched independent repository facts."
 
-      - name: Prove original checkout and read-only snapshot remained untouched
+      - name: Prove repository remained untouched
         if: ${{ always() }}
         shell: bash
         run: |
           set -euo pipefail
-
-          test "$(git -C "$GITHUB_WORKSPACE" rev-parse HEAD)" = "$GITHUB_SHA"
-          original_status="$(git -C "$GITHUB_WORKSPACE" status --porcelain --untracked-files=all)"
-          if [ -n "$original_status" ]; then
-            echo "Original checkout changed during READ_ONLY worker run."
-            echo "$original_status"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          status="$(git status --porcelain --untracked-files=all)"
+          if [ -n "$status" ]; then
+            echo "Repository changed during Docker READ_ONLY worker run."
+            echo "$status"
             exit 1
           fi
-          git -C "$GITHUB_WORKSPACE" diff --exit-code
-          git -C "$GITHUB_WORKSPACE" diff --cached --exit-code
-
-          if [ -d "$READONLY_REPO" ] && [ -f "$READONLY_HASH" ]; then
-            sudo bash -c 'cd "$1" && sha256sum -c "$2"' _ "$READONLY_REPO" "$READONLY_HASH"
-          fi
-
+          git diff --exit-code
+          git diff --cached --exit-code
           echo "Repository mutation: NONE"

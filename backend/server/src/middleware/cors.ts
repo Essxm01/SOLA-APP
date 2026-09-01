@@ -23,12 +23,6 @@ const DEFAULT_EXACT_ALLOWED_ORIGINS = [
   'https://sola-admin-app.pages.dev',
   'https://sola-owner-app.pages.dev',
   'https://sola-customer-app.pages.dev',
-
-  // Legacy Vercel Deployments
-  'https://sola-owner-app.vercel.app',
-  'https://sola-admin-app.vercel.app',
-  'https://sola-customer-app.vercel.app',
-  'https://sola-app.vercel.app',
 ];
 
 /**
@@ -73,11 +67,6 @@ export function isOriginAllowed(origin?: string): boolean {
       hostname.endsWith('.sola-owner-app.pages.dev') ||
       hostname.endsWith('.sola-customer-app.pages.dev')
     ) {
-      return true;
-    }
-
-    // Vercel Preview subdomains (*.vercel.app containing sola)
-    if (hostname.endsWith('.vercel.app') && hostname.includes('sola')) {
       return true;
     }
   } catch {

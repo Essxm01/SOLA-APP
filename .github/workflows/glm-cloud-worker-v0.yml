@@ -1,0 +1,85 @@
+name: KONFRM GLM Cloud Worker V0
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: konfrm-glm-cloud-worker-v0
+  cancel-in-progress: false
+
+jobs:
+  smoke-test:
+    name: GLM-5.3 Cloud Smoke Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      ZAI_API_KEY: ${{ secrets.KONFRM_GLM_API }}
+      CODEX_HOME: ${{ runner.temp }}/konfrm-codex-home
+    steps:
+      - name: Confirm secret is available without exposing it
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${ZAI_API_KEY:-}" ]; then
+            echo "KONFRM_GLM_API is unavailable to this workflow."
+            exit 1
+          fi
+          echo "KONFRM_GLM_API is available."
+
+      - name: Install Codex CLI harness
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --global @openai/codex
+          codex --version
+
+      - name: Configure isolated Z.ai GLM worker
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$CODEX_HOME"
+          cat > "$CODEX_HOME/config.toml" <<'EOF'
+          model = "glm-5.3"
+          model_provider = "zai_coding_plan"
+          model_reasoning_effort = "medium"
+
+          [model_providers.zai_coding_plan]
+          name = "Z.ai Coding Plan"
+          base_url = "https://api.z.ai/api/v1"
+          env_key = "ZAI_API_KEY"
+          wire_api = "responses"
+          EOF
+
+      - name: Run harmless GLM-5.3 cloud probe
+        shell: bash
+        run: |
+          set -euo pipefail
+          workdir="$(mktemp -d)"
+          cd "$workdir"
+
+          codex exec \
+            --skip-git-repo-check \
+            --sandbox read-only \
+            --output-last-message "$RUNNER_TEMP/konfrm-glm-final.txt" \
+            "Return exactly this text and nothing else: KONFRM_CLOUD_GLM_OK"
+
+          result="$(tr -d '\r\n' < "$RUNNER_TEMP/konfrm-glm-final.txt")"
+          if [ "$result" != "KONFRM_CLOUD_GLM_OK" ]; then
+            echo "Unexpected GLM response."
+            exit 1
+          fi
+
+          echo "KONFRM_CLOUD_GLM_OK"
+
+      - name: Confirm repository was never checked out
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -d "$GITHUB_WORKSPACE/.git" ]; then
+            echo "Unexpected repository checkout detected."
+            exit 1
+          fi
+          echo "Repository checkout: NONE"

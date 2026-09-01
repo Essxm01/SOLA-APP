@@ -71,14 +71,14 @@ jobs:
           docker image inspect "$GLM_IMAGE" >/dev/null
           echo "GLM worker image: READY"
 
-      - name: Create isolated worker config and output boundary
+      - name: Create isolated worker state and output boundary
         shell: bash
         run: |
           set -euo pipefail
-          config_dir="$(mktemp -d)"
+          state_dir="$(mktemp -d)"
           output_dir="$(mktemp -d)"
 
-          cat > "$config_dir/config.toml" <<'EOF'
+          cat > "$state_dir/config.toml" <<'EOF'
           model = "glm-5.3"
           model_provider = "zai_coding_plan"
           model_reasoning_effort = "medium"
@@ -90,10 +90,13 @@ jobs:
           wire_api = "responses"
           EOF
 
-          chmod 0444 "$config_dir/config.toml"
+          # Codex may write session/runtime state here, but this directory is
+          # completely separate from the read-only KONFRM repository mount.
+          chmod 0777 "$state_dir"
+          chmod 0644 "$state_dir/config.toml"
           chmod 0777 "$output_dir"
 
-          echo "KONFRM_GLM_CONFIG_DIR=$config_dir" >> "$GITHUB_ENV"
+          echo "KONFRM_GLM_STATE_DIR=$state_dir" >> "$GITHUB_ENV"
           echo "KONFRM_GLM_OUTPUT_DIR=$output_dir" >> "$GITHUB_ENV"
 
       - name: Prove Docker repository mount is read-only
@@ -128,7 +131,7 @@ jobs:
             --security-opt no-new-privileges \
             --tmpfs /tmp:rw,nosuid,nodev,size=128m \
             --mount type=bind,src="$GITHUB_WORKSPACE",dst=/workspace,readonly \
-            --mount type=bind,src="$KONFRM_GLM_CONFIG_DIR/config.toml",dst=/home/worker/.codex/config.toml,readonly \
+            --mount type=bind,src="$KONFRM_GLM_STATE_DIR",dst=/home/worker/.codex \
             --mount type=bind,src="$KONFRM_GLM_OUTPUT_DIR",dst=/output \
             --env ZAI_API_KEY="$ZAI_API_KEY" \
             "$GLM_IMAGE" \

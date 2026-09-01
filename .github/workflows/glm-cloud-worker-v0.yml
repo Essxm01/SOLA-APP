@@ -22,6 +22,7 @@ jobs:
     env:
       ZAI_API_KEY: ${{ secrets.KONFRM_GLM_API }}
       READONLY_REPO: /tmp/konfrm-readonly-repo
+      READONLY_HASH: /tmp/konfrm-readonly.sha256
     steps:
       - name: Checkout exact task commit without persisted credentials
         uses: actions/checkout@v4
@@ -71,25 +72,28 @@ jobs:
 
           sudo chown -R konfrmworker:konfrmworker /home/konfrmworker/.codex
 
-          # Copy the exact checked-out repository into a neutral path that the
-          # unprivileged worker can traverse. Keep every repository file/root
-          # directory owned by root and remove all write permissions.
+          # Export tracked content only. This avoids leaking checkout credentials
+          # or .git internals into the worker boundary while preserving the exact
+          # repository content at GITHUB_SHA.
           sudo rm -rf "$READONLY_REPO"
-          sudo cp -a "$GITHUB_WORKSPACE" "$READONLY_REPO"
+          sudo mkdir -p "$READONLY_REPO"
+          git archive "$GITHUB_SHA" | sudo tar -x -C "$READONLY_REPO"
+          printf '%s\n' "$GITHUB_SHA" | sudo tee "$READONLY_REPO/.konfrm-head" >/dev/null
+
           sudo chown -R root:root "$READONLY_REPO"
           sudo find "$READONLY_REPO" -type d -exec chmod 0555 {} +
           sudo find "$READONLY_REPO" -type f -exec chmod 0444 {} +
 
-          sudo -H -u konfrmworker git config --global --add safe.directory "$READONLY_REPO"
           sudo -H -u konfrmworker test -r "$READONLY_REPO/backend/package.json"
-          test "$(sudo -H -u konfrmworker git -C "$READONLY_REPO" rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(sudo -H -u konfrmworker cat "$READONLY_REPO/.konfrm-head")" = "$GITHUB_SHA"
 
           if sudo -H -u konfrmworker touch "$READONLY_REPO/.konfrm-write-probe" 2>/dev/null; then
-            echo "Read-only boundary failed: worker could write to repository copy."
+            echo "Read-only boundary failed: worker could write to repository snapshot."
             sudo rm -f "$READONLY_REPO/.konfrm-write-probe"
             exit 1
           fi
 
+          sudo bash -c 'cd "$1" && find . -type f -print0 | sort -z | xargs -0 sha256sum > "$2"' _ "$READONLY_REPO" "$READONLY_HASH"
           echo "OS read-only boundary: ENFORCED"
 
       - name: Ask GLM-5.3 to inspect the real repository read-only
@@ -107,9 +111,10 @@ jobs:
             ZAI_API_KEY="$ZAI_API_KEY" \
             PATH="$NODE_BIN_DIR:/usr/local/bin:/usr/bin:/bin" \
             "$CODEX_BIN" exec \
+              --skip-git-repo-check \
               --sandbox danger-full-access \
               --output-last-message /home/konfrmworker/konfrm-glm-read-report.txt \
-              "You are running a harmless READ_ONLY repository proof for KONFRM. The operating system has made this exact checked-out repository copy read-only for your unprivileged account. Inspect only what is needed from this repository. Do not attempt to change permissions, modify, create, delete, stage, commit, push, install project dependencies, access environment variables, access secrets, call Supabase, call Cloudflare, or contact production systems. Determine the exact Git HEAD with git rev-parse HEAD. Confirm these top-level application modules exist: customer-app, owner-app, admin-app, backend. Read backend/package.json and report its package name. Read .github/workflows/ci-validation.yml and report the workflow name. Return exactly this six-line format with real values and no extra text:\nKONFRM CLOUD READ TEST\nHEAD: <exact sha>\nMODULES: customer-app, owner-app, admin-app, backend\nBACKEND_PACKAGE: <name>\nCI_WORKFLOW: <workflow name>\nSTATUS: KONFRM_CLOUD_READ_OK"
+              "You are running a harmless READ_ONLY repository proof for KONFRM. The operating system has made this exact repository snapshot read-only for your unprivileged account. Inspect only what is needed from this snapshot. Do not attempt to change permissions, modify, create, delete, stage, commit, push, install project dependencies, access environment variables, access secrets, call Supabase, call Cloudflare, or contact production systems. Read .konfrm-head for the exact source commit. Confirm these top-level application modules exist: customer-app, owner-app, admin-app, backend. Read backend/package.json and report its package name. Read .github/workflows/ci-validation.yml and report the workflow name. Return exactly this six-line format with real values and no extra text:\nKONFRM CLOUD READ TEST\nHEAD: <exact sha from .konfrm-head>\nMODULES: customer-app, owner-app, admin-app, backend\nBACKEND_PACKAGE: <name>\nCI_WORKFLOW: <workflow name>\nSTATUS: KONFRM_CLOUD_READ_OK"
 
       - name: Verify GLM report against repository facts
         shell: bash
@@ -129,7 +134,7 @@ jobs:
 
           echo "GLM report matched independent repository facts."
 
-      - name: Prove original and read-only repository copy remained untouched
+      - name: Prove original checkout and read-only snapshot remained untouched
         if: ${{ always() }}
         shell: bash
         run: |
@@ -145,16 +150,8 @@ jobs:
           git -C "$GITHUB_WORKSPACE" diff --exit-code
           git -C "$GITHUB_WORKSPACE" diff --cached --exit-code
 
-          if [ -d "$READONLY_REPO/.git" ]; then
-            test "$(sudo git -c safe.directory="$READONLY_REPO" -C "$READONLY_REPO" rev-parse HEAD)" = "$GITHUB_SHA"
-            readonly_status="$(sudo git -c safe.directory="$READONLY_REPO" -C "$READONLY_REPO" status --porcelain --untracked-files=all)"
-            if [ -n "$readonly_status" ]; then
-              echo "Read-only repository copy changed during worker run."
-              echo "$readonly_status"
-              exit 1
-            fi
-            sudo git -c safe.directory="$READONLY_REPO" -C "$READONLY_REPO" diff --exit-code
-            sudo git -c safe.directory="$READONLY_REPO" -C "$READONLY_REPO" diff --cached --exit-code
+          if [ -d "$READONLY_REPO" ] && [ -f "$READONLY_HASH" ]; then
+            sudo bash -c 'cd "$1" && sha256sum -c "$2"' _ "$READONLY_REPO" "$READONLY_HASH"
           fi
 
           echo "Repository mutation: NONE"

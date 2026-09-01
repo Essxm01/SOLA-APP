@@ -20,7 +20,7 @@ jobs:
     timeout-minutes: 10
     env:
       ZAI_API_KEY: ${{ secrets.KONFRM_GLM_API }}
-      CODEX_HOME: ${{ runner.temp }}/konfrm-codex-home
+      CODEX_HOME: /tmp/konfrm-codex-home
     steps:
       - name: Confirm secret is available without exposing it
         shell: bash

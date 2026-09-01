@@ -1,4 +1,4 @@
-name: KONFRM GLM Cloud Worker V0
+name: KONFRM GLM Cloud Worker V1 Read Only
 
 on:
   push:
@@ -10,27 +10,38 @@ permissions:
   contents: read
 
 concurrency:
-  group: konfrm-glm-cloud-worker-v0
+  group: konfrm-glm-cloud-worker-read-only
   cancel-in-progress: false
 
 jobs:
-  smoke-test:
-    name: GLM-5.3 Cloud Smoke Test
+  read-only-repo-test:
+    name: GLM-5.3 Read-Only Repository Test
+    if: ${{ github.actor == 'Essxm01' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 12
     env:
       ZAI_API_KEY: ${{ secrets.KONFRM_GLM_API }}
-      CODEX_HOME: /tmp/konfrm-codex-home
+      CODEX_HOME: /home/runner/.konfrm-codex
     steps:
-      - name: Confirm secret is available without exposing it
+      - name: Checkout exact task commit without persisted credentials
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Establish clean read-only baseline
         shell: bash
         run: |
           set -euo pipefail
+          test "$GITHUB_ACTOR" = "Essxm01"
           if [ -z "${ZAI_API_KEY:-}" ]; then
             echo "KONFRM_GLM_API is unavailable to this workflow."
             exit 1
           fi
-          echo "KONFRM_GLM_API is available."
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test -z "$(git status --porcelain --untracked-files=all)"
+          mkdir -p "$CODEX_HOME"
+          echo "Baseline clean at $GITHUB_SHA"
 
       - name: Install Codex CLI harness
         shell: bash
@@ -43,7 +54,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p "$CODEX_HOME"
           cat > "$CODEX_HOME/config.toml" <<'EOF'
           model = "glm-5.3"
           model_provider = "zai_coding_plan"
@@ -56,33 +66,43 @@ jobs:
           wire_api = "responses"
           EOF
 
-      - name: Run harmless GLM-5.3 cloud probe
+      - name: Ask GLM-5.3 to inspect the real repository read-only
         shell: bash
         run: |
           set -euo pipefail
-          workdir="$(mktemp -d)"
-          cd "$workdir"
-
           codex exec \
-            --skip-git-repo-check \
             --sandbox read-only \
-            --output-last-message "$RUNNER_TEMP/konfrm-glm-final.txt" \
-            "Return exactly this text and nothing else: KONFRM_CLOUD_GLM_OK"
+            --output-last-message "$RUNNER_TEMP/konfrm-glm-read-report.txt" \
+            "You are running a harmless READ_ONLY repository proof for KONFRM. Inspect only what is needed from this checked-out repository. Do not modify, create, delete, stage, commit, push, install project dependencies, access environment variables, access secrets, call Supabase, call Cloudflare, or contact production systems. Determine the exact Git HEAD with git rev-parse HEAD. Confirm these top-level application modules exist: customer-app, owner-app, admin-app, backend. Read backend/package.json and report its package name. Read .github/workflows/ci-validation.yml and report the workflow name. Return exactly this six-line format with real values and no extra text:\nKONFRM CLOUD READ TEST\nHEAD: <exact sha>\nMODULES: customer-app, owner-app, admin-app, backend\nBACKEND_PACKAGE: <name>\nCI_WORKFLOW: <workflow name>\nSTATUS: KONFRM_CLOUD_READ_OK"
 
-          result="$(tr -d '\r\n' < "$RUNNER_TEMP/konfrm-glm-final.txt")"
-          if [ "$result" != "KONFRM_CLOUD_GLM_OK" ]; then
-            echo "Unexpected GLM response."
-            exit 1
-          fi
-
-          echo "KONFRM_CLOUD_GLM_OK"
-
-      - name: Confirm repository was never checked out
+      - name: Verify GLM report against repository facts
         shell: bash
         run: |
           set -euo pipefail
-          if [ -d "$GITHUB_WORKSPACE/.git" ]; then
-            echo "Unexpected repository checkout detected."
+          report="$RUNNER_TEMP/konfrm-glm-read-report.txt"
+          test -f "$report"
+
+          line_count="$(awk 'END { print NR }' "$report")"
+          test "$line_count" -eq 6
+          grep -Fx "KONFRM CLOUD READ TEST" "$report"
+          grep -Fx "HEAD: $GITHUB_SHA" "$report"
+          grep -Fx "MODULES: customer-app, owner-app, admin-app, backend" "$report"
+          grep -Fx "BACKEND_PACKAGE: sola-backend" "$report"
+          grep -Fx "CI_WORKFLOW: SOLA Monorepo CI Validation" "$report"
+          grep -Fx "STATUS: KONFRM_CLOUD_READ_OK" "$report"
+
+          echo "GLM report matched independent repository facts."
+
+      - name: Prove repository remained untouched
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          if [ -n "$(git status --porcelain --untracked-files=all)" ]; then
+            echo "Repository changed during READ_ONLY worker run."
+            git status --short
             exit 1
           fi
-          echo "Repository checkout: NONE"
+          git diff --exit-code
+          git diff --cached --exit-code
+          echo "Repository mutation: NONE"

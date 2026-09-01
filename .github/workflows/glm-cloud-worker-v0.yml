@@ -21,6 +21,7 @@ jobs:
     timeout-minutes: 12
     env:
       ZAI_API_KEY: ${{ secrets.KONFRM_GLM_API }}
+      READONLY_REPO: /tmp/konfrm-readonly-repo
     steps:
       - name: Checkout exact task commit without persisted credentials
         uses: actions/checkout@v4
@@ -70,17 +71,22 @@ jobs:
 
           sudo chown -R konfrmworker:konfrmworker /home/konfrmworker/.codex
 
-          # The worker may read the checkout, but cannot change permissions or files.
-          sudo chown -R root:root "$GITHUB_WORKSPACE"
-          sudo find "$GITHUB_WORKSPACE" -type d -exec chmod a-w {} +
-          sudo find "$GITHUB_WORKSPACE" -type f -exec chmod a-w {} +
+          # Copy the exact checked-out repository into a neutral path that the
+          # unprivileged worker can traverse. Keep every repository file/root
+          # directory owned by root and remove all write permissions.
+          sudo rm -rf "$READONLY_REPO"
+          sudo cp -a "$GITHUB_WORKSPACE" "$READONLY_REPO"
+          sudo chown -R root:root "$READONLY_REPO"
+          sudo find "$READONLY_REPO" -type d -exec chmod 0555 {} +
+          sudo find "$READONLY_REPO" -type f -exec chmod 0444 {} +
 
-          sudo -H -u konfrmworker git config --global --add safe.directory "$GITHUB_WORKSPACE"
-          sudo -H -u konfrmworker test -r "$GITHUB_WORKSPACE/backend/package.json"
+          sudo -H -u konfrmworker git config --global --add safe.directory "$READONLY_REPO"
+          sudo -H -u konfrmworker test -r "$READONLY_REPO/backend/package.json"
+          test "$(sudo -H -u konfrmworker git -C "$READONLY_REPO" rev-parse HEAD)" = "$GITHUB_SHA"
 
-          if sudo -H -u konfrmworker touch "$GITHUB_WORKSPACE/.konfrm-write-probe" 2>/dev/null; then
-            echo "Read-only boundary failed: worker could write to repository."
-            sudo rm -f "$GITHUB_WORKSPACE/.konfrm-write-probe"
+          if sudo -H -u konfrmworker touch "$READONLY_REPO/.konfrm-write-probe" 2>/dev/null; then
+            echo "Read-only boundary failed: worker could write to repository copy."
+            sudo rm -f "$READONLY_REPO/.konfrm-write-probe"
             exit 1
           fi
 
@@ -94,7 +100,7 @@ jobs:
           CODEX_BIN="$(command -v codex)"
           NODE_BIN_DIR="$(dirname "$(command -v node)")"
 
-          cd "$GITHUB_WORKSPACE"
+          cd "$READONLY_REPO"
           sudo -H -u konfrmworker env -i \
             HOME=/home/konfrmworker \
             CODEX_HOME=/home/konfrmworker/.codex \
@@ -103,7 +109,7 @@ jobs:
             "$CODEX_BIN" exec \
               --sandbox danger-full-access \
               --output-last-message /home/konfrmworker/konfrm-glm-read-report.txt \
-              "You are running a harmless READ_ONLY repository proof for KONFRM. The operating system has mounted this repository effectively read-only for your unprivileged account. Inspect only what is needed from this checked-out repository. Do not attempt to change permissions, modify, create, delete, stage, commit, push, install project dependencies, access environment variables, access secrets, call Supabase, call Cloudflare, or contact production systems. Determine the exact Git HEAD with git rev-parse HEAD. Confirm these top-level application modules exist: customer-app, owner-app, admin-app, backend. Read backend/package.json and report its package name. Read .github/workflows/ci-validation.yml and report the workflow name. Return exactly this six-line format with real values and no extra text:\nKONFRM CLOUD READ TEST\nHEAD: <exact sha>\nMODULES: customer-app, owner-app, admin-app, backend\nBACKEND_PACKAGE: <name>\nCI_WORKFLOW: <workflow name>\nSTATUS: KONFRM_CLOUD_READ_OK"
+              "You are running a harmless READ_ONLY repository proof for KONFRM. The operating system has made this exact checked-out repository copy read-only for your unprivileged account. Inspect only what is needed from this repository. Do not attempt to change permissions, modify, create, delete, stage, commit, push, install project dependencies, access environment variables, access secrets, call Supabase, call Cloudflare, or contact production systems. Determine the exact Git HEAD with git rev-parse HEAD. Confirm these top-level application modules exist: customer-app, owner-app, admin-app, backend. Read backend/package.json and report its package name. Read .github/workflows/ci-validation.yml and report the workflow name. Return exactly this six-line format with real values and no extra text:\nKONFRM CLOUD READ TEST\nHEAD: <exact sha>\nMODULES: customer-app, owner-app, admin-app, backend\nBACKEND_PACKAGE: <name>\nCI_WORKFLOW: <workflow name>\nSTATUS: KONFRM_CLOUD_READ_OK"
 
       - name: Verify GLM report against repository facts
         shell: bash
@@ -123,25 +129,32 @@ jobs:
 
           echo "GLM report matched independent repository facts."
 
-      - name: Prove repository remained untouched and restore runner ownership
+      - name: Prove original and read-only repository copy remained untouched
         if: ${{ always() }}
         shell: bash
         run: |
           set -euo pipefail
 
-          actual_head="$(sudo git -c safe.directory="$GITHUB_WORKSPACE" -C "$GITHUB_WORKSPACE" rev-parse HEAD)"
-          test "$actual_head" = "$GITHUB_SHA"
-
-          status="$(sudo git -c safe.directory="$GITHUB_WORKSPACE" -C "$GITHUB_WORKSPACE" status --porcelain --untracked-files=all)"
-          if [ -n "$status" ]; then
-            echo "Repository changed during READ_ONLY worker run."
-            echo "$status"
+          test "$(git -C "$GITHUB_WORKSPACE" rev-parse HEAD)" = "$GITHUB_SHA"
+          original_status="$(git -C "$GITHUB_WORKSPACE" status --porcelain --untracked-files=all)"
+          if [ -n "$original_status" ]; then
+            echo "Original checkout changed during READ_ONLY worker run."
+            echo "$original_status"
             exit 1
           fi
+          git -C "$GITHUB_WORKSPACE" diff --exit-code
+          git -C "$GITHUB_WORKSPACE" diff --cached --exit-code
 
-          sudo git -c safe.directory="$GITHUB_WORKSPACE" -C "$GITHUB_WORKSPACE" diff --exit-code
-          sudo git -c safe.directory="$GITHUB_WORKSPACE" -C "$GITHUB_WORKSPACE" diff --cached --exit-code
+          if [ -d "$READONLY_REPO/.git" ]; then
+            test "$(sudo git -c safe.directory="$READONLY_REPO" -C "$READONLY_REPO" rev-parse HEAD)" = "$GITHUB_SHA"
+            readonly_status="$(sudo git -c safe.directory="$READONLY_REPO" -C "$READONLY_REPO" status --porcelain --untracked-files=all)"
+            if [ -n "$readonly_status" ]; then
+              echo "Read-only repository copy changed during worker run."
+              echo "$readonly_status"
+              exit 1
+            fi
+            sudo git -c safe.directory="$READONLY_REPO" -C "$READONLY_REPO" diff --exit-code
+            sudo git -c safe.directory="$READONLY_REPO" -C "$READONLY_REPO" diff --cached --exit-code
+          fi
+
           echo "Repository mutation: NONE"
-
-          sudo chown -R "$(id -u):$(id -g)" "$GITHUB_WORKSPACE"
-          sudo chmod -R u+rwX "$GITHUB_WORKSPACE"

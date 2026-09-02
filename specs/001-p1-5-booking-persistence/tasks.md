@@ -28,23 +28,24 @@ description: "Adaptive task list template for KONFRM feature implementation"
 - **Single-Writer Sequencing (NON-NEGOTIABLE)**: Exactly ONE writer operates on an active branch/worktree at a time.
 - **Minimal Task Sizing**: Minimum number of execution tasks creating safe, verifiable boundaries without ceremony.
 - **Predecessor Gate**: P1.4 is an unresolved predecessor dependency; implementation dispatch requires published P1.4 baseline.
+- **Atomicity Gate**: `TRANSACTION_MECHANISM_TO_BE_VERIFIED_AT_IMPLEMENTATION_START`. The Worker may map one database-transactional RPC/function exactly; it must not compose independent REST inserts as a transaction.
 
 ---
 
 ## Feature Implementation Tasks
 
-- [ ] T001 [Data-Layer] Implement atomic booking and financial-summary repository methods and Worker REST matchers
+- [ ] T001 [Data-Layer] Verify and implement one database-transactional booking-and-financial-summary operation with a narrow Worker RPC mapping
   - **TASK_ID**: T001
   - **EXECUTOR**: ZCODE
   - **RISK**: HIGH
   - **DEPENDENCIES**: None
-  - **SYSTEMS/FILES**: `backend/server/src/services/dbRepository.ts`, `backend/server/src/services/dbClient.ts`
-  - **HOT_CONTEXT**: `docs/DATABASE.md § Booking/chat`, `docs/BUSINESS_RULES.md § Booking Lifecycle`
-  - **BUSINESS_RULE_REFS**: [MR-12, MR-13]
+  - **SYSTEMS/FILES**: `backend/server/src/services/dbRepository.ts`, `backend/server/src/services/dbClient.ts`, additive database RPC/migration only if the implementation-start gate confirms it
+  - **HOT_CONTEXT**: `docs/DATABASE.md`, `docs/BUSINESS_RULES.md § Booking lifecycle and availability`, `docs/codex/KONFRM_MASTER_RULES.md [MR-07, MR-08, MR-12, MR-13]`
+  - **BUSINESS_RULE_REFS**: [MR-07, MR-08, MR-12, MR-13]
   - **LIVE_MUTATION**: NO
   - **CODEX_GATE**: NO
   - **FOUNDER_DECISION_REQUIRED**: NO
-  - **REQUIRED_EVIDENCE**: Unit tests pass for repository methods and Worker REST matchers with zero synthetic fallbacks
+  - **REQUIRED_EVIDENCE**: Unit tests prove one transactionally atomic operation; Worker tests prove one exact RPC mapping and zero synthetic fallbacks. No independent REST booking/summary write pair may report success.
 
 - [ ] T002 [Backend-API] Harden booking creation and calculation route handlers with fail-closed error handling
   - **TASK_ID**: T002
@@ -52,8 +53,8 @@ description: "Adaptive task list template for KONFRM feature implementation"
   - **RISK**: MEDIUM
   - **DEPENDENCIES**: T001
   - **SYSTEMS/FILES**: `backend/server/src/app.ts`, `backend/server/src/tests/booking011.test.ts`
-  - **HOT_CONTEXT**: `docs/codex/KONFRM_MASTER_RULES.md [MR-12, MR-14]`, `backend/server/src/app.ts:3030-3180`
-  - **BUSINESS_RULE_REFS**: [MR-12, MR-14]
+  - **HOT_CONTEXT**: `docs/codex/KONFRM_MASTER_RULES.md [MR-07, MR-12, MR-13]`, `backend/server/src/app.ts:3110-3260`
+  - **BUSINESS_RULE_REFS**: [MR-07, MR-12, MR-13]
   - **LIVE_MUTATION**: NO
   - **CODEX_GATE**: NO
   - **FOUNDER_DECISION_REQUIRED**: NO

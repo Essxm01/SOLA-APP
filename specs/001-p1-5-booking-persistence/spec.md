@@ -3,7 +3,7 @@
 **Git Branch**: `pilot/spec-kit-p1-5-dry-run`
 **Spec Directory**: `specs/001-p1-5-booking-persistence/`
 **Created**: 2026-09-02
-**Status**: Draft (Planning Dry Run)
+**Status**: Reviewed planning dry run — not dispatched for implementation
 **Macro Roadmap Phase**: PHASE 1 — التدقيق الشامل للبنية التحتية والبيانات الأساسية (Database Backbone & Persistence Integrity)
 **Execution Boundary**: P1.5 — Booking and Financial-Summary Persistence Integrity
 **Affected Role(s)**: BACKEND_ONLY (Read visibility across Customer, Owner, Admin APIs)
@@ -19,7 +19,7 @@ Ensure atomic, truthful, and fail-closed persistence of `bookings` and correspon
 ## 2. Governing Authorities & References
 
 - **Business Invariants**: `docs/BUSINESS_RULES.md` [§ Booking Lifecycle Rules, Pricing & Deposit Invariants]
-- **Master Rules**: `docs/codex/KONFRM_MASTER_RULES.md` [MR-12: Stay bounds & availability; MR-13: Financial snapshot immutability; MR-14: Fail-closed honesty]
+- **Master Rules**: `docs/codex/KONFRM_MASTER_RULES.md` [MR-07: canonical persistence and truthful failures; MR-08: narrow Worker REST/RPC adapter; MR-12: stay bounds, availability, and blocking; MR-13: deposit/commission/Owner-entitlement and Customer-financial-privacy rules]
 - **Architecture & Database**: `docs/DATABASE.md` [§ Booking/chat, Verified persistence constraints]
 - **Execution Map**: `docs/codex/KONFRM_EXECUTION_MAP.md` [§ P1.5]
 
@@ -28,10 +28,10 @@ Ensure atomic, truthful, and fail-closed persistence of `bookings` and correspon
 ## 3. Scope & Non-Goals
 
 ### In Scope
-- Atomic/transactional insertion of `bookings` and `booking_financial_summaries` on booking request.
+- Atomic/transactional insertion of `bookings` and `booking_financial_summaries` on booking request. The Worker must invoke one database-transactional operation; it must not compose independent REST writes.
 - Mathematical and financial parity between quote calculation (`/calculate`) and persisted summary snapshot.
 - Server-side validation of stay length limits (2–30 nights) and check-out > check-in.
-- Worker REST adapter (`dbClient.ts`) query matching and strict HTTP error propagation for all booking/financial SQL.
+- Worker REST adapter (`dbClient.ts`) mapping and strict HTTP error propagation for the selected atomic operation and its necessary canonical reads.
 
 ### Explicit Non-Goals
 - Payment gateway (Paymob) integration or webhook handling (deferred to Phase 10 / P10.1–P10.2).
@@ -85,10 +85,10 @@ When a customer submits a valid booking request for an available property, the b
 
 ## 7. Requirements *(mandatory)*
 
-- **FR-001**: System MUST atomically persist `bookings` row and linked `booking_financial_summaries` row with exact mathematical alignment (`nights * price_per_night + fees = total`).
+- **FR-001**: System MUST atomically persist a `bookings` row and linked `booking_financial_summaries` row with exact server-calculated financial alignment. A reported successful booking creation must never leave an orphan booking or partial financial-summary state.
 - **FR-002**: System MUST enforce global stay duration bounds (min 2 nights, max 30 nights) and check-out > check-in.
 - **FR-003**: System MUST derive `customerId` securely from authenticated JWT claims (`jwt.sub`).
-- **FR-004**: Database failures MUST fail closed with HTTP 500 (`BOOKING_PERSISTENCE_FAILED` / `CALCULATION_FAILED`), never falling back to ephemeral in-memory state.
+- **FR-004**: Database failures MUST fail closed with HTTP 500 (`BOOKING_PERSISTENCE_FAILED` / `CALCULATION_FAILED`), never falling back to ephemeral in-memory state. Compensating REST deletion is not an atomicity substitute.
 
 ---
 
@@ -96,11 +96,12 @@ When a customer submits a valid booking request for an available property, the b
 
 - **FOUNDER_DECISION_REQUIRED**: NONE on product policy.
 - **Predecessor Gate**: P1.4 (`Availability persistence and blocking integrity`) is an unresolved predecessor dependency. P1.5 implementation must branch from or incorporate published P1.4 baseline.
+- **Implementation gate**: `TRANSACTION_MECHANISM_TO_BE_VERIFIED_AT_IMPLEMENTATION_START`. The current Worker adapter cannot make two REST writes atomic. The expected compatible pattern is one narrowly mapped PostgreSQL RPC/function, but its exact contract and rollout compatibility must be verified against the published P1.4 baseline before implementation.
 
 ---
 
 ## 9. Measurable Success Criteria *(mandatory)*
 
 - **SC-001**: Deterministic automated test suite (`backend/server/src/tests/booking01.test.ts` / `booking011.test.ts`) passes covering atomic creation, calculation arithmetic, stay length enforcement, and fail-closed errors.
-- **SC-002**: Worker REST adapter parity verified for all `bookings` and `booking_financial_summaries` SQL queries.
+- **SC-002**: Worker adapter parity verified for the single selected atomic persistence operation and the necessary canonical reads; no independent REST booking/financial-summary write pair remains on the successful creation path.
 - **SC-003**: Zero orphan bookings or partial writes on simulated database failures.

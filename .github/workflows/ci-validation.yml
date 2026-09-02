@@ -130,6 +130,11 @@ jobs:
           npm run test:p13-atomic-media
           npm run test:p12-identity-session
           npm run test:p14-rpc-privileges
+          npm run test:booking-01
+          npm run test:booking-01-1
+          npm run test:p1-4-availability
+          npm run test:p1-4-worker-availability
+          npm run test:p1-4-migration
       - name: Deploy to Cloudflare Workers
         if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
         uses: cloudflare/wrangler-action@v3

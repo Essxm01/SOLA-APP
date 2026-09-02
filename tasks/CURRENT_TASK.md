@@ -1,402 +1,140 @@
-# P1.3 — Reconcile Current Main + Close Migration 024 Ambiguity Blocker
+# P1.4 — Targeted Correction Pass
 
-**Parent macro phase:** PHASE 1 — Database Backbone  
-**Status:** Open — implementation blocker + Git reconciliation required  
-**Execution owner:** Z Code Desktop (primary heavy implementation engineer)  
-**Single writer:** Z Code only after this task handoff  
-**PR:** #1 (`validation/p1-3-rc` → `main`)  
-**Current protected main:** `7c9c639a97092db37924aee8f9a53a9f7ecbb843`  
-**Original P1.3 implementation head:** `b534cde247a0285006ed3ad23ccc38f839b25185`  
-**Old P1.3 merge base:** `92dc3916afe7a8e7d15620efee31afa58e826870`
-
-## Read first — hot context only
-
-Read, in order:
-
-1. `AGENTS.md`
-2. `docs/codex/KONFRM_MASTER_RULES.md`
-3. `docs/CURRENT_STATE.md`
-4. this file: `tasks/CURRENT_TASK.md`
-5. the exact implementation/test files named below
-
-Do not bulk-read unrelated documentation unless a concrete conflict requires it.
+TASK_ID: P1.4-CORRECTION
+STAGE: TARGETED_CORRECTION
+EXECUTOR: ZCODE
+WRITER: ZCODE_ONLY
+BRANCH: validation/p1-4-rc
+BASE_MAIN_SHA: fb38414d9076f89083bdc680e48e1a0b0329be06
+PREVIOUS_CANDIDATE_SHA: b6254dd7c31ab601ea4542ebbbfd973c44c98f94
+PR: 5
+LIVE_MUTATION: FORBIDDEN
+CODEX: DO_NOT_USE_UNTIL_FINAL_REVIEW
 
 ## Objective
-
-Complete one tightly scoped P1.3 correction:
-
-1. Reconcile the existing P1.3 candidate safely onto the current protected `main` after the Vercel cleanup/recovery incident.
-2. Fix the confirmed PostgreSQL PL/pgSQL ambiguity in Migration 024.
-3. Add focused regression protection.
-4. Run the required test/fix/retest cycle.
-5. Update PR #1 and stop only after exact-head CI is green.
-
-Do **not** ask Native Codex to investigate, implement, or review during this task. Codex quota is reserved for one final review after this report.
-
-Do **not** start P1.4.
-
-## Expected Git state at handoff
-
-The remote P1.3 branch previously pointed at the original implementation commit:
-
-`b534cde247a0285006ed3ad23ccc38f839b25185`
-
-ChatGPT then added **one orchestration-only commit** that changes only `tasks/CURRENT_TASK.md` so Z Code can consume this task from GitHub.
-
-Therefore, before implementation:
-
-- fetch `origin`
-- inspect `origin/main`
-- inspect `origin/validation/p1-3-rc`
-- verify `b534cde247a0285006ed3ad23ccc38f839b25185` is still an ancestor of the P1.3 branch
-- verify any commit above `b534...` before your work is only the expected task-contract update to `tasks/CURRENT_TASK.md`
-- inspect local worktree status
-
-If there are any other unexpected remote commits, local edits, or untracked files that could be overwritten, stop with `BLOCKED_BY_UNEXPECTED_GIT_STATE` and report exact evidence.
-
-Known unrelated local-only file, if present:
-
-`KONFRM_FOUNDER_AI_OPERATING_SYSTEM.md`
-
-Do not touch, stage, delete, or commit it.
-
-## Main baseline gate
-
-Before editing, verify:
-
-`origin/main = 7c9c639a97092db37924aee8f9a53a9f7ecbb843`
-
-If `origin/main` moved, stop with:
-
-`MAIN_MOVED_RECONCILIATION_REQUIRED`
-
-Do not blindly rebase onto an unknown newer main.
-
-## Safety backup
-
-Before rewriting P1.3 history, create a **local-only** safety reference/branch pointing to the current remote P1.3 tip.
-
-Do not push the backup branch unless explicitly instructed later.
-
-## Reconciliation requirement
-
-The existing P1.3 work was built from the old base `92dc3916...` while current main is `7c9c639...`.
-
-Rebase the P1.3 work onto current `origin/main` without a merge commit.
-
-Final desired history:
-
-```text
-7c9c639a97092db37924aee8f9a53a9f7ecbb843
-    ↓
-ONE logical P1.3 commit
-```
-
-The orchestration-only task-contract commit added by ChatGPT is **not** intended to remain as a separate final commit. Fold/squash it into the single final P1.3 commit.
-
-Final commit message:
-
-`fix(properties): close P1.3 persistence integrity`
-
-Final parent must be exactly:
-
-`7c9c639a97092db37924aee8f9a53a9f7ecbb843`
-
-Final commit count above current main must be exactly `1`.
-
-## Conflict resolution rule
-
-If rebase conflicts occur, resolve each conflicting hunk surgically. Do not choose whole-file `ours`/`theirs` without inspection.
-
-Preserve both:
-
-- valid P1.3 property/media persistence work
-- current main recovery/Vercel-cleanup state
-
-### Current-main invariants that must survive
-
-Verify after reconciliation:
-
-- `backend/vercel.json` remains absent
-- active backend runtime does not restore `process.env.VERCEL` detection
-- `backend/server/src/middleware/cors.ts` does not restore Vercel production/preview origins
-- `backend/server/src/index.ts` preserves the explicit `NO_SERVER_LISTEN` model
-- `backend/server/src/services/storageProvider.ts` preserves current explicit `OBJECT_STORAGE_PROVIDER` behavior
-
-Historical docs may mention Vercel as legacy/history. Do not delete historical evidence solely because it contains the word Vercel.
-
-If you cannot preserve both P1.3 behavior and current-main invariants safely, stop and report.
-
-# Confirmed blocker — Migration 024
-
-File:
-
-`backend/database/migrations/024_atomic_property_media_commit.sql`
-
-Function:
-
-`public.konfrm_commit_property_media(...)`
-
-Final Native Codex review `#5077163837` found a valid blocker: the function uses `RETURNS TABLE` output names including `id` and `status`, which become PL/pgSQL variables. The function also contains unqualified SQL column references such as `id` and `status`.
-
-Representative collision sites include:
-
-- `upload_intents.id` lookup
-- `property_images.status` predicate
-- `properties.id` predicate
-- `upload_intents` UPDATE `id` and `status` predicates
-
-Migration 024 has **not** been applied live.
-
-## SQL objective
-
-Audit the **entire function**, not only the known examples, and remove every relevant PL/pgSQL variable/output/column ambiguity.
-
-Preserve exactly:
-
-- function inputs
-- `RETURNS TABLE` output contract
-- ownership semantics
-- locking order
-- transaction semantics
-- idempotency/replay behavior
-- error codes
-- unique-index behavior
-- grants
-- service-role execution model
-
-Do not redesign the function.
-
-Prefer explicit table aliases and qualified table-column references, e.g. `ui.id`, `ui.status`, `pi.status`, `p.id`, while keeping PostgreSQL-valid UPDATE syntax. Do not qualify the target column on the left side of `SET` if PostgreSQL does not allow it.
-
-Do not rename public RPC outputs merely to avoid ambiguity. If a public contract change appears necessary, stop and request a Founder decision.
-
-## Inspect before editing SQL
-
-Read:
-
-- full Migration 024 function
-- `backend/server/src/tests/p13AtomicMediaContract.test.ts`
-- runtime caller only as needed to confirm returned shape/error behavior
-
-Identify all possible collisions involving:
-
-- `RETURNS TABLE` output names
-- PL/pgSQL local variables
-- function parameters
-- table columns
-
-## Regression protection
-
-Update:
-
-`backend/server/src/tests/p13AtomicMediaContract.test.ts`
-
-At minimum protect against regression in:
-
-- `upload_intents` id lookup
-- `property_images` status predicate
-- `properties` id predicate
-- `upload_intents` update id predicate
-- `upload_intents` update status predicate
-
-Preserve existing varchar/text compatibility assertions.
-
-A stronger small contract test is allowed if it does not introduce new infrastructure.
-
-## Optional local PostgreSQL proof
-
-Check whether a disposable local PostgreSQL runtime already exists.
-
-If available without installation or live access, run an isolated compile/execution proof for the corrected function.
-
-If unavailable:
-
-- do not install PostgreSQL
-- do not connect to live Supabase
-- do not block completion
-- report `NOT_AVAILABLE`
-
-## Required testing
-
+Correct only the independently verified P1.4 defects below. This is NOT a new investigation and NOT a redesign. Preserve the existing P1.4 architecture, migration 025 concurrency mechanism, product rules, finance rules, booking lifecycle, Owner/Customer contracts, and current main.
+
+## Read hot context only
+1. `AGENTS.md`
+2. `docs/codex/KONFRM_MASTER_RULES.md`
+3. this file
+4. only the exact implementation/tests involved in the corrections below
+
+Do not repeat repository-wide discovery.
+
+## Verified candidate state
+- Base main: `fb38414d9076f89083bdc680e48e1a0b0329be06`
+- Previous P1.4 candidate: `b6254dd7c31ab601ea4542ebbbfd973c44c98f94`
+- PR #5 exact-head CI #154 succeeded on the previous candidate.
+- Migration 025 is candidate-only and MUST remain unapplied during this task.
+- Migration 024 is already live from closed P1.3. Do not report it as unapplied.
+
+## Correction 1 — complete fail-closed response validation
+File: `backend/server/src/services/dbClient.ts`
+
+The booking availability collection matcher currently accepts an HTTP 200 unexpected non-array object by normalizing it to `[raw]`. After filtering this can become `[]` and falsely report full availability.
+
+Required:
+- Collection availability SELECTs must require the expected PostgREST collection response shape.
+- Validate the minimum required row fields used for availability decisions.
+- HTTP 200 malformed/unexpected payloads must THROW and must never become empty availability.
+- Apply equivalent strictness to new `property_availability` collection reads and write-return payloads where required by their contracts.
+- Preserve legitimate empty arrays as valid zero-row results.
+
+Regression proof:
+- HTTP 200 unexpected object/malformed availability payload cannot become `[]`.
+
+## Correction 2 — preserve trigger conflict evidence through Worker adapter
+Files: `backend/server/src/services/dbClient.ts`, `backend/server/src/app.ts`, focused tests.
+
+Current `property_availability` upsert non-2xx error discards the PostgREST response body. Therefore a DB trigger error containing `DATE_COVERED_BY_ACTIVE_BOOKING` can become generic HTTP 500 instead of canonical HTTP 409 `DATE_OVERLAP` in the deployed Worker path.
+
+Required:
+- On non-2xx availability writes, capture bounded error body/evidence sufficient to preserve canonical DB trigger conflict codes.
+- Do not expose unbounded or sensitive response data.
+- Owner manual-block race/conflict against active booking must map to HTTP 409 `DATE_OVERLAP`, not generic 500.
+
+Regression proof:
+- Simulate the real Worker/PostgREST non-2xx trigger-error path and prove `DATE_COVERED_BY_ACTIVE_BOOKING` becomes 409 `DATE_OVERLAP`.
+
+## Correction 3 — reverse race conflict mapping
+Audit the exact Worker booking INSERT/update adapters plus application catches for migration 025's booking-side trigger error `DATE_MANUALLY_BLOCKED`.
+
+Required:
+- If a manual block wins after application precheck but before booking INSERT or blocking-state transition, the expected availability conflict must surface as clean HTTP 409 conflict semantics.
+- Do not convert unrelated DB failures into 409.
+- Preserve existing booking/business semantics.
+
+Add only the minimum focused regression proof required for the actual Worker path(s).
+
+## Correction 4 — strict Owner toggle input validation
+Route: `POST /api/v1/owner/calendar/toggle-block`
+
+Required:
+- Existing action contract is exactly `note: 'BLOCKED' | 'UNBLOCKED'`.
+- Missing/other action -> HTTP 400 before DB write.
+- Validate a real calendar date in exact `YYYY-MM-DD` form.
+- Impossible dates such as `2026-02-31` -> HTTP 400 before DB access.
+- Do not change the frontend contract.
+
+## Non-goals / forbidden
+- Do not redesign migration 025 unless a correction above proves its mechanism invalid.
+- Do not change canonical blocking states or `[checkIn, checkOut)` semantics.
+- Do not change finance/payment/wallet/cancellation/KYC/property rules.
+- Do not implement P1.5.
+- Do not mutate live Supabase/Storage.
+- Do not apply migration 025.
+- Do not deploy manually.
+- Do not push or merge `main`.
+- Do not use Native Codex.
+
+## Required tests
 Run at minimum:
+- `npm --prefix backend run check`
+- `npm --prefix backend run test:booking-01`
+- `npm --prefix backend run test:booking-01-1`
+- `npm --prefix backend run test:p1-4-availability`
+- `npm --prefix backend run test:p1-4-worker-availability`
+- `npm --prefix backend run test:p1-4-migration`
+- `npm --prefix backend run test:p13-worker-adapter`
+- `git diff --check`
 
-```text
-npm --prefix backend run check
-npm --prefix backend run test:p13-atomic-media
-npm --prefix backend run test:p13-property-media
-npm --prefix backend run test:p13-worker-adapter
-git diff --check
-```
+For in-scope failures: diagnose -> fix -> rerun.
 
-Also run focused tests required by any in-scope rebase conflict.
+## Git discipline
+Before editing:
+- fetch origin;
+- verify `origin/main == BASE_MAIN_SHA`;
+- verify task branch contains the exact correction Task Handoff SHA supplied by the launcher;
+- verify `PREVIOUS_CANDIDATE_SHA` is the P1.4 implementation ancestor;
+- stop on unexpected remote/main movement.
 
-For every in-scope failure:
+The correction task-contract commit is orchestration-only. Final history must again be exactly ONE logical P1.4 commit above `BASE_MAIN_SHA`, message:
+`fix(availability): close P1.4 persistence integrity`
 
-`diagnose → fix → rerun`
-
-Do not return the task with a known in-scope failing test.
-
-## Non-goals / forbidden changes
-
-Do not change product or financial policy.
-
-Do not change unrelated:
-
-- booking logic
-- finance/payment/wallet logic
-- availability rules
-- owner lifecycle/KYC rules
-- public visibility rules
-- unrelated UI/apps
-- production configuration except preserving current main behavior
-- P1.4
-
-Do not:
-
-- apply Migration 024 live
-- mutate Supabase
-- mutate Storage
-- manually deploy
-- push `main`
-- merge PR #1
-- invoke Native Codex
-
-## Push / PR gate
-
-After implementation and local verification:
-
-1. ensure final history is exactly one logical P1.3 commit above current main
-2. fetch origin again
-3. verify `origin/main` is still exactly `7c9c639...`
-4. lease-protected force-push **only** `validation/p1-3-rc`
-5. never push `main`
-6. PR #1 should update automatically
-7. wait for exact-head PR CI
-
-Required checks:
-
-- `Detect Changed Modules`
-- `Validate Backend API`
-- `Validate Customer App`
-- `Validate Owner App`
-- `Validate Admin App`
-
-Because this is pull-request validation, Cloudflare production Worker deployment must remain **SKIPPED**.
-
-If the PR remains out-of-date/non-mergeable after the intended reconciliation, diagnose the exact reason before any additional history change.
+Amend/squash the correction contract into that single logical implementation commit. Push only `validation/p1-4-rc`, update PR #5, and wait for exact-head PR CI. Production Worker deploy must remain SKIPPED on pull_request.
 
 ## Stop gate
+Stop only when all four corrections are proven, required tests pass, final history is one logical commit above exact base main, PR #5 exact-head CI is green, production Worker deploy is skipped, and no live mutation occurred.
 
-Stop after all are true:
+Return only a compact:
 
-- safe reconciliation onto current main completed
-- Migration 024 ambiguity fixed
-- regression protection added
-- required local tests pass
-- final history is one logical P1.3 commit above current main
-- exact-head PR CI is green
-- Worker production deploy is confirmed skipped
+`P1.4 CORRECTION REPORT`
 
-Do not request Codex review yourself. Do not merge. Do not deploy. Do not apply Migration 024. Do not start P1.4.
+Include:
+- previous candidate SHA
+- final implementation SHA
+- corrections made
+- regression proofs
+- commit parent/count
+- PR head
+- exact-head CI/checks
+- Worker deploy state
+- Migration 025 state
+- live mutation
+- Codex use
+- final status
 
-## Required final report
-
-Return exactly this structured report:
-
-```text
-P1.3 RECONCILIATION + MIGRATION 024 BLOCKER REPORT
-
-STARTING REMOTE P1.3 TIP:
-...
-
-ORIGINAL P1.3 IMPLEMENTATION SHA:
-b534cde247a0285006ed3ad23ccc38f839b25185
-
-CURRENT MAIN USED:
-7c9c639a97092db37924aee8f9a53a9f7ecbb843
-
-FINAL P1.3 SHA:
-...
-
-REBASE:
-PASS / FAIL
-
-REBASE CONFLICTS:
-...
-
-CURRENT MAIN RECOVERY/VERCEL CLEANUP PRESERVED:
-YES / NO
-
-- backend/vercel.json absent:
-- Vercel runtime detection absent:
-- Vercel CORS origins absent:
-- NO_SERVER_LISTEN preserved:
-- explicit OBJECT_STORAGE_PROVIDER behavior preserved:
-
-ROOT CAUSE OF MIGRATION BLOCKER:
-...
-
-SQL AMBIGUITIES FOUND:
-...
-
-FIX:
-...
-
-FILES CHANGED FOR BLOCKER:
-...
-
-REGRESSION TESTS:
-...
-
-LOCAL POSTGRES PROOF:
-PASS / NOT_AVAILABLE
-
-TESTS:
-command -> result
-
-PARENT OF FINAL P1.3 COMMIT:
-...
-
-COMMIT COUNT ABOVE CURRENT MAIN:
-...
-
-PR:
-#1
-
-PR HEAD:
-...
-
-PR MERGEABILITY:
-...
-
-CI:
-run number / run ID / exact SHA / result
-
-REQUIRED CHECKS:
-Detect Changed Modules ->
-Validate Backend API ->
-Validate Customer App ->
-Validate Owner App ->
-Validate Admin App ->
-
-WORKER PRODUCTION DEPLOY:
-SKIPPED / other
-
-MAIN:
-UNCHANGED DURING TASK
-
-MIGRATION 024 LIVE:
-NOT APPLIED
-
-LIVE MUTATION:
-NONE
-
-CODEX USED:
-NO
-
-FINAL STATUS:
-READY_FOR_FINAL_CODEX_REVIEW
-or
-BLOCKED_<exact reason>
-```
+Final status:
+`READY_FOR_FINAL_CODEX_REVIEW`
+or `BLOCKED_<exact reason>`.

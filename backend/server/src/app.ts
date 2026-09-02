@@ -12,7 +12,7 @@ import { calculateBookingFinancials, validatePayoutRequest, roundHalfEvenInCents
 import { verifyJwtToken, requireRole } from './middleware/auth.js';
 import { applyCorsHeaders } from './middleware/cors.js';
 import { dbUsersStore, dbOwnersStore, dbAdminUsersStore, dbNotificationsStore, dbOwnerVerificationDocsStore, dbPropertyVerificationDocsStore, dbPropertiesStore, dbBookingsStore, dbPayoutRequestsStore, dbDisputesStore } from './services/authService.js';
-import { userDb, ownerDb, propertyDb, bookingDb, conversationDb, messageDb, isBookingChatEligible, payoutDb, disputeDb, notificationDb, imageDb, uploadIntentDb, adminStatsDb, walletDb } from './services/dbRepository.js';
+import { userDb, ownerDb, propertyDb, bookingDb, conversationDb, messageDb, isBookingChatEligible, payoutDb, disputeDb, notificationDb, imageDb, uploadIntentDb, adminStatsDb, walletDb, propertyAvailabilityDb, getUnifiedUnavailableBlocks } from './services/dbRepository.js';
 import { paymentTxDb, PaymentService, PaymobGateway, verifyPaymobHmacSha512, getPaymentMode } from './services/paymentService.js';
 import { createStorageProvider, IObjectStorageProvider, verifyMagicBytes, computeSha256 } from './services/storageProvider.js';
 import { GLOBAL_MIN_STAY_NIGHTS, GLOBAL_MAX_STAY_NIGHTS, hasDateRangeOverlap, validateStayLength } from './constants/bookingRules.js';
@@ -750,7 +750,7 @@ export class ExpressServerApp {
 
           let blocks: any[];
           try {
-            blocks = await bookingDb.getBlocksByPropertyId(booking.propertyId);
+            blocks = await getUnifiedUnavailableBlocks(booking.propertyId);
           } catch {
             return { statusCode: 500, body: { success: false, error: { code: 'AVAILABILITY_CHECK_FAILED', message: 'تعذر التحقق من توفر التواريخ قبل الموافقة' }, timestamp } };
           }
@@ -762,7 +762,12 @@ export class ExpressServerApp {
           try {
             approved = await bookingDb.updateStatusForOwner(bookingId, ownerId, 'APPROVED_PENDING_PAYMENT');
           } catch (err: any) {
-            return { statusCode: 409, body: { success: false, error: { code: 'APPROVAL_PERSISTENCE_FAILED', message: 'تعذر قبول الطلب لأن التواريخ لم تعد متاحة' }, timestamp } };
+            // A manual block winning the race before the blocking transition is
+            // a clean availability conflict; unrelated DB failures stay 5xx.
+            if (String(err?.message || '').includes('DATE_MANUALLY_BLOCKED')) {
+              return { statusCode: 409, body: { success: false, error: { code: 'DATE_OVERLAP', message: 'تعذر قبول الطلب لأن التواريخ أصبحت محجوبة يدويًا' }, timestamp } };
+            }
+            return { statusCode: 500, body: { success: false, error: { code: 'APPROVAL_PERSISTENCE_FAILED', message: 'تعذر حفظ قرار القبول. حاول مرة أخرى.' }, timestamp } };
           }
           if (!approved) {
             return { statusCode: 409, body: { success: false, error: { code: 'BOOKING_DECISION_CONFLICT', message: 'تمت معالجة هذا الطلب أو تغيّرت حالته' }, timestamp } };
@@ -1437,6 +1442,109 @@ export class ExpressServerApp {
           // Hard delete is intentionally not exposed until its active-booking protection
           // has one canonical repository transaction. Never claim a fake delete success.
           return { statusCode: 409, body: { success: false, error: { code: 'PROPERTY_HARD_DELETE_NOT_AVAILABLE', message: 'حذف الوحدة غير متاح حاليًا؛ استخدم الأرشفة للحفاظ على الحجوزات المرتبطة.' }, timestamp } };
+        }
+
+        // --- P1.4. Owner Calendar Availability (canonical property_availability) ---
+        const toCalendarRecord = (row: any, status: 'AVAILABLE' | 'BOOKED' | 'BLOCKED') => ({
+          id: row.id,
+          propertyId: row.propertyId ?? row.property_id,
+          date: typeof row.date === 'string' ? row.date.slice(0, 10) : String(row.date).slice(0, 10),
+          status,
+          ...(row.customPricePerNight != null ? { customPricePerNight: Number(row.customPricePerNight) } : {}),
+          ...(row.note ? { notes: row.note } : {}),
+          updatedAt: new Date().toISOString(),
+        });
+
+        if (path === '/api/v1/owner/calendar/toggle-block' && method === 'POST') {
+          const { propertyId, date, note } = bodyPayload || {};
+          if (!propertyId || typeof propertyId !== 'string') {
+            return { statusCode: 400, body: { success: false, error: { code: 'MISSING_PROPERTY_ID', message: 'مطلوب معرف الوحدة.' }, timestamp } };
+          }
+          // Exact YYYY-MM-DD form AND a real calendar date (2026-02-31 must
+          // fail before any DB access, not roll over to March).
+          if (typeof date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+            return { statusCode: 400, body: { success: false, error: { code: 'INVALID_AVAILABILITY_DATE', message: 'صيغة التاريخ غير صحيحة.' }, timestamp } };
+          }
+          const parsedDate = new Date(`${date}T00:00:00Z`);
+          if (isNaN(parsedDate.getTime()) || parsedDate.toISOString().slice(0, 10) !== date) {
+            return { statusCode: 400, body: { success: false, error: { code: 'INVALID_AVAILABILITY_DATE', message: 'التاريخ المحدد غير صالح.' }, timestamp } };
+          }
+          // Existing client contract is exactly note: 'BLOCKED' | 'UNBLOCKED'.
+          if (note !== 'BLOCKED' && note !== 'UNBLOCKED') {
+            return { statusCode: 400, body: { success: false, error: { code: 'INVALID_AVAILABILITY_ACTION', message: 'الإجراء المطلوب هو BLOCKED أو UNBLOCKED.' }, timestamp } };
+          }
+          const blocked = note === 'BLOCKED';
+
+          const propertyRead = await loadOwnerProperty(propertyId);
+          if (propertyRead.failure) return propertyRead.failure;
+          const property = propertyRead.property;
+          if (!property) return { statusCode: 404, body: { success: false, error: { code: 'PROPERTY_NOT_FOUND', message: 'الوحدة غير موجودة.' }, timestamp } };
+          if (property.ownerId !== ownerId) return { statusCode: 403, body: { success: false, error: { code: 'FORBIDDEN_PROPERTY_ACCESS', message: 'غير مصرح بإدارة توفر هذه الوحدة.' }, timestamp } };
+
+          let record: any;
+          try {
+            record = await propertyAvailabilityDb.setBlockedForDate(propertyId, date, blocked, note);
+          } catch (err: any) {
+            // The DB trigger rejects blocking a night covered by an active booking.
+            if (String(err?.message || '').includes('DATE_COVERED_BY_ACTIVE_BOOKING')) {
+              return { statusCode: 409, body: { success: false, error: { code: 'DATE_OVERLAP', message: 'لا يمكن حظر ليلة محجوزة بحجز نشط.' }, timestamp } };
+            }
+            return { statusCode: 500, body: { success: false, error: { code: 'AVAILABILITY_WRITE_FAILED', message: 'تعذر حفظ حالة التوفر. حاول مرة أخرى.' }, timestamp } };
+          }
+          if (!record) return { statusCode: 500, body: { success: false, error: { code: 'AVAILABILITY_WRITE_FAILED', message: 'تعذر حفظ حالة التوفر. حاول مرة أخرى.' }, timestamp } };
+
+          return {
+            statusCode: 200,
+            body: { success: true, data: toCalendarRecord(record, record.isBooked ? 'BLOCKED' : 'AVAILABLE'), timestamp },
+          };
+        }
+
+        if (path.match(/^\/api\/v1\/owner\/calendar\/[^/]+$/) && method === 'GET') {
+          const propertyId = path.split('/')[5];
+
+          const propertyRead = await loadOwnerProperty(propertyId);
+          if (propertyRead.failure) return propertyRead.failure;
+          const property = propertyRead.property;
+          if (!property) return { statusCode: 404, body: { success: false, error: { code: 'PROPERTY_NOT_FOUND', message: 'الوحدة غير موجودة.' }, timestamp } };
+          if (property.ownerId !== ownerId) return { statusCode: 403, body: { success: false, error: { code: 'FORBIDDEN_PROPERTY_ACCESS', message: 'غير مصرح بعرض توفر هذه الوحدة.' }, timestamp } };
+
+          let manualRows: any[];
+          let bookingBlocks: any[];
+          try {
+            [manualRows, bookingBlocks] = await Promise.all([
+              propertyAvailabilityDb.getByPropertyId(propertyId),
+              bookingDb.getBlocksByPropertyId(propertyId),
+            ]);
+          } catch {
+            return { statusCode: 500, body: { success: false, error: { code: 'AVAILABILITY_QUERY_FAILED', message: 'تعذر تحميل تقويم التوفر.' }, timestamp } };
+          }
+
+          // Active booking intervals expand to booked nights [checkIn, checkOut).
+          const bookedByDate = new Map<string, any>();
+          for (const b of bookingBlocks) {
+            const inStr = (typeof b.checkIn === 'string' ? b.checkIn : new Date(b.checkIn).toISOString()).slice(0, 10);
+            const outStr = (typeof b.checkOut === 'string' ? b.checkOut : new Date(b.checkOut).toISOString()).slice(0, 10);
+            const cursor = new Date(`${inStr}T00:00:00Z`);
+            const end = new Date(`${outStr}T00:00:00Z`);
+            while (cursor < end) {
+              bookedByDate.set(cursor.toISOString().slice(0, 10), b);
+              cursor.setUTCDate(cursor.getUTCDate() + 1);
+            }
+          }
+          const manualByDate = new Map(manualRows.map((r: any) => [r.date, r]));
+          const dates = [...new Set([...bookedByDate.keys(), ...manualByDate.keys()])].sort();
+          const records = dates.map((date) => {
+            const manual = manualByDate.get(date);
+            if (bookedByDate.has(date)) {
+              return toCalendarRecord({ ...(manual || {}), id: `booked-${propertyId}-${date}`, propertyId, date }, 'BOOKED');
+            }
+            return toCalendarRecord(manual, manual.isBooked ? 'BLOCKED' : 'AVAILABLE');
+          });
+
+          return {
+            statusCode: 200,
+            body: { success: true, data: records, timestamp },
+          };
         }
 
         // --- F. Generic Valid Protected Owner Route Fallback ---
@@ -2909,7 +3017,7 @@ export class ExpressServerApp {
 
           let blocks: any[];
           try {
-            blocks = await bookingDb.getBlocksByPropertyId(propertyId);
+            blocks = await getUnifiedUnavailableBlocks(propertyId);
           } catch (err: any) {
             return {
               statusCode: 500,
@@ -3038,7 +3146,7 @@ export class ExpressServerApp {
 
           let blocks: any[];
           try {
-            blocks = await bookingDb.getBlocksByPropertyId(propertyId);
+            blocks = await getUnifiedUnavailableBlocks(propertyId);
           } catch (err: any) {
             return {
               statusCode: 500,
@@ -3149,7 +3257,7 @@ export class ExpressServerApp {
 
           let blocks: any[];
           try {
-            blocks = await bookingDb.getBlocksByPropertyId(propertyId);
+            blocks = await getUnifiedUnavailableBlocks(propertyId);
           } catch (err: any) {
             return {
               statusCode: 500,
@@ -3193,6 +3301,14 @@ export class ExpressServerApp {
                 status: 'PENDING_OWNER_APPROVAL',
               });
             } catch (dbErr: any) {
+              // Migration 025's booking trigger rejects INSERTs overlapping a
+              // manual block — a clean availability conflict, not a failure.
+              if (String(dbErr?.message || '').includes('DATE_MANUALLY_BLOCKED')) {
+                return {
+                  statusCode: 409,
+                  body: { success: false, error: { code: 'DATE_OVERLAP', message: 'التواريخ المطلوبة محجوبة حاليًا من قبل مالك الوحدة' }, timestamp },
+                };
+              }
               return {
                 statusCode: 500,
                 body: { success: false, error: { code: 'BOOKING_PERSISTENCE_FAILED', message: 'فشل حفظ طلب الحجز في قاعدة البيانات' }, timestamp },

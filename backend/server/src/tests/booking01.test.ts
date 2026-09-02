@@ -37,7 +37,9 @@ async function captureRestRequest(sql: string, params: any[]): Promise<{ url: st
 }
 
 async function run() {
-  const publishedProperty: any = { status: 'PUBLISHED', maxGuests: 4, basePricePerNight: 5000 };
+  // Canonical bookability gate: PUBLISHED + VERIFIED (matches customer routes).
+  const publishedProperty: any = { status: 'PUBLISHED', verificationStatus: 'VERIFIED', maxGuests: 4, basePricePerNight: 5000 };
+  assert.throws(() => CustomerDomainController.validateCustomerBookingRequest({ ...publishedProperty, verificationStatus: 'UNVERIFIED' }, '2026-11-10', '2026-11-12', 4), /CANNOT_BOOK_UNPUBLISHED_PROPERTY/);
   assert.equal(CustomerDomainController.validateCustomerBookingRequest(publishedProperty, '2026-11-10', '2026-11-12', 4).nights, 2);
   assert.throws(() => CustomerDomainController.validateCustomerBookingRequest(publishedProperty, '2026-11-10', '2026-11-11', 1), /MIN_STAY_NOT_MET/);
   assert.throws(() => CustomerDomainController.validateCustomerBookingRequest(publishedProperty, '2026-11-01', '2026-12-02', 1), /MAX_STAY_EXCEEDED/);

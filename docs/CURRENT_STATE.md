@@ -1,7 +1,7 @@
 # Current project state
 
-**Last updated:** 2026-09-01
-**Repository-state baseline:** P1.2 is published/live-verified at `main`/`origin/main` `92dc3916afe7a8e7d15620efee31afa58e826870`; P1.3 remains an open validation-branch remediation after review found Worker lifecycle and media-atomicity defects in its earlier candidate.
+**Last updated:** 2026-09-03
+**Repository-state baseline:** P1.3 property/media persistence was merged into `main`/`origin/main` at `fb38414d9076f89083bdc680e48e1a0b0329be06` on 2026-09-01. The merge proves repository publication, not unrecorded live schema, Storage, Worker, or Pages state.
 
 ## Current status
 
@@ -9,7 +9,7 @@ The repository contains code and migration evidence for property operations, boo
 
 ## Implemented areas
 
-- **Properties (M03):** owner draft/create, canonical image upload/media records, submission, and Admin property-review queue; owner reads use strict owner-scoped routing.
+- **Properties (M03/P1.3):** owner draft/create, canonical image upload/media records, submission, and Admin property-review queue; P1.3 property/media persistence code is merged. Owner reads use strict owner-scoped routing; cross-app and live-storage acceptance remain separate evidence gates.
 - **Bookings:** Customer request lifecycle, Owner approve/reject, availability protection, and booking-context conversation/message persistence.
 - **Payments:** prototype deposit initiation/completion with canonical financial summaries and migration `019` atomic finalization RPC; no real-money Paymob flow.
 - **Wallet:** Owner wallet/ledger reads use `owner_wallets` and `wallet_ledger_entries`, not property-price reconstruction.
@@ -47,4 +47,4 @@ Read [ARCHITECTURE.md](./ARCHITECTURE.md), [DATABASE.md](./DATABASE.md), and [BU
 
 ## Next work
 
-P1.3 is open on its temporary validation branch. Read `tasks/CURRENT_TASK.md` and [`codex/P1_3_PROPERTY_MEDIA_PERSISTENCE_REPORT.md`](./codex/P1_3_PROPERTY_MEDIA_PERSISTENCE_REPORT.md). Do not publish, merge, deploy, or perform live storage/schema/data operations without separate Founder approval.
+No implementation task is currently dispatched. The next dependency-ordered boundary is **P1.4 — Availability persistence and blocking integrity**: its remote candidate `origin/validation/p1-4-rc` is `67601a1364192f502186da3bd10e9c2fd5eadb54`, one commit above `main`, but is neither merged/published nor an authorization to implement. Read `tasks/CURRENT_TASK.md` before dispatching it. Do not publish, deploy, or perform live storage/schema/data operations without separate Founder approval.

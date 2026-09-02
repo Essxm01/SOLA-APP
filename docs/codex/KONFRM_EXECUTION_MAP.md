@@ -1,6 +1,6 @@
 # KONFRM execution map
 
-> **Active sequence update (2026-09-01):** P14.1 is published/live verified at `5decd03f59f3bd3039e12e00caf234f28def5201`; P1.2 is published/live verified at `92dc3916afe7a8e7d15620efee31afa58e826870`. P1.3 is the active unmerged validation-branch task.
+> **Active sequence update (2026-09-03):** P14.1 is published/live verified at `5decd03f59f3bd3039e12e00caf234f28def5201`; P1.2 is published/live verified at `92dc3916afe7a8e7d15620efee31afa58e826870`; P1.3 is merged into `main` at `fb38414d9076f89083bdc680e48e1a0b0329be06`. The next candidate, P1.4, is not yet published or dispatched.
 
 `خطة عمل التطبيق.txt` supplies the immutable PHASE 0–22 macro roadmap. The **75** detailed execution boundaries below were derived from current repository evidence, dependency boundaries, risk, and independent acceptance scope—not from a target quota. The Phase Zero hardening review split mixed property/availability, booking/financial, role-shell, and E2E boundaries where they require different acceptance evidence; future phases change only when new evidence creates a real dependency or acceptance boundary.
 
@@ -12,8 +12,8 @@
 | P0.2 | Prototype auth/access blocker audit | Customer, Owner, Admin, backend | P0.1 | High | Closed + published at `6d37b458…`; signed-token/role/bootstrap/error evidence in `P0_2_AUTH_ACCESS_REPORT.md` |
 | P1.1 | **PHASE 1** — schema/RLS baseline inventory | DB, Supabase | P0.1 | Critical | Closed + published at `d7462f13…`; Actions #130 / `33305295499` and Worker health succeeded |
 | P1.2 | Identity/session persistence integrity | Backend, DB, all roles | P1.1 | Critical | Closed + published/live-verified at `92dc3916…`; ownership/session tests and staged migration evidence retained |
-| P1.3 | Property and media persistence integrity | Owner, Admin, Customer, DB/storage | P1.1 | Critical | Open on `validation/p1-3-rc`; final remote validation and Founder publication gate remain |
-| P1.4 | Availability persistence and blocking integrity | Customer, Owner, backend, DB | P1.1 | Critical | Preserve/verify; date/blocking tests |
+| P1.3 | Property and media persistence integrity | Owner, Admin, Customer, DB/storage | P1.1 | Critical | Published/merged at `fb38414…`; repository publication is not blanket live Storage/schema acceptance |
+| P1.4 | Availability persistence and blocking integrity | Customer, Owner, backend, DB | P1.1 | Critical | Next dependency-ordered boundary; candidate `67601a1…` exists on `validation/p1-4-rc` but is unmerged and not dispatched |
 | P1.5 | Booking and financial-summary persistence integrity | Backend, DB, all roles | P1.1 | Critical | Preserve/verify; status/quote/idempotency tests |
 | P1.6 | Wallet and immutable-ledger persistence integrity | Backend, DB, Owner/Admin | P1.1 | Critical | Preserve/verify; balance/ledger/privacy tests |
 | P2.1 | **PHASE 2** — public/customer contract audit and error truthfulness | Customer, backend | P1.2–P1.6 | High | Partial; route contract/failure tests |
@@ -86,4 +86,4 @@
 
 ## Next recommended execution phase
 
-**P1.3 property/media persistence integrity.** P14.1 and P1.2 are closed/live verified; P1.3 remains the earliest open prerequisite. Its local migration 024 requires a separate approved migration-first rollout only after final validation and duplicate-active-image preflight.
+**P1.4 availability persistence and blocking integrity.** P1.3 is published/merged at `fb38414…`; P1.4 is the next unresolved prerequisite in the dependency chain. Its candidate is not a published baseline or active task contract, so a Founder-approved dispatch must first establish its exact scope, validation, and any migration/live rollout gates.

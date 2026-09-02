@@ -28,18 +28,16 @@ Agents must never invent, assume, or silently modify product, pricing, booking, 
   - Test and verification strategy.
 - Progressive disclosure and hot context pointers must be used to keep context lean and prevent hallucination.
 
-### IV. Multi-Agent Orchestration & Role Discipline
-The Spec Kit workflow enforces dedicated agent roles to maximize throughput, quality, and quota efficiency:
-- **ChatGPT**: Product & Technical Orchestrator; issues specifications, reviews evidence, decides open design choices, and coordinates execution phases.
-- **Antigravity (`agy`)**: Primary lightweight executor, scout, broad codebase tracer, mechanical bootstrapper, test/regression verifier, and CI/evidence collector.
-- **ZCode (`zcode`)**: Primary heavy implementation engineer for complex backend logic, SQL queries, database migrations, multi-file refactors, and deep debugging.
-- **Codex (`codex`)**: Scarce final review authority and publication gatekeeper; invoked only on final exact candidate heads, never as a routine exploratory implementer.
-- **Single-Writer Rule**: Only one active repository writer operates on a branch or worktree at any given time. Parallelism is permitted solely for read-only scouting or isolated checks.
+### IV. Multi-Agent Orchestration & Single-Writer Discipline
+The multi-agent workflow operates under strict role separation and authority boundaries:
+- Operational agent roles, model routing, and stage assignments are defined by `AGENTS.md`, active task contracts, and current Founder/orchestrator decisions.
+- **Single-Writer Rule (NON-NEGOTIABLE)**: Only one active repository writer operates on an active branch or worktree at any given time.
+- Parallel execution is permitted solely for read-only scouting, codebase tracing, or isolated checks that cannot mutate the active branch/worktree.
 
 ### V. Business & Data Integrity
 - Supabase PostgreSQL is the sole persistence source of truth (`docs/DATABASE.md`).
 - The Cloudflare Worker SQL-to-Supabase REST compatibility layer (`backend/server/src/services/dbClient.ts`) is narrow and strict; all touched queries must have exact REST mappings and be tested.
-- Persistence failures must fail honestly and fail closed (HTTP 5xx with descriptive error codes); database outages must never masquerade as 404, 403, empty arrays, zero metrics, or synthetic success.
+- Error handling must be truthful and fail closed: validation and domain conflicts return appropriate HTTP 4xx responses; database/infrastructure/dependency failures return HTTP 5xx with descriptive error codes. Database outages must never masquerade as 404, 403, empty arrays, zero metrics, or synthetic success.
 - Cross-app and data-layer side effects (Customer, Owner, Admin, Worker, Database) must be analyzed prior to modifying shared models or endpoints.
 
 ### VI. Evidence-Based Verification Before Closure
@@ -52,9 +50,10 @@ The Spec Kit workflow enforces dedicated agent roles to maximize throughput, qua
   5. Live read-only verification where deployment-sensitive behavior is involved.
 - An agent's self-assertion is evidence to be evaluated, not self-authorizing closure.
 
-### VII. Live Mutation & Publication Boundaries
+### VII. Live Mutation & Publication Gates
 - Database migrations, production Cloudflare Worker deployments, live Supabase/Storage mutations, and `main` branch merges require explicit Founder authorization and phase-specific approval gates.
-- Exact reviewed and verified Git commit SHAs must be preserved through publication (e.g. via lease-protected validation pushes).
+- Publication must be pinned to the exact reviewed PR head using an expected-head/lease gate; no unreviewed candidate changes may enter publication.
+- If a merge legitimately creates a new `main` commit SHA, verify that the resulting tree contains the reviewed candidate changes unchanged as intended, then validate CI/deploy/live state on the resulting `main` SHA.
 
 ### VIII. Role-Specific UX Quality & Design Integrity
 - Customer, Owner, and Admin frontends represent distinct operational roles and must adhere to the design language in `DESIGN_SYSTEM/`:
@@ -73,4 +72,4 @@ This Constitution serves as an operational execution standard below the existing
 
 Any amendment to this constitution requires an explicit Founder-authorized task contract.
 
-**Version**: 1.0.0 | **Ratified**: 2026-09-02 | **Last Amended**: 2026-09-02
+**Version**: 1.1.0 | **Ratified**: 2026-09-02 | **Last Amended**: 2026-09-02

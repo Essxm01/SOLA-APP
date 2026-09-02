@@ -1,101 +1,101 @@
 ---
-description: "Task list template for KONFRM feature implementation"
+description: "Adaptive task list template for KONFRM feature implementation"
 ---
 
 # Tasks: [FEATURE NAME]
 
 **Feature Branch**: `[###-feature-name]`
 **Prerequisites**: `spec.md`, `plan.md`
-**Macro Roadmap Phase**: [e.g. PHASE 1 — Database Backbone / PHASE 3 — Calendar & Availability]
+**Macro Roadmap Phase**: [PHASE N — exact canonical title from خطة عمل التطبيق.txt]
+**Execution Boundary**: [e.g. P1.5 — optional task boundary identifier]
 
 ---
 
-## KONFRM Multi-Agent Dispatch Guidelines
+## KONFRM Multi-Agent Task Dispatch Guidelines
 
-- **Antigravity (`agy`)**: Assigned to lightweight tasks, mechanical setup, codebase scouting, test harnesses, CI verification, and documentation.
+<!--
+  Operational routing guidance for task planning:
+-->
+- **Antigravity (`agy`)**: Assigned to codebase scouting, mechanical setup, long-running verification, focused test harnesses, documentation, and low-complexity edits.
 - **ZCode (`zcode`)**: Assigned to heavy implementation tasks: backend routers, database repositories, Worker REST matchers, SQL migrations, complex refactors, and core debugging.
-- **Codex (`codex`)**: Reserved strictly for final exact-head candidate review gate; NOT assigned as an implementation executor.
-- **Single-Writer Sequencing**: Exactly ONE writer per active branch/worktree. Sequential implementation; parallel execution permitted only for read-only scouting or isolated tests.
+- **Codex (`codex`)**: Reserved strictly for final exact-head candidate review gate; NOT assigned as a routine implementation executor.
+- **Single-Writer Sequencing (NON-NEGOTIABLE)**: Exactly ONE writer operates on an active branch/worktree at a time. Tasks are executed sequentially; read-only scouting may run in parallel only when it cannot mutate the workspace.
+- **Adaptive Task Sizing**: Generate tasks only for impacted surfaces. Do NOT create empty/filler tasks (e.g. no frontend tasks for backend-only work; no migration tasks when schema is untouched).
+- **Testing Policy**: Add or update focused regression/contract tests when required; capture baseline failure when useful and feasible. Do not mandate universal TDD.
 
 ---
 
-## Phase 1: Prerequisite & Environment Setup
+## Task Metadata Specification
 
-**Goal**: Prepare isolated worktree, verify baseline, and establish test harness.
+Every task in the plan must specify its operational metadata:
 
-- [ ] T001 [Setup] Verify baseline commit SHA and clean working tree
+```markdown
+- [ ] T### [Component/Area] Clear task title and specific outcome
+  - **TASK_ID**: T###
+  - **EXECUTOR**: ANTIGRAVITY | ZCODE
+  - **RISK**: LOW | MEDIUM | HIGH
+  - **DEPENDENCIES**: [List previous task IDs, or 'None']
+  - **SYSTEMS/FILES**: [Explicit file paths to create or modify]
+  - **HOT_CONTEXT**: [Minimal essential reference files]
+  - **BUSINESS_RULE_REFS**: [Section/Rule ID from docs/BUSINESS_RULES.md or KONFRM_MASTER_RULES.md, or 'N/A']
+  - **LIVE_MUTATION**: YES | NO
+  - **CODEX_GATE**: YES | NO
+  - **FOUNDER_DECISION_REQUIRED**: YES | NO
+  - **REQUIRED_EVIDENCE**: [Deterministic proof of completion: test output, status code, diff]
+```
+
+---
+
+## Feature Implementation Tasks *(Adaptive to In-Scope Work)*
+
+<!--
+  Group tasks logically by component or user story. Include ONLY the phases and tasks genuinely required.
+  Examples of typical execution phases (omit any unneeded phase):
+-->
+
+### Phase 1: Setup & Baseline Verification *(If workspace prep or test harness needed)*
+
+- [ ] T001 [Setup] Verify baseline commit SHA and workspace cleanliness
   - **TASK_ID**: T001
   - **EXECUTOR**: ANTIGRAVITY
   - **RISK**: LOW
+  - **DEPENDENCIES**: None
   - **HOT_CONTEXT**: `tasks/CURRENT_TASK.md`, `AGENTS.md`
-  - **REQUIRED_EVIDENCE**: Clean `git status`, correct HEAD SHA
-
-- [ ] T002 [Test-Harness] Create or extend focused test harness
-  - **TASK_ID**: T002
-  - **EXECUTOR**: ANTIGRAVITY
-  - **RISK**: LOW
-  - **SYSTEMS/FILES**: `backend/server/src/tests/[feature].test.ts`
-  - **REQUIRED_EVIDENCE**: Test file created with failing assertions for new functionality
-
----
-
-## Phase 2: Core Domain & Data Layer Implementation
-
-**Goal**: Implement database repositories, Worker REST adapter matchers, and backend endpoints.
-
-- [ ] T003 [Data-Layer] Implement repository methods and Worker REST matchers
-  - **TASK_ID**: T003
-  - **EXECUTOR**: ZCODE
-  - **RISK**: HIGH
-  - **DEPENDENCIES**: T001, T002
-  - **SYSTEMS/FILES**: `backend/server/src/services/dbRepository.ts`, `backend/server/src/services/dbClient.ts`
-  - **HOT_CONTEXT**: `docs/DATABASE.md`, `docs/BUSINESS_RULES.md`
-  - **BUSINESS_RULE_REFS**: [BR-## / Section]
   - **LIVE_MUTATION**: NO
-  - **REQUIRED_EVIDENCE**: Unit tests passing for repository and REST adapter
-
-- [ ] T004 [Backend-API] Mount and harden backend HTTP route handlers
-  - **TASK_ID**: T004
-  - **EXECUTOR**: ZCODE
-  - **RISK**: MEDIUM
-  - **DEPENDENCIES**: T003
-  - **SYSTEMS/FILES**: `backend/server/src/app.ts`
-  - **HOT_CONTEXT**: `docs/codex/KONFRM_MASTER_RULES.md`
-  - **BUSINESS_RULE_REFS**: [Rule ID]
-  - **REQUIRED_EVIDENCE**: Route handles happy path, boundary validation, and fail-closed 5xx responses
+  - **CODEX_GATE**: NO
+  - **FOUNDER_DECISION_REQUIRED**: NO
+  - **REQUIRED_EVIDENCE**: Clean working tree and correct baseline HEAD SHA
 
 ---
 
-## Phase 3: Frontend Integration & State Handling
+### Phase 2: Core Implementation *(Include Data, Backend, and/or Frontend tasks as needed)*
 
-**Goal**: Connect frontend components to canonical backend endpoints with all 5 UI states.
-
-- [ ] T005 [Frontend] Wire API client and implement 5-state UI handling
-  - **TASK_ID**: T005
+<!--
+  Example data/backend task (assigned to ZCode for heavy logic):
+-->
+- [ ] T002 [Backend/Data] Implement core logic and required tests
+  - **TASK_ID**: T002
   - **EXECUTOR**: ZCODE
   - **RISK**: MEDIUM
-  - **DEPENDENCIES**: T004
-  - **SYSTEMS/FILES**: `[app]/src/components/...`, `[app]/src/services/...`
-  - **HOT_CONTEXT**: `DESIGN_SYSTEM/`
-  - **REQUIRED_EVIDENCE**: Ideal, empty, loading, error+retry, and unauthorized states functional
+  - **DEPENDENCIES**: T001
+  - **SYSTEMS/FILES**: `[exact/path/to/file.ts]`, `[exact/path/to/test.ts]`
+  - **HOT_CONTEXT**: `docs/codex/KONFRM_MASTER_RULES.md`, `docs/BUSINESS_RULES.md`
+  - **BUSINESS_RULE_REFS**: [BR-##]
+  - **LIVE_MUTATION**: NO
+  - **CODEX_GATE**: NO
+  - **FOUNDER_DECISION_REQUIRED**: NO
+  - **REQUIRED_EVIDENCE**: Automated tests pass cleanly covering happy, boundary, and fail-closed error paths
 
 ---
 
-## Phase 4: Verification, Regression & Quality Gate
+### Phase 3: Verification & Review Gate *(Verification and candidate preparation)*
 
-**Goal**: Execute full test suite, verify non-regression, and prepare review evidence.
-
-- [ ] T006 [Regression] Run full focused test suite and typechecks
-  - **TASK_ID**: T006
+- [ ] T003 [Verification] Run regression checks and prepare review package
+  - **TASK_ID**: T003
   - **EXECUTOR**: ANTIGRAVITY
   - **RISK**: LOW
-  - **DEPENDENCIES**: T003, T004, T005
-  - **REQUIRED_EVIDENCE**: All test suites passing, 0 TypeScript errors, `git diff --check` clean
-
-- [ ] T007 [Review-Gate] Final exact-head review preparation
-  - **TASK_ID**: T007
-  - **EXECUTOR**: ANTIGRAVITY
-  - **RISK**: LOW
+  - **DEPENDENCIES**: T002
+  - **LIVE_MUTATION**: NO
   - **CODEX_GATE**: YES
   - **FOUNDER_DECISION_REQUIRED**: NO
-  - **REQUIRED_EVIDENCE**: Exact candidate commit SHA, push to validation branch, CI pass on exact HEAD
+  - **REQUIRED_EVIDENCE**: Full test suite passing, `git diff --check` clean, exact candidate commit SHA recorded

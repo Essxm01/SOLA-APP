@@ -1,6 +1,6 @@
 # Implementation Plan: P1.5 Booking & Financial Summary Persistence Integrity
 
-**Feature Branch**: `specs/001-p1-5-booking-persistence` | **Date**: 2026-09-02 | **Spec**: `specs/001-p1-5-booking-persistence/spec.md`
+**Git Branch**: `pilot/spec-kit-p1-5-dry-run` | **Spec Directory**: `specs/001-p1-5-booking-persistence/` | **Date**: 2026-09-02 | **Spec**: `specs/001-p1-5-booking-persistence/spec.md`
 **Macro Roadmap Phase**: PHASE 1 — التدقيق الشامل للبنية التحتية والبيانات الأساسية (Database Backbone & Persistence Integrity)
 **Execution Boundary**: P1.5 — Booking and Financial-Summary Persistence Integrity
 **Status**: Draft (Planning Dry Run)

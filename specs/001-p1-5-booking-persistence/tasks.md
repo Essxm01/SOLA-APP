@@ -4,17 +4,19 @@ description: "Adaptive task list template for KONFRM feature implementation"
 
 # Tasks: P1.5 Booking & Financial Summary Persistence Integrity
 
-**Feature Branch**: `specs/001-p1-5-booking-persistence`
+**Git Branch**: `pilot/spec-kit-p1-5-dry-run`
+**Spec Directory**: `specs/001-p1-5-booking-persistence/`
 **Prerequisites**: `spec.md`, `plan.md`
 **Macro Roadmap Phase**: PHASE 1 — التدقيق الشامل للبنية التحتية والبيانات الأساسية (Database Backbone & Persistence Integrity)
 **Execution Boundary**: P1.5 — Booking and Financial-Summary Persistence Integrity
 
 <!-- Execution Handoff Metadata (populated/frozen at dispatch time, not guessed during drafting) -->
-**BASE_SHA**: `fb38414d9076f89083bdc680e48e1a0b0329be06`
-**TASK_HANDOFF_SHA**: `DRY_RUN_NOT_DISPATCHED`
+**BASE_MAIN_SHA**: `fb38414d9076f89083bdc680e48e1a0b0329be06` (canonical published main baseline)
+**DRY_RUN_HANDOFF_SHA**: `08866866fe1b0f0cd51e0d5dc74268ce43c84fa9` (planning dry run branch starting commit)
+**TASK_HANDOFF_SHA**: `DRY_RUN_NOT_DISPATCHED (planning only, no implementation dispatched)`
 **WRITER**: `NONE — PLANNING DRY RUN`
 **LIVE_MUTATION_AUTHORIZED**: `NO`
-**FINAL_REVIEW_REQUIRED**: `YES`
+**FINAL_REVIEW_REQUIRED**: `YES (publication review gate for future implementation)`
 
 ---
 

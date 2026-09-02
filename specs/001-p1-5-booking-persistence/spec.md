@@ -1,6 +1,7 @@
 # Feature Specification: P1.5 Booking & Financial Summary Persistence Integrity
 
-**Feature Branch**: `specs/001-p1-5-booking-persistence`
+**Git Branch**: `pilot/spec-kit-p1-5-dry-run`
+**Spec Directory**: `specs/001-p1-5-booking-persistence/`
 **Created**: 2026-09-02
 **Status**: Draft (Planning Dry Run)
 **Macro Roadmap Phase**: PHASE 1 — التدقيق الشامل للبنية التحتية والبيانات الأساسية (Database Backbone & Persistence Integrity)

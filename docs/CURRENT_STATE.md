@@ -1,7 +1,7 @@
 # Current project state
 
-**Last updated:** 2026-09-01
-**Repository-state baseline:** P1.2 is published/live-verified at `main`/`origin/main` `92dc3916afe7a8e7d15620efee31afa58e826870`; P1.3 remains an open validation-branch remediation after review found Worker lifecycle and media-atomicity defects in its earlier candidate.
+**Last updated:** 2026-09-02
+**Repository-state baseline:** P1.3 is merged to `main`/`origin/main` `fb38414d9076f89083bdc680e48e1a0b0329be06` (property/media persistence integrity, migration `024` candidate unapplied pending its approved preflight). P1.4 (availability persistence & blocking integrity) is the current candidate on `validation/p1-4-rc`.
 
 ## Current status
 
@@ -47,4 +47,4 @@ Read [ARCHITECTURE.md](./ARCHITECTURE.md), [DATABASE.md](./DATABASE.md), and [BU
 
 ## Next work
 
-P1.3 is open on its temporary validation branch. Read `tasks/CURRENT_TASK.md` and [`codex/P1_3_PROPERTY_MEDIA_PERSISTENCE_REPORT.md`](./codex/P1_3_PROPERTY_MEDIA_PERSISTENCE_REPORT.md). Do not publish, merge, deploy, or perform live storage/schema/data operations without separate Founder approval.
+P1.4 (availability persistence & blocking integrity) is the current candidate on its temporary validation branch. Read `tasks/CURRENT_TASK.md`. Do not publish, merge, deploy, or perform live storage/schema/data operations without separate Founder approval.

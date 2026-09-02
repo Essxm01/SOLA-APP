@@ -1551,16 +1551,99 @@ async function queryViaSupabaseRest(text: string, params: any[] | undefined, url
   if (lowerSql.includes('from bookings') && lowerSql.includes('property_id = $1') && !lowerSql.includes('customer_id')) {
     const propId = params?.[0];
     const res = await fetch(`${url}/rest/v1/bookings?property_id=eq.${encodeURIComponent(propId)}&select=check_in,check_out,status`, { headers });
-    const raw: any = await res.json().catch(() => []);
-    const rows: any[] = Array.isArray(raw) ? raw : [];
-    const mapped = rows
-      .filter(b => b && (b.status === 'APPROVED_PENDING_PAYMENT' || b.status === 'CONFIRMED'))
-      .map(b => ({
+    // Availability checks must fail closed: a REST error or unexpected payload
+    // must throw, never silently become an empty (fully available) result.
+    if (!res.ok) {
+      throw new Error(`REST_BOOKING_AVAILABILITY_QUERY_FAILED: HTTP ${res.status}`);
+    }
+    const raw: any = await res.json().catch(() => null);
+    // PostgREST collection SELECTs must return a JSON array; any other 200
+    // shape is unexpected and must throw instead of normalizing to [raw].
+    if (!Array.isArray(raw)) {
+      throw new Error('REST_BOOKING_AVAILABILITY_MALFORMED_RESPONSE: expected a JSON array of booking rows');
+    }
+    for (const b of raw) {
+      if (!b || typeof b.check_in !== 'string' || typeof b.check_out !== 'string' || typeof b.status !== 'string') {
+        throw new Error('REST_BOOKING_AVAILABILITY_MALFORMED_RESPONSE: booking row missing required check_in/check_out/status fields');
+      }
+    }
+    const mapped = raw
+      .filter((b: any) => b.status === 'APPROVED_PENDING_PAYMENT' || b.status === 'CONFIRMED')
+      .map((b: any) => ({
         checkIn: b.check_in,
         checkOut: b.check_out,
         status: b.status,
       }));
     return { rows: mapped, command: 'SELECT', rowCount: mapped.length, oid: 0, fields: [] };
+  }
+
+  // 7A. SELECT property_availability rows for a property (manual blocks + price overrides)
+  if (lowerSql.includes('from property_availability') && lowerSql.includes('property_id = $1') && !lowerSql.includes('insert into')) {
+    const propId = params?.[0];
+    const res = await fetch(`${url}/rest/v1/property_availability?property_id=eq.${encodeURIComponent(propId)}&select=id,property_id,date,is_booked,custom_price_per_night,note&order=date.asc`, { headers });
+    if (!res.ok) {
+      throw new Error(`REST_AVAILABILITY_QUERY_FAILED: HTTP ${res.status}`);
+    }
+    const raw: any = await res.json().catch(() => null);
+    // Collection reads require the PostgREST array shape with decision-grade
+    // fields; an empty array remains a legitimate zero-row result.
+    if (!Array.isArray(raw)) {
+      throw new Error('REST_AVAILABILITY_MALFORMED_RESPONSE: expected a JSON array of availability rows');
+    }
+    for (const r of raw) {
+      if (!r || typeof r.id !== 'string' || typeof r.date !== 'string' || typeof r.is_booked !== 'boolean') {
+        throw new Error('REST_AVAILABILITY_MALFORMED_RESPONSE: availability row missing required id/date/is_booked fields');
+      }
+    }
+    const rows: any[] = raw.map((r: any) => ({
+      id: r.id,
+      propertyId: r.property_id,
+      date: typeof r.date === 'string' ? r.date.slice(0, 10) : r.date,
+      isBooked: r.is_booked === true,
+      customPricePerNight: r.custom_price_per_night ?? null,
+      note: r.note ?? null,
+    }));
+    return { rows, command: 'SELECT', rowCount: rows.length, oid: 0, fields: [] };
+  }
+
+  // 7B-av. INSERT ... ON CONFLICT upsert of one manual availability date.
+  // Never touches custom_price_per_night, so price overrides survive toggles.
+  if (lowerSql.startsWith('insert into property_availability') && lowerSql.includes('on conflict (property_id, date)')) {
+    const bodyPayload: any = {
+      property_id: params?.[0],
+      date: params?.[1],
+      is_booked: params?.[2],
+      note: params?.[3] ?? null,
+    };
+    const res = await fetch(`${url}/rest/v1/property_availability?on_conflict=property_id,date`, {
+      method: 'POST',
+      headers: { ...headers, 'Prefer': 'resolution=merge-duplicates,return=representation' },
+      body: JSON.stringify(bodyPayload),
+    });
+    if (!res.ok) {
+      // Preserve bounded trigger/DB error evidence so canonical conflict codes
+      // (e.g. DATE_COVERED_BY_ACTIVE_BOOKING) survive to the route mapping.
+      const errBody = await res.text().catch(() => '');
+      throw new Error(`REST_AVAILABILITY_UPSERT_FAILED: HTTP ${res.status} — ${errBody.slice(0, 300)}`);
+    }
+    const raw: any = await res.json().catch(() => null);
+    if (!Array.isArray(raw)) {
+      throw new Error('REST_AVAILABILITY_UPSERT_MALFORMED_RESPONSE: expected a JSON array of returned rows');
+    }
+    const rows: any[] = raw.filter(Boolean).map((r: any) => {
+      if (!r || typeof r.id !== 'string' || typeof r.date !== 'string' || typeof r.is_booked !== 'boolean') {
+        throw new Error('REST_AVAILABILITY_UPSERT_MALFORMED_RESPONSE: returned row missing required id/date/is_booked fields');
+      }
+      return {
+        id: r.id,
+        propertyId: r.property_id,
+        date: typeof r.date === 'string' ? r.date.slice(0, 10) : r.date,
+        isBooked: r.is_booked === true,
+        customPricePerNight: r.custom_price_per_night ?? null,
+        note: r.note ?? null,
+      };
+    });
+    return { rows, command: 'INSERT', rowCount: rows.length, oid: 0, fields: [] };
   }
 
   // 7B. SELECT bookings for Customer App (Customer ID or Phone)

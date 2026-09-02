@@ -25,6 +25,9 @@
     "test:p13-property-media": "npx tsx server/src/tests/p13PropertyMedia.test.ts",
     "test:p13-worker-adapter": "npx tsx server/src/tests/p13WorkerAdapter.test.ts",
     "test:p13-atomic-media": "npx tsx server/src/tests/p13AtomicMediaContract.test.ts",
+    "test:p1-4-availability": "npx tsx server/src/tests/p14Availability.test.ts",
+    "test:p1-4-worker-availability": "npx tsx server/src/tests/p14WorkerAvailability.test.ts",
+    "test:p1-4-migration": "npx tsx server/src/tests/p14AvailabilityMigrationContract.test.ts",
     "check": "npx tsc --noEmit"
   },
   "dependencies": {

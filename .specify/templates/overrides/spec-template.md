@@ -102,12 +102,19 @@
 
 ---
 
-## 7. Functional Requirements *(mandatory)*
+## 7. Requirements *(mandatory)*
 
-- **FR-001**: [Specific capability / rule]
-- **FR-002**: [Specific capability / rule]
-- **FR-003**: [Truthful error handling: 4xx for domain/validation conflicts, 5xx for database/dependency failures]
-- **FR-004**: [Authorization: derive roles and identities server-side from JWT claims]
+<!--
+  Generate ONLY requirements directly relevant to the in-scope feature.
+  Do NOT manufacture requirements to fill placeholders.
+  - Include authorization requirements ONLY when an authenticated or role-boundary surface is touched.
+  - Include persistence / fail-closed error handling requirements ONLY when data or dependency behavior is touched.
+-->
+
+- **FR-001**: [Specific capability / functional requirement]
+- **FR-002**: [Specific capability / functional requirement]
+- **FR-###** *(Conditional — if auth surface touched)*: [Authorization: derive roles and identities server-side from JWT claims]
+- **FR-###** *(Conditional — if API/data touched)*: [Truthful error handling: 4xx for domain/validation conflicts, 5xx for database/dependency failures]
 
 ---
 
@@ -121,8 +128,14 @@
 
 ---
 
-## 9. Measurable Success Criteria
+## 9. Measurable Success Criteria *(mandatory)*
 
-- **SC-001**: [Deterministic automated test verification for all in-scope acceptance and failure paths]
-- **SC-002**: [Zero silent fallbacks or fake success on database query errors]
-- **SC-003**: [Worker REST adapter parity verified for every touched SQL query]
+<!--
+  Generate deterministic criteria ONLY for actual in-scope acceptance and failure paths.
+  Do NOT include Worker adapter parity, DB fallback, or UI criteria if those surfaces are untouched.
+-->
+
+- **SC-001**: [Deterministic automated test or verification evidence for all in-scope acceptance and failure paths]
+- **SC-002**: [Exact measurable outcome defining completion of the in-scope objective]
+- **SC-###** *(Conditional — if data layer touched)*: [Worker REST adapter parity verified for every touched SQL query]
+- **SC-###** *(Conditional — if database touched)*: [Zero silent fallbacks or fake success on database query errors]

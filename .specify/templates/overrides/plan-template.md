@@ -67,27 +67,36 @@
 
 ## 6. Verification & Test Strategy
 
-### Automated Test Matrix
-1. **Unit & Behavioral Suites**: `backend/server/src/tests/[test_name].test.ts`
-   - Happy path validation
-   - Boundary condition testing
-   - Truthful error handling (4xx for validation/conflict, 5xx for DB/dependency failures)
-2. **Worker REST Adapter Suite**: Verify exact query matching against mocked Supabase REST (if data layer touched)
-3. **Frontend / Typecheck Verification**: `npm run check` across affected apps (if frontends touched)
-4. **Formatting & Diff Check**: `git diff --check`
+<!--
+  Include ONLY verification checks relevant to genuinely touched systems.
+  Do NOT default every task to full backend + Worker + frontend suites at once.
+-->
 
-### Live & Manual Verification (If Applicable)
-- [Read-only metadata verification steps; note that live mutations/deployments require separate approval gates]
+### In-Scope Verification Checks
+- **Unit / Behavioral Suites** *(Conditional — if backend logic touched)*: `backend/server/src/tests/[test_name].test.ts`
+- **Worker REST Adapter Suite** *(Conditional — if data layer touched)*: Verify exact query matching against mocked Supabase REST
+- **Frontend / Typecheck Suite** *(Conditional — if frontend touched)*: `npm run check` across affected apps
+- **Formatting / Linter Check**: `git diff --check`
+- **Live / Read-Only Verification** *(Conditional — if deployment-sensitive)*: Read-only metadata checks (mutations require separate approval)
+
+### Evidence Compression Guidelines
+- **Passing commands**: Record command + `PASS` + essential identifier (e.g. test name, exit 0).
+- **Failures**: Capture only the relevant failing assertion/error snippet; avoid huge logs.
+- **Log hygiene**: Never paste massive raw successful test logs into conversation context.
+- **CI / Publication Evidence**: Record run ID, exact commit SHA, check conclusions, and deployment status.
 
 ---
 
 ## 7. Context Budget & Hot-Context Pointers
 
 <!--
-  List ONLY the essential files required for the implementation agent.
+  List ONLY the essential files and specific sections required for implementation.
+  - Prefer section pointers over whole-document rereads (e.g. `docs/BUSINESS_RULES.md § Booking Approval`).
+  - Do NOT include generic repo-wide docs unless directly governing the task.
+  - Reference scout/evidence summaries where they replace broad repository rediscovery.
 -->
 - `tasks/CURRENT_TASK.md` (Active task contract)
-- `docs/codex/KONFRM_MASTER_RULES.md`
-- `docs/BUSINESS_RULES.md` [§ Specific section]
-- [Affected implementation files]
-- [Affected test files]
+- `docs/codex/KONFRM_MASTER_RULES.md` [Specific MR-## if directly relevant]
+- [Specific governing rule section in `docs/BUSINESS_RULES.md`]
+- [Exact affected implementation file(s)]
+- [Exact affected test file(s)]

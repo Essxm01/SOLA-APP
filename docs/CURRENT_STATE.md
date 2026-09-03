@@ -1,7 +1,7 @@
 # Current project state
 
 **Last updated:** 2026-09-03
-**Repository-state baseline:** P1.3 property/media persistence was merged into `main`/`origin/main` at `fb38414d9076f89083bdc680e48e1a0b0329be06` on 2026-09-01. The merge proves repository publication, not unrecorded live schema, Storage, Worker, or Pages state.
+**Repository-state baseline:** P1.3 property/media persistence is published and live-verified at `main`/`origin/main` `fb38414d9076f89083bdc680e48e1a0b0329be06`. Migration 024 (`024_atomic_property_media_commit.sql`), the atomic property-media RPC (`public.konfrm_commit_property_media`), and unique index exist live in Supabase.
 
 ## Current status
 
@@ -9,7 +9,7 @@ The repository contains code and migration evidence for property operations, boo
 
 ## Implemented areas
 
-- **Properties (M03/P1.3):** owner draft/create, canonical image upload/media records, submission, and Admin property-review queue; P1.3 property/media persistence code is merged. Owner reads use strict owner-scoped routing; cross-app and live-storage acceptance remain separate evidence gates.
+- **Properties (M03/P1.3):** owner draft/create, canonical image upload/media records, submission, and Admin property-review queue; P1.3 property/media persistence is closed and live-verified (migration 024 applied live). Owner reads use strict owner-scoped routing; cross-app and live-storage acceptance remain separate evidence gates.
 - **Bookings:** Customer request lifecycle, Owner approve/reject, availability protection, and booking-context conversation/message persistence.
 - **Payments:** prototype deposit initiation/completion with canonical financial summaries and migration `019` atomic finalization RPC; no real-money Paymob flow.
 - **Wallet:** Owner wallet/ledger reads use `owner_wallets` and `wallet_ledger_entries`, not property-price reconstruction.

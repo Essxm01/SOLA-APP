@@ -380,16 +380,29 @@ async function queryViaSupabaseRest(text: string, params: any[] | undefined, url
     const ownerId = params?.[0];
     const res = await fetch(`${url}/rest/v1/owner_wallets?owner_id=eq.${encodeURIComponent(ownerId)}`, { headers });
     if (!res.ok) throw new Error(`REST_OWNER_WALLET_SELECT_FAILED: HTTP ${res.status}`);
-    const raw: any = await res.json().catch(() => []);
-    const rows = (Array.isArray(raw) ? raw : []).map((wallet: any) => ({
-      ownerId: wallet.owner_id,
-      currency: wallet.currency,
-      availableBalance: wallet.available_balance,
-      pendingBalance: wallet.pending_balance,
-      heldBalance: wallet.held_balance,
-      reservedForPayout: wallet.reserved_for_payout_balance,
-      updatedAt: wallet.updated_at,
-    }));
+    const raw: any = await res.json().catch(() => null);
+    // Fail closed: a malformed 200 payload must never become a false zero wallet.
+    if (!Array.isArray(raw)) throw new Error('REST_OWNER_WALLET_MALFORMED_RESPONSE: expected a JSON array');
+    const rows = raw.map((wallet: any) => {
+      if (!wallet || typeof wallet.owner_id !== 'string') {
+        throw new Error('REST_OWNER_WALLET_MALFORMED_RESPONSE: wallet row missing required owner_id');
+      }
+      for (const balanceKey of ['available_balance', 'pending_balance', 'held_balance', 'reserved_for_payout_balance']) {
+        const v = wallet[balanceKey];
+        if (v === undefined || v === null || typeof v !== 'number' || !Number.isFinite(v)) {
+          throw new Error(`REST_OWNER_WALLET_MALFORMED_RESPONSE: wallet field ${balanceKey} must be a finite number`);
+        }
+      }
+      return {
+        ownerId: wallet.owner_id,
+        currency: wallet.currency,
+        availableBalance: wallet.available_balance,
+        pendingBalance: wallet.pending_balance,
+        heldBalance: wallet.held_balance,
+        reservedForPayout: wallet.reserved_for_payout_balance,
+        updatedAt: wallet.updated_at,
+      };
+    });
     return { rows, command: 'SELECT', rowCount: rows.length, oid: 0, fields: [] };
   }
 
@@ -403,19 +416,33 @@ async function queryViaSupabaseRest(text: string, params: any[] | undefined, url
     if (/\boffset\s+\$3\b/i.test(sql)) queryUrl += `&offset=${encodeURIComponent(String(params?.[2] ?? 0))}`;
     const res = await fetch(queryUrl, { headers });
     if (!res.ok) throw new Error(`REST_OWNER_WALLET_LEDGER_SELECT_FAILED: HTTP ${res.status}`);
-    const raw: any = await res.json().catch(() => []);
-    const rows = (Array.isArray(raw) ? raw : []).map((entry: any) => ({
-      id: entry.id,
-      ownerId: entry.owner_id,
-      bookingId: entry.booking_id,
-      payoutRequestId: entry.payout_request_id,
-      disputeId: entry.dispute_id,
-      type: entry.transaction_type,
-      amount: entry.amount,
-      newBalance: entry.balance_after,
-      idempotencyKey: entry.idempotency_key,
-      createdAt: entry.created_at,
-    }));
+    const raw: any = await res.json().catch(() => null);
+    // Fail closed: a malformed 200 payload must never become a false empty ledger.
+    if (!Array.isArray(raw)) throw new Error('REST_OWNER_WALLET_LEDGER_MALFORMED_RESPONSE: expected a JSON array');
+    const rows = raw.map((entry: any) => {
+      if (!entry || typeof entry.owner_id !== 'string' || typeof entry.transaction_type !== 'string' || entry.transaction_type === ''
+          || typeof entry.idempotency_key !== 'string' || entry.idempotency_key === '') {
+        throw new Error('REST_OWNER_WALLET_LEDGER_MALFORMED_RESPONSE: ledger row missing required owner/transaction fields');
+      }
+      for (const numericKey of ['amount', 'balance_after']) {
+        const v = entry[numericKey];
+        if (v === undefined || v === null || typeof v !== 'number' || !Number.isFinite(v)) {
+          throw new Error(`REST_OWNER_WALLET_LEDGER_MALFORMED_RESPONSE: ledger field ${numericKey} must be a finite number`);
+        }
+      }
+      return {
+        id: entry.id,
+        ownerId: entry.owner_id,
+        bookingId: entry.booking_id,
+        payoutRequestId: entry.payout_request_id,
+        disputeId: entry.dispute_id,
+        type: entry.transaction_type,
+        amount: entry.amount,
+        newBalance: entry.balance_after,
+        idempotencyKey: entry.idempotency_key,
+        createdAt: entry.created_at,
+      };
+    });
     return { rows, command: 'SELECT', rowCount: rows.length, oid: 0, fields: [] };
   }
 

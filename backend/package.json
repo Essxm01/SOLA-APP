@@ -29,6 +29,7 @@
     "test:p1-4-worker-availability": "npx tsx server/src/tests/p14WorkerAvailability.test.ts",
     "test:p1-4-migration": "npx tsx server/src/tests/p14AvailabilityMigrationContract.test.ts",
     "test:p1-5-atomic-booking": "npx tsx server/src/tests/p15BookingAtomicPersistence.test.ts",
+    "test:p1-6-wallet-ledger": "npx tsx server/src/tests/p16WalletLedgerPersistence.test.ts",
     "check": "npx tsc --noEmit"
   },
   "dependencies": {

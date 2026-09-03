@@ -33,3 +33,7 @@ Read and execute:
 - Do not change booking, payment, commission, payout, cancellation, or release timing rules.
 - Do not implement the Phase 11 payout flow or 24h pending-to-available release in P1.6.
 - Do not broaden into Phase 14 RLS/security remediation; report unrelated observations separately.
+
+## Candidate status (P1.6 in progress)
+
+P1.6 candidate work is on this branch. Migration `027_wallet_ledger_append_only.sql` is REPOSITORY_ONLY_NOT_APPLIED_LIVE and requires separate Founder publication approval. No live Supabase/Storage/Cloudflare mutation occurs during the candidate.

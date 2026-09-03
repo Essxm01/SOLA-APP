@@ -175,7 +175,7 @@ const mockPropertiesSource = [
     id: 'p1',
     title: 'شاليه مراسي فاخر',
     unitType: 'CHALET',
-    propertyType: 'CHALET',
+    propertyType: 'SUMMER_HOUSE',
     address: 'سيدي عبد الرحمن، مراسي',
     region: 'الساحل الشمالي',
     resortName: 'مراسي',
@@ -255,9 +255,12 @@ try {
   const sahel = await propertyDb.searchPublic({ destination: 'الساحل' });
   assert.deepEqual(sahel.map(p => p.id), ['p1', 'p2']);
 
-  // UnitType: exact normalized match
+  // UnitType: exact normalized match against canonical p.unitType only (Codex Blocker 01)
   const chalets = await propertyDb.searchPublic({ unitType: 'chalet' });
-  assert.deepEqual(chalets.map(p => p.id), ['p1']);
+  assert.deepEqual(chalets.map(p => p.id), ['p1'], 'unitType filter must match canonical p.unitType even when propertyType is SUMMER_HOUSE');
+
+  const summerHouses = await propertyDb.searchPublic({ unitType: 'SUMMER_HOUSE' });
+  assert.deepEqual(summerHouses.map(p => p.id), [], 'unitType=SUMMER_HOUSE must NOT match property merely because propertyType is SUMMER_HOUSE');
 
   const villas = await propertyDb.searchPublic({ unitType: 'VILLA' });
   assert.deepEqual(villas.map(p => p.id), ['p2']);

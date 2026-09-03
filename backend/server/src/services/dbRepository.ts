@@ -409,7 +409,7 @@ export const propertyDb = {
     if (filters.unitType) {
       const targetType = filters.unitType.toUpperCase();
       mapped = mapped.filter((p: any) => {
-        const type = (p.propertyType || p.unitType || '').toUpperCase();
+        const type = (p.unitType || '').toUpperCase();
         return type === targetType;
       });
     }

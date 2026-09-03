@@ -1,6 +1,6 @@
 # KONFRM current reality assessment
 
-> **2026-08-31 reconciliation:** P14.1 remains closed/live-verified. P1.2 subsequently published and completed its staged session alignment at `92dc3916afe7a8e7d15620efee31afa58e826870`; the authoritative evidence is [the P1.2 report](./P1_2_IDENTITY_SESSION_PERSISTENCE_REPORT.md). P1.3 remains open on its temporary validation branch after review found in-scope Worker lifecycle and media-atomicity gaps; see [P1.3 report](./P1_3_PROPERTY_MEDIA_PERSISTENCE_REPORT.md).
+> **2026-09-03 reconciliation:** P14.1 remains closed/live-verified. P1.2 published and completed its staged session alignment at `92dc3916afe7a8e7d15620efee31afa58e826870`; the authoritative evidence is [the P1.2 report](./P1_2_IDENTITY_SESSION_PERSISTENCE_REPORT.md). P1.3 is closed and live-verified at `fb38414d9076f89083bdc680e48e1a0b0329be06` (migration 024 and atomic property-media RPC verified applied live in Supabase). Historical validation reports remain preserved; current routing proceeds to P1.4.
 
 **Audited repository baseline:** P0.1 began at `main`/`origin/main` `3acb94e` on 2026-08-29. This is a repository/Git/configuration assessment, not blanket live-production proof.
 

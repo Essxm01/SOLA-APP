@@ -1,13 +1,13 @@
 # KONFRM completion matrix
 
-> **P1.2/P14.1 status (2026-09-01):** P14.1 is published/live verified at `5decd03f59f3bd3039e12e00caf234f28def5201`; P1.2 is subsequently published/live verified at `92dc3916afe7a8e7d15620efee31afa58e826870`.
+> **P1.2/P1.3/P14.1 status (2026-09-03):** P14.1 is published/live verified at `5decd03f59f3bd3039e12e00caf234f28def5201`; P1.2 is published/live verified at `92dc3916afe7a8e7d15620efee31afa58e826870`; P1.3 is published/live verified at `fb38414d9076f89083bdc680e48e1a0b0329be06`.
 
 This is a current acceptance map, not a changelog. “Repository evidence” does not mean live accepted. A row can be **verified** only with concrete applicable functional, data/API, cross-app, failure-state, regression, security/privacy, visual, and live evidence.
 
 | Domain | Execution map | Classification | Customer | Owner | Admin | Backend / DB / Storage | Evidence gap / next gate |
-| --- | --- | --- | --- | --- | --- | --- |
+| --- | --- | --- | --- | --- | --- | --- | --- |
 | Identity and session | P0.2, P1.2, P2.2, P14.3 | Implemented—published/live-verified baseline | Candidate-token bootstrap/public/protected behavior tested | Canonical Owner gate, clear-on-logout, and failure distinction tested | Validated session/shell truthfulness tested | P0.2 published at `6d37b458…`; P1.2 session migration/live verification closed at `92dc3916…` | Broader role/ownership audit remains P2.2/P14.3 work |
-| Property | P1.3, P3.1–P3.3 | Implemented but unverified | Discovery/property detail code exists | Wizard, local/canonical draft and media code have recent commits | Review queue code exists | Property/media persistence and storage contracts exist | Verify current cross-app publication/rejection/media behavior |
+| Property | P1.3, P3.1–P3.3 | Partial — P1.3 published/live-verified baseline | Discovery/property detail code exists | Wizard, local/canonical draft and media code exist | Review queue code exists | P1.3 property/media persistence is published and live-verified at `fb38414…` (migration 024 applied live); broader Phase 3 cross-app publication/rejection acceptance remains separate gate | Verify current cross-app publication/rejection/media behavior |
 | Availability | P1.4, P6.4, P8.2 | Partial | Consumer calendar/quote code exists | Owner calendar controls exist | Operational visibility needs audit | Booking/availability models exist | Fail-closed and competing-request acceptance matrix |
 | Booking | P1.5, P8.1–P8.5 | Implemented but unverified | Request/detail/payment CTA code exists | Home/Bookings migration work exists | Operational review visibility needs audit | Lifecycle, financial summary, conversations exist | Full status propagation and failure/retry acceptance |
 | Payment | P10.1–P10.2 | Implemented but unverified | Prototype customer completion code exists | Confirmed booking/wallet view exists | Monitoring/review needs audit | Atomic finalization RPC, transactions, prototype mode | Live-safe acceptance; no real-money capability claimed |

@@ -923,6 +923,110 @@ try {
 
 console.log('P2.2 Task 6 authenticated favorites routes tests passed.');
 
+// ---------------------------------------------------------------------------
+// 7. Task 7: C3-F4 Real Hydration Regression & Source Contract Tests
+// ---------------------------------------------------------------------------
+const dbRepoPath = path.resolve(process.cwd(), 'server/src/services/dbRepository.ts');
+const dbRepoSrc = fs.readFileSync(dbRepoPath, 'utf8');
+
+// C3-F1 source contract assertions
+assert.doesNotMatch(dbRepoSrc, /bedrooms:\s*Number\([^)]*\)\s*\|\|\s*0/i, 'Must not fabricate bedrooms || 0 in hydrateBooking');
+assert.doesNotMatch(dbRepoSrc, /bathrooms:\s*Number\([^)]*\)\s*\|\|\s*0/i, 'Must not fabricate bathrooms || 0 in hydrateBooking');
+assert.doesNotMatch(dbRepoSrc, /maxGuests:\s*Number\([^)]*\)\s*\|\|\s*0/i, 'Must not fabricate maxGuests || 0 in hydrateBooking');
+
+// Behavioral hydration tests via hydrateBooking
+import { hydrateBooking } from '../services/dbRepository.js';
+
+// Setup stubs for propertyDb.getById and bookingDb.getFinancialSummary
+const origPropGetByIdForHydrate = propertyDb.getById;
+const origFinGetForHydrate = bookingDb.getFinancialSummary;
+try {
+  // Test A: missing bedrooms on property remains undefined / does not become 0
+  (propertyDb as any).getById = async () => ({
+    id: 'e0000000-0000-4000-8000-000000000002',
+    title: 'شاليه',
+    images: ['https://storage.sola.eg/p1.jpg'],
+    address: 'مراسي',
+    // bedrooms missing!
+    bathrooms: 2,
+    maxGuests: 4,
+    pricePerNight: 2000,
+  });
+  (bookingDb as any).getFinancialSummary = async () => ({
+    totalBookingValue: 4000,
+    depositAmount: 2000,
+    remainingBalance: 2000,
+    solaCommissionAmount: 400,
+    ownerNetDepositAmount: 1600,
+  });
+
+  const hydratedMissingBedrooms = await hydrateBooking({
+    id: 'b0000000-0000-4000-8000-000000000001',
+    bookingNumber: 'BK-123456',
+    propertyId: 'e0000000-0000-4000-8000-000000000002',
+    customerId: testCustomerId,
+    guestName: 'عميل',
+    checkIn: '2026-12-20',
+    checkOut: '2026-12-22',
+    nights: 2,
+    guestsCount: 2,
+    status: 'CONFIRMED',
+    createdAt: '2026-09-03T12:00:00.000Z',
+  });
+
+  assert.notEqual(hydratedMissingBedrooms.property.bedrooms, 0, 'Missing bedrooms must NOT be fabricated as 0');
+  assert.throws(
+    () => toCustomerBookingDetailDto(hydratedMissingBedrooms),
+    /CUSTOMER_BOOKING_PROPERTY_DATA/,
+    'Hydrated booking with missing bedrooms must fail closed in toCustomerBookingDetailDto'
+  );
+
+  // Test B: nullish financial values must NOT become numeric 0
+  (propertyDb as any).getById = async () => ({
+    id: 'e0000000-0000-4000-8000-000000000002',
+    title: 'شاليه',
+    images: ['https://storage.sola.eg/p1.jpg'],
+    address: 'مراسي',
+    bedrooms: 2,
+    bathrooms: 2,
+    maxGuests: 4,
+    pricePerNight: 2000,
+  });
+  (bookingDb as any).getFinancialSummary = async () => ({
+    totalBookingValue: 4000,
+    depositAmount: null, // null deposit
+    remainingBalance: 2000,
+    solaCommissionAmount: 400,
+    ownerNetDepositAmount: 1600,
+  });
+
+  const hydratedNullDeposit = await hydrateBooking({
+    id: 'b0000000-0000-4000-8000-000000000001',
+    bookingNumber: 'BK-123456',
+    propertyId: 'e0000000-0000-4000-8000-000000000002',
+    customerId: testCustomerId,
+    guestName: 'عميل',
+    checkIn: '2026-12-20',
+    checkOut: '2026-12-22',
+    nights: 2,
+    guestsCount: 2,
+    status: 'CONFIRMED',
+    createdAt: '2026-09-03T12:00:00.000Z',
+  });
+
+  assert.notEqual(hydratedNullDeposit.depositAmount, 0, 'Null depositAmount must NOT become numeric 0');
+  assert.throws(
+    () => toCustomerBookingDetailDto(hydratedNullDeposit),
+    /CUSTOMER_BOOKING_DATA/,
+    'Hydrated booking with null depositAmount must fail closed in toCustomerBookingDetailDto'
+  );
+} finally {
+  (propertyDb as any).getById = origPropGetByIdForHydrate;
+  (bookingDb as any).getFinancialSummary = origFinGetForHydrate;
+}
+
+console.log('P2.2 Task 7 real hydration regression and source contract tests passed.');
+
 
 
 

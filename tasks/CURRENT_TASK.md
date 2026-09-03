@@ -1,39 +1,32 @@
-# P1.6 — Wallet + Immutable Ledger Persistence Integrity
+# P2.1 — Public API Contract
 
-TASK_ID: P1.6
-STAGE: HEAVY_IMPLEMENTATION_OR_PRESERVE_VERIFY
-EXECUTOR: ZCode
-BRANCH: validation/p1-6-rc
-BASE_MAIN_SHA: 49fb158282ddc0963a29e2236d280dde82c5f197
-P1_5_STATUS: CLOSED_LIVE_VERIFIED
-MIGRATION_026: LIVE_APPLIED_VERIFIED
-LIVE_MUTATION: FORBIDDEN_FOR_P1_6_CANDIDATE
+TASK_ID: P2.1
+STAGE: IMPLEMENTATION_COMPLETE_VERIFIED
+EXECUTOR: Antigravity
+BRANCH: validation/p2-1-rc
+BASE_MAIN_SHA: 317b7c3071fdd167b3419e8fd1b7f96d08ba6427
+STARTING_CANDIDATE_SHA: c3b6aadaf1c685327106c2b132fbd6d9890f258a
+REVIEW_CONTRACT_SHA: 34788d7aeb1b877227b2c5763cdb06bf1b60e91d
+TASK_CONTRACT: tasks/P2_1_PUBLIC_API_CONTRACT.md
 
 ## Current routing
 
-P1.5 is CLOSED and live-verified at `main` `49fb158282ddc0963a29e2236d280dde82c5f197`.
-Migration `026_atomic_booking_request_creation.sql` is applied live. Main CI Run #166 (`33711969665`) succeeded and deployed Worker version `5378c632-715f-45db-bfda-f62973e4c7ee`.
+P1.6 is CLOSED on `main` at `317b7c3071fdd167b3419e8fd1b7f96d08ba6427`.
+P2.1 implementation is complete on `validation/p2-1-rc`.
 
-The active dependency-ordered boundary is now **P1.6 — Wallet + Immutable Ledger Persistence Integrity**.
+Core outcomes:
+- Dedicated public property search and detail routes (`GET /api/v1/customer/properties/search`, `GET /api/v1/customer/properties/:id`).
+- Dedicated repository read queries (`propertyDb.searchPublic`, `propertyDb.getPublicById`) enforce `deleted_at IS NULL AND status = 'PUBLISHED' AND verification_status = 'VERIFIED'`.
+- Explicit privacy-safe DTO allowlists (`toPublicPropertySearchItem`, `toPublicPropertyDetail`) in `backend/server/src/contracts/publicProperty.ts`.
+- Zero leakage of Owner contact/private/admin/internal-finance fields.
+- Collision-safe Cloudflare Worker query matching with fail-closed PostgREST payload validations.
+- Server-authoritative search integration in Customer App (`buildPublicPropertySearchPath`).
+- Availability and quote route invariants preserved with zero PII/finance leakage.
 
-Read and execute:
-`tasks/P1_6_WALLET_LEDGER_PERSISTENCE.md`
+## Hard boundaries preserved
 
-## Authority note
-
-`docs/CURRENT_STATE.md` inherited from the P1.5 candidate still contains stale wording that says P1.5 is active / Migration 026 is unapplied. That wording is superseded by the exact publication evidence above and must be reconciled in the P1.6 candidate. Do not reopen P1.5.
-
-## Hard boundaries
-
-- Do not reopen P1.1–P1.5.
-- Do not apply any new P1.6 migration live.
-- Do not merge to `main`.
-- Do not deploy Cloudflare.
-- Do not mutate live Supabase/Storage.
-- Do not change booking, payment, commission, payout, cancellation, or release timing rules.
-- Do not implement the Phase 11 payout flow or 24h pending-to-available release in P1.6.
-- Do not broaden into Phase 14 RLS/security remediation; report unrelated observations separately.
-
-## Candidate status (P1.6 in progress)
-
-P1.6 candidate work is on this branch. Migration `027_wallet_ledger_append_only.sql` is REPOSITORY_ONLY_NOT_APPLIED_LIVE and requires separate Founder publication approval. No live Supabase/Storage/Cloudflare mutation occurs during the candidate.
+- No migrations/schema/indexes/dependencies added.
+- No `/api/v1/public/*` created.
+- No media endpoints created.
+- No changes to booking, availability, quote, or publication business rules.
+- No deployment, merge, or live database mutations performed.

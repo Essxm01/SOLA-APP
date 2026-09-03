@@ -17,6 +17,7 @@ import { paymentTxDb, PaymentService, PaymobGateway, verifyPaymobHmacSha512, get
 import { createStorageProvider, IObjectStorageProvider, verifyMagicBytes, computeSha256 } from './services/storageProvider.js';
 import { GLOBAL_MIN_STAY_NIGHTS, GLOBAL_MAX_STAY_NIGHTS, hasDateRangeOverlap, validateStayLength } from './constants/bookingRules.js';
 import { parsePublicPropertySearchFilters, toPublicPropertySearchItem, toPublicPropertyDetail, PublicPropertySearchFilters, extractPublicImageUrls } from './contracts/publicProperty.js';
+import { toCustomerProfileDto, toCustomerAccountSummaryDto } from './contracts/customerRenter.js';
 import type { ApiSuccessResponse, ApiErrorResponse } from './types/server';
 
 export interface RouteHandlerResult {
@@ -2833,21 +2834,28 @@ export class ExpressServerApp {
           }
         }
 
-        // 4.0 Customer Profile (Authoritative Canonical DB Source of Truth — DATA-01)
+        // 4.0 Customer Profile (Authoritative Canonical DB Source of Truth — DATA-01 / P2.2)
         if (path === '/api/v1/customer/profile' && method === 'GET') {
-          let user: any = await userDb.getById(customerId).catch(() => null);
-          if (!user && customerPhone) {
-            user = await userDb.getByPhone(customerPhone).catch(() => null);
+          let user: any;
+          try {
+            user = await userDb.getById(customerId);
+          } catch {
+            return {
+              statusCode: 500,
+              body: {
+                success: false,
+                error: { code: 'CUSTOMER_PROFILE_QUERY_FAILED', message: 'تعذر تحميل بيانات الحساب حالياً' },
+                timestamp,
+              },
+            };
           }
-          if (!user) {
-            user = dbUsersStore.get(customerPhone) || dbUsersStore.get(customerId);
-          }
+
           if (!user) {
             return {
               statusCode: 404,
               body: {
                 success: false,
-                error: { code: 'USER_NOT_FOUND', message: 'المستخدم غير موجود' },
+                error: { code: 'CUSTOMER_IDENTITY_NOT_FOUND', message: 'تعذر العثور على حساب المستأجر' },
                 timestamp,
               },
             };
@@ -2857,17 +2865,7 @@ export class ExpressServerApp {
             statusCode: 200,
             body: {
               success: true,
-              data: {
-                id: user.id,
-                phoneNumber: user.phoneNumber,
-                phoneVerifiedAt: user.phoneVerifiedAt || null,
-                fullName: user.fullName || null,
-                email: user.email || null,
-                avatarUrl: user.avatarUrl || null,
-                status: user.status || 'ACTIVE',
-                createdAt: user.createdAt,
-                updatedAt: user.updatedAt,
-              },
+              data: toCustomerProfileDto(user),
               timestamp,
             },
           };
@@ -2946,17 +2944,7 @@ export class ExpressServerApp {
             statusCode: 200,
             body: {
               success: true,
-              data: {
-                id: updatedUser.id,
-                phoneNumber: updatedUser.phoneNumber,
-                phoneVerifiedAt: updatedUser.phoneVerifiedAt || null,
-                fullName: updatedUser.fullName || null,
-                email: updatedUser.email || null,
-                avatarUrl: updatedUser.avatarUrl || null,
-                status: updatedUser.status || 'ACTIVE',
-                createdAt: updatedUser.createdAt,
-                updatedAt: updatedUser.updatedAt,
-              },
+              data: toCustomerProfileDto(updatedUser),
               timestamp,
             },
           };
@@ -3384,9 +3372,22 @@ export class ExpressServerApp {
           }
         }
 
-        // 4.4A Customer Account Summary (Real PostgreSQL Driven — ACCOUNT-01)
+        // 4.4A Customer Account Summary (Real PostgreSQL Driven — ACCOUNT-01 / P2.2)
         if (path === '/api/v1/customer/account/summary' && method === 'GET') {
-          const bookings = await bookingDb.getByCustomerId(customerId).catch(() => []);
+          let bookings: any[];
+          try {
+            bookings = await bookingDb.getByCustomerId(customerId);
+          } catch {
+            return {
+              statusCode: 500,
+              body: {
+                success: false,
+                error: { code: 'CUSTOMER_ACCOUNT_SUMMARY_QUERY_FAILED', message: 'تعذر تحميل ملخص الحساب حالياً' },
+                timestamp,
+              },
+            };
+          }
+
           const todayIso = new Date().toISOString().slice(0, 10);
           
           const confirmedBookings = bookings.filter((b: any) => b.status === 'CONFIRMED');
@@ -3396,16 +3397,30 @@ export class ExpressServerApp {
           });
           const totalDepositsPaid = confirmedBookings.reduce((sum: number, b: any) => sum + (Number(b.depositAmount) || 0), 0);
 
+          let summary: any;
+          try {
+            summary = toCustomerAccountSummaryDto({
+              confirmedBookingsCount: confirmedBookings.length,
+              upcomingStaysCount: upcomingStays.length,
+              totalBookingsCount: bookings.length,
+              totalDepositsPaidEgp: totalDepositsPaid,
+            });
+          } catch {
+            return {
+              statusCode: 500,
+              body: {
+                success: false,
+                error: { code: 'CUSTOMER_ACCOUNT_SUMMARY_QUERY_FAILED', message: 'تعذر معالجة ملخص الحساب' },
+                timestamp,
+              },
+            };
+          }
+
           return {
             statusCode: 200,
             body: {
               success: true,
-              data: {
-                confirmedBookingsCount: confirmedBookings.length,
-                upcomingStaysCount: upcomingStays.length,
-                totalBookingsCount: bookings.length,
-                totalDepositsPaidEgp: totalDepositsPaid,
-              },
+              data: summary,
               timestamp,
             },
           };

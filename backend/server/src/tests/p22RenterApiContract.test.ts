@@ -208,3 +208,81 @@ assert.throws(() => validateCustomerFavoriteRow({ ...validFav, createdAt: 'inval
 
 console.log('P2.2 Task 1 authenticated customer DTO unit tests passed.');
 
+// ---------------------------------------------------------------------------
+// 2. Task 2: Profile and Account Summary fail-closed tests
+// ---------------------------------------------------------------------------
+import { ExpressServerApp } from '../app.js';
+import { signAccessToken } from '../services/jwtService.js';
+import { userDb, bookingDb } from '../services/dbRepository.js';
+
+const app = new ExpressServerApp();
+const testCustomerId = '00000000-0000-4000-8000-000000000001';
+const customerToken = signAccessToken({ sub: testCustomerId, role: 'ROLE_CUSTOMER' });
+const customerHeaders = { authorization: `Bearer ${customerToken}` };
+
+// 2A. Profile DB error must be 500, not phone/memory fallback success
+const origUserGetById = userDb.getById;
+(userDb as any).getById = async () => { throw new Error('db down'); };
+try {
+  const res = await app.handleHttpRequest('GET', '/api/v1/customer/profile', customerHeaders);
+  assert.equal(res.statusCode, 500, 'Profile GET DB error must return 500');
+  assert.equal((res.body as any).success, false);
+  assert.equal((res.body as any).error?.code, 'CUSTOMER_PROFILE_QUERY_FAILED');
+} finally {
+  (userDb as any).getById = origUserGetById;
+}
+
+// 2B. Profile user not found must be 404 CUSTOMER_IDENTITY_NOT_FOUND
+(userDb as any).getById = async () => null;
+try {
+  const res = await app.handleHttpRequest('GET', '/api/v1/customer/profile', customerHeaders);
+  assert.equal(res.statusCode, 404, 'Profile GET missing user must return 404');
+  assert.equal((res.body as any).success, false);
+  assert.equal((res.body as any).error?.code, 'CUSTOMER_IDENTITY_NOT_FOUND');
+} finally {
+  (userDb as any).getById = origUserGetById;
+}
+
+// 2C. Profile GET returns sanitized CustomerProfileDto keys only
+(userDb as any).getById = async () => ({ ...rawUser });
+try {
+  const res = await app.handleHttpRequest('GET', '/api/v1/customer/profile', customerHeaders);
+  assert.equal(res.statusCode, 200);
+  assert.equal((res.body as any).success, true);
+  assert.deepEqual(Object.keys((res.body as any).data).sort(), [
+    'avatarUrl', 'createdAt', 'email', 'fullName', 'id', 'phoneNumber', 'phoneVerifiedAt', 'status', 'updatedAt',
+  ].sort());
+} finally {
+  (userDb as any).getById = origUserGetById;
+}
+
+// 2D. Account summary booking read error must be 500, not a zero summary
+const origGetByCustomerId = bookingDb.getByCustomerId;
+(bookingDb as any).getByCustomerId = async () => { throw new Error('db down'); };
+try {
+  const res = await app.handleHttpRequest('GET', '/api/v1/customer/account/summary', customerHeaders);
+  assert.equal(res.statusCode, 500, 'Account summary DB error must return 500');
+  assert.equal((res.body as any).success, false);
+  assert.equal((res.body as any).error?.code, 'CUSTOMER_ACCOUNT_SUMMARY_QUERY_FAILED');
+} finally {
+  (bookingDb as any).getByCustomerId = origGetByCustomerId;
+}
+
+// 2E. Account summary with genuine zero bookings returns zeros
+(bookingDb as any).getByCustomerId = async () => [];
+try {
+  const res = await app.handleHttpRequest('GET', '/api/v1/customer/account/summary', customerHeaders);
+  assert.equal(res.statusCode, 200);
+  assert.deepEqual((res.body as any).data, {
+    confirmedBookingsCount: 0,
+    upcomingStaysCount: 0,
+    totalBookingsCount: 0,
+    totalDepositsPaidEgp: 0,
+  });
+} finally {
+  (bookingDb as any).getByCustomerId = origGetByCustomerId;
+}
+
+console.log('P2.2 Task 2 profile and account fail-closed tests passed.');
+
+

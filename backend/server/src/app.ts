@@ -3640,8 +3640,29 @@ export class ExpressServerApp {
           if (!tx || (tx.booking_id || tx.bookingId) !== bookingId || (tx.customer_id || tx.customerId) !== customerId || (tx.owner_id || tx.ownerId) !== booking.ownerId) return { statusCode: 409, body: { success: false, error: { code: 'PAYMENT_TRANSACTION_NOT_FOUND', message: 'لم تبدأ محاولة دفع صالحة لهذا الحجز' }, timestamp } };
           try {
             const result: any = await paymentTxDb.completeDepositPayment({ paymentTransactionId: tx.id, bookingId, customerId });
-            return { statusCode: 200, body: { success: true, data: { bookingId, bookingStatus: result?.bookingStatus || 'CONFIRMED', paymentTransactionId: tx.id, paymentStatus: result?.paymentStatus || 'SUCCEEDED', amountEgp: Number(tx.amount_cents || tx.amountCents) / 100, currency: result?.currency || 'EGP', confirmedAt: result?.confirmedAt }, timestamp } };
+            if (!result || typeof result !== 'object' || result.bookingStatus !== 'CONFIRMED' || result.paymentStatus !== 'SUCCEEDED' || result.currency !== 'EGP' || !result.confirmedAt) {
+              return { statusCode: 500, body: { success: false, error: { code: 'PAYMENT_COMPLETION_MALFORMED_RESULT', message: 'تعذر إتمام الدفع بسبب خطأ غير متوقع' }, timestamp } };
+            }
+            return {
+              statusCode: 200,
+              body: {
+                success: true,
+                data: {
+                  bookingId,
+                  bookingStatus: result.bookingStatus,
+                  paymentTransactionId: tx.id,
+                  paymentStatus: result.paymentStatus,
+                  amountEgp: Number(tx.amount_cents || tx.amountCents) / 100,
+                  currency: result.currency,
+                  confirmedAt: result.confirmedAt,
+                },
+                timestamp,
+              },
+            };
           } catch (err: any) {
+            if (String(err?.message || '').includes('REST_PAYMENT_FINALIZATION_MALFORMED_RESPONSE')) {
+              return { statusCode: 500, body: { success: false, error: { code: 'PAYMENT_COMPLETION_MALFORMED_RESULT', message: 'تعذر إتمام الدفع بسبب خطأ غير متوقع' }, timestamp } };
+            }
             const code = String(err?.message || 'PAYMENT_COMPLETION_FAILED').replace(/^REST_PAYMENT_FINALIZATION_RPC_FAILED: HTTP \d+ — /, '').split(/\s/)[0] || 'PAYMENT_COMPLETION_FAILED';
             return { statusCode: 409, body: { success: false, error: { code, message: 'تعذر إتمام الدفع التجريبي، يمكنك المحاولة مرة أخرى' }, timestamp } };
           }

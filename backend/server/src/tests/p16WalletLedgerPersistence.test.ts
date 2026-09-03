@@ -106,6 +106,7 @@ let mode: Mode = 'success';
 let lastCalls: Array<{ url: string; method: string }> = [];
 let customWalletPayload: any = null;
 let customLedgerPayload: any = null;
+let customPaymentPayload: any = undefined;
 
 const validWalletRow = {
   owner_id: ownerId, currency: 'EGP', available_balance: 0, pending_balance: 800,
@@ -117,6 +118,16 @@ const validLedgerRow = {
   amount: 800, balance_after: 800, idempotency_key: `DEPOSIT_HELD_${paymentTxId}`,
   created_at: '2026-09-03T00:00:00Z',
 };
+const validPaymentRpcResponse = {
+  paymentTransactionId: paymentTxId,
+  paymentStatus: 'SUCCEEDED',
+  bookingId,
+  bookingStatus: 'CONFIRMED',
+  confirmedAt: '2026-09-03T00:00:00Z',
+  amountCents: 200000,
+  currency: 'EGP',
+  idempotent: false,
+};
 
 async function withWalletFetch(fn: () => Promise<any>) {
   const calls: Array<{ url: string; method: string }> = [];
@@ -126,6 +137,12 @@ async function withWalletFetch(fn: () => Promise<any>) {
   process.env.SUPABASE_SERVICE_ROLE_KEY = 'test-service-role-key';
   globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
     calls.push({ url: String(input), method: init?.method || 'GET' });
+    if (String(input).includes('rpc/konfrm_complete_deposit_payment')) {
+      if (customPaymentPayload !== undefined) {
+        return { ok: true, status: 200, json: async () => customPaymentPayload, text: async () => JSON.stringify(customPaymentPayload) } as unknown as Response;
+      }
+      return { ok: true, status: 200, json: async () => validPaymentRpcResponse, text: async () => JSON.stringify(validPaymentRpcResponse) } as unknown as Response;
+    }
     if (customWalletPayload !== null && String(input).includes('owner_wallets')) {
       return { ok: true, status: 200, json: async () => customWalletPayload, text: async () => '' } as unknown as Response;
     }
@@ -391,15 +408,120 @@ async function withWalletFetch(fn: () => Promise<any>) {
     assert.equal(walletOrLedgerCalls.length, 0, `colliding shape [${desc}] must not issue wallet/ledger REST request`);
   }
 
-  // Payment finalization remains the one narrow atomic RPC (never generic SQL).
+  // Payment finalization: canonical query dispatches exactly one RPC REST request
+  const canonicalPaymentSql = 'SELECT * FROM konfrm_complete_deposit_payment($1, $2, $3)';
   calls = await withWalletFetch(async () => {
-    await queryDb(
-      'SELECT * FROM konfrm_complete_deposit_payment($1, $2, $3)',
-      [paymentTxId, bookingId, customerId]
-    );
+    const res = await queryDb(canonicalPaymentSql, [paymentTxId, bookingId, customerId]);
+    assert.equal(res.rows.length, 1);
+    assert.equal(res.rows[0].paymentTransactionId, paymentTxId);
   });
   assert.equal(calls.length, 1);
   assert.equal(calls[0].url, 'https://example.supabase.co/rest/v1/rpc/konfrm_complete_deposit_payment');
+
+  // Matcher Tests 2-9: Colliding / noncanonical queries must fall through and never issue REST request
+  const collidingPaymentShapes: Array<[string, string]> = [
+    ['comment prefix', `-- comment prefix\n${canonicalPaymentSql}`],
+    ['comment suffix', `${canonicalPaymentSql} -- comment suffix`],
+    ['wrapper/subquery', `SELECT * FROM (${canonicalPaymentSql}) sub`],
+    ['unrelated/string-literal mention', `SELECT 'konfrm_complete_deposit_payment($1, $2, $3)' AS fn`],
+    ['wrong arity (2 args)', 'SELECT * FROM konfrm_complete_deposit_payment($1, $2)'],
+    ['wrong arity (4 args)', 'SELECT * FROM konfrm_complete_deposit_payment($1, $2, $3, $4)'],
+    ['reordered placeholders', 'SELECT * FROM konfrm_complete_deposit_payment($2, $1, $3)'],
+    ['duplicated/wrong placeholders', 'SELECT * FROM konfrm_complete_deposit_payment($1, $1, $3)'],
+    ['changed SELECT list', 'SELECT payment_status FROM konfrm_complete_deposit_payment($1, $2, $3)'],
+  ];
+
+  for (const [desc, noncanonicalSql] of collidingPaymentShapes) {
+    calls = await withWalletFetch(async () => {
+      try {
+        await queryDb(noncanonicalSql, [paymentTxId, bookingId, customerId]);
+      } catch {
+        // Fallthrough to pool is expected in test mock environment
+      }
+    });
+    const rpcCalls = calls.filter((c) => c.url.includes('rpc/konfrm_complete_deposit_payment'));
+    assert.equal(rpcCalls.length, 0, `colliding payment shape [${desc}] must not issue payment RPC REST request`);
+  }
+
+  // Malformed successful payload tests 10-21:
+  const malformedPayloadCases: Array<[string, any, RegExp]> = [
+    ['null payload', null, /REST_PAYMENT_FINALIZATION_MALFORMED_RESPONSE/],
+    ['primitive payload', 'not-an-object', /REST_PAYMENT_FINALIZATION_MALFORMED_RESPONSE/],
+    ['empty array', [], /REST_PAYMENT_FINALIZATION_MALFORMED_RESPONSE: expected exactly one object in array, received 0/],
+    ['multi-row array', [validPaymentRpcResponse, validPaymentRpcResponse], /REST_PAYMENT_FINALIZATION_MALFORMED_RESPONSE: expected exactly one object in array, received 2/],
+    ['missing paymentTransactionId', { ...validPaymentRpcResponse, paymentTransactionId: undefined }, /paymentTransactionId must match requested transaction id/],
+    ['paymentTransactionId mismatch', { ...validPaymentRpcResponse, paymentTransactionId: 'wrong-tx' }, /paymentTransactionId must match requested transaction id/],
+    ['empty paymentTransactionId', { ...validPaymentRpcResponse, paymentTransactionId: '' }, /paymentTransactionId must match requested transaction id/],
+    ['missing bookingId', { ...validPaymentRpcResponse, bookingId: undefined }, /bookingId must match requested booking id/],
+    ['bookingId mismatch', { ...validPaymentRpcResponse, bookingId: 'wrong-booking' }, /bookingId must match requested booking id/],
+    ['empty bookingId', { ...validPaymentRpcResponse, bookingId: '' }, /bookingId must match requested booking id/],
+    ['wrong paymentStatus', { ...validPaymentRpcResponse, paymentStatus: 'FAILED' }, /paymentStatus must be SUCCEEDED/],
+    ['non-string paymentStatus', { ...validPaymentRpcResponse, paymentStatus: 123 }, /paymentStatus must be SUCCEEDED/],
+    ['wrong bookingStatus', { ...validPaymentRpcResponse, bookingStatus: 'PENDING' }, /bookingStatus must be CONFIRMED/],
+    ['non-string bookingStatus', { ...validPaymentRpcResponse, bookingStatus: null }, /bookingStatus must be CONFIRMED/],
+    ['invalid confirmedAt (unparseable)', { ...validPaymentRpcResponse, confirmedAt: 'invalid-date' }, /confirmedAt must be a valid timestamp string/],
+    ['invalid confirmedAt (empty)', { ...validPaymentRpcResponse, confirmedAt: '' }, /confirmedAt must be a valid timestamp string/],
+    ['non-string confirmedAt', { ...validPaymentRpcResponse, confirmedAt: 123456 }, /confirmedAt must be a valid timestamp string/],
+    ['non-integer amountCents', { ...validPaymentRpcResponse, amountCents: 123.45 }, /amountCents must be a positive integer/],
+    ['string amountCents', { ...validPaymentRpcResponse, amountCents: '200000' }, /amountCents must be a positive integer/],
+    ['zero amountCents', { ...validPaymentRpcResponse, amountCents: 0 }, /amountCents must be a positive integer/],
+    ['negative amountCents', { ...validPaymentRpcResponse, amountCents: -500 }, /amountCents must be a positive integer/],
+    ['wrong currency', { ...validPaymentRpcResponse, currency: 'USD' }, /currency must be EGP/],
+    ['non-string currency', { ...validPaymentRpcResponse, currency: 123 }, /currency must be EGP/],
+    ['non-boolean idempotent (string)', { ...validPaymentRpcResponse, idempotent: 'false' }, /idempotent must be a boolean/],
+    ['missing idempotent', { ...validPaymentRpcResponse, idempotent: undefined }, /idempotent must be a boolean/],
+  ];
+
+  for (const [name, badPayload, pattern] of malformedPayloadCases) {
+    customPaymentPayload = badPayload;
+    try {
+      await withWalletFetch(async () => {
+        await assert.rejects(
+          () => queryDb(canonicalPaymentSql, [paymentTxId, bookingId, customerId]),
+          pattern,
+          `expected ${name} to be rejected with ${pattern}`
+        );
+      });
+    } finally {
+      customPaymentPayload = undefined;
+    }
+  }
+
+  // Valid canonical results:
+  // Case 22: idempotent: false succeeds
+  customPaymentPayload = { ...validPaymentRpcResponse, idempotent: false };
+  try {
+    await withWalletFetch(async () => {
+      const res = await queryDb(canonicalPaymentSql, [paymentTxId, bookingId, customerId]);
+      assert.equal(res.rows[0].idempotent, false);
+      assert.equal(res.rows[0].paymentStatus, 'SUCCEEDED');
+    });
+  } finally {
+    customPaymentPayload = undefined;
+  }
+
+  // Case 23: idempotent: true succeeds
+  customPaymentPayload = { ...validPaymentRpcResponse, idempotent: true };
+  try {
+    await withWalletFetch(async () => {
+      const res = await queryDb(canonicalPaymentSql, [paymentTxId, bookingId, customerId]);
+      assert.equal(res.rows[0].idempotent, true);
+      assert.equal(res.rows[0].paymentStatus, 'SUCCEEDED');
+    });
+  } finally {
+    customPaymentPayload = undefined;
+  }
+
+  // Single-element array wrap succeeds
+  customPaymentPayload = [{ ...validPaymentRpcResponse, idempotent: false }];
+  try {
+    await withWalletFetch(async () => {
+      const res = await queryDb(canonicalPaymentSql, [paymentTxId, bookingId, customerId]);
+      assert.equal(res.rows[0].paymentTransactionId, paymentTxId);
+    });
+  } finally {
+    customPaymentPayload = undefined;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -411,6 +533,7 @@ const originals: Record<string, any> = {
   walletLedger: walletDb.getOwnerLedger,
   bookingById: bookingDb.getById,
   txByBooking: paymentTxDb.getByBookingId,
+  completeDepositPayment: paymentTxDb.completeDepositPayment,
 };
 try {
   const requestedOwners: string[] = [];
@@ -430,11 +553,67 @@ try {
   for (const forbidden of ['commission', 'ownerNet', 'wallet', 'solaCommission', 'pendingBalance']) {
     assert.ok(!payloadKeys.some((k) => k.toLowerCase().includes(forbidden.toLowerCase())), `customer payment response must not expose ${forbidden}`);
   }
+
+  // Route prototype completion tests (Cases 24 and 25):
+  process.env.PAYMENT_MODE = 'PROTOTYPE';
+  const mockTx = {
+    id: paymentTxId,
+    booking_id: bookingId,
+    customer_id: customerId,
+    owner_id: ownerId,
+    amount_cents: 200000,
+    status: 'INITIATED',
+  };
+  (paymentTxDb as any).getByBookingId = async () => [mockTx];
+
+  // Case 24: malformed finalization result cannot produce a successful response using default values
+  (paymentTxDb as any).completeDepositPayment = async () => ({
+    // malformed: missing bookingStatus, paymentStatus, currency
+    bookingId,
+    confirmedAt: '2026-09-03T00:00:00Z',
+  });
+  const malformedRouteRes = await app.handleHttpRequest(
+    'POST',
+    `/api/v1/customer/bookings/${bookingId}/pay/prototype-complete`,
+    customerHeaders,
+    { paymentTransactionId: paymentTxId }
+  );
+  assert.equal(malformedRouteRes.statusCode, 500, 'malformed result must return 500 and not fabricate default success');
+  assert.equal((malformedRouteRes.body as any).error?.code, 'PAYMENT_COMPLETION_MALFORMED_RESULT');
+
+  // Case 25: valid completion preserves existing Customer-facing fields and does not expose internal Owner/commission data
+  (paymentTxDb as any).completeDepositPayment = async () => ({
+    paymentTransactionId: paymentTxId,
+    paymentStatus: 'SUCCEEDED',
+    bookingId,
+    bookingStatus: 'CONFIRMED',
+    confirmedAt: '2026-09-03T00:00:00Z',
+    amountCents: 200000,
+    currency: 'EGP',
+    idempotent: false,
+  });
+  const successRouteRes = await app.handleHttpRequest(
+    'POST',
+    `/api/v1/customer/bookings/${bookingId}/pay/prototype-complete`,
+    customerHeaders,
+    { paymentTransactionId: paymentTxId }
+  );
+  assert.equal(successRouteRes.statusCode, 200);
+  const successData = (successRouteRes.body as any).data;
+  assert.equal(successData.bookingStatus, 'CONFIRMED');
+  assert.equal(successData.paymentStatus, 'SUCCEEDED');
+  assert.equal(successData.currency, 'EGP');
+  assert.equal(successData.amountEgp, 2000);
+  assert.equal(successData.confirmedAt, '2026-09-03T00:00:00Z');
+  for (const forbidden of ['commission', 'ownerNet', 'wallet', 'solaCommission', 'pendingBalance', 'heldBalance']) {
+    assert.ok(!Object.keys(successData).some((k) => k.toLowerCase().includes(forbidden.toLowerCase())), `customer payment response must not expose ${forbidden}`);
+  }
 } finally {
   (walletDb as any).getOwnerWalletSummary = originals.walletSummary;
   (walletDb as any).getOwnerLedger = originals.walletLedger;
   (bookingDb as any).getById = originals.bookingById;
   (paymentTxDb as any).getByBookingId = originals.txByBooking;
+  (paymentTxDb as any).completeDepositPayment = originals.completeDepositPayment;
 }
 
 // ---------------------------------------------------------------------------

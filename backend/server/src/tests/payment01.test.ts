@@ -28,6 +28,22 @@ async function run() {
   process.env.PAYMENT_MODE = 'PROTOTYPE';
   globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
     requests.push({ url: String(input), init });
+    if (String(input).includes('rpc/konfrm_complete_deposit_payment')) {
+      return {
+        ok: true,
+        json: async () => ({
+          paymentTransactionId: 'tx-1',
+          paymentStatus: 'SUCCEEDED',
+          bookingId: 'booking-1',
+          bookingStatus: 'CONFIRMED',
+          confirmedAt: '2026-09-03T00:00:00Z',
+          amountCents: 200000,
+          currency: 'EGP',
+          idempotent: false,
+        }),
+        text: async () => '',
+      } as Response;
+    }
     return {
       ok: true,
       json: async () => [{ id: 'tx-1', booking_id: 'booking-1', customer_id: 'customer-1', owner_id: 'owner-1', amount_cents: 200000, currency: 'EGP', status: 'INITIATED' }],

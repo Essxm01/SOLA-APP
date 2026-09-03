@@ -302,25 +302,95 @@ async function queryViaSupabaseRest(text: string, params: any[] | undefined, url
     return { rows: [row], command: 'SELECT', rowCount: 1, oid: 0, fields: [] };
   }
 
-  // PAYMENT-01: the only Worker-safe finalization path is the narrow,
-  // atomic Postgres RPC. Never fall through to a pg transaction in Workers.
-  if (lowerSql.includes('konfrm_complete_deposit_payment')) {
+  // PAYMENT-01 / P1.6: the only Worker-safe finalization path is the narrow,
+  // atomic Postgres RPC. Match collision-safely: accept ONLY the exact
+  // normalized repository query shape `SELECT * FROM konfrm_complete_deposit_payment($1, $2, $3)`.
+  const canonicalPaymentRpcMatch = sql
+    .replace(/\s+/g, ' ')
+    .trim()
+    .match(/^SELECT \* FROM konfrm_complete_deposit_payment\(([^()]*)\)$/i);
+  const paymentRpcPlaceholders = canonicalPaymentRpcMatch
+    ? canonicalPaymentRpcMatch[1].split(',').map((p) => p.trim())
+    : [];
+  const isCanonicalCompleteDepositRpc =
+    !!canonicalPaymentRpcMatch &&
+    paymentRpcPlaceholders.length === 3 &&
+    paymentRpcPlaceholders.every((p, i) => p.toLowerCase() === `$${i + 1}`);
+
+  if (isCanonicalCompleteDepositRpc) {
+    const paymentTxId = params?.[0];
+    const bookingId = params?.[1];
+    const customerId = params?.[2];
+
     const res = await fetch(`${url}/rest/v1/rpc/konfrm_complete_deposit_payment`, {
       method: 'POST',
       headers,
       body: JSON.stringify({
-        p_payment_transaction_id: params?.[0],
-        p_booking_id: params?.[1],
-        p_customer_id: params?.[2],
+        p_payment_transaction_id: paymentTxId,
+        p_booking_id: bookingId,
+        p_customer_id: customerId,
       }),
     });
     if (!res.ok) {
       const body = await res.text().catch(() => '');
       throw new Error(`REST_PAYMENT_FINALIZATION_RPC_FAILED: HTTP ${res.status} — ${body.slice(0, 240)}`);
     }
-    const raw: any = await res.json().catch(() => []);
-    const rows = Array.isArray(raw) ? raw : [raw];
-    return { rows, command: 'SELECT', rowCount: rows.length, oid: 0, fields: [] };
+    const raw: any = await res.json().catch(() => null);
+
+    let payloadObj: any;
+    if (Array.isArray(raw)) {
+      if (raw.length !== 1) {
+        throw new Error(`REST_PAYMENT_FINALIZATION_MALFORMED_RESPONSE: expected exactly one object in array, received ${raw.length}`);
+      }
+      payloadObj = raw[0];
+    } else {
+      payloadObj = raw;
+    }
+
+    if (!payloadObj || typeof payloadObj !== 'object' || Array.isArray(payloadObj)) {
+      throw new Error('REST_PAYMENT_FINALIZATION_MALFORMED_RESPONSE: expected payload to be an object');
+    }
+
+    if (payloadObj.konfrm_complete_deposit_payment && typeof payloadObj.konfrm_complete_deposit_payment === 'object' && !Array.isArray(payloadObj.konfrm_complete_deposit_payment)) {
+      payloadObj = payloadObj.konfrm_complete_deposit_payment;
+    }
+
+    if (typeof payloadObj.paymentTransactionId !== 'string' || payloadObj.paymentTransactionId.trim() === '' || payloadObj.paymentTransactionId !== paymentTxId) {
+      throw new Error('REST_PAYMENT_FINALIZATION_MALFORMED_RESPONSE: paymentTransactionId must match requested transaction id');
+    }
+    if (typeof payloadObj.bookingId !== 'string' || payloadObj.bookingId.trim() === '' || payloadObj.bookingId !== bookingId) {
+      throw new Error('REST_PAYMENT_FINALIZATION_MALFORMED_RESPONSE: bookingId must match requested booking id');
+    }
+    if (payloadObj.paymentStatus !== 'SUCCEEDED') {
+      throw new Error('REST_PAYMENT_FINALIZATION_MALFORMED_RESPONSE: paymentStatus must be SUCCEEDED');
+    }
+    if (payloadObj.bookingStatus !== 'CONFIRMED') {
+      throw new Error('REST_PAYMENT_FINALIZATION_MALFORMED_RESPONSE: bookingStatus must be CONFIRMED');
+    }
+    if (typeof payloadObj.confirmedAt !== 'string' || payloadObj.confirmedAt.trim() === '' || Number.isNaN(Date.parse(payloadObj.confirmedAt))) {
+      throw new Error('REST_PAYMENT_FINALIZATION_MALFORMED_RESPONSE: confirmedAt must be a valid timestamp string');
+    }
+    if (typeof payloadObj.amountCents !== 'number' || !Number.isInteger(payloadObj.amountCents) || payloadObj.amountCents <= 0) {
+      throw new Error('REST_PAYMENT_FINALIZATION_MALFORMED_RESPONSE: amountCents must be a positive integer');
+    }
+    if (payloadObj.currency !== 'EGP') {
+      throw new Error('REST_PAYMENT_FINALIZATION_MALFORMED_RESPONSE: currency must be EGP');
+    }
+    if (typeof payloadObj.idempotent !== 'boolean') {
+      throw new Error('REST_PAYMENT_FINALIZATION_MALFORMED_RESPONSE: idempotent must be a boolean');
+    }
+
+    const row = {
+      paymentTransactionId: payloadObj.paymentTransactionId,
+      paymentStatus: payloadObj.paymentStatus,
+      bookingId: payloadObj.bookingId,
+      bookingStatus: payloadObj.bookingStatus,
+      confirmedAt: payloadObj.confirmedAt,
+      amountCents: payloadObj.amountCents,
+      currency: payloadObj.currency,
+      idempotent: payloadObj.idempotent,
+    };
+    return { rows: [row], command: 'SELECT', rowCount: 1, oid: 0, fields: [] };
   }
 
   // P1.3: property image metadata and upload-intent state are committed by

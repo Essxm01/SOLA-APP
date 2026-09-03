@@ -56,6 +56,7 @@ interface AppContextType {
   properties: Property[];
   bookings: Booking[];
   notifications: NotificationItem[];
+  notificationsError: string | null;
   metrics: DashboardMetrics;
   isLoading: boolean;
   error: string | null;
@@ -192,6 +193,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; ownerId: string 
   const [properties, setProperties] = useState<Property[]>([]);
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [notificationsError, setNotificationsError] = useState<string | null>(null);
   const [metrics, setMetrics] = useState<DashboardMetrics>({
     newBookingRequestsCount: 0,
     pendingModificationRequestsCount: 0,
@@ -313,7 +315,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; ownerId: string 
         const [
           propsData,
           bksData,
-          notifsData,
+          notifsResult,
           convsData,
           dispData,
           methodsData,
@@ -323,7 +325,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode; ownerId: string 
         ] = await Promise.all([
           repo.property.getProperties(),
           repo.booking.getBookings(),
-          repo.notification.getNotifications().catch(() => []),
+          repo.notification.getNotifications().then(
+            (data) => ({ ok: true as const, data }),
+            (err) => ({ ok: false as const, error: err?.message || 'NOTIFICATIONS_UNAVAILABLE' })
+          ),
           repo.messaging.getConversations(),
           repo.dispute.getDisputes().catch(() => []),
           repo.payout.getPayoutMethods().catch(() => []),
@@ -334,7 +339,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode; ownerId: string 
 
         setProperties(Array.isArray(propsData) ? propsData as Property[] : []);
         setBookings(Array.isArray(bksData) ? bksData as Booking[] : []);
-        setNotifications(Array.isArray(notifsData) ? notifsData as NotificationItem[] : []);
+        if (notifsResult.ok) {
+          setNotifications(Array.isArray(notifsResult.data) ? notifsResult.data as NotificationItem[] : []);
+          setNotificationsError(null);
+        } else {
+          setNotifications([]);
+          setNotificationsError('تعذر تحميل الإشعارات حالياً');
+        }
         setChatConversations(Array.isArray(convsData) ? convsData as ChatConversation[] : []);
         setDisputes(Array.isArray(dispData) ? dispData as Dispute[] : []);
         setPayoutMethods(Array.isArray(methodsData) ? methodsData as OwnerPayoutMethod[] : []);
@@ -346,7 +357,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; ownerId: string 
         // Derive dashboard metrics from live server data
         const validProps = Array.isArray(propsData) ? propsData as Property[] : [];
         const validBks = Array.isArray(bksData) ? bksData as Booking[] : [];
-        const validNotifs = Array.isArray(notifsData) ? notifsData as NotificationItem[] : [];
+        const validNotifs = (notifsResult.ok && Array.isArray(notifsResult.data)) ? notifsResult.data as NotificationItem[] : [];
         const validDisps = Array.isArray(dispData) ? dispData as Dispute[] : [];
 
         const totalProps = validProps.length;
@@ -460,6 +471,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; ownerId: string 
         setProperties(fixtureProperties);
         setBookings(fixtureBookings);
         setNotifications(notifsData);
+        setNotificationsError(null);
         setMetrics(metricsData);
         setModificationRequests(modsData);
         setCancellationRequests(cancsData);
@@ -1174,6 +1186,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; ownerId: string 
         properties,
         bookings,
         notifications,
+        notificationsError,
         metrics,
         isLoading,
         error,

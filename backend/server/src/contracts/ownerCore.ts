@@ -22,31 +22,36 @@ export function toOwnerProfileDto(raw: unknown): OwnerProfileDto {
   if (typeof row.id !== 'string' || row.id.trim() === '' || typeof row.phoneNumber !== 'string' || row.phoneNumber.trim() === '') {
     throw new Error('MALFORMED_OWNER_PROFILE: missing or invalid id/phoneNumber');
   }
-  if (row.status !== undefined && (typeof row.status !== 'string' || row.status.trim() === '')) {
-    throw new Error('MALFORMED_OWNER_PROFILE: invalid status');
+  if (typeof row.status !== 'string' || row.status.trim() === '') {
+    throw new Error('MALFORMED_OWNER_PROFILE: missing or invalid status');
   }
-  if (row.verificationStatus !== undefined && (typeof row.verificationStatus !== 'string' || row.verificationStatus.trim() === '')) {
-    throw new Error('MALFORMED_OWNER_PROFILE: invalid verificationStatus');
+  if (typeof row.verificationStatus !== 'string' || row.verificationStatus.trim() === '') {
+    throw new Error('MALFORMED_OWNER_PROFILE: missing or invalid verificationStatus');
   }
-  if (row.createdAt !== undefined && (typeof row.createdAt !== 'string' || row.createdAt.trim() === '')) {
-    throw new Error('MALFORMED_OWNER_PROFILE: invalid createdAt');
+  const createdAt = typeof row.createdAt === 'string' && row.createdAt.trim() !== ''
+    ? row.createdAt
+    : (typeof row.created_at === 'string' && row.created_at.trim() !== '' ? row.created_at : null);
+  if (!createdAt) {
+    throw new Error('MALFORMED_OWNER_PROFILE: missing or invalid createdAt');
   }
-  if (row.updatedAt !== undefined && (typeof row.updatedAt !== 'string' || row.updatedAt.trim() === '')) {
-    throw new Error('MALFORMED_OWNER_PROFILE: invalid updatedAt');
+  const updatedAt = typeof row.updatedAt === 'string' && row.updatedAt.trim() !== ''
+    ? row.updatedAt
+    : (typeof row.updated_at === 'string' && row.updated_at.trim() !== '' ? row.updated_at : null);
+  if (!updatedAt) {
+    throw new Error('MALFORMED_OWNER_PROFILE: missing or invalid updatedAt');
   }
 
-  const nowIso = new Date().toISOString();
   return {
     id: row.id as string,
     phoneNumber: row.phoneNumber as string,
-    fullName: typeof row.fullName === 'string' ? row.fullName : null,
+    fullName: typeof row.fullName === 'string' ? row.fullName : (typeof row.full_name === 'string' ? row.full_name : null),
     email: typeof row.email === 'string' ? row.email : null,
-    avatarUrl: typeof row.avatarUrl === 'string' ? row.avatarUrl : null,
-    status: (row.status as string) || 'ACTIVE',
-    verificationStatus: (row.verificationStatus as string) || 'UNVERIFIED',
-    ownerOnboardingCompletedAt: typeof row.ownerOnboardingCompletedAt === 'string' ? row.ownerOnboardingCompletedAt : null,
-    createdAt: (row.createdAt as string) || (row.created_at as string) || nowIso,
-    updatedAt: (row.updatedAt as string) || (row.updated_at as string) || nowIso,
+    avatarUrl: typeof row.avatarUrl === 'string' ? row.avatarUrl : (typeof row.avatar_url === 'string' ? row.avatar_url : null),
+    status: row.status as string,
+    verificationStatus: row.verificationStatus as string,
+    ownerOnboardingCompletedAt: typeof row.ownerOnboardingCompletedAt === 'string' ? row.ownerOnboardingCompletedAt : (typeof row.owner_onboarding_completed_at === 'string' ? row.owner_onboarding_completed_at : null),
+    createdAt,
+    updatedAt,
   };
 }
 
@@ -132,9 +137,16 @@ export function toOwnerPropertyDto(raw: unknown): OwnerPropertyDto {
     throw new Error('MALFORMED_OWNER_PROPERTY: invalid maxGuests');
   }
 
-  const nowIso = new Date().toISOString();
-  const createdAt = (row.createdAt as string) || (row.created_at as string) || nowIso;
-  const updatedAt = (row.updatedAt as string) || (row.updated_at as string) || nowIso;
+  const createdAt = typeof row.createdAt === 'string' && row.createdAt.trim() !== ''
+    ? row.createdAt
+    : (typeof row.created_at === 'string' && row.created_at.trim() !== '' ? row.created_at : null);
+  const updatedAt = typeof row.updatedAt === 'string' && row.updatedAt.trim() !== ''
+    ? row.updatedAt
+    : (typeof row.updated_at === 'string' && row.updated_at.trim() !== '' ? row.updated_at : null);
+
+  if (!createdAt || !updatedAt) {
+    throw new Error('MALFORMED_OWNER_PROPERTY: missing createdAt or updatedAt');
+  }
 
   const basePricePerNight = typeof row.basePricePerNight === 'number' && Number.isFinite(row.basePricePerNight)
     ? row.basePricePerNight
@@ -222,6 +234,20 @@ export interface OwnerBookingFinancialDto {
   currency: 'EGP';
 }
 
+function parseStrictFinancialAmount(val: unknown, fieldName: string): number {
+  if (val === null || val === undefined || typeof val === 'boolean') {
+    throw new Error(`MALFORMED_OWNER_BOOKING_FINANCIALS: missing or invalid ${fieldName}`);
+  }
+  if (typeof val === 'string' && val.trim() === '') {
+    throw new Error(`MALFORMED_OWNER_BOOKING_FINANCIALS: missing or invalid ${fieldName}`);
+  }
+  const n = typeof val === 'number' ? val : Number(val);
+  if (!Number.isFinite(n) || n < 0) {
+    throw new Error(`MALFORMED_OWNER_BOOKING_FINANCIALS: invalid ${fieldName}`);
+  }
+  return n;
+}
+
 export function toOwnerBookingFinancialDto(raw: unknown): OwnerBookingFinancialDto {
   const row = raw as Record<string, unknown>;
   if (!row || typeof row !== 'object') throw new Error('MALFORMED_OWNER_BOOKING_FINANCIALS');
@@ -230,20 +256,17 @@ export function toOwnerBookingFinancialDto(raw: unknown): OwnerBookingFinancialD
     throw new Error('MALFORMED_OWNER_BOOKING_FINANCIALS: missing bookingId');
   }
 
-  const num = (v: unknown, name: string): number => {
-    const val = Number(v);
-    if (!Number.isFinite(val) || val < 0) {
-      throw new Error(`MALFORMED_OWNER_BOOKING_FINANCIALS: invalid ${name}`);
-    }
-    return val;
-  };
+  const totalBookingValue = parseStrictFinancialAmount(row.totalBookingValue !== undefined ? row.totalBookingValue : row.total_booking_value, 'totalBookingValue');
+  const depositAmount = parseStrictFinancialAmount(row.depositAmount !== undefined ? row.depositAmount : row.deposit_amount, 'depositAmount');
+  const solaCommissionAmount = parseStrictFinancialAmount(row.solaCommissionAmount !== undefined ? row.solaCommissionAmount : row.sola_commission_amount, 'solaCommissionAmount');
+  const ownerNetDepositAmount = parseStrictFinancialAmount(row.ownerNetDepositAmount !== undefined ? row.ownerNetDepositAmount : row.owner_net_deposit_amount, 'ownerNetDepositAmount');
+  const remainingBalance = parseStrictFinancialAmount(row.remainingBalance !== undefined ? row.remainingBalance : row.remaining_balance, 'remainingBalance');
 
-  const totalBookingValue = num(row.totalBookingValue ?? row.total_booking_value, 'totalBookingValue');
-  const depositAmount = num(row.depositAmount ?? row.deposit_amount, 'depositAmount');
-  const solaCommissionAmount = num(row.solaCommissionAmount ?? row.sola_commission_amount, 'solaCommissionAmount');
-  const ownerNetDepositAmount = num(row.ownerNetDepositAmount ?? row.owner_net_deposit_amount, 'ownerNetDepositAmount');
-  const remainingBalance = num(row.remainingBalance ?? row.remaining_balance, 'remainingBalance');
-  const commissionOnRemainingBalance = num(row.commissionOnRemainingBalance ?? row.commission_on_remaining_balance ?? 0, 'commissionOnRemainingBalance');
+  const rawComm = row.commissionOnRemainingBalance !== undefined ? row.commissionOnRemainingBalance : row.commission_on_remaining_balance;
+  if (rawComm === undefined) {
+    throw new Error('MALFORMED_OWNER_BOOKING_FINANCIALS: missing commissionOnRemainingBalance');
+  }
+  const commissionOnRemainingBalance = parseStrictFinancialAmount(rawComm, 'commissionOnRemainingBalance');
 
   if (commissionOnRemainingBalance !== 0) {
     throw new Error('MALFORMED_OWNER_BOOKING_FINANCIALS: commissionOnRemainingBalance must be 0');
@@ -259,6 +282,19 @@ export function toOwnerBookingFinancialDto(raw: unknown): OwnerBookingFinancialD
     commissionOnRemainingBalance: 0,
     currency: 'EGP',
   };
+}
+
+export interface OwnerBookingPropertyDto {
+  id: string;
+  title: string;
+  locationName: string;
+  address: string;
+  images: string[];
+}
+
+export interface OwnerBookingRenterDto {
+  name: string | null;
+  avatar: string | null;
 }
 
 export interface OwnerBookingListItemDto {
@@ -279,16 +315,11 @@ export interface OwnerBookingListItemDto {
   remainingAmount: number;
   currency: 'EGP';
   status: string;
-  renter: {
-    id: string;
-    name: string;
-    avatar: string;
-    rating: number;
-  };
+  renter: OwnerBookingRenterDto;
   confirmedAt?: string | null;
   rejectedAt?: string | null;
   createdAt: string;
-  property?: Record<string, unknown>;
+  property?: OwnerBookingPropertyDto;
   financialSummary?: OwnerBookingFinancialDto;
 }
 
@@ -297,6 +328,12 @@ export function toOwnerBookingListItem(raw: unknown): OwnerBookingListItemDto {
   if (!row || typeof row !== 'object') throw new Error('MALFORMED_OWNER_BOOKING');
   if (typeof row.id !== 'string' || row.id.trim() === '') {
     throw new Error('MALFORMED_OWNER_BOOKING: missing id');
+  }
+  const bookingNumber = typeof row.bookingNumber === 'string' && row.bookingNumber.trim() !== ''
+    ? row.bookingNumber.trim()
+    : (typeof row.booking_number === 'string' && row.booking_number.trim() !== '' ? row.booking_number.trim() : null);
+  if (!bookingNumber) {
+    throw new Error('MALFORMED_OWNER_BOOKING: missing bookingNumber');
   }
   if (typeof row.propertyId !== 'string' || row.propertyId.trim() === '') {
     throw new Error('MALFORMED_OWNER_BOOKING: missing propertyId');
@@ -308,46 +345,87 @@ export function toOwnerBookingListItem(raw: unknown): OwnerBookingListItemDto {
     throw new Error('MALFORMED_OWNER_BOOKING: missing checkIn or checkOut');
   }
   const nights = Number(row.nights);
-  if (!Number.isFinite(nights) || nights <= 0) {
+  if (!Number.isInteger(nights) || nights <= 0) {
     throw new Error('MALFORMED_OWNER_BOOKING: invalid nights');
   }
-  const guestsCount = Number(row.guestsCount ?? row.totalGuests);
-  if (!Number.isFinite(guestsCount) || guestsCount <= 0) {
+  const guestsRaw = Number(row.guestsCount ?? row.totalGuests);
+  if (!Number.isInteger(guestsRaw) || guestsRaw <= 0) {
     throw new Error('MALFORMED_OWNER_BOOKING: invalid guestsCount');
   }
-  const totalPrice = Number(row.totalPrice ?? row.totalStay ?? (row.financialSummary && (row.financialSummary as any).totalBookingValue));
-  const deposit = Number(row.deposit ?? row.depositAmount ?? (row.financialSummary && (row.financialSummary as any).depositAmount));
-  if (!Number.isFinite(totalPrice) || totalPrice <= 0 || !Number.isFinite(deposit) || deposit <= 0) {
+  const createdAt = typeof row.createdAt === 'string' && row.createdAt.trim() !== ''
+    ? row.createdAt
+    : (typeof row.created_at === 'string' && row.created_at.trim() !== '' ? row.created_at : null);
+  if (!createdAt) {
+    throw new Error('MALFORMED_OWNER_BOOKING: missing createdAt');
+  }
+
+  // Financial fields must come from canonical persisted booking/financial truth
+  let financialSummary: OwnerBookingFinancialDto | undefined;
+  if (row.financialSummary && typeof row.financialSummary === 'object') {
+    financialSummary = toOwnerBookingFinancialDto(row.financialSummary);
+  }
+
+  const totalPrice = financialSummary
+    ? financialSummary.totalBookingValue
+    : parseStrictFinancialAmount(row.totalPrice ?? row.totalStay, 'totalPrice');
+  const deposit = financialSummary
+    ? financialSummary.depositAmount
+    : parseStrictFinancialAmount(row.deposit ?? row.depositAmount, 'deposit');
+  const remainingAmount = financialSummary
+    ? financialSummary.remainingBalance
+    : (row.remainingAmount !== undefined
+        ? parseStrictFinancialAmount(row.remainingAmount, 'remainingAmount')
+        : (totalPrice - deposit));
+
+  if (totalPrice <= 0 || deposit <= 0 || remainingAmount !== (totalPrice - deposit)) {
     throw new Error('MALFORMED_OWNER_BOOKING: invalid financial amounts');
   }
 
-  const renterRaw = (row.renter && typeof row.renter === 'object') ? (row.renter as Record<string, unknown>) : {};
-  const renter = {
-    id: typeof renterRaw.id === 'string' ? renterRaw.id : (typeof row.customerId === 'string' ? row.customerId : ''),
-    name: typeof renterRaw.name === 'string' ? renterRaw.name : (typeof row.guestName === 'string' ? row.guestName : 'مستأجر'),
-    avatar: typeof renterRaw.avatar === 'string' ? renterRaw.avatar : '',
-    rating: typeof renterRaw.rating === 'number' ? renterRaw.rating : 0,
+  // Renter: do NOT expose customerId as renter.id, do NOT fabricate generic 'مستأجر', do NOT fabricate fake rating
+  const renterRaw = (row.renter && typeof row.renter === 'object') ? (row.renter as Record<string, unknown>) : null;
+  const guestName = typeof row.guestName === 'string' && row.guestName.trim() !== ''
+    ? row.guestName.trim()
+    : (renterRaw && typeof renterRaw.name === 'string' && renterRaw.name.trim() !== '' ? renterRaw.name.trim() : null);
+  const avatar = renterRaw && typeof renterRaw.avatar === 'string' && renterRaw.avatar.trim() !== ''
+    ? renterRaw.avatar.trim()
+    : null;
+
+  const renter: OwnerBookingRenterDto = {
+    name: guestName,
+    avatar,
   };
 
-  const nowIso = new Date().toISOString();
-  const createdAt = (row.createdAt as string) || (row.created_at as string) || nowIso;
+  // Explicit safe subset for property
+  let propertySubset: OwnerBookingPropertyDto | undefined;
+  if (row.property && typeof row.property === 'object') {
+    const p = row.property as Record<string, unknown>;
+    if (typeof p.id === 'string' && p.id.trim() !== '') {
+      propertySubset = {
+        id: p.id,
+        title: typeof p.title === 'string' ? p.title : '',
+        locationName: typeof p.locationName === 'string' ? p.locationName : (typeof p.resortName === 'string' ? p.resortName : ''),
+        address: typeof p.address === 'string' ? p.address : '',
+        images: Array.isArray(p.images) ? p.images.filter((img): img is string => typeof img === 'string') : [],
+      };
+    }
+  }
 
   const result: OwnerBookingListItemDto = {
     id: row.id as string,
-    bookingNumber: (row.bookingNumber as string) || `BK-${(row.id as string).slice(0, 8)}`,
+    bookingNumber,
     propertyId: row.propertyId as string,
-    propertyTitle: (row.propertyTitle as string) || (row.property && (row.property as any).title) || '',
-    propertyImage: (row.propertyImage as string) || '',
-    locationName: (row.locationName as string) || '',
+    propertyTitle: typeof row.propertyTitle === 'string' ? row.propertyTitle : (propertySubset?.title || ''),
+    propertyImage: typeof row.propertyImage === 'string' ? row.propertyImage : (propertySubset?.images?.[0] || ''),
+    locationName: typeof row.locationName === 'string' ? row.locationName : (propertySubset?.locationName || ''),
     checkIn: row.checkIn as string,
     checkOut: row.checkOut as string,
     nights,
-    guestsCount,
+    guestsCount: guestsRaw,
     totalPrice,
     deposit,
     totalStay: totalPrice,
     depositAmount: deposit,
-    remainingAmount: typeof row.remainingAmount === 'number' ? row.remainingAmount : (totalPrice - deposit),
+    remainingAmount,
     currency: 'EGP',
     status: row.status as string,
     renter,
@@ -356,11 +434,11 @@ export function toOwnerBookingListItem(raw: unknown): OwnerBookingListItemDto {
     createdAt,
   };
 
-  if (row.property && typeof row.property === 'object') {
-    result.property = row.property as Record<string, unknown>;
+  if (propertySubset) {
+    result.property = propertySubset;
   }
-  if (row.financialSummary && typeof row.financialSummary === 'object') {
-    result.financialSummary = toOwnerBookingFinancialDto(row.financialSummary);
+  if (financialSummary) {
+    result.financialSummary = financialSummary;
   }
 
   return result;

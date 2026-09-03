@@ -513,3 +513,236 @@ console.log('P2.3 Task 4 owner booking and financial contract tests passed.');
 }
 
 console.log('P2.3 Task 5 tests passed.');
+
+// ---------------------------------------------------------------------------
+// 6. Correction 01 Tests (RED)
+// ---------------------------------------------------------------------------
+
+// 6A. OwnerProfileDto fails closed when canonical fields are missing (no fabricated ACTIVE/UNVERIFIED/now)
+{
+  const baseProfile = {
+    id: 'owner-test-1',
+    phoneNumber: '+201000000001',
+    status: 'ACTIVE',
+    verificationStatus: 'VERIFIED',
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+  };
+
+  // Missing status
+  assert.throws(
+    () => toOwnerProfileDto({ ...baseProfile, status: undefined }),
+    /missing or invalid status/,
+    'Must fail closed when status is missing, not default to ACTIVE'
+  );
+
+  // Missing verificationStatus
+  assert.throws(
+    () => toOwnerProfileDto({ ...baseProfile, verificationStatus: undefined }),
+    /missing or invalid verificationStatus/,
+    'Must fail closed when verificationStatus is missing, not default to UNVERIFIED'
+  );
+
+  // Missing createdAt
+  assert.throws(
+    () => toOwnerProfileDto({ ...baseProfile, createdAt: undefined }),
+    /missing or invalid createdAt/,
+    'Must fail closed when createdAt is missing, not default to now'
+  );
+
+  // Missing updatedAt
+  assert.throws(
+    () => toOwnerProfileDto({ ...baseProfile, updatedAt: undefined }),
+    /missing or invalid updatedAt/,
+    'Must fail closed when updatedAt is missing, not default to now'
+  );
+}
+
+// 6B. OwnerPropertyDto fails closed when timestamps are missing (no fabricated now)
+{
+  const baseProperty = {
+    id: 'prop-test-1',
+    ownerId: 'owner-test-1',
+    title: 'شاليه تجريبي',
+    unitType: 'CHALET',
+    propertyType: 'CHALET',
+    status: 'DRAFT',
+    verificationStatus: 'UNVERIFIED',
+    address: 'الساحل الشمالي',
+    pricePerNight: 2000,
+    bedrooms: 2,
+    bathrooms: 1,
+    maxGuests: 4,
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+  };
+
+  assert.throws(
+    () => toOwnerPropertyDto({ ...baseProperty, createdAt: undefined }),
+    /missing createdAt or updatedAt/,
+    'Must fail closed when property createdAt is missing'
+  );
+}
+
+// 6C. Financial mapping strictness: never coerce null/boolean/empty string to 0, require commissionOnRemainingBalance
+{
+  const validFinancials = {
+    bookingId: 'bk-test-1',
+    totalBookingValue: 10000,
+    depositAmount: 2500,
+    solaCommissionAmount: 500,
+    ownerNetDepositAmount: 2000,
+    remainingBalance: 7500,
+    commissionOnRemainingBalance: 0,
+  };
+
+  // null totalBookingValue must throw, never coerce to 0
+  assert.throws(
+    () => toOwnerBookingFinancialDto({ ...validFinancials, totalBookingValue: null }),
+    /missing or invalid totalBookingValue/,
+    'null totalBookingValue must throw, never coerce to 0'
+  );
+
+  // boolean depositAmount must throw, never coerce to 0
+  assert.throws(
+    () => toOwnerBookingFinancialDto({ ...validFinancials, depositAmount: false }),
+    /missing or invalid depositAmount/,
+    'boolean depositAmount must throw, never coerce to 0'
+  );
+
+  // empty string remainingBalance must throw, never coerce to 0
+  assert.throws(
+    () => toOwnerBookingFinancialDto({ ...validFinancials, remainingBalance: '' }),
+    /missing or invalid remainingBalance/,
+    'empty string remainingBalance must throw, never coerce to 0'
+  );
+
+  // missing commissionOnRemainingBalance must throw, never silently default to 0
+  const noCommission = { ...validFinancials };
+  delete (noCommission as any).commissionOnRemainingBalance;
+  assert.throws(
+    () => toOwnerBookingFinancialDto(noCommission),
+    /missing commissionOnRemainingBalance/,
+    'missing commissionOnRemainingBalance must throw, never silently default to 0'
+  );
+}
+
+// 6D. Owner booking list DTO must NOT fabricate bookingNumber, now timestamp, generic renter name, fake rating
+{
+  const validBookingItem = {
+    id: 'b-test-1',
+    bookingNumber: 'BK-123456',
+    propertyId: 'p-test-1',
+    checkIn: '2026-09-10',
+    checkOut: '2026-09-14',
+    nights: 4,
+    guestsCount: 2,
+    totalPrice: 8000,
+    deposit: 2000,
+    totalStay: 8000,
+    depositAmount: 2000,
+    remainingAmount: 6000,
+    status: 'CONFIRMED',
+    createdAt: '2026-09-01T00:00:00.000Z',
+    financialSummary: {
+      bookingId: 'b-test-1',
+      totalBookingValue: 8000,
+      depositAmount: 2000,
+      solaCommissionAmount: 400,
+      ownerNetDepositAmount: 1600,
+      remainingBalance: 6000,
+      commissionOnRemainingBalance: 0,
+    },
+  };
+
+  // Missing bookingNumber must throw (no generated BK-xxx)
+  assert.throws(
+    () => toOwnerBookingListItem({ ...validBookingItem, bookingNumber: undefined }),
+    /missing bookingNumber/,
+    'Missing bookingNumber must fail closed, never generate fake BK-xxx'
+  );
+
+  // Missing createdAt must throw (no nowIso)
+  assert.throws(
+    () => toOwnerBookingListItem({ ...validBookingItem, createdAt: undefined }),
+    /missing createdAt/,
+    'Missing createdAt must fail closed, never default to now'
+  );
+
+  // Renter must NOT expose customerId as renter.id, nor fake rating, nor generic 'مستأجر'
+  const itemWithoutGuestName = toOwnerBookingListItem({
+    ...validBookingItem,
+    customerId: 'cust-secret-uuid',
+    guestName: undefined,
+    renter: undefined,
+  });
+  assert.equal('id' in (itemWithoutGuestName.renter as any), false, 'Must not expose customerId as renter.id');
+  assert.equal('rating' in (itemWithoutGuestName.renter as any), false, 'Must not fabricate fake rating');
+  assert.equal(itemWithoutGuestName.renter.name, null, 'Missing guestName must be null, not generic مستأجر');
+
+  // Broad raw property object must be restricted to explicit safe subset
+  const itemWithRawProperty = toOwnerBookingListItem({
+    ...validBookingItem,
+    property: {
+      id: 'p-test-1',
+      title: 'شاليه بحري',
+      locationName: 'مراسي',
+      address: 'شارع البحر',
+      images: ['https://example.com/img1.jpg'],
+      internalAdminNotes: 'SECRET_ADMIN_DATA',
+      ownerTaxId: 'SECRET_TAX_ID',
+    },
+  });
+  assert.equal('internalAdminNotes' in (itemWithRawProperty.property as any), false, 'Safe subset must not leak raw internalAdminNotes');
+  assert.equal('ownerTaxId' in (itemWithRawProperty.property as any), false, 'Safe subset must not leak raw ownerTaxId');
+}
+
+// 6E. Avatar preservation: PUT /api/v1/owner/profile edit without avatar must NOT clear canonical avatar
+{
+  const testOwnerWithAvatar = 'o0000000-0000-4000-8000-000000000099';
+  const tokenOwnerWithAvatar = signAccessToken({ sub: testOwnerWithAvatar, role: 'ROLE_OWNER' });
+  const origOwnerGetById = ownerDb.getById;
+  const origOwnerUpdateProfile = ownerDb.updateProfile;
+
+  const currentDbOwner = {
+    id: testOwnerWithAvatar,
+    phoneNumber: '+201099999999',
+    fullName: 'مالك بحساب أصلي',
+    email: 'avatar-owner@example.com',
+    avatarUrl: 'https://storage.sola.eg/avatars/canonical-avatar.jpg',
+    status: 'ACTIVE',
+    verificationStatus: 'VERIFIED',
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+  };
+
+  (ownerDb as any).getById = async () => ({ ...currentDbOwner });
+  (ownerDb as any).updateProfile = async (id: string, data: any) => {
+    // If data.avatarUrl is undefined, avatar is NOT overwritten
+    return {
+      ...currentDbOwner,
+      fullName: data.fullName ?? currentDbOwner.fullName,
+      email: data.email !== undefined ? data.email : currentDbOwner.email,
+      avatarUrl: data.avatarUrl !== undefined ? data.avatarUrl : currentDbOwner.avatarUrl,
+      updatedAt: '2026-09-04T00:00:00.000Z',
+    };
+  };
+
+  try {
+    // Edit only fullName, without passing avatarUrl or avatar
+    const editRes = await app.handleHttpRequest(
+      'PUT',
+      '/api/v1/owner/profile',
+      ownerHeaders(tokenOwnerWithAvatar),
+      { fullName: 'الاسم المحدث للمالك' }
+    );
+    assert.equal(editRes.statusCode, 200);
+    assert.equal((editRes.body as any).data.fullName, 'الاسم المحدث للمالك');
+    assert.equal((editRes.body as any).data.avatarUrl, 'https://storage.sola.eg/avatars/canonical-avatar.jpg', 'Canonical avatar must survive profile edit when not passed');
+  } finally {
+    (ownerDb as any).getById = origOwnerGetById;
+    (ownerDb as any).updateProfile = origOwnerUpdateProfile;
+  }
+}
+
+console.log('P2.3 Correction 01 tests passed.');

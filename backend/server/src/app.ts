@@ -1033,6 +1033,7 @@ export class ExpressServerApp {
           // Property identity is server-generated. A client draft identifier is never canonical.
           const propId = crypto.randomUUID();
 
+          const nowIso = new Date().toISOString();
           const createdProperty = await propertyDb.create({
             id: propId,
             ownerId,
@@ -1053,6 +1054,8 @@ export class ExpressServerApp {
             houseRules: bodyPayload?.houseRules || {},
             status: 'DRAFT',
             verificationStatus: 'UNVERIFIED',
+            createdAt: nowIso,
+            updatedAt: nowIso,
           }).catch((err) => {
             console.error('❌ [propertyDb.create DB ERROR]:', err);
             return null;

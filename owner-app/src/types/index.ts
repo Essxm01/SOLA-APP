@@ -479,11 +479,11 @@ export interface Owner {
 }
 
 export interface Renter {
-  id: string;
+  id?: string;
   name: string;
-  phone: string;
-  avatar: string;
-  rating: number;
+  phone?: string;
+  avatar?: string;
+  rating?: number;
 }
 
 export interface BookingFinancialSummary {

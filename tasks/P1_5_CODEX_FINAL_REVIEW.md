@@ -4,14 +4,15 @@ TASK_ID: P1.5-FINAL-CODEX-REVIEW
 MODE: READ_ONLY_FINAL_REVIEW
 REPOSITORY: Essxm01/SOLA-APP
 CANDIDATE_BRANCH: validation/p1-5-rc
-FINAL_IMPLEMENTATION_SHA: 25b351939697968de6dc3258e32cebcbf073a2a6
+FINAL_IMPLEMENTATION_SHA: 88c2dcedc0e76df023446fa9aef46cea1a6f7bc0
 BASE_MAIN_SHA: 477ef6a1b274e98a7b757f0b0b77ea8815cee741
 PULL_REQUEST: #9
+EXACT_HEAD_CI: Run #163 / 33708817324 — SUCCESS
 LIVE_MUTATION: FORBIDDEN
 MIGRATION_026: REPOSITORY_ONLY_NOT_APPLIED_LIVE
 
 ## Objective
-Perform one final semantic review of the exact P1.5 implementation SHA. Decide whether the candidate safely closes Booking + Financial Summary persistence integrity without changing product, finance, availability, payment, or architecture rules beyond the approved atomic persistence boundary.
+Perform one final semantic review of the exact corrected P1.5 implementation SHA. Decide whether the candidate safely closes Booking + Financial Summary persistence integrity without changing product, finance, availability, payment, or architecture rules beyond the approved atomic persistence boundary.
 
 ## Required Review Focus
 
@@ -58,11 +59,18 @@ Confirm:
 - legacy helper retention elsewhere does not create an active sequential fallback for this route;
 - P1.4 semantics remain intact.
 
-### 6. Tests / CI
-Review `p15BookingAtomicPersistence.test.ts`, modified P1.4 stub, package script, and CI wiring. Check that tests meaningfully cover atomic success, booking-side failure, summary-side rollback, canonical financial persistence, adapter failure semantics, security contract, and absence of active compensation fallback.
+### 6. Corrected test / CI evidence
+The only change after implementation SHA `25b351939697968de6dc3258e32cebcbf073a2a6` is one hermeticity correction commit touching only `backend/server/src/tests/p15BookingAtomicPersistence.test.ts` (+5/-2). Confirm no production or migration file changed in that correction.
+Review P1.5 test coverage, modified P1.4 stub, package script, and CI wiring. Exact-head CI #163 succeeded: Detect Changed Modules, Backend, Customer, Owner, Admin all PASS; Worker deploy skipped because PR event.
 
 ### 7. Idempotency boundary
 Do NOT invent booking-create idempotency. Verify that no authoritative booking-create idempotency contract currently exists. Treat idempotency as out of scope unless an existing approved contract is found in current authority.
+
+### 8. Live-state boundary
+Read-only Supabase verification before this handoff showed:
+- migration 026 is not recorded in `schema_migrations`;
+- `public.konfrm_create_booking_request` does not exist live.
+Do not mutate Supabase during review.
 
 ## Do Not
 - Do not edit files.
@@ -91,3 +99,5 @@ Then include:
 - whether Migration 026 remains unapplied live;
 - confirmation no mutation was performed;
 - final gate: `READY_FOR_FOUNDER_PUBLICATION_REVIEW` only if CLEAN.
+
+Stop on any SHA mismatch.

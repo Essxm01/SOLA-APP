@@ -514,6 +514,152 @@ try {
 
 console.log('P2.2 Task 5 favoriteDb and Worker adapter tests passed.');
 
+// ---------------------------------------------------------------------------
+// 6. Task 6: Authenticated Favorites routes tests
+// ---------------------------------------------------------------------------
+import { propertyDb, imageDb } from '../services/dbRepository.js';
+
+const ownerToken = signAccessToken({ sub: 'owner-uuid-1', role: 'ROLE_OWNER' });
+const ownerHeaders = { authorization: `Bearer ${ownerToken}` };
+
+const testPropId = 'e0000000-0000-4000-8000-000000000002';
+const nonPublicPropId = 'e0000000-0000-4000-8000-000000000003';
+
+// 6A. Unauthorized / Forbidden role tests
+const unauthGet = await app.handleHttpRequest('GET', '/api/v1/customer/favorites');
+assert.equal(unauthGet.statusCode, 401, 'Anonymous request must return 401');
+
+const ownerFavGet = await app.handleHttpRequest('GET', '/api/v1/customer/favorites', ownerHeaders);
+assert.equal(ownerFavGet.statusCode, 403, 'Owner token must return 403');
+
+const ownerFavPost = await app.handleHttpRequest('POST', `/api/v1/customer/favorites/${testPropId}`, ownerHeaders);
+assert.equal(ownerFavPost.statusCode, 403, 'Owner POST must return 403');
+
+const ownerFavDelete = await app.handleHttpRequest('DELETE', `/api/v1/customer/favorites/${testPropId}`, ownerHeaders);
+assert.equal(ownerFavDelete.statusCode, 403, 'Owner DELETE must return 403');
+
+// 6B. In-memory stubs for route testing
+let mockCustomerFavorites: Array<{ customerId: string; propertyId: string; createdAt: string }> = [];
+const origFavGetByCustomerId = favoriteDb.getByCustomerId;
+const origFavAdd = favoriteDb.add;
+const origFavRemove = favoriteDb.remove;
+const origPropGetPublicById = propertyDb.getPublicById;
+const origImageGetImages = imageDb.getImagesByPropertyId;
+
+(favoriteDb as any).getByCustomerId = async (cid: string) => {
+  return mockCustomerFavorites.filter((f) => f.customerId === cid);
+};
+
+(favoriteDb as any).add = async (cid: string, pid: string) => {
+  if (pid === nonPublicPropId) return null; // simulates unverified / unpublished
+  let existing = mockCustomerFavorites.find((f) => f.customerId === cid && f.propertyId === pid);
+  if (!existing) {
+    existing = { customerId: cid, propertyId: pid, createdAt: '2026-09-03T12:00:00.000Z' };
+    mockCustomerFavorites.push(existing);
+  }
+  return existing;
+};
+
+(favoriteDb as any).remove = async (cid: string, pid: string) => {
+  mockCustomerFavorites = mockCustomerFavorites.filter((f) => !(f.customerId === cid && f.propertyId === pid));
+};
+
+(propertyDb as any).getPublicById = async (pid: string) => {
+  if (pid === testPropId) {
+    return {
+      id: testPropId,
+      title: 'شاليه مراسي فاخر',
+      unitType: 'CHALET',
+      propertyType: 'CHALET',
+      address: 'مراسي',
+      region: 'الساحل الشمالي',
+      resortName: 'مراسي',
+      bedrooms: 2,
+      bathrooms: 2,
+      maxGuests: 4,
+      basePricePerNight: 6000,
+    };
+  }
+  return null; // nonPublicPropId or unknown is not public
+};
+
+(imageDb as any).getImagesByPropertyId = async (pid: string) => {
+  if (pid === testPropId) {
+    return [
+      { id: 'img-1', propertyId: pid, fileUrl: 'https://storage.sola.eg/p1.jpg', isPrimary: true, status: 'ACTIVE' },
+    ];
+  }
+  return [];
+};
+
+try {
+  // 6C. Add eligible property -> 200 { propertyId, isFavorite: true }
+  const addRes = await app.handleHttpRequest('POST', `/api/v1/customer/favorites/${testPropId}`, customerHeaders);
+  assert.equal(addRes.statusCode, 200);
+  assert.deepEqual((addRes.body as any).data, { propertyId: testPropId, isFavorite: true });
+
+  // 6D. Duplicate add -> idempotent 200 { propertyId, isFavorite: true }
+  const dupAddRes = await app.handleHttpRequest('POST', `/api/v1/customer/favorites/${testPropId}`, customerHeaders);
+  assert.equal(dupAddRes.statusCode, 200);
+  assert.deepEqual((dupAddRes.body as any).data, { propertyId: testPropId, isFavorite: true });
+
+  // 6E. Add non-public property -> 404 PROPERTY_NOT_FOUND
+  const missAddRes = await app.handleHttpRequest('POST', `/api/v1/customer/favorites/${nonPublicPropId}`, customerHeaders);
+  assert.equal(missAddRes.statusCode, 404);
+  assert.equal((missAddRes.body as any).error?.code, 'PROPERTY_NOT_FOUND');
+
+  // 6F. GET favorites list includes hydrated public property
+  const favListRes = await app.handleHttpRequest('GET', '/api/v1/customer/favorites', customerHeaders);
+  assert.equal(favListRes.statusCode, 200);
+  const favItems = (favListRes.body as any).data;
+  assert.equal(favItems.length, 1);
+  assert.equal(favItems[0].id, testPropId);
+  assert.equal(favItems[0].title, 'شاليه مراسي فاخر');
+  assert.deepEqual(favItems[0].images, ['https://storage.sola.eg/p1.jpg']);
+
+  // 6G. Non-public saved property is hidden from visible list, but intent row remains
+  mockCustomerFavorites.push({
+    customerId: testCustomerId,
+    propertyId: nonPublicPropId,
+    createdAt: '2026-09-03T12:01:00.000Z',
+  });
+  const favListWithHidden = await app.handleHttpRequest('GET', '/api/v1/customer/favorites', customerHeaders);
+  assert.equal(favListWithHidden.statusCode, 200);
+  assert.equal((favListWithHidden.body as any).data.length, 1, 'non-public saved property must be hidden from list');
+  assert.equal(mockCustomerFavorites.some((f) => f.propertyId === nonPublicPropId), true, 'favorite row must remain saved');
+
+  // 6H. Customer A vs Customer B isolation
+  const customerBToken = signAccessToken({ sub: '00000000-0000-4000-8000-000000000099', role: 'ROLE_CUSTOMER' });
+  const favListB = await app.handleHttpRequest('GET', '/api/v1/customer/favorites', { authorization: `Bearer ${customerBToken}` });
+  assert.equal(favListB.statusCode, 200);
+  assert.equal((favListB.body as any).data.length, 0, 'Customer B cannot see Customer A favorites');
+
+  // 6I. Delete favorite -> 200 { propertyId, isFavorite: false }
+  const delRes = await app.handleHttpRequest('DELETE', `/api/v1/customer/favorites/${testPropId}`, customerHeaders);
+  assert.equal(delRes.statusCode, 200);
+  assert.deepEqual((delRes.body as any).data, { propertyId: testPropId, isFavorite: false });
+
+  // 6J. Delete missing favorite -> idempotent 200 { propertyId, isFavorite: false }
+  const delMissingRes = await app.handleHttpRequest('DELETE', `/api/v1/customer/favorites/${testPropId}`, customerHeaders);
+  assert.equal(delMissingRes.statusCode, 200);
+  assert.deepEqual((delMissingRes.body as any).data, { propertyId: testPropId, isFavorite: false });
+
+  // 6K. Failure in favorites query -> 500, not empty list
+  (favoriteDb as any).getByCustomerId = async () => { throw new Error('db crashed'); };
+  const failListRes = await app.handleHttpRequest('GET', '/api/v1/customer/favorites', customerHeaders);
+  assert.equal(failListRes.statusCode, 500);
+  assert.equal((failListRes.body as any).error?.code, 'CUSTOMER_FAVORITES_QUERY_FAILED');
+} finally {
+  (favoriteDb as any).getByCustomerId = origFavGetByCustomerId;
+  (favoriteDb as any).add = origFavAdd;
+  (favoriteDb as any).remove = origFavRemove;
+  (propertyDb as any).getPublicById = origPropGetPublicById;
+  (imageDb as any).getImagesByPropertyId = origImageGetImages;
+}
+
+console.log('P2.2 Task 6 authenticated favorites routes tests passed.');
+
+
 
 
 

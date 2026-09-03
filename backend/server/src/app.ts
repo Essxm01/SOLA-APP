@@ -12,7 +12,7 @@ import { calculateBookingFinancials, validatePayoutRequest, roundHalfEvenInCents
 import { verifyJwtToken, requireRole } from './middleware/auth.js';
 import { applyCorsHeaders } from './middleware/cors.js';
 import { dbUsersStore, dbOwnersStore, dbAdminUsersStore, dbNotificationsStore, dbOwnerVerificationDocsStore, dbPropertyVerificationDocsStore, dbPropertiesStore, dbBookingsStore, dbPayoutRequestsStore, dbDisputesStore } from './services/authService.js';
-import { userDb, ownerDb, propertyDb, bookingDb, conversationDb, messageDb, isBookingChatEligible, payoutDb, disputeDb, notificationDb, imageDb, uploadIntentDb, adminStatsDb, walletDb, propertyAvailabilityDb, getUnifiedUnavailableBlocks } from './services/dbRepository.js';
+import { userDb, ownerDb, propertyDb, bookingDb, conversationDb, messageDb, isBookingChatEligible, payoutDb, disputeDb, notificationDb, imageDb, uploadIntentDb, adminStatsDb, walletDb, propertyAvailabilityDb, getUnifiedUnavailableBlocks, favoriteDb } from './services/dbRepository.js';
 import { paymentTxDb, PaymentService, PaymobGateway, verifyPaymobHmacSha512, getPaymentMode } from './services/paymentService.js';
 import { createStorageProvider, IObjectStorageProvider, verifyMagicBytes, computeSha256 } from './services/storageProvider.js';
 import { GLOBAL_MIN_STAY_NIGHTS, GLOBAL_MAX_STAY_NIGHTS, hasDateRangeOverlap, validateStayLength } from './constants/bookingRules.js';
@@ -23,6 +23,7 @@ import {
   toCustomerBookingListItem,
   toCustomerBookingDetailDto,
   toCustomerBookingCreateResponseDto,
+  validateCustomerFavoriteRow,
 } from './contracts/customerRenter.js';
 import type { ApiSuccessResponse, ApiErrorResponse } from './types/server';
 
@@ -3994,6 +3995,179 @@ export class ExpressServerApp {
             body: {
               success: true,
               data: mockDetail,
+              timestamp,
+            },
+          };
+        }
+
+        // 4.5 Customer Favorites (P2.2)
+        if (path === '/api/v1/customer/favorites' && method === 'GET') {
+          let favRows: any[];
+          try {
+            favRows = await favoriteDb.getByCustomerId(customerId);
+          } catch {
+            return {
+              statusCode: 500,
+              body: {
+                success: false,
+                error: { code: 'CUSTOMER_FAVORITES_QUERY_FAILED', message: 'تعذر تحميل قائمة المفضلة' },
+                timestamp,
+              },
+            };
+          }
+
+          const items: any[] = [];
+          for (const rawFav of favRows) {
+            let fav: any;
+            try {
+              fav = validateCustomerFavoriteRow(rawFav);
+            } catch {
+              return {
+                statusCode: 500,
+                body: {
+                  success: false,
+                  error: { code: 'CUSTOMER_FAVORITES_QUERY_FAILED', message: 'تعذر معالجة بيانات المفضلة' },
+                  timestamp,
+                },
+              };
+            }
+
+            let prop: any;
+            try {
+              prop = await propertyDb.getPublicById(fav.propertyId);
+            } catch {
+              return {
+                statusCode: 500,
+                body: {
+                  success: false,
+                  error: { code: 'CUSTOMER_FAVORITES_QUERY_FAILED', message: 'تعذر تحميل بيانات العقار في المفضلة' },
+                  timestamp,
+                },
+              };
+            }
+
+            // A saved property that is no longer public is hidden from the visible
+            // collection, but the underlying favorite intent row is retained.
+            if (!prop) {
+              continue;
+            }
+
+            let mediaRows: any[];
+            try {
+              mediaRows = await imageDb.getImagesByPropertyId(fav.propertyId);
+            } catch {
+              return {
+                statusCode: 500,
+                body: {
+                  success: false,
+                  error: { code: 'CUSTOMER_FAVORITES_QUERY_FAILED', message: 'تعذر تحميل صور العقار في المفضلة' },
+                  timestamp,
+                },
+              };
+            }
+
+            let imageUrls: string[];
+            try {
+              imageUrls = extractPublicImageUrls(mediaRows);
+            } catch {
+              return {
+                statusCode: 500,
+                body: {
+                  success: false,
+                  error: { code: 'CUSTOMER_FAVORITES_QUERY_FAILED', message: 'تعذر معالجة صور العقار في المفضلة' },
+                  timestamp,
+                },
+              };
+            }
+
+            try {
+              const item = toPublicPropertySearchItem(prop, imageUrls);
+              items.push(item);
+            } catch {
+              return {
+                statusCode: 500,
+                body: {
+                  success: false,
+                  error: { code: 'CUSTOMER_FAVORITES_QUERY_FAILED', message: 'تعذر صياغة بيانات العقار في المفضلة' },
+                  timestamp,
+                },
+              };
+            }
+          }
+
+          return {
+            statusCode: 200,
+            body: {
+              success: true,
+              data: items,
+              timestamp,
+            },
+          };
+        }
+
+        if (path.match(/^\/api\/v1\/customer\/favorites\/[^/]+$/) && method === 'POST') {
+          const propertyId = path.split('/')[5];
+          let added: any;
+          try {
+            added = await favoriteDb.add(customerId, propertyId);
+          } catch {
+            return {
+              statusCode: 500,
+              body: {
+                success: false,
+                error: { code: 'CUSTOMER_FAVORITE_ADD_FAILED', message: 'تعذر إضافة العقار إلى المفضلة' },
+                timestamp,
+              },
+            };
+          }
+
+          if (!added) {
+            return {
+              statusCode: 404,
+              body: {
+                success: false,
+                error: { code: 'PROPERTY_NOT_FOUND', message: 'الوحدة غير متاحة حالياً للإضافة إلى المفضلة' },
+                timestamp,
+              },
+            };
+          }
+
+          return {
+            statusCode: 200,
+            body: {
+              success: true,
+              data: {
+                propertyId,
+                isFavorite: true,
+              },
+              timestamp,
+            },
+          };
+        }
+
+        if (path.match(/^\/api\/v1\/customer\/favorites\/[^/]+$/) && method === 'DELETE') {
+          const propertyId = path.split('/')[5];
+          try {
+            await favoriteDb.remove(customerId, propertyId);
+          } catch {
+            return {
+              statusCode: 500,
+              body: {
+                success: false,
+                error: { code: 'CUSTOMER_FAVORITE_REMOVE_FAILED', message: 'تعذر إزالة العقار من المفضلة' },
+                timestamp,
+              },
+            };
+          }
+
+          return {
+            statusCode: 200,
+            body: {
+              success: true,
+              data: {
+                propertyId,
+                isFavorite: false,
+              },
               timestamp,
             },
           };

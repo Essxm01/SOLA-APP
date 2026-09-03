@@ -97,7 +97,7 @@ export const BookingReviewSheet: React.FC<BookingReviewSheetProps> = ({
               {property.title}
             </h4>
             <p className="text-[11px] text-slate-500 font-bold truncate mt-0.5">
-              {property.address || 'الساحل الشمالي'}
+              {property.address || property.resortName || property.region || 'الساحل الشمالي'}
             </p>
             <div className="flex items-center gap-1 mt-1">
               <span className="inline-flex items-center gap-1 text-[10px] font-black px-2 py-0.5 bg-blue-50 text-[#0059FF] rounded-md border border-blue-100">

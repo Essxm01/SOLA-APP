@@ -104,7 +104,7 @@ export const PropertyCard: React.FC<PropertyCardProps> = ({
           <div className="flex items-center justify-between text-slate-500 text-xs font-bold mb-1">
             <div className="flex items-center gap-1">
               <MapPin className="w-3.5 h-3.5 text-[#0059FF] shrink-0" />
-              <span className="truncate max-w-[200px]">{property.address || 'الساحل الشمالي'}</span>
+              <span className="truncate max-w-[200px]">{property.address || property.resortName || property.region || 'الساحل الشمالي'}</span>
             </div>
             <div className="flex items-center gap-1 text-slate-800 text-[11px] font-black">
               <Star className="w-3.5 h-3.5 fill-[#FFD700] text-[#FFD700]" />

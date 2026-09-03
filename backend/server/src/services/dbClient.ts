@@ -117,6 +117,77 @@ async function queryViaSupabaseRest(text: string, params: any[] | undefined, url
   const sql = text.trim();
   const lowerSql = sql.toLowerCase();
 
+  // P1.5: booking request + canonical financial summary are created by ONE
+  // Postgres transaction (migration 026). This mapping is deliberately narrow:
+  // Worker code must never fall back to sequential booking + summary REST
+  // writes with compensating deletes.
+  if (lowerSql.includes('konfrm_create_booking_request')) {
+    const res = await fetch(`${url}/rest/v1/rpc/konfrm_create_booking_request`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        p_id: params?.[0],
+        p_booking_number: params?.[1],
+        p_property_id: params?.[2],
+        p_owner_id: params?.[3],
+        p_customer_id: params?.[4],
+        p_guest_name: params?.[5],
+        p_guest_phone: params?.[6],
+        p_check_in: params?.[7],
+        p_check_out: params?.[8],
+        p_nights: params?.[9],
+        p_total_guests: params?.[10],
+        p_status: params?.[11],
+        p_total_booking_value: params?.[12],
+        p_deposit_amount: params?.[13],
+        p_sola_commission_amount: params?.[14],
+        p_owner_net_deposit_amount: params?.[15],
+        p_remaining_balance: params?.[16],
+        p_commission_on_remaining_balance: params?.[17] ?? 0,
+      }),
+    });
+    if (!res.ok) {
+      // Preserve bounded trigger/DB error evidence (e.g. the Migration 025
+      // DATE_MANUALLY_BLOCKED conflict code) for truthful route mapping.
+      const body = await res.text().catch(() => '');
+      throw new Error(`REST_BOOKING_REQUEST_CREATE_RPC_FAILED: HTTP ${res.status} — ${body.slice(0, 240)}`);
+    }
+    const raw: any = await res.json().catch(() => null);
+    if (!Array.isArray(raw)) {
+      throw new Error('REST_BOOKING_REQUEST_CREATE_MALFORMED_RESPONSE: expected a JSON array with the created row');
+    }
+    if (raw.length !== 1) {
+      throw new Error(`REST_BOOKING_REQUEST_CREATE_RPC_ROW_COUNT: expected exactly one created booking row, got ${raw.length}`);
+    }
+    const r = raw[0];
+    if (!r || typeof r.id !== 'string' || typeof r.status !== 'string' || r.summaryTotalBookingValue === undefined || r.summaryDepositAmount === undefined) {
+      throw new Error('REST_BOOKING_REQUEST_CREATE_MALFORMED_RESPONSE: created row missing required booking/summary fields');
+    }
+    const row = {
+      id: r.id,
+      bookingNumber: r['bookingNumber'] ?? r.booking_number,
+      propertyId: r['propertyId'] ?? r.property_id,
+      ownerId: r['ownerId'] ?? r.owner_id,
+      customerId: r['customerId'] ?? r.customer_id,
+      guestName: r['guestName'] ?? r.guest_name,
+      checkIn: r['checkIn'] ?? r.check_in,
+      checkOut: r['checkOut'] ?? r.check_out,
+      nights: r.nights,
+      guestsCount: r['guestsCount'] ?? r.total_guests,
+      status: r.status,
+      createdAt: r['createdAt'] ?? r.created_at,
+      financialSummary: {
+        totalBookingValue: r.summaryTotalBookingValue,
+        depositAmount: r.summaryDepositAmount,
+        solaCommissionAmount: r.summarySolaCommissionAmount,
+        ownerNetDepositAmount: r.summaryOwnerNetDepositAmount,
+        remainingBalance: r.summaryRemainingBalance,
+        commissionOnRemainingBalance: r.summaryCommissionOnRemainingBalance,
+      },
+    };
+    return { rows: [row], command: 'SELECT', rowCount: 1, oid: 0, fields: [] };
+  }
+
   // PAYMENT-01: the only Worker-safe finalization path is the narrow,
   // atomic Postgres RPC. Never fall through to a pg transaction in Workers.
   if (lowerSql.includes('konfrm_complete_deposit_payment')) {

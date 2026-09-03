@@ -281,6 +281,116 @@ async function withWalletFetch(fn: () => Promise<any>) {
     if (env.SUPABASE_SERVICE_ROLE_KEY === undefined) delete process.env.SUPABASE_SERVICE_ROLE_KEY; else process.env.SUPABASE_SERVICE_ROLE_KEY = env.SUPABASE_SERVICE_ROLE_KEY;
   }
 
+  // Canonical wallet cardinality fail-closed tests:
+  // Case 0 rows: valid canonical zero wallet
+  customWalletPayload = [];
+  customLedgerPayload = [];
+  try {
+    await withWalletFetch(async () => {
+      const zero = await walletDb.getOwnerWalletSummary(ownerId);
+      assert.equal(zero.availableBalance, 0);
+      assert.equal(zero.pendingBalance, 0);
+      assert.equal(zero.totalEarnedLifeTime, 0);
+    });
+  } finally {
+    customWalletPayload = null;
+    customLedgerPayload = null;
+  }
+
+  // Case 1 row: valid success
+  customWalletPayload = [validWalletRow];
+  try {
+    await withWalletFetch(async () => {
+      const single = await walletDb.getOwnerWalletSummary(ownerId);
+      assert.equal(single.pendingBalance, 800);
+    });
+  } finally {
+    customWalletPayload = null;
+  }
+
+  // Case >1 rows: must fail closed before mapping any row
+  customWalletPayload = [validWalletRow, { ...validWalletRow, available_balance: 100 }];
+  try {
+    await withWalletFetch(async () => {
+      await assert.rejects(
+        () => walletDb.getOwnerWalletSummary(ownerId),
+        /REST_OWNER_WALLET_MALFORMED_RESPONSE: expected 0 or 1 wallet row, received 2/
+      );
+    });
+  } finally {
+    customWalletPayload = null;
+  }
+
+  // Positive tests for the three exact canonical repository query shapes:
+  // Shape A: Owner wallet summary row query
+  const shapeASql = `SELECT owner_id AS "ownerId", currency,
+                 available_balance AS "availableBalance", pending_balance AS "pendingBalance",
+                 held_balance AS "heldBalance", reserved_for_payout_balance AS "reservedForPayout",
+                 updated_at AS "updatedAt"
+          FROM owner_wallets WHERE owner_id = $1`;
+  calls = await withWalletFetch(async () => {
+    const res = await queryDb(shapeASql, [ownerId]);
+    assert.equal(res.rows.length, 1);
+    assert.equal(res.rows[0].ownerId, ownerId);
+  });
+  assert.equal(calls.length, 1);
+  assert.ok(calls[0].url.includes('/rest/v1/owner_wallets?owner_id=eq.'));
+
+  // Shape B: Owner lifetime ledger projection query
+  const shapeBSql = `SELECT transaction_type AS type, amount
+          FROM wallet_ledger_entries WHERE owner_id = $1`;
+  calls = await withWalletFetch(async () => {
+    const res = await queryDb(shapeBSql, [ownerId]);
+    assert.equal(res.rows.length, 1);
+    assert.equal(res.rows[0].type, 'DEPOSIT_HELD_IN_ESCROW');
+  });
+  assert.equal(calls.length, 1);
+  assert.ok(calls[0].url.includes('/rest/v1/wallet_ledger_entries?owner_id=eq.'));
+  assert.ok(!calls[0].url.includes('&order='));
+
+  // Shape C: Owner paginated ledger query
+  const shapeCSql = `SELECT id, owner_id AS "ownerId", booking_id AS "bookingId", payout_request_id AS "payoutRequestId",
+              dispute_id AS "disputeId", transaction_type AS type, amount, balance_after AS "newBalance",
+              idempotency_key AS "idempotencyKey", created_at AS "createdAt"
+       FROM wallet_ledger_entries
+       WHERE owner_id = $1
+       ORDER BY created_at DESC LIMIT $2 OFFSET $3`;
+  calls = await withWalletFetch(async () => {
+    const res = await queryDb(shapeCSql, [ownerId, 10, 0]);
+    assert.equal(res.rows.length, 1);
+    assert.equal(res.rows[0].id, validLedgerRow.id);
+  });
+  assert.equal(calls.length, 1);
+  assert.ok(calls[0].url.includes('/rest/v1/wallet_ledger_entries?owner_id=eq.'));
+  assert.ok(calls[0].url.includes('&order=created_at.desc&limit=10&offset=0'));
+
+  // Negative collision tests: noncanonical queries must fall through and never issue REST requests
+  const collidingShapes: Array<[string, string]> = [
+    ['comment prefix', `-- comment prefix\n${shapeASql}`],
+    ['comment suffix', `${shapeASql} -- comment suffix`],
+    ['wrapper/subquery', `SELECT * FROM (${shapeASql}) sub`],
+    ['changed SELECT list', `SELECT owner_id, available_balance FROM owner_wallets WHERE owner_id = $1`],
+    ['extra predicate', `${shapeASql} AND currency = 'EGP'`],
+    ['wrong placeholder', `SELECT owner_id AS "ownerId", currency, available_balance AS "availableBalance", pending_balance AS "pendingBalance", held_balance AS "heldBalance", reserved_for_payout_balance AS "reservedForPayout", updated_at AS "updatedAt" FROM owner_wallets WHERE owner_id = $2`],
+    ['string literal/table mention', `SELECT 'owner_wallets' AS t1, 'wallet_ledger_entries' AS t2 WHERE 'owner_id = $1' = 'owner_id = $1'`],
+    ['noncanonical ledger query (changed columns)', `SELECT id, amount FROM wallet_ledger_entries WHERE owner_id = $1`],
+    ['noncanonical ledger query (extra clause)', `SELECT transaction_type AS type, amount FROM wallet_ledger_entries WHERE owner_id = $1 AND amount > 0`],
+  ];
+
+  for (const [desc, noncanonicalSql] of collidingShapes) {
+    calls = await withWalletFetch(async () => {
+      try {
+        await queryDb(noncanonicalSql, [ownerId, 10, 0]);
+      } catch {
+        // Fallthrough to pool is expected in test mock environment
+      }
+    });
+    const walletOrLedgerCalls = calls.filter((c) =>
+      c.url.includes('/rest/v1/owner_wallets') || c.url.includes('/rest/v1/wallet_ledger_entries')
+    );
+    assert.equal(walletOrLedgerCalls.length, 0, `colliding shape [${desc}] must not issue wallet/ledger REST request`);
+  }
+
   // Payment finalization remains the one narrow atomic RPC (never generic SQL).
   calls = await withWalletFetch(async () => {
     await queryDb(

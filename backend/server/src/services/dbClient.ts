@@ -130,6 +130,15 @@ const BOOKING_REQUEST_RPC_SUMMARY_NUMERIC_FIELDS = [
 const BOOKING_REQUEST_RPC_UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const BOOKING_REQUEST_RPC_ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
+// P1.6: Exact canonical SQL query shapes for owner wallet and ledger.
+// Matched collision-safely after whitespace collapse and case-insensitivity.
+const CANONICAL_OWNER_WALLET_SUMMARY_SQL =
+  'select owner_id as "ownerid", currency, available_balance as "availablebalance", pending_balance as "pendingbalance", held_balance as "heldbalance", reserved_for_payout_balance as "reservedforpayout", updated_at as "updatedat" from owner_wallets where owner_id = $1';
+const CANONICAL_OWNER_LIFETIME_LEDGER_SQL =
+  'select transaction_type as type, amount from wallet_ledger_entries where owner_id = $1';
+const CANONICAL_OWNER_PAGINATED_LEDGER_SQL =
+  'select id, owner_id as "ownerid", booking_id as "bookingid", payout_request_id as "payoutrequestid", dispute_id as "disputeid", transaction_type as type, amount, balance_after as "newbalance", idempotency_key as "idempotencykey", created_at as "createdat" from wallet_ledger_entries where owner_id = $1 order by created_at desc limit $2 offset $3';
+
 async function queryViaSupabaseRest(text: string, params: any[] | undefined, url: string, key: string): Promise<pg.QueryResult<any> | null> {
   const headers: Record<string, string> = {
     'apikey': key,
@@ -140,6 +149,7 @@ async function queryViaSupabaseRest(text: string, params: any[] | undefined, url
 
   const sql = text.trim();
   const lowerSql = sql.toLowerCase();
+  const normalizedSql = sql.replace(/\s+/g, ' ').trim().toLowerCase();
 
   // P1.5: booking request + canonical financial summary are created by ONE
   // Postgres transaction (migration 026). The matcher is exact and
@@ -373,16 +383,18 @@ async function queryViaSupabaseRest(text: string, params: any[] | undefined, url
     return { rows, command: 'SELECT', rowCount: rows.length, oid: 0, fields: [] };
   }
 
-  // OWNER-WALLET-01: canonical owner wallet, scoped solely by the verified
-  // owner id supplied by the repository. Keep this strict to avoid pg fallback
-  // in the deployed Worker.
-  if (lowerSql.startsWith('select') && lowerSql.includes('from owner_wallets') && /\bowner_id\s*=\s*\$1\b/i.test(sql)) {
+  // OWNER-WALLET-01: canonical owner wallet summary row query.
+  // Match collision-safely: accept ONLY the exact normalized repository query shape.
+  if (normalizedSql === CANONICAL_OWNER_WALLET_SUMMARY_SQL) {
     const ownerId = params?.[0];
     const res = await fetch(`${url}/rest/v1/owner_wallets?owner_id=eq.${encodeURIComponent(ownerId)}`, { headers });
     if (!res.ok) throw new Error(`REST_OWNER_WALLET_SELECT_FAILED: HTTP ${res.status}`);
     const raw: any = await res.json().catch(() => null);
     // Fail closed: a malformed 200 payload must never become a false zero wallet.
     if (!Array.isArray(raw)) throw new Error('REST_OWNER_WALLET_MALFORMED_RESPONSE: expected a JSON array');
+    if (raw.length > 1) {
+      throw new Error(`REST_OWNER_WALLET_MALFORMED_RESPONSE: expected 0 or 1 wallet row, received ${raw.length}`);
+    }
     const rows = raw.map((wallet: any) => {
       if (!wallet || typeof wallet !== 'object' || Array.isArray(wallet)) {
         throw new Error('REST_OWNER_WALLET_MALFORMED_RESPONSE: wallet row must be an object');
@@ -415,14 +427,17 @@ async function queryViaSupabaseRest(text: string, params: any[] | undefined, url
     return { rows, command: 'SELECT', rowCount: rows.length, oid: 0, fields: [] };
   }
 
-  // OWNER-WALLET-01: immutable ledger reads. Support only the repository's
-  // owner-scoped, newest-first query and its unpaginated lifetime projection.
-  if (lowerSql.startsWith('select') && lowerSql.includes('from wallet_ledger_entries') && /\bowner_id\s*=\s*\$1\b/i.test(sql)) {
+  // OWNER-WALLET-01: immutable ledger reads.
+  // Match collision-safely: accept ONLY the two canonical repository query shapes
+  // (Shape B unpaginated lifetime projection and Shape C paginated newest-first).
+  const isLifetimeLedger = normalizedSql === CANONICAL_OWNER_LIFETIME_LEDGER_SQL;
+  const isPaginatedLedger = normalizedSql === CANONICAL_OWNER_PAGINATED_LEDGER_SQL;
+  if (isLifetimeLedger || isPaginatedLedger) {
     const ownerId = params?.[0];
     let queryUrl = `${url}/rest/v1/wallet_ledger_entries?owner_id=eq.${encodeURIComponent(ownerId)}`;
-    if (lowerSql.includes('order by created_at desc')) queryUrl += '&order=created_at.desc';
-    if (/\blimit\s+\$2\b/i.test(sql)) queryUrl += `&limit=${encodeURIComponent(String(params?.[1] ?? 50))}`;
-    if (/\boffset\s+\$3\b/i.test(sql)) queryUrl += `&offset=${encodeURIComponent(String(params?.[2] ?? 0))}`;
+    if (isPaginatedLedger) {
+      queryUrl += `&order=created_at.desc&limit=${encodeURIComponent(String(params?.[1] ?? 50))}&offset=${encodeURIComponent(String(params?.[2] ?? 0))}`;
+    }
     const res = await fetch(queryUrl, { headers });
     if (!res.ok) throw new Error(`REST_OWNER_WALLET_LEDGER_SELECT_FAILED: HTTP ${res.status}`);
     const raw: any = await res.json().catch(() => null);

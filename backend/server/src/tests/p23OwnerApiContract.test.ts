@@ -427,6 +427,15 @@ const rawHydratedBooking = {
   customerEmail: 'secret@renter.com',
   customerNationalId: '29901010101010',
   renter: { id: customerId, name: 'أحمد مستأجر', avatar: '', rating: 5, phone: '+201099999999' },
+  financialSummary: {
+    bookingId: 'b0000000-0000-4000-8000-000000000001',
+    totalBookingValue: 10000,
+    depositAmount: 2500,
+    solaCommissionAmount: 500,
+    ownerNetDepositAmount: 2000,
+    remainingBalance: 7500,
+    commissionOnRemainingBalance: 0,
+  },
 };
 const itemDto = toOwnerBookingListItem(rawHydratedBooking);
 assert.equal('customerPhoneNumber' in itemDto, false);
@@ -745,4 +754,30 @@ console.log('P2.3 Task 5 tests passed.');
   }
 }
 
-console.log('P2.3 Correction 01 tests passed.');
+// 6F. Owner booking list money must require canonical persisted financialSummary
+{
+  const bookingWithoutFinancialSummary = {
+    id: 'b-test-no-fin',
+    bookingNumber: 'BK-123456',
+    propertyId: 'p-test-1',
+    checkIn: '2026-09-10',
+    checkOut: '2026-09-14',
+    nights: 4,
+    guestsCount: 2,
+    totalPrice: 8000,
+    deposit: 2000,
+    totalStay: 8000,
+    depositAmount: 2000,
+    remainingAmount: 6000,
+    status: 'CONFIRMED',
+    createdAt: '2026-09-01T00:00:00.000Z',
+  };
+
+  assert.throws(
+    () => toOwnerBookingListItem(bookingWithoutFinancialSummary),
+    /missing financialSummary/,
+    'Owner booking list money must require canonical persisted financialSummary and fail closed without it'
+  );
+}
+
+console.log('P2.3 Correction 01 and 02 tests passed.');

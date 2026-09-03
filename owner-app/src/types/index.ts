@@ -476,6 +476,7 @@ export interface Owner {
   verificationBadgeText: string;
   ownerOnboardingCompletedAt?: string | null;
   createdAt: string;
+  updatedAt?: string;
 }
 
 export interface Renter {

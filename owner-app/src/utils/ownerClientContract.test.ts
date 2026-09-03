@@ -59,6 +59,19 @@ const assert = (condition: unknown, message: string) => {
   assert(withoutAvatar.avatar === '', 'null avatarUrl maps to empty string for UI safety');
 }
 
+const assertThrows = (fn: () => unknown, pattern: RegExp) => {
+  let threw = false;
+  try {
+    fn();
+  } catch (err: any) {
+    threw = true;
+    if (!pattern.test(err?.message || '')) {
+      throw new Error(`Expected error matching ${pattern}, got: ${err?.message}`);
+    }
+  }
+  if (!threw) throw new Error(`Expected function to throw error matching ${pattern}, but it succeeded`);
+};
+
 // Test 3: Malformed DTO fails closed
 {
   let threw = false;
@@ -68,6 +81,38 @@ const assert = (condition: unknown, message: string) => {
     threw = true;
   }
   assert(threw, 'null dto must throw');
+
+  const validDto = {
+    id: 'owner-uuid-valid',
+    phoneNumber: '+201012345678',
+    fullName: 'مالك نظامي',
+    email: null,
+    avatarUrl: null,
+    status: 'ACTIVE',
+    verificationStatus: 'VERIFIED',
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+  };
+
+  // Missing id throws
+  assertThrows(() => mapOwnerProfileDtoToOwner({ ...validDto, id: undefined }), /missing.*id/);
+  assertThrows(() => mapOwnerProfileDtoToOwner({ ...validDto, id: '' }), /missing.*id/);
+
+  // Missing phoneNumber throws (must not default to empty string)
+  assertThrows(() => mapOwnerProfileDtoToOwner({ ...validDto, phoneNumber: undefined }), /missing.*phoneNumber/);
+  assertThrows(() => mapOwnerProfileDtoToOwner({ ...validDto, phoneNumber: '' }), /missing.*phoneNumber/);
+
+  // Missing verificationStatus throws (must not default to UNVERIFIED)
+  assertThrows(() => mapOwnerProfileDtoToOwner({ ...validDto, verificationStatus: undefined }), /missing.*verificationStatus/);
+  assertThrows(() => mapOwnerProfileDtoToOwner({ ...validDto, verificationStatus: '' }), /missing.*verificationStatus/);
+
+  // Missing createdAt throws (must not default to empty string)
+  assertThrows(() => mapOwnerProfileDtoToOwner({ ...validDto, createdAt: undefined }), /missing.*createdAt/);
+  assertThrows(() => mapOwnerProfileDtoToOwner({ ...validDto, createdAt: '' }), /missing.*createdAt/);
+
+  // Missing updatedAt throws (must not default to empty string)
+  assertThrows(() => mapOwnerProfileDtoToOwner({ ...validDto, updatedAt: undefined }), /missing.*updatedAt/);
+  assertThrows(() => mapOwnerProfileDtoToOwner({ ...validDto, updatedAt: '' }), /missing.*updatedAt/);
 }
 
 // Test 4: Profile edit payload and response preserves canonical avatar

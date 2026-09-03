@@ -69,20 +69,46 @@ export function mapOwnerProfileDtoToOwner(rawDto: unknown): Owner {
     throw new Error('MALFORMED_OWNER_PROFILE_DTO');
   }
   const dto = rawDto as Record<string, unknown>;
-  const id = typeof dto.id === 'string' ? dto.id : '';
+  const id = typeof dto.id === 'string' && dto.id.trim() !== '' ? dto.id.trim() : '';
   if (!id) {
-    throw new Error('MALFORMED_OWNER_PROFILE_DTO: missing id');
+    throw new Error('MALFORMED_OWNER_PROFILE_DTO: missing or invalid id');
   }
+
+  const phone = typeof dto.phoneNumber === 'string' && dto.phoneNumber.trim() !== ''
+    ? dto.phoneNumber.trim()
+    : (typeof dto.phone === 'string' && dto.phone.trim() !== '' ? dto.phone.trim() : '');
+  if (!phone) {
+    throw new Error('MALFORMED_OWNER_PROFILE_DTO: missing or invalid phoneNumber');
+  }
+
+  const rawVerification = typeof dto.verificationStatus === 'string' && dto.verificationStatus.trim() !== ''
+    ? dto.verificationStatus.trim()
+    : (typeof dto.verification_status === 'string' && dto.verification_status.trim() !== '' ? dto.verification_status.trim() : '');
+  if (!rawVerification) {
+    throw new Error('MALFORMED_OWNER_PROFILE_DTO: missing or invalid verificationStatus');
+  }
+
+  const createdAt = typeof dto.createdAt === 'string' && dto.createdAt.trim() !== ''
+    ? dto.createdAt.trim()
+    : (typeof dto.created_at === 'string' && dto.created_at.trim() !== '' ? dto.created_at.trim() : '');
+  if (!createdAt) {
+    throw new Error('MALFORMED_OWNER_PROFILE_DTO: missing or invalid createdAt');
+  }
+
+  const updatedAt = typeof dto.updatedAt === 'string' && dto.updatedAt.trim() !== ''
+    ? dto.updatedAt.trim()
+    : (typeof dto.updated_at === 'string' && dto.updated_at.trim() !== '' ? dto.updated_at.trim() : '');
+  if (!updatedAt) {
+    throw new Error('MALFORMED_OWNER_PROFILE_DTO: missing or invalid updatedAt');
+  }
+
   const name = typeof dto.fullName === 'string'
     ? dto.fullName
     : (typeof dto.name === 'string' ? dto.name : '');
-  const phone = typeof dto.phoneNumber === 'string'
-    ? dto.phoneNumber
-    : (typeof dto.phone === 'string' ? dto.phone : '');
   const avatar = typeof dto.avatarUrl === 'string'
     ? dto.avatarUrl
     : (typeof dto.avatar === 'string' ? dto.avatar : '');
-  const verificationStatus = ((dto.verificationStatus as string) || 'UNVERIFIED') as VerificationStatus;
+  const verificationStatus = rawVerification as VerificationStatus;
   const verificationBadgeText =
     verificationStatus === 'VERIFIED'
       ? 'موثق'
@@ -95,8 +121,9 @@ export function mapOwnerProfileDtoToOwner(rawDto: unknown): Owner {
     avatar,
     verificationStatus,
     verificationBadgeText,
-    ownerOnboardingCompletedAt: typeof dto.ownerOnboardingCompletedAt === 'string' ? dto.ownerOnboardingCompletedAt : null,
-    createdAt: typeof dto.createdAt === 'string' ? dto.createdAt : (typeof dto.created_at === 'string' ? dto.created_at : ''),
+    ownerOnboardingCompletedAt: typeof dto.ownerOnboardingCompletedAt === 'string' ? dto.ownerOnboardingCompletedAt : (typeof dto.owner_onboarding_completed_at === 'string' ? dto.owner_onboarding_completed_at : null),
+    createdAt,
+    updatedAt,
   };
 }
 

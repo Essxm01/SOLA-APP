@@ -320,7 +320,7 @@ export interface OwnerBookingListItemDto {
   rejectedAt?: string | null;
   createdAt: string;
   property?: OwnerBookingPropertyDto;
-  financialSummary?: OwnerBookingFinancialDto;
+  financialSummary: OwnerBookingFinancialDto;
 }
 
 export function toOwnerBookingListItem(raw: unknown): OwnerBookingListItemDto {
@@ -360,22 +360,13 @@ export function toOwnerBookingListItem(raw: unknown): OwnerBookingListItemDto {
   }
 
   // Financial fields must come from canonical persisted booking/financial truth
-  let financialSummary: OwnerBookingFinancialDto | undefined;
-  if (row.financialSummary && typeof row.financialSummary === 'object') {
-    financialSummary = toOwnerBookingFinancialDto(row.financialSummary);
+  if (!row.financialSummary || typeof row.financialSummary !== 'object') {
+    throw new Error('MALFORMED_OWNER_BOOKING: missing financialSummary');
   }
-
-  const totalPrice = financialSummary
-    ? financialSummary.totalBookingValue
-    : parseStrictFinancialAmount(row.totalPrice ?? row.totalStay, 'totalPrice');
-  const deposit = financialSummary
-    ? financialSummary.depositAmount
-    : parseStrictFinancialAmount(row.deposit ?? row.depositAmount, 'deposit');
-  const remainingAmount = financialSummary
-    ? financialSummary.remainingBalance
-    : (row.remainingAmount !== undefined
-        ? parseStrictFinancialAmount(row.remainingAmount, 'remainingAmount')
-        : (totalPrice - deposit));
+  const financialSummary = toOwnerBookingFinancialDto(row.financialSummary);
+  const totalPrice = financialSummary.totalBookingValue;
+  const deposit = financialSummary.depositAmount;
+  const remainingAmount = financialSummary.remainingBalance;
 
   if (totalPrice <= 0 || deposit <= 0 || remainingAmount !== (totalPrice - deposit)) {
     throw new Error('MALFORMED_OWNER_BOOKING: invalid financial amounts');
@@ -432,13 +423,11 @@ export function toOwnerBookingListItem(raw: unknown): OwnerBookingListItemDto {
     confirmedAt: typeof row.confirmedAt === 'string' ? row.confirmedAt : null,
     rejectedAt: typeof row.rejectedAt === 'string' ? row.rejectedAt : null,
     createdAt,
+    financialSummary,
   };
 
   if (propertySubset) {
     result.property = propertySubset;
-  }
-  if (financialSummary) {
-    result.financialSummary = financialSummary;
   }
 
   return result;

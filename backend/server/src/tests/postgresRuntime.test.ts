@@ -84,16 +84,31 @@ export async function runPostgresRuntimeSuite(): Promise<{
   const testPropertyId = '00000000-0000-4000-a000-000000000003';
   const testPayoutMethodId = '00000000-0000-4000-a000-000000000004';
 
+  async function cleanTestFixtures(poolInstance: any) {
+    const client = await poolInstance.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query('ALTER TABLE public.wallet_ledger_entries DISABLE TRIGGER USER');
+      await client.query(`DELETE FROM booking_financial_summaries WHERE booking_id IN (SELECT id FROM bookings WHERE property_id = $1)`, [testPropertyId]);
+      await client.query(`DELETE FROM payout_requests WHERE owner_id = $1`, [testOwnerId]);
+      await client.query(`DELETE FROM owner_payout_methods WHERE owner_id = $1`, [testOwnerId]);
+      await client.query(`DELETE FROM wallet_ledger_entries WHERE owner_id = $1`, [testOwnerId]);
+      await client.query(`DELETE FROM owner_wallets WHERE owner_id = $1`, [testOwnerId]);
+      await client.query(`DELETE FROM bookings WHERE property_id = $1`, [testPropertyId]);
+      await client.query(`DELETE FROM properties WHERE id = $1`, [testPropertyId]);
+      await client.query(`DELETE FROM owners WHERE id = $1`, [testOwnerId]);
+      await client.query('ALTER TABLE public.wallet_ledger_entries ENABLE TRIGGER USER');
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK').catch(() => {});
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+
   try {
-    await pool.query('BEGIN');
-    await pool.query(`DELETE FROM booking_financial_summaries WHERE booking_id IN (SELECT id FROM bookings WHERE property_id = $1)`, [testPropertyId]);
-    await pool.query(`DELETE FROM payout_requests WHERE owner_id = $1`, [testOwnerId]);
-    await pool.query(`DELETE FROM owner_payout_methods WHERE owner_id = $1`, [testOwnerId]);
-    await pool.query(`DELETE FROM wallet_ledger_entries WHERE owner_id = $1`, [testOwnerId]);
-    await pool.query(`DELETE FROM owner_wallets WHERE owner_id = $1`, [testOwnerId]);
-    await pool.query(`DELETE FROM bookings WHERE property_id = $1`, [testPropertyId]);
-    await pool.query(`DELETE FROM properties WHERE id = $1`, [testPropertyId]);
-    await pool.query(`DELETE FROM owners WHERE id = $1`, [testOwnerId]);
+    await cleanTestFixtures(pool);
 
     await pool.query(`
       INSERT INTO owners (id, phone_number, full_name, email)
@@ -373,18 +388,9 @@ export async function runPostgresRuntimeSuite(): Promise<{
 
   // Clean Teardown: Remove test fixtures from DB so sola_db remains 100% clean
   try {
-    await pool.query('BEGIN');
-    await pool.query(`DELETE FROM booking_financial_summaries WHERE booking_id IN (SELECT id FROM bookings WHERE property_id = $1)`, [testPropertyId]);
-    await pool.query(`DELETE FROM payout_requests WHERE owner_id = $1`, [testOwnerId]);
-    await pool.query(`DELETE FROM owner_payout_methods WHERE owner_id = $1`, [testOwnerId]);
-    await pool.query(`DELETE FROM wallet_ledger_entries WHERE owner_id = $1`, [testOwnerId]);
-    await pool.query(`DELETE FROM owner_wallets WHERE owner_id = $1`, [testOwnerId]);
-    await pool.query(`DELETE FROM bookings WHERE property_id = $1`, [testPropertyId]);
-    await pool.query(`DELETE FROM properties WHERE id = $1`, [testPropertyId]);
-    await pool.query(`DELETE FROM owners WHERE id = $1`, [testOwnerId]);
-    await pool.query('COMMIT');
+    await cleanTestFixtures(pool);
   } catch {
-    await pool.query('ROLLBACK').catch(() => {});
+    // Teardown best-effort
   }
 
   await pool.end();

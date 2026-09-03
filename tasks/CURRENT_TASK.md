@@ -1,32 +1,39 @@
-# P1.5 — Booking + Financial Summary Persistence Integrity
+# P1.6 — Wallet + Immutable Ledger Persistence Integrity
 
-TASK_ID: P1.5
-STAGE: HEAVY_IMPLEMENTATION
+TASK_ID: P1.6
+STAGE: HEAVY_IMPLEMENTATION_OR_PRESERVE_VERIFY
 EXECUTOR: ZCode
-BRANCH: validation/p1-5-rc
-BASE_MAIN_SHA: 477ef6a1b274e98a7b757f0b0b77ea8815cee741
-P1_4_STATUS: CLOSED_LIVE_VERIFIED
-MIGRATION_025: LIVE_APPLIED_VERIFIED
-LIVE_MUTATION: FORBIDDEN_FOR_P1_5
+BRANCH: validation/p1-6-rc
+BASE_MAIN_SHA: 49fb158282ddc0963a29e2236d280dde82c5f197
+P1_5_STATUS: CLOSED_LIVE_VERIFIED
+MIGRATION_026: LIVE_APPLIED_VERIFIED
+LIVE_MUTATION: FORBIDDEN_FOR_P1_6_CANDIDATE
 
 ## Current routing
 
-P1.4 is closed and live-verified at `main` `477ef6a1b274e98a7b757f0b0b77ea8815cee741`. Migration 025 is applied live and its booking/manual-availability guards are verified present and enabled.
+P1.5 is CLOSED and live-verified at `main` `49fb158282ddc0963a29e2236d280dde82c5f197`.
+Migration `026_atomic_booking_request_creation.sql` is applied live. Main CI Run #166 (`33711969665`) succeeded and deployed Worker version `5378c632-715f-45db-bfda-f62973e4c7ee`.
 
-The active dependency-ordered boundary is now **P1.5 — Booking + Financial Summary Persistence Integrity**.
+The active dependency-ordered boundary is now **P1.6 — Wallet + Immutable Ledger Persistence Integrity**.
 
 Read and execute:
-`tasks/P1_5_BOOKING_FINANCIAL_PERSISTENCE.md`
+`tasks/P1_6_WALLET_LEDGER_PERSISTENCE.md`
 
-## Core problem
+## Authority note
 
-Current booking creation persists the booking and `booking_financial_summaries` in separate database operations and compensates a summary failure by trying to delete the new pending booking. P1.5 must replace this with a true single PostgreSQL transaction boundary while preserving availability, lifecycle, financial, and security invariants.
+`docs/CURRENT_STATE.md` inherited from the P1.5 candidate still contains stale wording that says P1.5 is active / Migration 026 is unapplied. That wording is superseded by the exact publication evidence above and must be reconciled in the P1.6 candidate. Do not reopen P1.5.
 
 ## Hard boundaries
 
-- Do not reopen P1.4.
-- Do not apply any P1.5 migration live.
+- Do not reopen P1.1–P1.5.
+- Do not apply any new P1.6 migration live.
 - Do not merge to `main`.
 - Do not deploy Cloudflare.
-- Do not change financial formulas or cancellation/payment/wallet policy.
-- Do not start P1.6 until P1.5 is closed.
+- Do not mutate live Supabase/Storage.
+- Do not change booking, payment, commission, payout, cancellation, or release timing rules.
+- Do not implement the Phase 11 payout flow or 24h pending-to-available release in P1.6.
+- Do not broaden into Phase 14 RLS/security remediation; report unrelated observations separately.
+
+## Candidate status (P1.6 in progress)
+
+P1.6 candidate work is on this branch. Migration `027_wallet_ledger_append_only.sql` is REPOSITORY_ONLY_NOT_APPLIED_LIVE and requires separate Founder publication approval. No live Supabase/Storage/Cloudflare mutation occurs during the candidate.

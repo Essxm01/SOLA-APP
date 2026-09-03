@@ -130,6 +130,15 @@ const BOOKING_REQUEST_RPC_SUMMARY_NUMERIC_FIELDS = [
 const BOOKING_REQUEST_RPC_UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const BOOKING_REQUEST_RPC_ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
+// P1.6: Exact canonical SQL query shapes for owner wallet and ledger.
+// Matched collision-safely after whitespace collapse and case-insensitivity.
+const CANONICAL_OWNER_WALLET_SUMMARY_SQL =
+  'select owner_id as "ownerid", currency, available_balance as "availablebalance", pending_balance as "pendingbalance", held_balance as "heldbalance", reserved_for_payout_balance as "reservedforpayout", updated_at as "updatedat" from owner_wallets where owner_id = $1';
+const CANONICAL_OWNER_LIFETIME_LEDGER_SQL =
+  'select transaction_type as type, amount from wallet_ledger_entries where owner_id = $1';
+const CANONICAL_OWNER_PAGINATED_LEDGER_SQL =
+  'select id, owner_id as "ownerid", booking_id as "bookingid", payout_request_id as "payoutrequestid", dispute_id as "disputeid", transaction_type as type, amount, balance_after as "newbalance", idempotency_key as "idempotencykey", created_at as "createdat" from wallet_ledger_entries where owner_id = $1 order by created_at desc limit $2 offset $3';
+
 async function queryViaSupabaseRest(text: string, params: any[] | undefined, url: string, key: string): Promise<pg.QueryResult<any> | null> {
   const headers: Record<string, string> = {
     'apikey': key,
@@ -140,6 +149,7 @@ async function queryViaSupabaseRest(text: string, params: any[] | undefined, url
 
   const sql = text.trim();
   const lowerSql = sql.toLowerCase();
+  const normalizedSql = sql.replace(/\s+/g, ' ').trim().toLowerCase();
 
   // P1.5: booking request + canonical financial summary are created by ONE
   // Postgres transaction (migration 026). The matcher is exact and
@@ -292,25 +302,95 @@ async function queryViaSupabaseRest(text: string, params: any[] | undefined, url
     return { rows: [row], command: 'SELECT', rowCount: 1, oid: 0, fields: [] };
   }
 
-  // PAYMENT-01: the only Worker-safe finalization path is the narrow,
-  // atomic Postgres RPC. Never fall through to a pg transaction in Workers.
-  if (lowerSql.includes('konfrm_complete_deposit_payment')) {
+  // PAYMENT-01 / P1.6: the only Worker-safe finalization path is the narrow,
+  // atomic Postgres RPC. Match collision-safely: accept ONLY the exact
+  // normalized repository query shape `SELECT * FROM konfrm_complete_deposit_payment($1, $2, $3)`.
+  const canonicalPaymentRpcMatch = sql
+    .replace(/\s+/g, ' ')
+    .trim()
+    .match(/^SELECT \* FROM konfrm_complete_deposit_payment\(([^()]*)\)$/i);
+  const paymentRpcPlaceholders = canonicalPaymentRpcMatch
+    ? canonicalPaymentRpcMatch[1].split(',').map((p) => p.trim())
+    : [];
+  const isCanonicalCompleteDepositRpc =
+    !!canonicalPaymentRpcMatch &&
+    paymentRpcPlaceholders.length === 3 &&
+    paymentRpcPlaceholders.every((p, i) => p.toLowerCase() === `$${i + 1}`);
+
+  if (isCanonicalCompleteDepositRpc) {
+    const paymentTxId = params?.[0];
+    const bookingId = params?.[1];
+    const customerId = params?.[2];
+
     const res = await fetch(`${url}/rest/v1/rpc/konfrm_complete_deposit_payment`, {
       method: 'POST',
       headers,
       body: JSON.stringify({
-        p_payment_transaction_id: params?.[0],
-        p_booking_id: params?.[1],
-        p_customer_id: params?.[2],
+        p_payment_transaction_id: paymentTxId,
+        p_booking_id: bookingId,
+        p_customer_id: customerId,
       }),
     });
     if (!res.ok) {
       const body = await res.text().catch(() => '');
       throw new Error(`REST_PAYMENT_FINALIZATION_RPC_FAILED: HTTP ${res.status} — ${body.slice(0, 240)}`);
     }
-    const raw: any = await res.json().catch(() => []);
-    const rows = Array.isArray(raw) ? raw : [raw];
-    return { rows, command: 'SELECT', rowCount: rows.length, oid: 0, fields: [] };
+    const raw: any = await res.json().catch(() => null);
+
+    let payloadObj: any;
+    if (Array.isArray(raw)) {
+      if (raw.length !== 1) {
+        throw new Error(`REST_PAYMENT_FINALIZATION_MALFORMED_RESPONSE: expected exactly one object in array, received ${raw.length}`);
+      }
+      payloadObj = raw[0];
+    } else {
+      payloadObj = raw;
+    }
+
+    if (!payloadObj || typeof payloadObj !== 'object' || Array.isArray(payloadObj)) {
+      throw new Error('REST_PAYMENT_FINALIZATION_MALFORMED_RESPONSE: expected payload to be an object');
+    }
+
+    if (payloadObj.konfrm_complete_deposit_payment && typeof payloadObj.konfrm_complete_deposit_payment === 'object' && !Array.isArray(payloadObj.konfrm_complete_deposit_payment)) {
+      payloadObj = payloadObj.konfrm_complete_deposit_payment;
+    }
+
+    if (typeof payloadObj.paymentTransactionId !== 'string' || payloadObj.paymentTransactionId.trim() === '' || payloadObj.paymentTransactionId !== paymentTxId) {
+      throw new Error('REST_PAYMENT_FINALIZATION_MALFORMED_RESPONSE: paymentTransactionId must match requested transaction id');
+    }
+    if (typeof payloadObj.bookingId !== 'string' || payloadObj.bookingId.trim() === '' || payloadObj.bookingId !== bookingId) {
+      throw new Error('REST_PAYMENT_FINALIZATION_MALFORMED_RESPONSE: bookingId must match requested booking id');
+    }
+    if (payloadObj.paymentStatus !== 'SUCCEEDED') {
+      throw new Error('REST_PAYMENT_FINALIZATION_MALFORMED_RESPONSE: paymentStatus must be SUCCEEDED');
+    }
+    if (payloadObj.bookingStatus !== 'CONFIRMED') {
+      throw new Error('REST_PAYMENT_FINALIZATION_MALFORMED_RESPONSE: bookingStatus must be CONFIRMED');
+    }
+    if (typeof payloadObj.confirmedAt !== 'string' || payloadObj.confirmedAt.trim() === '' || Number.isNaN(Date.parse(payloadObj.confirmedAt))) {
+      throw new Error('REST_PAYMENT_FINALIZATION_MALFORMED_RESPONSE: confirmedAt must be a valid timestamp string');
+    }
+    if (typeof payloadObj.amountCents !== 'number' || !Number.isInteger(payloadObj.amountCents) || payloadObj.amountCents <= 0) {
+      throw new Error('REST_PAYMENT_FINALIZATION_MALFORMED_RESPONSE: amountCents must be a positive integer');
+    }
+    if (payloadObj.currency !== 'EGP') {
+      throw new Error('REST_PAYMENT_FINALIZATION_MALFORMED_RESPONSE: currency must be EGP');
+    }
+    if (typeof payloadObj.idempotent !== 'boolean') {
+      throw new Error('REST_PAYMENT_FINALIZATION_MALFORMED_RESPONSE: idempotent must be a boolean');
+    }
+
+    const row = {
+      paymentTransactionId: payloadObj.paymentTransactionId,
+      paymentStatus: payloadObj.paymentStatus,
+      bookingId: payloadObj.bookingId,
+      bookingStatus: payloadObj.bookingStatus,
+      confirmedAt: payloadObj.confirmedAt,
+      amountCents: payloadObj.amountCents,
+      currency: payloadObj.currency,
+      idempotent: payloadObj.idempotent,
+    };
+    return { rows: [row], command: 'SELECT', rowCount: 1, oid: 0, fields: [] };
   }
 
   // P1.3: property image metadata and upload-intent state are committed by
@@ -373,49 +453,110 @@ async function queryViaSupabaseRest(text: string, params: any[] | undefined, url
     return { rows, command: 'SELECT', rowCount: rows.length, oid: 0, fields: [] };
   }
 
-  // OWNER-WALLET-01: canonical owner wallet, scoped solely by the verified
-  // owner id supplied by the repository. Keep this strict to avoid pg fallback
-  // in the deployed Worker.
-  if (lowerSql.startsWith('select') && lowerSql.includes('from owner_wallets') && /\bowner_id\s*=\s*\$1\b/i.test(sql)) {
+  // OWNER-WALLET-01: canonical owner wallet summary row query.
+  // Match collision-safely: accept ONLY the exact normalized repository query shape.
+  if (normalizedSql === CANONICAL_OWNER_WALLET_SUMMARY_SQL) {
     const ownerId = params?.[0];
     const res = await fetch(`${url}/rest/v1/owner_wallets?owner_id=eq.${encodeURIComponent(ownerId)}`, { headers });
     if (!res.ok) throw new Error(`REST_OWNER_WALLET_SELECT_FAILED: HTTP ${res.status}`);
-    const raw: any = await res.json().catch(() => []);
-    const rows = (Array.isArray(raw) ? raw : []).map((wallet: any) => ({
-      ownerId: wallet.owner_id,
-      currency: wallet.currency,
-      availableBalance: wallet.available_balance,
-      pendingBalance: wallet.pending_balance,
-      heldBalance: wallet.held_balance,
-      reservedForPayout: wallet.reserved_for_payout_balance,
-      updatedAt: wallet.updated_at,
-    }));
+    const raw: any = await res.json().catch(() => null);
+    // Fail closed: a malformed 200 payload must never become a false zero wallet.
+    if (!Array.isArray(raw)) throw new Error('REST_OWNER_WALLET_MALFORMED_RESPONSE: expected a JSON array');
+    if (raw.length > 1) {
+      throw new Error(`REST_OWNER_WALLET_MALFORMED_RESPONSE: expected 0 or 1 wallet row, received ${raw.length}`);
+    }
+    const rows = raw.map((wallet: any) => {
+      if (!wallet || typeof wallet !== 'object' || Array.isArray(wallet)) {
+        throw new Error('REST_OWNER_WALLET_MALFORMED_RESPONSE: wallet row must be an object');
+      }
+      if (typeof wallet.owner_id !== 'string' || wallet.owner_id.trim() === '' || wallet.owner_id !== ownerId) {
+        throw new Error('REST_OWNER_WALLET_MALFORMED_RESPONSE: wallet row owner_id must match requested ownerId');
+      }
+      if (typeof wallet.currency !== 'string' || wallet.currency.trim() === '') {
+        throw new Error('REST_OWNER_WALLET_MALFORMED_RESPONSE: wallet field currency must be a non-empty string');
+      }
+      for (const balanceKey of ['available_balance', 'pending_balance', 'held_balance', 'reserved_for_payout_balance'] as const) {
+        const v = wallet[balanceKey];
+        if (typeof v !== 'number' || !Number.isFinite(v) || v < 0) {
+          throw new Error(`REST_OWNER_WALLET_MALFORMED_RESPONSE: wallet field ${balanceKey} must be a non-negative finite number`);
+        }
+      }
+      if (typeof wallet.updated_at !== 'string' || wallet.updated_at.trim() === '' || Number.isNaN(Date.parse(wallet.updated_at))) {
+        throw new Error('REST_OWNER_WALLET_MALFORMED_RESPONSE: wallet field updated_at must be a valid timestamp string');
+      }
+      return {
+        ownerId: wallet.owner_id,
+        currency: wallet.currency,
+        availableBalance: wallet.available_balance,
+        pendingBalance: wallet.pending_balance,
+        heldBalance: wallet.held_balance,
+        reservedForPayout: wallet.reserved_for_payout_balance,
+        updatedAt: wallet.updated_at,
+      };
+    });
     return { rows, command: 'SELECT', rowCount: rows.length, oid: 0, fields: [] };
   }
 
-  // OWNER-WALLET-01: immutable ledger reads. Support only the repository's
-  // owner-scoped, newest-first query and its unpaginated lifetime projection.
-  if (lowerSql.startsWith('select') && lowerSql.includes('from wallet_ledger_entries') && /\bowner_id\s*=\s*\$1\b/i.test(sql)) {
+  // OWNER-WALLET-01: immutable ledger reads.
+  // Match collision-safely: accept ONLY the two canonical repository query shapes
+  // (Shape B unpaginated lifetime projection and Shape C paginated newest-first).
+  const isLifetimeLedger = normalizedSql === CANONICAL_OWNER_LIFETIME_LEDGER_SQL;
+  const isPaginatedLedger = normalizedSql === CANONICAL_OWNER_PAGINATED_LEDGER_SQL;
+  if (isLifetimeLedger || isPaginatedLedger) {
     const ownerId = params?.[0];
     let queryUrl = `${url}/rest/v1/wallet_ledger_entries?owner_id=eq.${encodeURIComponent(ownerId)}`;
-    if (lowerSql.includes('order by created_at desc')) queryUrl += '&order=created_at.desc';
-    if (/\blimit\s+\$2\b/i.test(sql)) queryUrl += `&limit=${encodeURIComponent(String(params?.[1] ?? 50))}`;
-    if (/\boffset\s+\$3\b/i.test(sql)) queryUrl += `&offset=${encodeURIComponent(String(params?.[2] ?? 0))}`;
+    if (isPaginatedLedger) {
+      queryUrl += `&order=created_at.desc&limit=${encodeURIComponent(String(params?.[1] ?? 50))}&offset=${encodeURIComponent(String(params?.[2] ?? 0))}`;
+    }
     const res = await fetch(queryUrl, { headers });
     if (!res.ok) throw new Error(`REST_OWNER_WALLET_LEDGER_SELECT_FAILED: HTTP ${res.status}`);
-    const raw: any = await res.json().catch(() => []);
-    const rows = (Array.isArray(raw) ? raw : []).map((entry: any) => ({
-      id: entry.id,
-      ownerId: entry.owner_id,
-      bookingId: entry.booking_id,
-      payoutRequestId: entry.payout_request_id,
-      disputeId: entry.dispute_id,
-      type: entry.transaction_type,
-      amount: entry.amount,
-      newBalance: entry.balance_after,
-      idempotencyKey: entry.idempotency_key,
-      createdAt: entry.created_at,
-    }));
+    const raw: any = await res.json().catch(() => null);
+    // Fail closed: a malformed 200 payload must never become a false empty ledger.
+    if (!Array.isArray(raw)) throw new Error('REST_OWNER_WALLET_LEDGER_MALFORMED_RESPONSE: expected a JSON array');
+    const rows = raw.map((entry: any) => {
+      if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
+        throw new Error('REST_OWNER_WALLET_LEDGER_MALFORMED_RESPONSE: ledger row must be an object');
+      }
+      if (typeof entry.id !== 'string' || !BOOKING_REQUEST_RPC_UUID_PATTERN.test(entry.id)) {
+        throw new Error('REST_OWNER_WALLET_LEDGER_MALFORMED_RESPONSE: ledger field id must be a UUID string');
+      }
+      if (typeof entry.owner_id !== 'string' || !BOOKING_REQUEST_RPC_UUID_PATTERN.test(entry.owner_id) || entry.owner_id !== ownerId) {
+        throw new Error('REST_OWNER_WALLET_LEDGER_MALFORMED_RESPONSE: ledger field owner_id must be a UUID matching requested ownerId');
+      }
+      for (const nullableIdKey of ['booking_id', 'payout_request_id', 'dispute_id'] as const) {
+        const v = entry[nullableIdKey];
+        if (v !== null && (typeof v !== 'string' || !BOOKING_REQUEST_RPC_UUID_PATTERN.test(v))) {
+          throw new Error(`REST_OWNER_WALLET_LEDGER_MALFORMED_RESPONSE: ledger field ${nullableIdKey} must be null or a UUID string`);
+        }
+      }
+      if (typeof entry.transaction_type !== 'string' || entry.transaction_type.trim() === '') {
+        throw new Error('REST_OWNER_WALLET_LEDGER_MALFORMED_RESPONSE: ledger field transaction_type must be a non-empty string');
+      }
+      for (const numericKey of ['amount', 'balance_after'] as const) {
+        const v = entry[numericKey];
+        if (typeof v !== 'number' || !Number.isFinite(v)) {
+          throw new Error(`REST_OWNER_WALLET_LEDGER_MALFORMED_RESPONSE: ledger field ${numericKey} must be a finite number`);
+        }
+      }
+      if (typeof entry.idempotency_key !== 'string' || entry.idempotency_key.trim() === '') {
+        throw new Error('REST_OWNER_WALLET_LEDGER_MALFORMED_RESPONSE: ledger field idempotency_key must be a non-empty string');
+      }
+      if (typeof entry.created_at !== 'string' || entry.created_at.trim() === '' || Number.isNaN(Date.parse(entry.created_at))) {
+        throw new Error('REST_OWNER_WALLET_LEDGER_MALFORMED_RESPONSE: ledger field created_at must be a valid timestamp string');
+      }
+      return {
+        id: entry.id,
+        ownerId: entry.owner_id,
+        bookingId: entry.booking_id,
+        payoutRequestId: entry.payout_request_id,
+        disputeId: entry.dispute_id,
+        type: entry.transaction_type,
+        amount: entry.amount,
+        newBalance: entry.balance_after,
+        idempotencyKey: entry.idempotency_key,
+        createdAt: entry.created_at,
+      };
+    });
     return { rows, command: 'SELECT', rowCount: rows.length, oid: 0, fields: [] };
   }
 

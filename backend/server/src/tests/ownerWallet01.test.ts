@@ -42,14 +42,23 @@ async function run() {
   const ownerB = '00000000-0000-4000-8000-201000000001';
 
   const walletUrl = await captureRestUrl(
-    'SELECT owner_id AS "ownerId", currency, available_balance AS "availableBalance" FROM owner_wallets WHERE owner_id = $1',
+    `SELECT owner_id AS "ownerId", currency,
+            available_balance AS "availableBalance", pending_balance AS "pendingBalance",
+            held_balance AS "heldBalance", reserved_for_payout_balance AS "reservedForPayout",
+            updated_at AS "updatedAt"
+     FROM owner_wallets WHERE owner_id = $1`,
     [ownerA],
   );
   assert.match(walletUrl, new RegExp(`owner_wallets\\?owner_id=eq\\.${ownerA}`));
   assert.doesNotMatch(walletUrl, new RegExp(ownerB));
 
   const ledgerUrl = await captureRestUrl(
-    'SELECT id, transaction_type AS type FROM wallet_ledger_entries WHERE owner_id = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3',
+    `SELECT id, owner_id AS "ownerId", booking_id AS "bookingId", payout_request_id AS "payoutRequestId",
+            dispute_id AS "disputeId", transaction_type AS type, amount, balance_after AS "newBalance",
+            idempotency_key AS "idempotencyKey", created_at AS "createdAt"
+     FROM wallet_ledger_entries
+     WHERE owner_id = $1
+     ORDER BY created_at DESC LIMIT $2 OFFSET $3`,
     [ownerA, 50, 0],
   );
   assert.match(ledgerUrl, new RegExp(`wallet_ledger_entries\\?owner_id=eq\\.${ownerA}`));

@@ -90,13 +90,14 @@ const validInput = (id: string) => ({
 // 2. Worker/PostgREST contract: one narrow transaction-capable RPC call,
 // fail-closed on every unexpected response, never sequential writes.
 // ---------------------------------------------------------------------------
-type Mode = 'success' | 'httpError' | 'malformed' | 'conflict' | 'zeroRows' | 'networkError' | 'missingSummaryField' | 'missingBookingField';
+type Mode = 'success' | 'httpError' | 'malformed' | 'conflict' | 'zeroRows' | 'networkError' | 'missingSummaryField' | 'missingBookingField' | 'customRow';
 let mode: Mode = 'success';
+let customRowPayload: any = null;
 
 // Mirrors the real PostgREST RPC row: quoted RETURNS TABLE names arrive as
-// camelCase keys, summary values as finite numbers.
+// camelCase keys, identifiers as UUID strings, summary values as finite numbers.
 const fullRpcRow = {
-  id: 'b-9', bookingNumber: 'BK-9', propertyId, ownerId, customerId, guestName: 'عميل',
+  id: 'b9999999-9999-4999-8999-999999999999', bookingNumber: 'BK-999999', propertyId, ownerId, customerId, guestName: 'عميل',
   checkIn: '2026-12-20', checkOut: '2026-12-22', nights: 2, guestsCount: 2,
   status: 'PENDING_OWNER_APPROVAL', createdAt: '2026-09-02T00:00:00Z',
   summaryTotalBookingValue: 4000, summaryDepositAmount: 2000, summarySolaCommissionAmount: 400,
@@ -125,6 +126,9 @@ async function withStubFetch(fn: () => Promise<void>) {
     if (mode === 'missingBookingField') {
       const { checkIn, ...partial } = fullRpcRow as any;
       return { ok: true, status: 201, json: async () => [partial], text: async () => JSON.stringify([partial]) } as unknown as Response;
+    }
+    if (mode === 'customRow') {
+      return { ok: true, status: 201, json: async () => [customRowPayload], text: async () => JSON.stringify([customRowPayload]) } as unknown as Response;
     }
     return {
       ok: true, status: 201,
@@ -203,6 +207,48 @@ async function withStubFetch(fn: () => Promise<void>) {
     await assert.rejects(() => bookingDb.create(validInput('b-17')), /REST_BOOKING_REQUEST_CREATE_MALFORMED_RESPONSE/);
   });
   assert.equal(calls.length, 1);
+  mode = 'success';
+
+  // Invalid booking-field VALUES must fail closed: wrong types, impossible
+  // values, and non-canonical status can never become a false success.
+  const invalidRowCases: Array<[string, any]> = [
+    ['numeric status', { status: 17 }],
+    ['non-canonical status value', { status: 'CONFIRMED' }],
+    ['string nights', { nights: 'two' }],
+    ['zero nights', { nights: 0 }],
+    ['fractional nights', { nights: 1.5 }],
+    ['non-integer guestsCount', { guestsCount: 2.5 }],
+    ['object checkIn', { checkIn: {} }],
+    ['impossible checkOut date', { checkOut: '2026-02-31' }],
+    ['non-ISO checkIn format', { checkIn: '12/20/2026' }],
+    ['invalid id UUID', { id: 'not-a-uuid' }],
+    ['invalid ownerId UUID', { ownerId: 'zzzzzzzz-zzzz-zzzz-zzzz-zzzzzzzzzzzz' }],
+    ['invalid propertyId UUID', { propertyId: 'd4444444' }],
+    ['invalid non-null customerId', { customerId: 'customer-1' }],
+    ['empty guestName', { guestName: '' }],
+    ['numeric createdAt', { createdAt: 12345 }],
+    ['invalid createdAt timestamp', { createdAt: 'not-a-timestamp' }],
+    ['empty bookingNumber', { bookingNumber: '' }],
+  ];
+  for (const [label, override] of invalidRowCases) {
+    mode = 'customRow';
+    customRowPayload = { ...fullRpcRow, ...override };
+    calls = await withStubFetch(async () => {
+      await assert.rejects(() => bookingDb.create(validInput('b-18')), /REST_BOOKING_REQUEST_CREATE_MALFORMED_RESPONSE/, `invalid row case must fail closed: ${label}`);
+    });
+    assert.equal(calls.length, 1);
+  }
+
+  // A null customerId is schema-legal (ON DELETE SET NULL) and stays accepted.
+  mode = 'customRow';
+  customRowPayload = { ...fullRpcRow, customerId: null };
+  calls = await withStubFetch(async () => {
+    const created = await bookingDb.create(validInput('b-19'));
+    assert.equal(created.customerId, null);
+    assert.equal((created.financialSummary as any).totalBookingValue, 4000);
+  });
+  assert.equal(calls.length, 1, 'valid nullable-customerId row still maps with one RPC call');
+  customRowPayload = null;
   mode = 'success';
 
   // Correction 2: the RPC adapter branch is exact and collision-safe. SQL that

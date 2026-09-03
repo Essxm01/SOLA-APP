@@ -127,6 +127,8 @@ const BOOKING_REQUEST_RPC_SUMMARY_NUMERIC_FIELDS = [
   'summaryTotalBookingValue', 'summaryDepositAmount', 'summarySolaCommissionAmount',
   'summaryOwnerNetDepositAmount', 'summaryRemainingBalance', 'summaryCommissionOnRemainingBalance',
 ] as const;
+const BOOKING_REQUEST_RPC_UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const BOOKING_REQUEST_RPC_ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
 async function queryViaSupabaseRest(text: string, params: any[] | undefined, url: string, key: string): Promise<pg.QueryResult<any> | null> {
   const headers: Record<string, string> = {
@@ -204,15 +206,60 @@ async function queryViaSupabaseRest(text: string, params: any[] | undefined, url
     // row must fail closed, never become a false 201 with missing values.
     // DB contract: every bookings column returned here is NOT NULL except
     // customer_id (nullable, ON DELETE SET NULL), which must still be present.
+    const resolveField = (key: string) => r[key] ?? r[BOOKING_REQUEST_RPC_SNAKE_FALLBACK[key]];
+    const failMalformed = (detail: string): never => {
+      throw new Error(`REST_BOOKING_REQUEST_CREATE_MALFORMED_RESPONSE: ${detail}`);
+    };
     const requiredNonNullable = BOOKING_REQUEST_RPC_REQUIRED_FIELDS;
     for (const key of requiredNonNullable) {
-      const v = r[key] ?? r[BOOKING_REQUEST_RPC_SNAKE_FALLBACK[key]];
+      const v = resolveField(key);
       if (v === undefined || v === null) {
         throw new Error(`REST_BOOKING_REQUEST_CREATE_MALFORMED_RESPONSE: created row missing required field ${key}`);
       }
     }
     if (r.customerId === undefined && r.customer_id === undefined) {
       throw new Error('REST_BOOKING_REQUEST_CREATE_MALFORMED_RESPONSE: created row missing required field customerId');
+    }
+    // Semantic value validation: malformed one-row responses (wrong types or
+    // impossible values) must fail closed, never be coerced into valid data.
+    const assertNonEmptyString = (key: string) => {
+      const v = resolveField(key);
+      if (typeof v !== 'string' || v.trim() === '') failMalformed(`field ${key} must be a non-empty string`);
+      return v;
+    };
+    const assertUuid = (key: string) => {
+      const v = assertNonEmptyString(key);
+      if (!BOOKING_REQUEST_RPC_UUID_PATTERN.test(v)) failMalformed(`field ${key} must be a UUID string`);
+    };
+    const assertStrictIsoDate = (key: string) => {
+      const v = assertNonEmptyString(key);
+      if (!BOOKING_REQUEST_RPC_ISO_DATE_PATTERN.test(v)) failMalformed(`field ${key} must be a YYYY-MM-DD date`);
+      const parsed = new Date(`${v}T00:00:00Z`);
+      if (Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== v) failMalformed(`field ${key} must be a real calendar date`);
+    };
+    const assertPositiveInteger = (key: string) => {
+      const v = resolveField(key);
+      if (typeof v !== 'number' || !Number.isInteger(v) || v <= 0) failMalformed(`field ${key} must be a positive integer`);
+    };
+    assertUuid('id');
+    assertNonEmptyString('bookingNumber');
+    assertUuid('propertyId');
+    assertUuid('ownerId');
+    const customerIdValue = r.customerId !== undefined ? r.customerId : r.customer_id;
+    if (customerIdValue !== null && (typeof customerIdValue !== 'string' || !BOOKING_REQUEST_RPC_UUID_PATTERN.test(customerIdValue))) {
+      failMalformed('field customerId must be null or a UUID string');
+    }
+    assertNonEmptyString('guestName');
+    assertStrictIsoDate('checkIn');
+    assertStrictIsoDate('checkOut');
+    assertPositiveInteger('nights');
+    assertPositiveInteger('guestsCount');
+    if (resolveField('status') !== 'PENDING_OWNER_APPROVAL') {
+      failMalformed('field status must be PENDING_OWNER_APPROVAL for a create-booking result');
+    }
+    const createdAtValue = resolveField('createdAt');
+    if (typeof createdAtValue !== 'string' || createdAtValue.trim() === '' || Number.isNaN(Date.parse(createdAtValue))) {
+      failMalformed('field createdAt must be a valid timestamp string');
     }
     for (const key of BOOKING_REQUEST_RPC_SUMMARY_NUMERIC_FIELDS) {
       const v = r[key];
@@ -225,7 +272,7 @@ async function queryViaSupabaseRest(text: string, params: any[] | undefined, url
       bookingNumber: r['bookingNumber'] ?? r.booking_number,
       propertyId: r['propertyId'] ?? r.property_id,
       ownerId: r['ownerId'] ?? r.owner_id,
-      customerId: r['customerId'] ?? r.customer_id,
+      customerId: r.customerId !== undefined ? r.customerId : r.customer_id,
       guestName: r['guestName'] ?? r.guest_name,
       checkIn: r['checkIn'] ?? r.check_in,
       checkOut: r['checkOut'] ?? r.check_out,

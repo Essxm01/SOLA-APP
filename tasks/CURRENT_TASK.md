@@ -1,38 +1,32 @@
-# P1.4 — Availability Persistence and Blocking Integrity Candidate
+# P1.5 — Booking + Financial Summary Persistence Integrity
 
-TASK_ID: P1.4-CANDIDATE
-STAGE: REVIEW_CANDIDATE
-BRANCH: validation/p1-4-refresh
-BASE_MAIN_SHA: ee38f2e90ee4d25fc237929f9756a42e89a22b4b
-HISTORICAL_CANDIDATE_SHA: 67601a1364192f502186da3bd10e9c2fd5eadb54
-LIVE_MUTATION: FORBIDDEN
-MIGRATION_025: CANDIDATE_ONLY_NOT_APPLIED
-MIGRATION_024: LIVE_VERIFIED (P1.3 closed on main)
+TASK_ID: P1.5
+STAGE: HEAVY_IMPLEMENTATION
+EXECUTOR: ZCode
+BRANCH: validation/p1-5-rc
+BASE_MAIN_SHA: 477ef6a1b274e98a7b757f0b0b77ea8815cee741
+P1_4_STATUS: CLOSED_LIVE_VERIFIED
+MIGRATION_025: LIVE_APPLIED_VERIFIED
+LIVE_MUTATION: FORBIDDEN_FOR_P1_5
 
-## Objective
-Refreshed P1.4 candidate based on current `main` (`ee38f2e90ee4d25fc237929f9756a42e89a22b4b`). Carries the availability persistence and blocking integrity implementation and tests from historical candidate `67601a1` with updated operational current-state documentation.
+## Current routing
 
-## Preserved Invariants
-- Stay length: 2–30 nights.
-- `PENDING_OWNER_APPROVAL` does NOT block dates.
-- `APPROVED_PENDING_PAYMENT` blocks dates.
-- `CONFIRMED` blocks dates.
-- Quote is not a hold.
-- Booking creation revalidates availability.
-- Canonical availability read/DB failure must fail closed; never manufacture empty availability/success.
-- No payment before Owner approval.
+P1.4 is closed and live-verified at `main` `477ef6a1b274e98a7b757f0b0b77ea8815cee741`. Migration 025 is applied live and its booking/manual-availability guards are verified present and enabled.
 
-## Migration 025
-File: `backend/database/migrations/025_availability_blocking_integrity.sql`
-Status: Repository candidate only. NOT APPLIED LIVE. Requires explicit Founder rollout gate before live application.
+The active dependency-ordered boundary is now **P1.5 — Booking + Financial Summary Persistence Integrity**.
 
-## Validation Suite
-Run at minimum:
-- `npm --prefix backend run check`
-- `npm --prefix backend run test:booking-01`
-- `npm --prefix backend run test:booking-01-1`
-- `npm --prefix backend run test:p1-4-availability`
-- `npm --prefix backend run test:p1-4-worker-availability`
-- `npm --prefix backend run test:p1-4-migration`
-- `npm --prefix backend run test:p13-worker-adapter`
-- `git diff --check`
+Read and execute:
+`tasks/P1_5_BOOKING_FINANCIAL_PERSISTENCE.md`
+
+## Core problem
+
+Current booking creation persists the booking and `booking_financial_summaries` in separate database operations and compensates a summary failure by trying to delete the new pending booking. P1.5 must replace this with a true single PostgreSQL transaction boundary while preserving availability, lifecycle, financial, and security invariants.
+
+## Hard boundaries
+
+- Do not reopen P1.4.
+- Do not apply any P1.5 migration live.
+- Do not merge to `main`.
+- Do not deploy Cloudflare.
+- Do not change financial formulas or cancellation/payment/wallet policy.
+- Do not start P1.6 until P1.5 is closed.

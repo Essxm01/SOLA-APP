@@ -612,3 +612,127 @@ try {
   (propertyDb as any).getPublicById = origGetPublicById;
   (imageDb as any).getImagesByPropertyId = origGetImages;
 }
+
+// ---------------------------------------------------------------------------
+// 6. Availability and Quote Public Contract Regression Tests
+// ---------------------------------------------------------------------------
+import { bookingDb, propertyAvailabilityDb } from '../services/dbRepository.js';
+
+const availProperty = {
+  id: 'prop-avail-001',
+  title: 'وحدة التوفر',
+  unitType: 'CHALET',
+  propertyType: 'CHALET',
+  address: 'مراسي',
+  region: 'الساحل',
+  resortName: 'مراسي',
+  bedrooms: 2,
+  bathrooms: 2,
+  maxGuests: 4,
+  basePricePerNight: 5000,
+  pricePerNight: 5000,
+  status: 'PUBLISHED',
+  verificationStatus: 'VERIFIED',
+  ownerId: 'owner-secret-999',
+};
+
+const origGetById = propertyDb.getById;
+const origBookingBlocks = bookingDb.getBlocksByPropertyId;
+const origManualBlocks = propertyAvailabilityDb.getByPropertyId;
+
+try {
+  (propertyDb as any).getById = async (id: string) => id === 'prop-avail-001' ? availProperty : null;
+  (bookingDb as any).getBlocksByPropertyId = async () => [
+    { checkIn: '2026-09-10', checkOut: '2026-09-15' },
+  ];
+  (propertyAvailabilityDb as any).getByPropertyId = async () => [];
+
+  // Test 6A: Public availability endpoint without auth
+  const availRes = await app.handleHttpRequest('GET', '/api/v1/customer/properties/prop-avail-001/availability');
+  assert.equal(availRes.statusCode, 200);
+  const availData = (availRes.body as any).data;
+  assert.equal(availData.propertyId, 'prop-avail-001');
+  assert.equal(availData.minStay, 2);
+  assert.equal(availData.maxStay, 30);
+  assert.equal(Array.isArray(availData.unavailableRanges), true);
+  assert.deepEqual(availData.unavailableRanges, [{ checkIn: '2026-09-10', checkOut: '2026-09-15' }]);
+
+  // Assert no PII or internal keys in availability data
+  const availSerialized = JSON.stringify(availData);
+  assert.equal(availSerialized.includes('ownerId'), false);
+  assert.equal(availSerialized.includes('customerId'), false);
+  assert.equal(availSerialized.includes('guestPhone'), false);
+  assert.equal(availSerialized.includes('bookingId'), false);
+  assert.equal(availSerialized.includes('wallet'), false);
+  assert.equal(availSerialized.includes('ledger'), false);
+
+  // Test 6B: Availability query failure must fail closed (500, not empty ranges)
+  (bookingDb as any).getBlocksByPropertyId = async () => { throw new Error('DB timeout'); };
+  const failedAvail = await app.handleHttpRequest('GET', '/api/v1/customer/properties/prop-avail-001/availability');
+  assert.equal(failedAvail.statusCode, 500);
+  assert.equal((failedAvail.body as any).error?.code, 'AVAILABILITY_QUERY_FAILED');
+
+  // Test 6C: Public Quote calculation without auth
+  (bookingDb as any).getBlocksByPropertyId = async () => [
+    { checkIn: '2026-09-10', checkOut: '2026-09-15' },
+  ];
+
+  const clientTamperedQuote = {
+    propertyId: 'prop-avail-001',
+    checkIn: '2026-09-01',
+    checkOut: '2026-09-05',
+    guests: 2,
+    basePricePerNight: 1, // Tampered
+    solaCommissionAmount: 0, // Tampered
+  };
+
+  const quoteRes = await app.handleHttpRequest('POST', '/api/v1/customer/bookings/calculate', {}, clientTamperedQuote);
+  assert.equal(quoteRes.statusCode, 200);
+  const quoteData = (quoteRes.body as any).data;
+
+  // Exact allowlisted keys
+  assert.deepEqual(Object.keys(quoteData).sort(), [
+    'checkIn', 'checkOut', 'currency', 'depositAmount', 'guests', 'nights',
+    'pricePerNight', 'propertyId', 'remainingAmount', 'totalStay',
+  ].sort());
+
+  // Must use canonical DB price (5000), not client-tampered price (1)
+  assert.equal(quoteData.pricePerNight, 5000);
+  assert.equal(quoteData.nights, 4);
+  assert.equal(quoteData.totalStay, 20000);
+  assert.equal(quoteData.currency, 'EGP');
+
+  // Forbidden keys must be absent
+  assert.equal('solaCommissionRate' in quoteData, false);
+  assert.equal('solaCommissionAmount' in quoteData, false);
+  assert.equal('ownerNetDepositAmount' in quoteData, false);
+  assert.equal('ownerId' in quoteData, false);
+  assert.equal('walletId' in quoteData, false);
+
+  // Test 6D: Overlap rejection preserved (409 DATE_OVERLAP)
+  const overlapQuote = {
+    propertyId: 'prop-avail-001',
+    checkIn: '2026-09-12',
+    checkOut: '2026-09-16',
+    guests: 2,
+  };
+  const overlapRes = await app.handleHttpRequest('POST', '/api/v1/customer/bookings/calculate', {}, overlapQuote);
+  assert.equal(overlapRes.statusCode, 409);
+  assert.equal((overlapRes.body as any).error?.code, 'DATE_OVERLAP');
+
+  // Test 6E: Minimum stay rejection (< 2 nights -> 400 VALIDATION_ERROR)
+  const shortStay = {
+    propertyId: 'prop-avail-001',
+    checkIn: '2026-09-01',
+    checkOut: '2026-09-02', // 1 night
+    guests: 2,
+  };
+  const shortRes = await app.handleHttpRequest('POST', '/api/v1/customer/bookings/calculate', {}, shortStay);
+  assert.equal(shortRes.statusCode, 400);
+  assert.equal((shortRes.body as any).error?.code, 'VALIDATION_ERROR');
+
+} finally {
+  (propertyDb as any).getById = origGetById;
+  (bookingDb as any).getBlocksByPropertyId = origBookingBlocks;
+  (propertyAvailabilityDb as any).getByPropertyId = origManualBlocks;
+}

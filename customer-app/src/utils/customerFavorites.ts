@@ -26,7 +26,7 @@ function validateFavoriteItem(item: any): CustomerFavoriteItem {
   if (typeof item.id !== 'string' || !UUID_REGEX.test(item.id)) throw new Error('INVALID_ID');
   if (typeof item.title !== 'string' || item.title.trim() === '') throw new Error('INVALID_TITLE');
   if (typeof item.unitType !== 'string' || item.unitType.trim() === '') throw new Error('INVALID_UNIT_TYPE');
-  if (typeof item.address !== 'string' || item.address.trim() === '') throw new Error('INVALID_ADDRESS');
+  if (typeof item.address !== 'string') throw new Error('INVALID_ADDRESS');
   if (typeof item.bedrooms !== 'number' || !Number.isInteger(item.bedrooms) || item.bedrooms < 0) throw new Error('INVALID_BEDROOMS');
   if (typeof item.bathrooms !== 'number' || !Number.isInteger(item.bathrooms) || item.bathrooms < 0) throw new Error('INVALID_BATHROOMS');
   if (typeof item.maxGuests !== 'number' || !Number.isInteger(item.maxGuests) || item.maxGuests <= 0) throw new Error('INVALID_MAX_GUESTS');

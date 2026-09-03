@@ -142,6 +142,19 @@ assert.equal('walletId' in detail, false);
 assert.equal('ledgerId' in detail, false);
 
 // Fail closed on malformed source fields
+// Live Explore Address Hotfix: empty address is valid for public search and detail
+const emptyAddressItem = toPublicPropertySearchItem({ ...poisoned, address: '' }, ['img.jpg']);
+assert.equal(emptyAddressItem.address, '');
+const emptyAddressDetail = toPublicPropertyDetail({ ...poisoned, address: '   ' }, ['img.jpg']);
+assert.equal(emptyAddressDetail.address, '');
+
+// Non-string address must still fail closed
+assert.throws(() => toPublicPropertySearchItem({ ...poisoned, address: null as any }, ['img.jpg']), /MALFORMED_PUBLIC_PROPERTY_DATA/);
+assert.throws(() => toPublicPropertySearchItem({ ...poisoned, address: undefined as any }, ['img.jpg']), /MALFORMED_PUBLIC_PROPERTY_DATA/);
+assert.throws(() => toPublicPropertySearchItem({ ...poisoned, address: 123 as any }, ['img.jpg']), /MALFORMED_PUBLIC_PROPERTY_DATA/);
+assert.throws(() => toPublicPropertyDetail({ ...poisoned, address: null as any }, ['img.jpg']), /MALFORMED_PUBLIC_PROPERTY_DATA/);
+assert.throws(() => toPublicPropertyDetail({ ...poisoned, address: false as any }, ['img.jpg']), /MALFORMED_PUBLIC_PROPERTY_DATA/);
+
 assert.throws(() => toPublicPropertySearchItem({ ...poisoned, id: '' }, ['img.jpg']), /MALFORMED_PUBLIC_PROPERTY_DATA/);
 assert.throws(() => toPublicPropertySearchItem({ ...poisoned, title: null as any }, ['img.jpg']), /MALFORMED_PUBLIC_PROPERTY_DATA/);
 assert.throws(() => toPublicPropertySearchItem({ ...poisoned, unitType: '' }, ['img.jpg']), /MALFORMED_PUBLIC_PROPERTY_DATA/);

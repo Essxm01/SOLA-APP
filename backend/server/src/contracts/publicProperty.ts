@@ -125,10 +125,11 @@ export function validatePublicPropertyBaseRow(raw: any): PublicPropertyBaseRow {
     propertyType = propertyTypeRaw.trim();
   }
 
-  const address = raw.address;
-  if (typeof address !== 'string' || address.trim() === '') {
-    throw new Error('MALFORMED_PUBLIC_PROPERTY_DATA: address must be a non-empty string');
+  const addressRaw = raw.address;
+  if (typeof addressRaw !== 'string') {
+    throw new Error('MALFORMED_PUBLIC_PROPERTY_DATA: address must be a string');
   }
+  const address = addressRaw.trim();
 
   const regionRaw = raw.region;
   let region: string | null = null;

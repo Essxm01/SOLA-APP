@@ -247,6 +247,68 @@ async function run() {
     assert(capThrew, `fetchCustomerFavorites must reject item with ${JSON.stringify(invalidCapacity)}`);
   }
 
+  // Live Explore Address Hotfix: Favorites accepts canonical property with address = ''
+  const emptyAddressFav = await fetchCustomerFavorites(
+    testAuthToken,
+    async () => jsonResponse({
+      success: true,
+      data: [{
+        id: favPropId,
+        title: 'شاليه مراسي',
+        unitType: 'CHALET',
+        address: '',
+        resortName: 'مراسي',
+        region: 'الساحل الشمالي',
+        bedrooms: 2,
+        bathrooms: 2,
+        maxGuests: 4,
+        basePricePerNight: 6000,
+        currency: 'EGP',
+        images: ['https://storage.sola.eg/p1.jpg'],
+      }],
+    }),
+    testUrl
+  );
+  assert(emptyAddressFav.length === 1 && emptyAddressFav[0].address === '', 'Favorites accepts empty address');
+
+  // Favorites still rejects non-string address
+  for (const badAddress of [null, undefined, 123, false, {}]) {
+    let badAddrThrew = false;
+    try {
+      await fetchCustomerFavorites(
+        testAuthToken,
+        async () => jsonResponse({
+          success: true,
+          data: [{
+            id: favPropId,
+            title: 'شاليه مراسي',
+            unitType: 'CHALET',
+            address: badAddress,
+            bedrooms: 2,
+            bathrooms: 2,
+            maxGuests: 4,
+            basePricePerNight: 6000,
+            currency: 'EGP',
+            images: ['https://storage.sola.eg/p1.jpg'],
+          }],
+        }),
+        testUrl
+      );
+    } catch {
+      badAddrThrew = true;
+    }
+    assert(badAddrThrew, `Favorites must reject non-string address: ${JSON.stringify(badAddress)}`);
+  }
+
+  // Live Explore Address Hotfix: Truthful location presentation fallback
+  const getLocationDisplay = (prop: { address?: string; resortName?: string | null; region?: string | null }) => {
+    return prop.address || prop.resortName || prop.region || 'الساحل الشمالي';
+  };
+  assert(getLocationDisplay({ address: 'شارع البحر', resortName: 'مراسي', region: 'الساحل' }) === 'شارع البحر', 'shows address when present');
+  assert(getLocationDisplay({ address: '', resortName: 'مراسي', region: 'الساحل' }) === 'مراسي', 'falls back to resortName when address is empty');
+  assert(getLocationDisplay({ address: '', resortName: '', region: 'الساحل' }) === 'الساحل', 'falls back to region when resortName is empty');
+  assert(getLocationDisplay({ address: '', resortName: null, region: null }) === 'الساحل الشمالي', 'falls back to coastal default when all are empty');
+
   // 7F. mergeCustomerProfile: canonical null fields must NOT be resurrected from stale cached values
   const canonicalNullNameProfile = {
     id: '00000000-0000-4000-8000-000000000001',

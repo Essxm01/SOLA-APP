@@ -353,7 +353,7 @@ export const PropertyDetailModal: React.FC<PropertyDetailModalProps> = ({
           <div className="space-y-1.5">
             <div className="flex items-center gap-1.5 text-xs font-bold text-[#0059FF]">
               <MapPin className="w-3.5 h-3.5 shrink-0" />
-              <span>{property.address || 'الساحل الشمالي'}</span>
+              <span>{property.address || property.resortName || property.region || 'الساحل الشمالي'}</span>
             </div>
 
             <h1 className="text-base font-black text-slate-900 leading-snug">

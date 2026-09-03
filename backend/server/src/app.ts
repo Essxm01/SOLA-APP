@@ -699,7 +699,19 @@ export class ExpressServerApp {
 
         // --- A2. Owner Notifications Endpoint (PostgreSQL Driven) ---
         if (path === '/api/v1/owner/notifications' && method === 'GET') {
-          const notifs = await notificationDb.getByOwnerId(ownerId).catch(() => dbNotificationsStore.get(ownerId) || []);
+          let notifs: any[];
+          try {
+            notifs = await notificationDb.getByOwnerId(ownerId);
+          } catch {
+            return {
+              statusCode: 500,
+              body: {
+                success: false,
+                error: { code: 'OWNER_NOTIFICATIONS_QUERY_FAILED', message: 'تعذر تحميل الإشعارات.' },
+                timestamp,
+              },
+            };
+          }
           return {
             statusCode: 200,
             body: {
@@ -715,47 +727,15 @@ export class ExpressServerApp {
           return { statusCode: 410, body: { success: false, error: { code: 'LEGACY_KYC_UPLOAD_RETIRED', message: 'استخدم مسار رفع توثيق المالك الآمن.' }, timestamp } };
         }
 
-        // --- B. Payout Creation Endpoint (RULE-5A-01, RULE-5A-03, RULE-5A-05) ---
+        // --- B. Payout Creation Endpoint (Retire fake success — Phase 11 Deferred) ---
         if (path === '/api/v1/owner/payouts' && method === 'POST') {
-          const grossAmount = bodyPayload?.amount || 0;
-          const idempotencyKey = headers['idempotency-key'] || headers['Idempotency-Key'] || bodyPayload?.idempotencyKey;
-
-          if (!idempotencyKey) {
-            return {
-              statusCode: 400,
-              body: {
-                success: false,
-                error: { code: 'IDEMPOTENCY_KEY_REQUIRED', message: 'مطلوب مفتاح Idempotency-Key لمنع تكرار المعاملات' },
-                timestamp,
-              },
-            };
-          }
-
-          const validation = validatePayoutRequest(grossAmount, 5000, 15); // Mock available balance 5000 EGP
-          if (!validation.isValid) {
-            return {
-              statusCode: 400,
-              body: {
-                success: false,
-                error: { code: validation.errorCode!, message: 'طلب السحب غير صالح' },
-                timestamp,
-              },
-            };
-          }
-
           return {
-            statusCode: 201,
+            statusCode: 501,
             body: {
-              success: true,
-              data: {
-                id: `payout_${Date.now()}`,
-                ownerId,
-                grossAmount,
-                fee: 15,
-                netAmount: validation.netAmountEgp,
-                status: 'PENDING_ADMIN_PROCESSING',
-                idempotencyKey,
-                requestedAt: timestamp,
+              success: false,
+              error: {
+                code: 'PAYOUT_NOT_AVAILABLE_IN_CURRENT_PROTOTYPE',
+                message: 'طلبات السحب ستتاح بعد تفعيل مسار السحب المالي المعتمد.',
               },
               timestamp,
             },

@@ -480,5 +480,36 @@ assert.equal(itemDto.remainingAmount, 7500);
 
 console.log('P2.3 Task 4 owner booking and financial contract tests passed.');
 
+// ---------------------------------------------------------------------------
+// 5. Task 5: Wallet Truth + Retire Fake Payout Success
+// ---------------------------------------------------------------------------
 
+// 5A. Wallet query error must remain 500
+{
+  const origWalletSummary = walletDb.getOwnerWalletSummary;
+  (walletDb as any).getOwnerWalletSummary = async () => {
+    throw new Error('database unavailable');
+  };
+  try {
+    const wallet = await app.handleHttpRequest('GET', '/api/v1/owner/wallet', ownerHeaders(ownerTokenA));
+    assert.equal(wallet.statusCode, 500);
+    assert.equal((wallet.body as any).error?.code, 'WALLET_QUERY_FAILED');
+  } finally {
+    (walletDb as any).getOwnerWalletSummary = origWalletSummary;
+  }
+}
 
+// 5B. Payout creation must NOT return synthetic 201 success
+{
+  const payout = await app.handleHttpRequest(
+    'POST',
+    '/api/v1/owner/payouts',
+    { ...ownerHeaders(ownerTokenA), 'idempotency-key': 'p23-test-key' },
+    { amount: 1000, payoutMethodId: 'test-method' },
+  );
+  assert.notEqual(payout.statusCode, 201, 'Fake payout must not return 201 synthetic success');
+  assert.equal(payout.statusCode, 501);
+  assert.equal((payout.body as any).error?.code, 'PAYOUT_NOT_AVAILABLE_IN_CURRENT_PROTOTYPE');
+}
+
+console.log('P2.3 Task 5 tests passed.');

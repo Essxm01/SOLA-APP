@@ -26,7 +26,7 @@ import {
   validateCustomerFavoriteRow,
   type CustomerBookingCreateResponseDto,
 } from './contracts/customerRenter.js';
-import { toOwnerProfileDto, type OwnerProfileDto } from './contracts/ownerCore.js';
+import { toOwnerProfileDto, toOwnerPropertyDto, type OwnerProfileDto, type OwnerPropertyDto } from './contracts/ownerCore.js';
 import type { ApiSuccessResponse, ApiErrorResponse } from './types/server';
 
 export interface RouteHandlerResult {
@@ -1049,14 +1049,19 @@ export class ExpressServerApp {
             return { statusCode: 500, body: { success: false, error: { code: 'PROPERTY_READ_AFTER_WRITE_FAILED', message: 'تعذر تأكيد حفظ الوحدة.' }, timestamp } };
           }
 
-          return {
-            statusCode: 201,
-            body: {
-              success: true,
-              data: persistedProperty,
-              timestamp,
-            },
-          };
+          try {
+            const dto = toOwnerPropertyDto(persistedProperty);
+            return {
+              statusCode: 201,
+              body: {
+                success: true,
+                data: dto,
+                timestamp,
+              },
+            };
+          } catch {
+            return { statusCode: 500, body: { success: false, error: { code: 'PROPERTY_MALFORMED', message: 'بيانات الوحدة غير صالحة.' }, timestamp } };
+          }
         }
 
         if (path === '/api/v1/owner/properties' && method === 'GET') {
@@ -1066,14 +1071,26 @@ export class ExpressServerApp {
           } catch {
             return { statusCode: 500, body: { success: false, error: { code: 'OWNER_PROPERTIES_QUERY_FAILED', message: 'تعذر تحميل الوحدات.' }, timestamp } };
           }
-          return {
-            statusCode: 200,
-            body: {
-              success: true,
-              data: ownerProperties,
-              timestamp,
-            },
-          };
+          try {
+            const dtos = ownerProperties.map(toOwnerPropertyDto);
+            return {
+              statusCode: 200,
+              body: {
+                success: true,
+                data: dtos,
+                timestamp,
+              },
+            };
+          } catch {
+            return {
+              statusCode: 500,
+              body: {
+                success: false,
+                error: { code: 'OWNER_PROPERTIES_MALFORMED', message: 'بيانات الوحدات غير صالحة.' },
+                timestamp,
+              },
+            };
+          }
         }
 
         // --- E0.5. Owner Property Update & Resubmit Endpoint — PostgreSQL Driven ---
@@ -1123,14 +1140,19 @@ export class ExpressServerApp {
           const persistedProperty = await propertyDb.getByOwnerAndId(propertyId, ownerId).catch(() => null);
           if (!persistedProperty) return { statusCode: 500, body: { success: false, error: { code: 'PROPERTY_READ_AFTER_WRITE_FAILED', message: 'تعذر تأكيد حفظ تعديلات الوحدة.' }, timestamp } };
 
-          return {
-            statusCode: 200,
-            body: {
-              success: true,
-              data: persistedProperty,
-              timestamp,
-            },
-          };
+          try {
+            const dto = toOwnerPropertyDto(persistedProperty);
+            return {
+              statusCode: 200,
+              body: {
+                success: true,
+                data: dto,
+                timestamp,
+              },
+            };
+          } catch {
+            return { statusCode: 500, body: { success: false, error: { code: 'PROPERTY_MALFORMED', message: 'بيانات الوحدة غير صالحة.' }, timestamp } };
+          }
         }
 
         // --- E0.6. Owner Property Submit For Review Endpoint — PostgreSQL Driven (M03) ---

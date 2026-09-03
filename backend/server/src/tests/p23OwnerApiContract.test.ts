@@ -129,3 +129,102 @@ assert.equal(nullDto.ownerOnboardingCompletedAt, null);
 }
 
 console.log('P2.3 Task 1 owner profile contract tests passed.');
+
+// ---------------------------------------------------------------------------
+// 2. Task 2: Owner Property Contract and Public Compatibility
+// ---------------------------------------------------------------------------
+import { toOwnerPropertyDto } from '../contracts/ownerCore.js';
+
+const propertyIdA = 'p0000000-0000-4000-8000-000000000001';
+const rawPropertyRow = {
+  id: propertyIdA,
+  ownerId: ownerA,
+  title: 'شاليه شاطئي فاخر',
+  unitType: 'CHALET',
+  propertyType: 'CHALET',
+  address: '', // empty address is canonical product state
+  bedrooms: 3,
+  bathrooms: 2,
+  maxGuests: 6,
+  pricePerNight: 2500,
+  basePricePerNight: 2500,
+  description: 'وصف الشاليه',
+  region: 'الساحل الشمالي',
+  resortName: 'أمواج',
+  areaSqM: 120,
+  bedsCount: 4,
+  amenities: ['WIFI', 'POOL'],
+  houseRules: { noSmoking: true },
+  status: 'PENDING_REVIEW',
+  verificationStatus: 'UNVERIFIED',
+  createdAt: '2026-09-01T00:00:00.000Z',
+  updatedAt: '2026-09-02T00:00:00.000Z',
+  images: ['https://storage.sola.eg/p1.jpg'],
+};
+
+// 2A. Unit: toOwnerPropertyDto preserves empty string address
+{
+  const dto = toOwnerPropertyDto(rawPropertyRow);
+  assert.equal(dto.address, '', 'Empty string address must be preserved');
+  assert.equal(dto.pricePerNight, 2500);
+  assert.equal(dto.bedrooms, 3);
+  assert.equal(dto.bathrooms, 2);
+  assert.equal(dto.maxGuests, 6);
+  assert.equal(dto.currency, 'EGP');
+  assert.deepEqual(dto.images, ['https://storage.sola.eg/p1.jpg']);
+}
+
+// 2B. Unit: Malformed required fields fail closed
+{
+  assert.throws(() => toOwnerPropertyDto({ ...rawPropertyRow, id: '' }), /MALFORMED_OWNER_PROPERTY/);
+  assert.throws(() => toOwnerPropertyDto({ ...rawPropertyRow, address: null as any }), /MALFORMED_OWNER_PROPERTY/);
+  assert.throws(() => toOwnerPropertyDto({ ...rawPropertyRow, pricePerNight: 0 }), /MALFORMED_OWNER_PROPERTY/);
+  assert.throws(() => toOwnerPropertyDto({ ...rawPropertyRow, bedrooms: -1 }), /MALFORMED_OWNER_PROPERTY/);
+  assert.throws(() => toOwnerPropertyDto({ ...rawPropertyRow, maxGuests: 0 }), /MALFORMED_OWNER_PROPERTY/);
+}
+
+// 2C. Route: GET /api/v1/owner/properties DB failure returns 500
+{
+  const origGetByOwnerId = propertyDb.getByOwnerId;
+  (propertyDb as any).getByOwnerId = async () => {
+    throw new Error('db down');
+  };
+  try {
+    const res = await app.handleHttpRequest('GET', '/api/v1/owner/properties', ownerHeaders());
+    assert.equal(res.statusCode, 500);
+    assert.equal((res.body as any).error?.code, 'OWNER_PROPERTIES_QUERY_FAILED');
+  } finally {
+    (propertyDb as any).getByOwnerId = origGetByOwnerId;
+  }
+}
+
+// 2D. Route: GET /api/v1/owner/properties preserves empty address and returns sanitized DTOs
+{
+  const origGetByOwnerId = propertyDb.getByOwnerId;
+  (propertyDb as any).getByOwnerId = async () => [{ ...rawPropertyRow }];
+  try {
+    const res = await app.handleHttpRequest('GET', '/api/v1/owner/properties', ownerHeaders());
+    assert.equal(res.statusCode, 200);
+    assert.equal((res.body as any).data.length, 1);
+    assert.equal((res.body as any).data[0].address, '');
+    assert.equal((res.body as any).data[0].id, propertyIdA);
+  } finally {
+    (propertyDb as any).getByOwnerId = origGetByOwnerId;
+  }
+}
+
+// 2E. Route: PUT /api/v1/owner/properties/:id foreign owner returns 403
+{
+  const origGetById = propertyDb.getById;
+  (propertyDb as any).getById = async () => ({ ...rawPropertyRow, ownerId: ownerB });
+  try {
+    const res = await app.handleHttpRequest('PUT', `/api/v1/owner/properties/${propertyIdA}`, ownerHeaders(ownerTokenA), { title: 'تعديل غريب' });
+    assert.equal(res.statusCode, 403, 'Foreign owner property edit must be rejected with 403');
+    assert.equal((res.body as any).error?.code, 'FORBIDDEN_PROPERTY_ACCESS');
+  } finally {
+    (propertyDb as any).getById = origGetById;
+  }
+}
+
+console.log('P2.3 Task 2 owner property contract tests passed.');
+

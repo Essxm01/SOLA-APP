@@ -12,11 +12,20 @@ import { calculateBookingFinancials, validatePayoutRequest, roundHalfEvenInCents
 import { verifyJwtToken, requireRole } from './middleware/auth.js';
 import { applyCorsHeaders } from './middleware/cors.js';
 import { dbUsersStore, dbOwnersStore, dbAdminUsersStore, dbNotificationsStore, dbOwnerVerificationDocsStore, dbPropertyVerificationDocsStore, dbPropertiesStore, dbBookingsStore, dbPayoutRequestsStore, dbDisputesStore } from './services/authService.js';
-import { userDb, ownerDb, propertyDb, bookingDb, conversationDb, messageDb, isBookingChatEligible, payoutDb, disputeDb, notificationDb, imageDb, uploadIntentDb, adminStatsDb, walletDb, propertyAvailabilityDb, getUnifiedUnavailableBlocks } from './services/dbRepository.js';
+import { userDb, ownerDb, propertyDb, bookingDb, conversationDb, messageDb, isBookingChatEligible, payoutDb, disputeDb, notificationDb, imageDb, uploadIntentDb, adminStatsDb, walletDb, propertyAvailabilityDb, getUnifiedUnavailableBlocks, favoriteDb } from './services/dbRepository.js';
 import { paymentTxDb, PaymentService, PaymobGateway, verifyPaymobHmacSha512, getPaymentMode } from './services/paymentService.js';
 import { createStorageProvider, IObjectStorageProvider, verifyMagicBytes, computeSha256 } from './services/storageProvider.js';
 import { GLOBAL_MIN_STAY_NIGHTS, GLOBAL_MAX_STAY_NIGHTS, hasDateRangeOverlap, validateStayLength } from './constants/bookingRules.js';
 import { parsePublicPropertySearchFilters, toPublicPropertySearchItem, toPublicPropertyDetail, PublicPropertySearchFilters, extractPublicImageUrls } from './contracts/publicProperty.js';
+import {
+  toCustomerProfileDto,
+  toCustomerAccountSummaryDto,
+  toCustomerBookingListItem,
+  toCustomerBookingDetailDto,
+  toCustomerBookingCreateResponseDto,
+  validateCustomerFavoriteRow,
+  type CustomerBookingCreateResponseDto,
+} from './contracts/customerRenter.js';
 import type { ApiSuccessResponse, ApiErrorResponse } from './types/server';
 
 export interface RouteHandlerResult {
@@ -2833,21 +2842,28 @@ export class ExpressServerApp {
           }
         }
 
-        // 4.0 Customer Profile (Authoritative Canonical DB Source of Truth — DATA-01)
+        // 4.0 Customer Profile (Authoritative Canonical DB Source of Truth — DATA-01 / P2.2)
         if (path === '/api/v1/customer/profile' && method === 'GET') {
-          let user: any = await userDb.getById(customerId).catch(() => null);
-          if (!user && customerPhone) {
-            user = await userDb.getByPhone(customerPhone).catch(() => null);
+          let user: any;
+          try {
+            user = await userDb.getById(customerId);
+          } catch {
+            return {
+              statusCode: 500,
+              body: {
+                success: false,
+                error: { code: 'CUSTOMER_PROFILE_QUERY_FAILED', message: 'تعذر تحميل بيانات الحساب حالياً' },
+                timestamp,
+              },
+            };
           }
-          if (!user) {
-            user = dbUsersStore.get(customerPhone) || dbUsersStore.get(customerId);
-          }
+
           if (!user) {
             return {
               statusCode: 404,
               body: {
                 success: false,
-                error: { code: 'USER_NOT_FOUND', message: 'المستخدم غير موجود' },
+                error: { code: 'CUSTOMER_IDENTITY_NOT_FOUND', message: 'تعذر العثور على حساب المستأجر' },
                 timestamp,
               },
             };
@@ -2857,17 +2873,7 @@ export class ExpressServerApp {
             statusCode: 200,
             body: {
               success: true,
-              data: {
-                id: user.id,
-                phoneNumber: user.phoneNumber,
-                phoneVerifiedAt: user.phoneVerifiedAt || null,
-                fullName: user.fullName || null,
-                email: user.email || null,
-                avatarUrl: user.avatarUrl || null,
-                status: user.status || 'ACTIVE',
-                createdAt: user.createdAt,
-                updatedAt: user.updatedAt,
-              },
+              data: toCustomerProfileDto(user),
               timestamp,
             },
           };
@@ -2946,17 +2952,7 @@ export class ExpressServerApp {
             statusCode: 200,
             body: {
               success: true,
-              data: {
-                id: updatedUser.id,
-                phoneNumber: updatedUser.phoneNumber,
-                phoneVerifiedAt: updatedUser.phoneVerifiedAt || null,
-                fullName: updatedUser.fullName || null,
-                email: updatedUser.email || null,
-                avatarUrl: updatedUser.avatarUrl || null,
-                status: updatedUser.status || 'ACTIVE',
-                createdAt: updatedUser.createdAt,
-                updatedAt: updatedUser.updatedAt,
-              },
+              data: toCustomerProfileDto(updatedUser),
               timestamp,
             },
           };
@@ -3333,6 +3329,7 @@ export class ExpressServerApp {
                 ownerNetDepositAmount: breakdown.ownerNetDepositInCents / 100,
                 remainingBalance: breakdown.remainingBalanceInCents / 100,
                 commissionOnRemainingBalance: 0,
+                createdAt: new Date().toISOString(),
               });
             } catch (dbErr: any) {
               // Migration 025's booking trigger rejects INSERTs overlapping a
@@ -3355,24 +3352,26 @@ export class ExpressServerApp {
                 body: { success: false, error: { code: 'BOOKING_PERSISTENCE_FAILED', message: 'لم يتم تأكيد حفظ طلب الحجز وتفاصيله المالية' }, timestamp },
               };
             }
-            const financialSummary = created.financialSummary;
+
+            let responseDto: CustomerBookingCreateResponseDto;
+            try {
+              responseDto = toCustomerBookingCreateResponseDto(created);
+            } catch {
+              return {
+                statusCode: 500,
+                body: {
+                  success: false,
+                  error: { code: 'BOOKING_PERSISTENCE_FAILED', message: 'تعذر معالجة بيانات الحجز المحفوظة' },
+                  timestamp,
+                },
+              };
+            }
 
             return {
               statusCode: 201,
               body: {
                 success: true,
-                data: {
-                  ...created,
-                  financialSummary: {
-                    totalBookingValue: Number(financialSummary.totalBookingValue),
-                    depositAmount: Number(financialSummary.depositAmount),
-                    depositPaymentStatus: 'NOT_DUE',
-                    remainingBalance: Number(financialSummary.remainingBalance),
-                    remainingBalancePaymentMethod: 'CASH_ON_ARRIVAL',
-                    remainingBalanceStatus: 'NOT_DUE',
-                    currency: 'EGP',
-                  },
-                },
+                data: responseDto,
                 timestamp,
               },
             };
@@ -3384,9 +3383,22 @@ export class ExpressServerApp {
           }
         }
 
-        // 4.4A Customer Account Summary (Real PostgreSQL Driven — ACCOUNT-01)
+        // 4.4A Customer Account Summary (Real PostgreSQL Driven — ACCOUNT-01 / P2.2)
         if (path === '/api/v1/customer/account/summary' && method === 'GET') {
-          const bookings = await bookingDb.getByCustomerId(customerId).catch(() => []);
+          let bookings: any[];
+          try {
+            bookings = await bookingDb.getByCustomerId(customerId);
+          } catch {
+            return {
+              statusCode: 500,
+              body: {
+                success: false,
+                error: { code: 'CUSTOMER_ACCOUNT_SUMMARY_QUERY_FAILED', message: 'تعذر تحميل ملخص الحساب حالياً' },
+                timestamp,
+              },
+            };
+          }
+
           const todayIso = new Date().toISOString().slice(0, 10);
           
           const confirmedBookings = bookings.filter((b: any) => b.status === 'CONFIRMED');
@@ -3394,18 +3406,57 @@ export class ExpressServerApp {
             const checkInStr = typeof b.checkIn === 'string' ? b.checkIn : b.checkIn?.toISOString?.()?.slice(0, 10);
             return checkInStr && checkInStr >= todayIso;
           });
-          const totalDepositsPaid = confirmedBookings.reduce((sum: number, b: any) => sum + (Number(b.depositAmount) || 0), 0);
+
+          let totalDepositsPaid = 0;
+          for (const b of confirmedBookings) {
+            if (b.depositAmount === undefined || b.depositAmount === null || typeof b.depositAmount === 'boolean') {
+              return {
+                statusCode: 500,
+                body: {
+                  success: false,
+                  error: { code: 'CUSTOMER_ACCOUNT_SUMMARY_QUERY_FAILED', message: 'تعذر معالجة بيانات المبالغ المدفوعة' },
+                  timestamp,
+                },
+              };
+            }
+            const dep = Number(b.depositAmount);
+            if (!Number.isFinite(dep) || dep <= 0) {
+              return {
+                statusCode: 500,
+                body: {
+                  success: false,
+                  error: { code: 'CUSTOMER_ACCOUNT_SUMMARY_QUERY_FAILED', message: 'تعذر معالجة بيانات المبالغ المدفوعة' },
+                  timestamp,
+                },
+              };
+            }
+            totalDepositsPaid += dep;
+          }
+
+          let summary: any;
+          try {
+            summary = toCustomerAccountSummaryDto({
+              confirmedBookingsCount: confirmedBookings.length,
+              upcomingStaysCount: upcomingStays.length,
+              totalBookingsCount: bookings.length,
+              totalDepositsPaidEgp: totalDepositsPaid,
+            });
+          } catch {
+            return {
+              statusCode: 500,
+              body: {
+                success: false,
+                error: { code: 'CUSTOMER_ACCOUNT_SUMMARY_QUERY_FAILED', message: 'تعذر معالجة ملخص الحساب' },
+                timestamp,
+              },
+            };
+          }
 
           return {
             statusCode: 200,
             body: {
               success: true,
-              data: {
-                confirmedBookingsCount: confirmedBookings.length,
-                upcomingStaysCount: upcomingStays.length,
-                totalBookingsCount: bookings.length,
-                totalDepositsPaidEgp: totalDepositsPaid,
-              },
+              data: summary,
               timestamp,
             },
           };
@@ -3414,14 +3465,25 @@ export class ExpressServerApp {
         // 4.4B Customer Booking Detail (canonical booking + canonical property composition)
         if (path.match(/^\/api\/v1\/customer\/bookings\/[^/]+$/) && method === 'GET') {
           const bookingId = path.split('/')[5];
-          const booking = await bookingDb.getById(bookingId).catch(() => null);
+          let booking: any;
+          try {
+            booking = await bookingDb.getById(bookingId);
+          } catch {
+            return { statusCode: 500, body: { success: false, error: { code: 'CUSTOMER_BOOKING_QUERY_FAILED', message: 'تعذر جلب تفاصيل الحجز' }, timestamp } };
+          }
           if (!booking) {
             return { statusCode: 404, body: { success: false, error: { code: 'BOOKING_NOT_FOUND', message: 'طلب الحجز غير موجود' }, timestamp } };
           }
           if (booking.customerId !== customerId) {
             return { statusCode: 403, body: { success: false, error: { code: 'FORBIDDEN_BOOKING_ACCESS', message: 'غير مصرح لك بالوصول إلى هذا الحجز' }, timestamp } };
           }
-          return { statusCode: 200, body: { success: true, data: booking, timestamp } };
+          let bookingDto: any;
+          try {
+            bookingDto = toCustomerBookingDetailDto(booking);
+          } catch {
+            return { statusCode: 500, body: { success: false, error: { code: 'CUSTOMER_BOOKING_DATA_MALFORMED', message: 'تعذر معالجة تفاصيل الحجز' }, timestamp } };
+          }
+          return { statusCode: 200, body: { success: true, data: bookingDto, timestamp } };
         }
 
         // 4.4C Customer Booking List (Real PostgreSQL IDOR Scoped)
@@ -3436,11 +3498,21 @@ export class ExpressServerApp {
             };
           }
 
+          let mappedBookings: any[];
+          try {
+            mappedBookings = bookings.map((b: any) => toCustomerBookingListItem(b));
+          } catch {
+            return {
+              statusCode: 500,
+              body: { success: false, error: { code: 'CUSTOMER_BOOKING_DATA_MALFORMED', message: 'تعذر معالجة قائمة الحجوزات' }, timestamp },
+            };
+          }
+
           return {
             statusCode: 200,
             body: {
               success: true,
-              data: bookings,
+              data: mappedBookings,
               timestamp,
             },
           };
@@ -3962,6 +4034,228 @@ export class ExpressServerApp {
             body: {
               success: true,
               data: mockDetail,
+              timestamp,
+            },
+          };
+        }
+
+        // 4.5 Customer Favorites (P2.2)
+        if (path === '/api/v1/customer/favorites' && method === 'GET') {
+          let favRows: any[];
+          try {
+            favRows = await favoriteDb.getByCustomerId(customerId);
+          } catch {
+            return {
+              statusCode: 500,
+              body: {
+                success: false,
+                error: { code: 'CUSTOMER_FAVORITES_QUERY_FAILED', message: 'تعذر تحميل قائمة المفضلة' },
+                timestamp,
+              },
+            };
+          }
+
+          const items: any[] = [];
+          for (const rawFav of favRows) {
+            let fav: any;
+            try {
+              fav = validateCustomerFavoriteRow(rawFav);
+            } catch {
+              return {
+                statusCode: 500,
+                body: {
+                  success: false,
+                  error: { code: 'CUSTOMER_FAVORITES_QUERY_FAILED', message: 'تعذر معالجة بيانات المفضلة' },
+                  timestamp,
+                },
+              };
+            }
+
+            let prop: any;
+            try {
+              prop = await propertyDb.getPublicById(fav.propertyId);
+            } catch {
+              return {
+                statusCode: 500,
+                body: {
+                  success: false,
+                  error: { code: 'CUSTOMER_FAVORITES_QUERY_FAILED', message: 'تعذر تحميل بيانات العقار في المفضلة' },
+                  timestamp,
+                },
+              };
+            }
+
+            // A saved property that is no longer public is hidden from the visible
+            // collection, but the underlying favorite intent row is retained.
+            if (!prop) {
+              continue;
+            }
+
+            let mediaRows: any[];
+            try {
+              mediaRows = await imageDb.getImagesByPropertyId(fav.propertyId);
+            } catch {
+              return {
+                statusCode: 500,
+                body: {
+                  success: false,
+                  error: { code: 'CUSTOMER_FAVORITES_QUERY_FAILED', message: 'تعذر تحميل صور العقار في المفضلة' },
+                  timestamp,
+                },
+              };
+            }
+
+            let imageUrls: string[];
+            try {
+              imageUrls = extractPublicImageUrls(mediaRows);
+            } catch {
+              return {
+                statusCode: 500,
+                body: {
+                  success: false,
+                  error: { code: 'CUSTOMER_FAVORITES_QUERY_FAILED', message: 'تعذر معالجة صور العقار في المفضلة' },
+                  timestamp,
+                },
+              };
+            }
+
+            try {
+              const item = toPublicPropertySearchItem(prop, imageUrls);
+              items.push(item);
+            } catch {
+              return {
+                statusCode: 500,
+                body: {
+                  success: false,
+                  error: { code: 'CUSTOMER_FAVORITES_QUERY_FAILED', message: 'تعذر صياغة بيانات العقار في المفضلة' },
+                  timestamp,
+                },
+              };
+            }
+          }
+
+          return {
+            statusCode: 200,
+            body: {
+              success: true,
+              data: items,
+              timestamp,
+            },
+          };
+        }
+
+        if (path.match(/^\/api\/v1\/customer\/favorites\/[^/]+$/) && method === 'POST') {
+          const propertyId = path.split('/')[5];
+          const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+          if (!propertyId || !UUID_REGEX.test(propertyId)) {
+            return {
+              statusCode: 400,
+              body: {
+                success: false,
+                error: { code: 'INVALID_PROPERTY_ID', message: 'معرف العقار غير صالح' },
+                timestamp,
+              },
+            };
+          }
+
+          let added: any;
+          try {
+            added = await favoriteDb.add(customerId, propertyId);
+          } catch {
+            return {
+              statusCode: 500,
+              body: {
+                success: false,
+                error: { code: 'CUSTOMER_FAVORITE_ADD_FAILED', message: 'تعذر إضافة العقار إلى المفضلة' },
+                timestamp,
+              },
+            };
+          }
+
+          if (!added) {
+            return {
+              statusCode: 404,
+              body: {
+                success: false,
+                error: { code: 'PROPERTY_NOT_FOUND', message: 'الوحدة غير متاحة حالياً للإضافة إلى المفضلة' },
+                timestamp,
+              },
+            };
+          }
+
+          let validatedRow: any;
+          try {
+            validatedRow = validateCustomerFavoriteRow(added);
+          } catch {
+            return {
+              statusCode: 500,
+              body: {
+                success: false,
+                error: { code: 'CUSTOMER_FAVORITE_ADD_FAILED', message: 'تعذر التحقق من بيانات المفضلة المحفوظة' },
+                timestamp,
+              },
+            };
+          }
+
+          if (validatedRow.customerId !== customerId || validatedRow.propertyId !== propertyId) {
+            return {
+              statusCode: 500,
+              body: {
+                success: false,
+                error: { code: 'CUSTOMER_FAVORITE_ADD_FAILED', message: 'تعذر التحقق من بيانات المفضلة المحفوظة' },
+                timestamp,
+              },
+            };
+          }
+
+          return {
+            statusCode: 200,
+            body: {
+              success: true,
+              data: {
+                propertyId,
+                isFavorite: true,
+              },
+              timestamp,
+            },
+          };
+        }
+
+        if (path.match(/^\/api\/v1\/customer\/favorites\/[^/]+$/) && method === 'DELETE') {
+          const propertyId = path.split('/')[5];
+          const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+          if (!propertyId || !UUID_REGEX.test(propertyId)) {
+            return {
+              statusCode: 400,
+              body: {
+                success: false,
+                error: { code: 'INVALID_PROPERTY_ID', message: 'معرف العقار غير صالح' },
+                timestamp,
+              },
+            };
+          }
+
+          try {
+            await favoriteDb.remove(customerId, propertyId);
+          } catch {
+            return {
+              statusCode: 500,
+              body: {
+                success: false,
+                error: { code: 'CUSTOMER_FAVORITE_REMOVE_FAILED', message: 'تعذر إزالة العقار من المفضلة' },
+                timestamp,
+              },
+            };
+          }
+
+          return {
+            statusCode: 200,
+            body: {
+              success: true,
+              data: {
+                propertyId,
+                isFavorite: false,
+              },
               timestamp,
             },
           };

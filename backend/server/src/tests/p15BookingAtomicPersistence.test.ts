@@ -313,6 +313,7 @@ try {
       ownerId: payload.ownerId, customerId: payload.customerId, guestName: payload.guestName,
       checkIn: payload.checkIn, checkOut: payload.checkOut, nights: payload.nights,
       guestsCount: payload.totalGuests, status: payload.status,
+      createdAt: '2026-09-03T12:00:00.000Z',
       financialSummary: {
         totalBookingValue: expected.totalBookingValueInCents / 100,
         depositAmount: expected.depositAmountInCents / 100,
@@ -330,14 +331,16 @@ try {
   // Atomic success with canonical financial persistence integrity.
   const created = await app.handleHttpRequest('POST', '/api/v1/customer/bookings', customerHeaders, { propertyId, checkIn: '2026-12-20', checkOut: '2026-12-22', guests: 2 });
   assert.equal(created.statusCode, 201);
-  const summary = (created.body as any).data.financialSummary;
-  assert.equal(summary.depositAmount, createdPayload.depositAmount, 'stored deposit equals the canonical server calculation passed to the transaction');
-  assert.equal(summary.totalBookingValue, createdPayload.totalBookingValue);
-  assert.equal(summary.remainingBalance, createdPayload.remainingBalance);
+  const data = (created.body as any).data;
+  assert.equal('financialSummary' in data, false, 'Customer response must not expose financialSummary property');
+  assert.equal(Object.getOwnPropertyDescriptor(data, 'financialSummary'), undefined, 'financialSummary must not be defined on customer response');
+  assert.equal(data.depositAmount, createdPayload.depositAmount, 'stored deposit equals the canonical server calculation passed to the transaction');
+  assert.equal(data.totalStay, createdPayload.totalBookingValue);
+  assert.equal(data.remainingAmount, createdPayload.remainingBalance);
+  assert.equal(data.currency, 'EGP');
   assert.equal(Math.abs(createdPayload.solaCommissionAmount - createdPayload.depositAmount * 0.2) < 1e-9, true, 'commission stays 20% of deposit');
   assert.equal(Math.abs(createdPayload.ownerNetDepositAmount - createdPayload.depositAmount * 0.8) < 1e-9, true, 'owner net stays 80% of deposit');
   assert.equal(createdPayload.commissionOnRemainingBalance, 0, 'no commission on remaining balance');
-  assert.equal(summary.depositPaymentStatus, 'NOT_DUE');
 
   // Atomic failure of the transaction: truthful failure and NO compensating delete.
   createError = new Error('REST_BOOKING_REQUEST_CREATE_RPC_FAILED: HTTP 503 — {"message":"db down"}');

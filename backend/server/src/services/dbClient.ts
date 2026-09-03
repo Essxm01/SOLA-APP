@@ -2388,6 +2388,168 @@ async function queryViaSupabaseRest(text: string, params: any[] | undefined, url
     return { rows: [], command: 'UPDATE', rowCount: Array.isArray(raw) ? raw.length : 0, oid: 0, fields: [] };
   }
 
+  // 17A. konfrm_add_customer_favorite RPC (P2.2)
+  // Exact matcher: SELECT * FROM konfrm_add_customer_favorite($1, $2)
+  const canonicalAddFavMatch = sql
+    .replace(/\s+/g, ' ')
+    .match(/^SELECT \* FROM konfrm_add_customer_favorite\(([^()]*)\)$/i);
+  const addFavPlaceholders = canonicalAddFavMatch
+    ? canonicalAddFavMatch[1].split(',').map((p) => p.trim())
+    : [];
+  const isCanonicalAddFavRpc =
+    !!canonicalAddFavMatch &&
+    addFavPlaceholders.length === 2 &&
+    addFavPlaceholders[0].toLowerCase() === '$1' &&
+    addFavPlaceholders[1].toLowerCase() === '$2';
+
+  if (isCanonicalAddFavRpc) {
+    const customerId = params?.[0];
+    const propertyId = params?.[1];
+    const res = await fetch(`${url}/rest/v1/rpc/konfrm_add_customer_favorite`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        p_customer_id: customerId,
+        p_property_id: propertyId,
+      }),
+    });
+    if (!res.ok) {
+      const body = await res.text().catch(() => '');
+      throw new Error(`REST_CUSTOMER_FAVORITE_ADD_RPC_FAILED: HTTP ${res.status} — ${body.slice(0, 240)}`);
+    }
+    const raw: any = await res.json().catch(() => null);
+    if (!Array.isArray(raw)) {
+      throw new Error('REST_CUSTOMER_FAVORITE_ADD_RPC_MALFORMED: Expected JSON array');
+    }
+    if (raw.length === 0) {
+      return { rows: [], command: 'SELECT', rowCount: 0, oid: 0, fields: [] };
+    }
+    if (raw.length > 1) {
+      throw new Error('REST_CUSTOMER_FAVORITE_ADD_CARDINALITY_INVALID: More than one row returned');
+    }
+    const row = raw[0];
+    if (!row || typeof row !== 'object') {
+      throw new Error('REST_CUSTOMER_FAVORITE_ADD_ROW_MALFORMED: Missing required fields');
+    }
+    const rowCustomerId = row.customerId ?? row.customer_id;
+    const rowPropertyId = row.propertyId ?? row.property_id;
+    const rowCreatedAt = row.createdAt ?? row.created_at;
+
+    const isValidUuid = (v: any) => typeof v === 'string' && BOOKING_REQUEST_RPC_UUID_PATTERN.test(v);
+    const isValidIso = (v: any) => typeof v === 'string' && v.trim().length > 0 && !isNaN(Date.parse(v));
+
+    if (
+      !isValidUuid(rowCustomerId) ||
+      !isValidUuid(rowPropertyId) ||
+      !isValidIso(rowCreatedAt) ||
+      rowCustomerId !== customerId ||
+      rowPropertyId !== propertyId
+    ) {
+      throw new Error('REST_CUSTOMER_FAVORITE_ADD_ROW_MALFORMED: Missing, malformed, or mismatched required fields');
+    }
+
+    const mapped = [{
+      customerId: rowCustomerId,
+      propertyId: rowPropertyId,
+      createdAt: rowCreatedAt,
+    }];
+    return { rows: mapped, command: 'SELECT', rowCount: 1, oid: 0, fields: [] };
+  }
+
+  // 17B. SELECT customer_favorites list by customer_id (P2.2)
+  const normalizedSqlForFavorites = sql.replace(/\s+/g, ' ').trim();
+  const isCanonicalFavoriteList = /^SELECT customer_id AS "customerId", property_id AS "propertyId", created_at AS "createdAt" FROM customer_favorites WHERE customer_id = \$1 ORDER BY created_at DESC$/i.test(normalizedSqlForFavorites);
+
+  if (isCanonicalFavoriteList) {
+    const customerId = params?.[0];
+    const res = await fetch(
+      `${url}/rest/v1/customer_favorites?customer_id=eq.${encodeURIComponent(customerId)}&select=customer_id,property_id,created_at&order=created_at.desc`,
+      { headers }
+    );
+    if (!res.ok) {
+      const body = await res.text().catch(() => '');
+      throw new Error(`REST_CUSTOMER_FAVORITES_LIST_FAILED: HTTP ${res.status} — ${body.slice(0, 240)}`);
+    }
+    const raw: any = await res.json().catch(() => null);
+    if (!Array.isArray(raw)) {
+      throw new Error('REST_CUSTOMER_FAVORITES_LIST_MALFORMED: Expected JSON array');
+    }
+    const isValidUuid = (v: any) => typeof v === 'string' && BOOKING_REQUEST_RPC_UUID_PATTERN.test(v);
+    const isValidIso = (v: any) => typeof v === 'string' && v.trim().length > 0 && !isNaN(Date.parse(v));
+
+    const mapped = raw.map((r: any) => {
+      if (
+        !r ||
+        typeof r !== 'object' ||
+        !isValidUuid(r.customer_id) ||
+        !isValidUuid(r.property_id) ||
+        !isValidIso(r.created_at) ||
+        r.customer_id !== customerId
+      ) {
+        throw new Error('REST_CUSTOMER_FAVORITES_ROW_MALFORMED: Missing, malformed, or mismatched required fields');
+      }
+      return {
+        customerId: r.customer_id,
+        propertyId: r.property_id,
+        createdAt: r.created_at,
+      };
+    });
+    return { rows: mapped, command: 'SELECT', rowCount: mapped.length, oid: 0, fields: [] };
+  }
+
+  // 17C. DELETE customer_favorites by customer_id and property_id (P2.2)
+  const isCanonicalFavoriteRemove = /^DELETE FROM customer_favorites WHERE customer_id = \$1 AND property_id = \$2 RETURNING customer_id AS "customerId", property_id AS "propertyId", created_at AS "createdAt"$/i.test(normalizedSqlForFavorites);
+
+  if (isCanonicalFavoriteRemove) {
+    const customerId = params?.[0];
+    const propertyId = params?.[1];
+    const res = await fetch(
+      `${url}/rest/v1/customer_favorites?customer_id=eq.${encodeURIComponent(customerId)}&property_id=eq.${encodeURIComponent(propertyId)}`,
+      {
+        method: 'DELETE',
+        headers: {
+          ...headers,
+          'Prefer': 'return=representation',
+        },
+      }
+    );
+    if (!res.ok) {
+      const body = await res.text().catch(() => '');
+      throw new Error(`REST_CUSTOMER_FAVORITES_REMOVE_FAILED: HTTP ${res.status} — ${body.slice(0, 240)}`);
+    }
+    const raw: any = await res.json().catch(() => null);
+    if (!Array.isArray(raw)) {
+      throw new Error('REST_CUSTOMER_FAVORITES_REMOVE_MALFORMED: Expected JSON array');
+    }
+    if (raw.length === 0) {
+      return { rows: [], command: 'DELETE', rowCount: 0, oid: 0, fields: [] };
+    }
+    if (raw.length > 1) {
+      throw new Error('REST_CUSTOMER_FAVORITES_REMOVE_CARDINALITY_INVALID: More than one row returned');
+    }
+    const row = raw[0];
+    const isValidUuid = (v: any) => typeof v === 'string' && BOOKING_REQUEST_RPC_UUID_PATTERN.test(v);
+    const isValidIso = (v: any) => typeof v === 'string' && v.trim().length > 0 && !isNaN(Date.parse(v));
+
+    if (
+      !row ||
+      typeof row !== 'object' ||
+      !isValidUuid(row.customer_id) ||
+      !isValidUuid(row.property_id) ||
+      !isValidIso(row.created_at) ||
+      row.customer_id !== customerId ||
+      row.property_id !== propertyId
+    ) {
+      throw new Error('REST_CUSTOMER_FAVORITES_REMOVE_ROW_MALFORMED: Missing, malformed, or mismatched required fields');
+    }
+    const mapped = [{
+      customerId: row.customer_id,
+      propertyId: row.property_id,
+      createdAt: row.created_at,
+    }];
+    return { rows: mapped, command: 'DELETE', rowCount: 1, oid: 0, fields: [] };
+  }
+
   return null;
 }
 

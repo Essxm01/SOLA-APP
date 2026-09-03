@@ -683,7 +683,25 @@ export const bookingDb = {
   }
 };
 
-async function hydrateBooking(booking: any) {
+function normalizeCanonicalNumeric(val: unknown): any {
+  if (val === null || val === undefined || typeof val === 'boolean') return val;
+  if (typeof val === 'number') return val;
+  if (typeof val === 'string' && val.trim() !== '' && !Number.isNaN(Number(val))) {
+    return Number(val);
+  }
+  return val;
+}
+
+function normalizeCanonicalFinance(val: unknown): any {
+  if (val === null || val === undefined || typeof val === 'boolean') return val;
+  if (typeof val === 'number') return val;
+  if (typeof val === 'string' && val.trim() !== '' && !Number.isNaN(Number(val))) {
+    return Number(val);
+  }
+  return val;
+}
+
+export async function hydrateBooking(booking: any) {
   const [property, financialSummary] = await Promise.all([
     propertyDb.getById(booking.propertyId),
     bookingDb.getFinancialSummary(booking.id),
@@ -706,28 +724,28 @@ async function hydrateBooking(booking: any) {
       region: property.region || '',
       resortName: property.resortName || '',
       locationName: property.locationName || '',
-      description: property.description || '',
-      bedrooms: Number(property.bedrooms) || 0,
-      bathrooms: Number(property.bathrooms) || 0,
-      maxGuests: Number(property.maxGuests) || 0,
-      pricePerNight: Number(property.pricePerNight),
+      description: property.description !== undefined ? property.description : null,
+      bedrooms: normalizeCanonicalNumeric(property.bedrooms),
+      bathrooms: normalizeCanonicalNumeric(property.bathrooms),
+      maxGuests: normalizeCanonicalNumeric(property.maxGuests ?? property.max_guests),
+      pricePerNight: normalizeCanonicalNumeric(property.pricePerNight ?? property.price_per_night),
       amenities: Array.isArray(property.amenities) ? property.amenities : [],
       houseRules: property.houseRules && typeof property.houseRules === 'object' ? property.houseRules : {},
     },
-    totalPrice: Number(financialSummary.totalBookingValue),
-    deposit: Number(financialSummary.depositAmount),
-    totalStay: Number(financialSummary.totalBookingValue),
-    depositAmount: Number(financialSummary.depositAmount),
-    remainingAmount: Number(financialSummary.remainingBalance),
+    totalPrice: normalizeCanonicalFinance(financialSummary.totalBookingValue),
+    deposit: normalizeCanonicalFinance(financialSummary.depositAmount),
+    totalStay: normalizeCanonicalFinance(financialSummary.totalBookingValue),
+    depositAmount: normalizeCanonicalFinance(financialSummary.depositAmount),
+    remainingAmount: normalizeCanonicalFinance(financialSummary.remainingBalance),
     currency: 'EGP',
     renter: { id: booking.customerId, name: booking.guestName || 'مستأجر', avatar: '', rating: 0 },
     financialSummary: {
       ...financialSummary,
-      totalBookingValue: Number(financialSummary.totalBookingValue),
-      depositAmount: Number(financialSummary.depositAmount),
-      solaCommissionAmount: Number(financialSummary.solaCommissionAmount),
-      ownerNetDepositAmount: Number(financialSummary.ownerNetDepositAmount),
-      remainingBalance: Number(financialSummary.remainingBalance),
+      totalBookingValue: normalizeCanonicalFinance(financialSummary.totalBookingValue),
+      depositAmount: normalizeCanonicalFinance(financialSummary.depositAmount),
+      solaCommissionAmount: normalizeCanonicalFinance(financialSummary.solaCommissionAmount),
+      ownerNetDepositAmount: normalizeCanonicalFinance(financialSummary.ownerNetDepositAmount),
+      remainingBalance: normalizeCanonicalFinance(financialSummary.remainingBalance),
       depositPaymentStatus: 'NOT_DUE',
       remainingBalancePaymentMethod: 'CASH_ON_ARRIVAL',
       remainingBalanceStatus: 'NOT_DUE',
@@ -1565,4 +1583,36 @@ export const sessionDb = {
     await queryDb(query, params);
     return true;
   }
+};
+
+// ----------------------------------------------------------------------------
+// 14. CUSTOMER FAVORITES REPOSITORY
+// ----------------------------------------------------------------------------
+export const favoriteDb = {
+  async getByCustomerId(customerId: string) {
+    const res = await queryDb(
+      `SELECT customer_id AS "customerId", property_id AS "propertyId", created_at AS "createdAt"
+       FROM customer_favorites WHERE customer_id = $1 ORDER BY created_at DESC`,
+      [customerId]
+    );
+    return res.rows;
+  },
+
+  async add(customerId: string, propertyId: string) {
+    const res = await queryDb(
+      'SELECT * FROM konfrm_add_customer_favorite($1, $2)',
+      [customerId, propertyId]
+    );
+    if (res.rows.length === 0) return null;
+    if (res.rows.length !== 1) throw new Error('CUSTOMER_FAVORITE_ADD_ROW_COUNT_INVALID');
+    return res.rows[0];
+  },
+
+  async remove(customerId: string, propertyId: string) {
+    await queryDb(
+      `DELETE FROM customer_favorites WHERE customer_id = $1 AND property_id = $2
+       RETURNING customer_id AS "customerId", property_id AS "propertyId", created_at AS "createdAt"`,
+      [customerId, propertyId]
+    );
+  },
 };

@@ -31,6 +31,7 @@
     "test:p1-5-atomic-booking": "npx tsx server/src/tests/p15BookingAtomicPersistence.test.ts",
     "test:p1-6-wallet-ledger": "npx tsx server/src/tests/p16WalletLedgerPersistence.test.ts",
     "test:p2-1-public-api": "npx tsx server/src/tests/p21PublicApiContract.test.ts",
+    "test:p2-2-renter-api": "npx tsx server/src/tests/p22RenterApiContract.test.ts",
     "check": "npx tsc --noEmit"
   },
   "dependencies": {

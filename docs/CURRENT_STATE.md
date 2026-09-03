@@ -1,7 +1,7 @@
 # Current project state
 
-**Last updated:** 2026-09-03
-**Repository-state baseline:** P1.6 (wallet + immutable ledger persistence integrity) is CLOSED and verified at `main`/`origin/main` `317b7c3071fdd167b3419e8fd1b7f96d08ba6427`. P2.1 (Public API Contract) is the active candidate on `validation/p2-1-rc`.
+**Last updated:** 2026-09-04
+**Repository-state baseline:** Base main `baecc9f7f9c16aafa1954ddf7aa6e3cead5c757a`. P2.3 (Owner API Contract) candidate is complete on `implementation/p2-3-owner-api-contract` awaiting verification and review gates.
 
 ## Current status
 
@@ -47,4 +47,4 @@ Read [ARCHITECTURE.md](./ARCHITECTURE.md), [DATABASE.md](./DATABASE.md), and [BU
 
 ## Next work
 
-P2.1 (Public API Contract) candidate work is implemented on `validation/p2-1-rc`. Public property discovery and detail contracts enforce server-authoritative exploration, dedicated database reads, explicit DTO allowlists, fail-closed Worker boundary matching, and total privacy isolation. Candidate PR to `main` is prepared.
+P2.3 (Owner API Contract) candidate work is implemented on `implementation/p2-3-owner-api-contract`. Core Owner contracts enforce server-authoritative truth for Profile, Properties, Calendar availability, Booking decisions, canonical financial summaries (`bookingDb.getFinancialSummary`), and immutable wallet/ledger reads. Fake payout creation has been retired to 501, and mock/fallback behaviors are removed in favor of fail-closed DB error handling. Candidate branch is prepared for verification and review gates.

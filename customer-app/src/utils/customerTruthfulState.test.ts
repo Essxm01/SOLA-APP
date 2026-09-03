@@ -1,4 +1,5 @@
 import { fetchCanonicalCollection, type CustomerFetch } from './customerTruthfulState.js';
+import { buildPublicPropertySearchPath } from './publicPropertySearch.js';
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
@@ -47,6 +48,17 @@ async function run() {
   const failedRetry = await fetchCanonicalCollection('/customer/payments', undefined, retryFetch, testUrl);
   const recoveredRetry = await fetchCanonicalCollection<{ id: string }>('/customer/payments', undefined, retryFetch, testUrl);
   assert(failedRetry.kind === 'error' && recoveredRetry.kind === 'success' && recoveredRetry.data[0]?.id === 'payment-1', 'retry must recover with canonical payment records');
+
+  assert(buildPublicPropertySearchPath() === '/customer/properties/search', 'empty filters must return base search path');
+  assert(
+    buildPublicPropertySearchPath({ destination: 'مراسي', unitType: 'CHALET', totalGuests: 4, maxPrice: 25000 }) ===
+      '/customer/properties/search?destination=%D9%85%D8%B1%D8%A7%D8%B3%D9%8A&unitType=CHALET&guests=4&maxPrice=25000',
+    'full filters must serialize to canonical query parameters'
+  );
+  assert(
+    buildPublicPropertySearchPath({ destination: '', unitType: 'ALL' }) === '/customer/properties/search',
+    'empty destination and unitType ALL must return base search path'
+  );
 
   console.log('CUSTOMER-TRUTHFUL-STATE-01 focused client state tests passed');
 }

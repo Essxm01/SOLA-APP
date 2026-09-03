@@ -7,14 +7,14 @@ export interface CustomerPropertyItem {
   unitType: string;
   propertyType?: string;
   address: string;
+  region?: string;
+  resortName?: string;
   bedrooms: number;
   bathrooms: number;
   maxGuests: number;
   basePricePerNight: number;
-  status: string;
-  verificationStatus: string;
+  currency?: string;
   images?: string[];
-  ownerName?: string;
   rating?: number;
 }
 

@@ -26,7 +26,16 @@ import {
   validateCustomerFavoriteRow,
   type CustomerBookingCreateResponseDto,
 } from './contracts/customerRenter.js';
-import { toOwnerProfileDto, toOwnerPropertyDto, type OwnerProfileDto, type OwnerPropertyDto } from './contracts/ownerCore.js';
+import {
+  toOwnerProfileDto,
+  toOwnerPropertyDto,
+  toOwnerBookingFinancialDto,
+  toOwnerBookingListItem,
+  type OwnerProfileDto,
+  type OwnerPropertyDto,
+  type OwnerBookingFinancialDto,
+  type OwnerBookingListItemDto,
+} from './contracts/ownerCore.js';
 import type { ApiSuccessResponse, ApiErrorResponse } from './types/server';
 
 export interface RouteHandlerResult {
@@ -753,26 +762,51 @@ export class ExpressServerApp {
           };
         }
 
-        // --- C. Financials Calculation Endpoint (RULE-3E-01 to RULE-3E-05) ---
+        // --- C. Financials Read Endpoint (Canonical Persisted Summary — P2.3) ---
         if (path.startsWith('/api/v1/owner/bookings/') && path.endsWith('/financials') && method === 'GET') {
-          const breakdown = calculateBookingFinancials(1500, 500); // 1500 total, 500 first night
-          return {
-            statusCode: 200,
-            body: {
-              success: true,
-              data: {
-                bookingId: path.split('/')[4],
-                totalBookingValue: breakdown.totalBookingValueInCents / 100,
-                depositAmount: breakdown.depositAmountInCents / 100,
-                solaCommissionRate: 0.20,
-                solaCommissionAmount: breakdown.solaCommissionInCents / 100,
-                ownerNetDepositAmount: breakdown.ownerNetDepositInCents / 100,
-                remainingBalance: breakdown.remainingBalanceInCents / 100,
-                remainingBalanceStatus: 'NOT_DUE',
+          const bookingId = path.split('/')[5];
+          if (!bookingId) {
+            return { statusCode: 400, body: { success: false, error: { code: 'MISSING_BOOKING_ID', message: 'مطلوب معرف الحجز.' }, timestamp } };
+          }
+
+          let booking: any;
+          try {
+            booking = await bookingDb.getById(bookingId);
+          } catch {
+            return { statusCode: 500, body: { success: false, error: { code: 'BOOKING_QUERY_FAILED', message: 'تعذر تحميل بيانات الحجز.' }, timestamp } };
+          }
+
+          if (!booking) {
+            return { statusCode: 404, body: { success: false, error: { code: 'BOOKING_NOT_FOUND', message: 'طلب الحجز غير موجود.' }, timestamp } };
+          }
+          if (booking.ownerId !== ownerId) {
+            return { statusCode: 403, body: { success: false, error: { code: 'BOOKING_NOT_OWNED', message: 'غير مصرح بالاطلاع على التفاصيل المالية لهذا الحجز.' }, timestamp } };
+          }
+
+          let summary: any;
+          try {
+            summary = await bookingDb.getFinancialSummary(bookingId);
+          } catch {
+            return { statusCode: 500, body: { success: false, error: { code: 'BOOKING_FINANCIAL_SUMMARY_QUERY_FAILED', message: 'تعذر تحميل الملخص المالي للحجز.' }, timestamp } };
+          }
+
+          if (!summary) {
+            return { statusCode: 500, body: { success: false, error: { code: 'BOOKING_FINANCIAL_SUMMARY_MISSING', message: 'الملخص المالي المعتمد غير موجود لهذا الحجز.' }, timestamp } };
+          }
+
+          try {
+            const dto = toOwnerBookingFinancialDto(summary);
+            return {
+              statusCode: 200,
+              body: {
+                success: true,
+                data: dto,
+                timestamp,
               },
-              timestamp,
-            },
-          };
+            };
+          } catch {
+            return { statusCode: 500, body: { success: false, error: { code: 'BOOKING_FINANCIAL_SUMMARY_MALFORMED', message: 'بيانات الملخص المالي غير صالحة.' }, timestamp } };
+          }
         }
 
         // --- C1. Owner Wallet Summary Endpoint (RULE-5A-01) — PostgreSQL Driven ---
@@ -810,14 +844,26 @@ export class ExpressServerApp {
               body: { success: false, error: { code: 'OWNER_BOOKINGS_QUERY_FAILED', message: 'تعذر جلب طلبات الحجز من قاعدة البيانات' }, timestamp },
             };
           }
-          return {
-            statusCode: 200,
-            body: {
-              success: true,
-              data: ownerBookings,
-              timestamp,
-            },
-          };
+          try {
+            const dtos = ownerBookings.map(toOwnerBookingListItem);
+            return {
+              statusCode: 200,
+              body: {
+                success: true,
+                data: dtos,
+                timestamp,
+              },
+            };
+          } catch {
+            return {
+              statusCode: 500,
+              body: {
+                success: false,
+                error: { code: 'OWNER_BOOKINGS_MALFORMED', message: 'بيانات طلبات الحجز غير صالحة.' },
+                timestamp,
+              },
+            };
+          }
         }
 
         if (path.startsWith('/api/v1/owner/bookings/') && path.endsWith('/approve') && method === 'POST') {

@@ -210,3 +210,158 @@ export function toOwnerPropertyDto(raw: unknown): OwnerPropertyDto {
     updatedAt,
   };
 }
+
+export interface OwnerBookingFinancialDto {
+  bookingId: string;
+  totalBookingValue: number;
+  depositAmount: number;
+  solaCommissionAmount: number;
+  ownerNetDepositAmount: number;
+  remainingBalance: number;
+  commissionOnRemainingBalance: number;
+  currency: 'EGP';
+}
+
+export function toOwnerBookingFinancialDto(raw: unknown): OwnerBookingFinancialDto {
+  const row = raw as Record<string, unknown>;
+  if (!row || typeof row !== 'object') throw new Error('MALFORMED_OWNER_BOOKING_FINANCIALS');
+  const bookingId = row.bookingId ?? row.booking_id;
+  if (typeof bookingId !== 'string' || bookingId.trim() === '') {
+    throw new Error('MALFORMED_OWNER_BOOKING_FINANCIALS: missing bookingId');
+  }
+
+  const num = (v: unknown, name: string): number => {
+    const val = Number(v);
+    if (!Number.isFinite(val) || val < 0) {
+      throw new Error(`MALFORMED_OWNER_BOOKING_FINANCIALS: invalid ${name}`);
+    }
+    return val;
+  };
+
+  const totalBookingValue = num(row.totalBookingValue ?? row.total_booking_value, 'totalBookingValue');
+  const depositAmount = num(row.depositAmount ?? row.deposit_amount, 'depositAmount');
+  const solaCommissionAmount = num(row.solaCommissionAmount ?? row.sola_commission_amount, 'solaCommissionAmount');
+  const ownerNetDepositAmount = num(row.ownerNetDepositAmount ?? row.owner_net_deposit_amount, 'ownerNetDepositAmount');
+  const remainingBalance = num(row.remainingBalance ?? row.remaining_balance, 'remainingBalance');
+  const commissionOnRemainingBalance = num(row.commissionOnRemainingBalance ?? row.commission_on_remaining_balance ?? 0, 'commissionOnRemainingBalance');
+
+  if (commissionOnRemainingBalance !== 0) {
+    throw new Error('MALFORMED_OWNER_BOOKING_FINANCIALS: commissionOnRemainingBalance must be 0');
+  }
+
+  return {
+    bookingId,
+    totalBookingValue,
+    depositAmount,
+    solaCommissionAmount,
+    ownerNetDepositAmount,
+    remainingBalance,
+    commissionOnRemainingBalance: 0,
+    currency: 'EGP',
+  };
+}
+
+export interface OwnerBookingListItemDto {
+  id: string;
+  bookingNumber: string;
+  propertyId: string;
+  propertyTitle: string;
+  propertyImage: string;
+  locationName: string;
+  checkIn: string;
+  checkOut: string;
+  nights: number;
+  guestsCount: number;
+  totalPrice: number;
+  deposit: number;
+  totalStay: number;
+  depositAmount: number;
+  remainingAmount: number;
+  currency: 'EGP';
+  status: string;
+  renter: {
+    id: string;
+    name: string;
+    avatar: string;
+    rating: number;
+  };
+  confirmedAt?: string | null;
+  rejectedAt?: string | null;
+  createdAt: string;
+  property?: Record<string, unknown>;
+  financialSummary?: OwnerBookingFinancialDto;
+}
+
+export function toOwnerBookingListItem(raw: unknown): OwnerBookingListItemDto {
+  const row = raw as Record<string, unknown>;
+  if (!row || typeof row !== 'object') throw new Error('MALFORMED_OWNER_BOOKING');
+  if (typeof row.id !== 'string' || row.id.trim() === '') {
+    throw new Error('MALFORMED_OWNER_BOOKING: missing id');
+  }
+  if (typeof row.propertyId !== 'string' || row.propertyId.trim() === '') {
+    throw new Error('MALFORMED_OWNER_BOOKING: missing propertyId');
+  }
+  if (typeof row.status !== 'string' || row.status.trim() === '') {
+    throw new Error('MALFORMED_OWNER_BOOKING: missing status');
+  }
+  if (typeof row.checkIn !== 'string' || typeof row.checkOut !== 'string') {
+    throw new Error('MALFORMED_OWNER_BOOKING: missing checkIn or checkOut');
+  }
+  const nights = Number(row.nights);
+  if (!Number.isFinite(nights) || nights <= 0) {
+    throw new Error('MALFORMED_OWNER_BOOKING: invalid nights');
+  }
+  const guestsCount = Number(row.guestsCount ?? row.totalGuests);
+  if (!Number.isFinite(guestsCount) || guestsCount <= 0) {
+    throw new Error('MALFORMED_OWNER_BOOKING: invalid guestsCount');
+  }
+  const totalPrice = Number(row.totalPrice ?? row.totalStay ?? (row.financialSummary && (row.financialSummary as any).totalBookingValue));
+  const deposit = Number(row.deposit ?? row.depositAmount ?? (row.financialSummary && (row.financialSummary as any).depositAmount));
+  if (!Number.isFinite(totalPrice) || totalPrice <= 0 || !Number.isFinite(deposit) || deposit <= 0) {
+    throw new Error('MALFORMED_OWNER_BOOKING: invalid financial amounts');
+  }
+
+  const renterRaw = (row.renter && typeof row.renter === 'object') ? (row.renter as Record<string, unknown>) : {};
+  const renter = {
+    id: typeof renterRaw.id === 'string' ? renterRaw.id : (typeof row.customerId === 'string' ? row.customerId : ''),
+    name: typeof renterRaw.name === 'string' ? renterRaw.name : (typeof row.guestName === 'string' ? row.guestName : 'مستأجر'),
+    avatar: typeof renterRaw.avatar === 'string' ? renterRaw.avatar : '',
+    rating: typeof renterRaw.rating === 'number' ? renterRaw.rating : 0,
+  };
+
+  const nowIso = new Date().toISOString();
+  const createdAt = (row.createdAt as string) || (row.created_at as string) || nowIso;
+
+  const result: OwnerBookingListItemDto = {
+    id: row.id as string,
+    bookingNumber: (row.bookingNumber as string) || `BK-${(row.id as string).slice(0, 8)}`,
+    propertyId: row.propertyId as string,
+    propertyTitle: (row.propertyTitle as string) || (row.property && (row.property as any).title) || '',
+    propertyImage: (row.propertyImage as string) || '',
+    locationName: (row.locationName as string) || '',
+    checkIn: row.checkIn as string,
+    checkOut: row.checkOut as string,
+    nights,
+    guestsCount,
+    totalPrice,
+    deposit,
+    totalStay: totalPrice,
+    depositAmount: deposit,
+    remainingAmount: typeof row.remainingAmount === 'number' ? row.remainingAmount : (totalPrice - deposit),
+    currency: 'EGP',
+    status: row.status as string,
+    renter,
+    confirmedAt: typeof row.confirmedAt === 'string' ? row.confirmedAt : null,
+    rejectedAt: typeof row.rejectedAt === 'string' ? row.rejectedAt : null,
+    createdAt,
+  };
+
+  if (row.property && typeof row.property === 'object') {
+    result.property = row.property as Record<string, unknown>;
+  }
+  if (row.financialSummary && typeof row.financialSummary === 'object') {
+    result.financialSummary = toOwnerBookingFinancialDto(row.financialSummary);
+  }
+
+  return result;
+}

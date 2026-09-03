@@ -304,4 +304,181 @@ console.log('P2.3 Task 2 owner property contract tests passed.');
 
 console.log('P2.3 Task 3 owner calendar availability contract tests passed.');
 
+// ---------------------------------------------------------------------------
+// 4. Task 4: Owner Booking DTOs + Canonical Financial Summary
+// ---------------------------------------------------------------------------
+
+// 4A. Financials must use canonical persisted summary, not hardcoded constants
+{
+  const testBookingId = 'b0000000-0000-4000-8000-000000000001';
+  const origBookingGetById = bookingDb.getById;
+  const origGetFinancialSummary = bookingDb.getFinancialSummary;
+
+  (bookingDb as any).getById = async () => ({
+    id: testBookingId,
+    ownerId: ownerA,
+    status: 'PENDING_OWNER_APPROVAL',
+  });
+  (bookingDb as any).getFinancialSummary = async () => ({
+    bookingId: testBookingId,
+    totalBookingValue: 9300,
+    depositAmount: 2400,
+    solaCommissionAmount: 480,
+    ownerNetDepositAmount: 1920,
+    remainingBalance: 6900,
+    commissionOnRemainingBalance: 0,
+    createdAt: '2026-09-04T00:00:00.000Z',
+  });
+  try {
+    const res = await app.handleHttpRequest('GET', `/api/v1/owner/bookings/${testBookingId}/financials`, ownerHeaders(ownerTokenA));
+    assert.equal(res.statusCode, 200);
+    assert.equal((res.body as any).data.totalBookingValue, 9300, 'Must return canonical totalBookingValue 9300, not hardcoded 1500');
+    assert.equal((res.body as any).data.depositAmount, 2400, 'Must return canonical depositAmount 2400, not hardcoded 500');
+    assert.equal((res.body as any).data.ownerNetDepositAmount, 1920);
+    assert.equal((res.body as any).data.remainingBalance, 6900);
+    assert.equal((res.body as any).data.commissionOnRemainingBalance, 0);
+    assert.equal((res.body as any).data.currency, 'EGP');
+  } finally {
+    (bookingDb as any).getById = origBookingGetById;
+    (bookingDb as any).getFinancialSummary = origGetFinancialSummary;
+  }
+}
+
+// 4B. Financials foreign owner returns 403
+{
+  const testBookingId = 'b0000000-0000-4000-8000-000000000001';
+  const origBookingGetById = bookingDb.getById;
+  (bookingDb as any).getById = async () => ({ id: testBookingId, ownerId: ownerB, status: 'PENDING_OWNER_APPROVAL' });
+  try {
+    const res = await app.handleHttpRequest('GET', `/api/v1/owner/bookings/${testBookingId}/financials`, ownerHeaders(ownerTokenA));
+    assert.equal(res.statusCode, 403, 'Foreign owner must receive 403 BOOKING_NOT_OWNED');
+    assert.equal((res.body as any).error?.code, 'BOOKING_NOT_OWNED');
+  } finally {
+    (bookingDb as any).getById = origBookingGetById;
+  }
+}
+
+// 4C. Financials missing booking returns 404
+{
+  const testBookingId = 'b0000000-0000-4000-8000-000000000001';
+  const origBookingGetById = bookingDb.getById;
+  (bookingDb as any).getById = async () => null;
+  try {
+    const res = await app.handleHttpRequest('GET', `/api/v1/owner/bookings/${testBookingId}/financials`, ownerHeaders(ownerTokenA));
+    assert.equal(res.statusCode, 404, 'Missing booking must receive 404 BOOKING_NOT_FOUND');
+    assert.equal((res.body as any).error?.code, 'BOOKING_NOT_FOUND');
+  } finally {
+    (bookingDb as any).getById = origBookingGetById;
+  }
+}
+
+// 4D. Financials query failure returns 500
+{
+  const testBookingId = 'b0000000-0000-4000-8000-000000000001';
+  const origBookingGetById = bookingDb.getById;
+  const origGetFinancialSummary = bookingDb.getFinancialSummary;
+  (bookingDb as any).getById = async () => ({ id: testBookingId, ownerId: ownerA, status: 'PENDING_OWNER_APPROVAL' });
+  (bookingDb as any).getFinancialSummary = async () => { throw new Error('summary db outage'); };
+  try {
+    const res = await app.handleHttpRequest('GET', `/api/v1/owner/bookings/${testBookingId}/financials`, ownerHeaders(ownerTokenA));
+    assert.equal(res.statusCode, 500, 'Summary DB outage must receive 500');
+    assert.equal((res.body as any).error?.code, 'BOOKING_FINANCIAL_SUMMARY_QUERY_FAILED');
+  } finally {
+    (bookingDb as any).getById = origBookingGetById;
+    (bookingDb as any).getFinancialSummary = origGetFinancialSummary;
+  }
+}
+
+// 4E. Unit assertions: toOwnerBookingFinancialDto and toOwnerBookingListItem
+import { toOwnerBookingFinancialDto, toOwnerBookingListItem } from '../contracts/ownerCore.js';
+
+// Financial DTO: reject commission on remaining balance > 0
+assert.throws(
+  () => toOwnerBookingFinancialDto({
+    bookingId: 'b1',
+    totalBookingValue: 1000,
+    depositAmount: 500,
+    solaCommissionAmount: 100,
+    ownerNetDepositAmount: 400,
+    remainingBalance: 500,
+    commissionOnRemainingBalance: 50, // forbidden
+  }),
+  /commissionOnRemainingBalance must be 0/
+);
+
+// Booking item DTO: strips customer private accounts
+const rawHydratedBooking = {
+  id: 'b0000000-0000-4000-8000-000000000001',
+  bookingNumber: 'BK-000001',
+  propertyId: propertyIdA,
+  ownerId: ownerA,
+  customerId: customerId,
+  guestName: 'أحمد مستأجر',
+  checkIn: '2026-09-10',
+  checkOut: '2026-09-14',
+  nights: 4,
+  guestsCount: 3,
+  totalPrice: 10000,
+  deposit: 2500,
+  status: 'PENDING_OWNER_APPROVAL',
+  createdAt: '2026-09-01T00:00:00.000Z',
+  // Poisoned customer private fields
+  customerPhoneNumber: '+201099999999',
+  customerEmail: 'secret@renter.com',
+  customerNationalId: '29901010101010',
+  renter: { id: customerId, name: 'أحمد مستأجر', avatar: '', rating: 5, phone: '+201099999999' },
+};
+const itemDto = toOwnerBookingListItem(rawHydratedBooking);
+assert.equal('customerPhoneNumber' in itemDto, false);
+assert.equal('customerEmail' in itemDto, false);
+assert.equal('customerNationalId' in itemDto, false);
+assert.equal('phone' in (itemDto.renter as any), false);
+assert.equal(itemDto.totalPrice, 10000);
+assert.equal(itemDto.deposit, 2500);
+assert.equal(itemDto.remainingAmount, 7500);
+
+// 4F. Decision lifecycle: approve -> APPROVED_PENDING_PAYMENT, reject -> REJECTED
+{
+  const testBookingId = 'b0000000-0000-4000-8000-000000000001';
+  const origBookingGetById = bookingDb.getById;
+  const origUpdateStatus = bookingDb.updateStatusForOwner;
+  const origGetBlocks = bookingDb.getBlocksByPropertyId;
+  const origGetAvailability = propertyAvailabilityDb.getByPropertyId;
+
+  (bookingDb as any).getById = async () => ({
+    id: testBookingId,
+    ownerId: ownerA,
+    propertyId: propertyIdA,
+    status: 'PENDING_OWNER_APPROVAL',
+    checkIn: '2026-09-10',
+    checkOut: '2026-09-14',
+  });
+  (bookingDb as any).getBlocksByPropertyId = async () => [];
+  (propertyAvailabilityDb as any).getByPropertyId = async () => [];
+  (bookingDb as any).updateStatusForOwner = async (id: string, owner: string, status: string) => ({
+    id,
+    ownerId: owner,
+    status,
+    bookingNumber: 'BK-000001',
+  });
+
+  try {
+    const approveRes = await app.handleHttpRequest('POST', `/api/v1/owner/bookings/${testBookingId}/approve`, ownerHeaders(ownerTokenA));
+    assert.equal(approveRes.statusCode, 200);
+    assert.equal((approveRes.body as any).data.status, 'APPROVED_PENDING_PAYMENT', 'Owner approve must transition to APPROVED_PENDING_PAYMENT');
+
+    const rejectRes = await app.handleHttpRequest('POST', `/api/v1/owner/bookings/${testBookingId}/reject`, ownerHeaders(ownerTokenA));
+    assert.equal(rejectRes.statusCode, 200);
+    assert.equal((rejectRes.body as any).data.status, 'REJECTED', 'Owner reject must transition to REJECTED');
+  } finally {
+    (bookingDb as any).getById = origBookingGetById;
+    (bookingDb as any).updateStatusForOwner = origUpdateStatus;
+    (bookingDb as any).getBlocksByPropertyId = origGetBlocks;
+    (propertyAvailabilityDb as any).getByPropertyId = origGetAvailability;
+  }
+}
+
+console.log('P2.3 Task 4 owner booking and financial contract tests passed.');
+
+
 

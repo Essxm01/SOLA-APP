@@ -16,6 +16,13 @@ import { getApiUrl } from './utils/api';
 import { fetchCanonicalCollection } from './utils/customerTruthfulState';
 import { buildPublicPropertySearchPath } from './utils/publicPropertySearch';
 import {
+  fetchCustomerFavorites,
+  addCustomerFavorite,
+  removeCustomerFavorite,
+  mergeCustomerProfile,
+  fetchCustomerAccountSummary,
+} from './utils/customerFavorites';
+import {
   Heart,
   CalendarCheck,
   User,
@@ -51,12 +58,18 @@ export function App() {
     totalBookingsCount: number;
     totalDepositsPaidEgp: number;
   } | null>(null);
+  const [accountSummaryError, setAccountSummaryError] = useState<string | null>(null);
 
   // Data & Search States
   const [properties, setProperties] = useState<CustomerPropertyItem[]>([]);
   const [filteredProperties, setFilteredProperties] = useState<CustomerPropertyItem[]>([]);
   const [activeDestination, setActiveDestination] = useState<string>('الكل');
-  const [favorites, setFavorites] = useState<string[]>([]);
+  type FavoritesLoadState = 'UNAUTHORIZED' | 'LOADING' | 'SUCCESS' | 'ERROR';
+  const [favoriteProperties, setFavoriteProperties] = useState<CustomerPropertyItem[]>([]);
+  const [favoritesLoadState, setFavoritesLoadState] = useState<FavoritesLoadState>('UNAUTHORIZED');
+  const [favoritesError, setFavoritesError] = useState<string | null>(null);
+  const [favoriteInFlightIds, setFavoriteInFlightIds] = useState<Set<string>>(new Set());
+  const favorites = favoriteProperties.map((p) => p.id);
   const [propertyLoadState, setPropertyLoadState] = useState<'LOADING' | 'SUCCESS' | 'ERROR'>('LOADING');
   const [propertyLoadError, setPropertyLoadError] = useState<string | null>(null);
 
@@ -130,7 +143,7 @@ export function App() {
     }
   };
 
-  // Fetch Real Customer Profile (AUTH-03)
+  // Fetch Real Customer Profile (AUTH-03 & P2.2)
   const fetchCustomerProfile = async (token?: string | null) => {
     const t = token || authToken || localStorage.getItem('sola_customer_access_token');
     if (!t) return;
@@ -142,34 +155,44 @@ export function App() {
       });
       const json = await res.json();
       if (res.ok && json.success && json.data) {
-        const savedProfile = localStorage.getItem('sola_customer_profile');
-        const parsedSaved = savedProfile ? JSON.parse(savedProfile) : null;
-        const mergedProfile = {
-          ...json.data,
-          fullName: json.data.fullName || parsedSaved?.fullName || null,
-          email: json.data.email || parsedSaved?.email || null,
-        };
-        setUserProfile(mergedProfile);
-        localStorage.setItem('sola_customer_profile', JSON.stringify(mergedProfile));
+        const canonicalProfile = mergeCustomerProfile(json.data);
+        setUserProfile(canonicalProfile as any);
+        localStorage.setItem('sola_customer_profile', JSON.stringify(canonicalProfile));
       }
     } catch {}
   };
 
-  // Fetch Real Account Hub Summary Metrics
+  // Fetch Real Account Hub Summary Metrics (P2.2)
   const fetchAccountSummary = async (token?: string | null) => {
     const t = token || authToken || localStorage.getItem('sola_customer_access_token');
     if (!t) return;
+    setAccountSummaryError(null);
     try {
-      const res = await fetch(getApiUrl('/customer/account/summary'), {
-        headers: {
-          Authorization: `Bearer ${t}`,
-        },
-      });
-      const json = await res.json();
-      if (res.ok && json.success && json.data) {
-        setAccountSummary(json.data);
-      }
-    } catch {}
+      const data = await fetchCustomerAccountSummary(t);
+      setAccountSummary(data);
+    } catch {
+      setAccountSummaryError('تعذر تحميل ملخص الحساب');
+    }
+  };
+
+  // Fetch Canonical Favorites Collection (P2.2)
+  const loadFavorites = async (token?: string | null) => {
+    const t = token || authToken || localStorage.getItem('sola_customer_access_token');
+    if (!t) {
+      setFavoriteProperties([]);
+      setFavoritesLoadState('UNAUTHORIZED');
+      return;
+    }
+    setFavoritesLoadState('LOADING');
+    setFavoritesError(null);
+    try {
+      const items = await fetchCustomerFavorites(t);
+      setFavoriteProperties(items as any);
+      setFavoritesLoadState('SUCCESS');
+    } catch (err: any) {
+      setFavoritesLoadState('ERROR');
+      setFavoritesError(err?.message || 'تعذر تحميل الوحدات المفضلة');
+    }
   };
 
   const toBookingRecord = (booking: any): CustomerBookingRecord => ({
@@ -243,18 +266,13 @@ export function App() {
           });
           const profileJson = await profileRes.json();
           if (profileRes.ok && profileJson.success && profileJson.data) {
-            const savedProfile = localStorage.getItem('sola_customer_profile');
-            const parsedSaved = savedProfile ? JSON.parse(savedProfile) : null;
-            const mergedProfile = {
-              ...profileJson.data,
-              fullName: profileJson.data.fullName || parsedSaved?.fullName || null,
-              email: profileJson.data.email || parsedSaved?.email || null,
-            };
-            setUserProfile(mergedProfile);
-            localStorage.setItem('sola_customer_profile', JSON.stringify(mergedProfile));
+            const canonicalProfile = mergeCustomerProfile(profileJson.data);
+            setUserProfile(canonicalProfile as any);
+            localStorage.setItem('sola_customer_profile', JSON.stringify(canonicalProfile));
             setAuthToken(storedToken);
             setCustomerAuthError(null);
             fetchAccountSummary(storedToken);
+            loadFavorites(storedToken);
             void fetchBookings(storedToken).catch(() => undefined);
             return;
           }
@@ -281,6 +299,7 @@ export function App() {
             setAuthToken(json.data.accessToken);
             fetchCustomerProfile(json.data.accessToken);
             fetchAccountSummary(json.data.accessToken);
+            loadFavorites(json.data.accessToken);
             void fetchBookings(json.data.accessToken).catch(() => undefined);
           } else {
             handleLogout();
@@ -309,6 +328,12 @@ export function App() {
   }, [activeTab, authToken]);
 
   useEffect(() => {
+    if (activeTab === 'FAVORITES' && authToken) {
+      loadFavorites(authToken);
+    }
+  }, [activeTab, authToken]);
+
+  useEffect(() => {
     if (activeTab === 'BOOKINGS' && authToken) {
       void fetchBookings(authToken).catch(() => undefined);
     }
@@ -323,19 +348,40 @@ export function App() {
     return parts[0].slice(0, 2);
   };
 
-  // Favorite Toggle Handler (Protected Action)
-  const handleToggleFavorite = (id: string, e?: React.MouseEvent) => {
+  // Favorite Toggle Handler (Protected Action - P2.2)
+  const handleToggleFavorite = async (id: string, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
 
     if (!authToken) {
       // Unauthenticated Guest Interception for Favorites
+      localStorage.setItem('sola_customer_pending_favorite_property_id', id);
       setShowAuthModal(true);
       return;
     }
 
-    setFavorites((prev) =>
-      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
-    );
+    if (favoriteInFlightIds.has(id)) return;
+
+    setFavoriteInFlightIds((prev) => new Set(prev).add(id));
+    const isFav = favoriteProperties.some((p) => p.id === id);
+
+    try {
+      if (isFav) {
+        await removeCustomerFavorite(authToken, id);
+        setFavoriteProperties((prev) => prev.filter((p) => p.id !== id));
+      } else {
+        await addCustomerFavorite(authToken, id);
+        const fresh = await fetchCustomerFavorites(authToken);
+        setFavoriteProperties(fresh as any);
+      }
+    } catch {
+      // Error leaves heart state untouched truthfully
+    } finally {
+      setFavoriteInFlightIds((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+    }
   };
 
   // Auth Handlers
@@ -355,13 +401,30 @@ export function App() {
     setCustomerPhone(phone);
 
     if (user) {
-      setUserProfile(user);
-      localStorage.setItem('sola_customer_profile', JSON.stringify(user));
+      const canonicalProfile = mergeCustomerProfile(user);
+      setUserProfile(canonicalProfile as any);
+      localStorage.setItem('sola_customer_profile', JSON.stringify(canonicalProfile));
     } else {
       fetchCustomerProfile(token);
     }
     fetchAccountSummary(token);
     void fetchBookings(token).catch(() => undefined);
+
+    // Check pending favorite intent
+    const pendingFavId = localStorage.getItem('sola_customer_pending_favorite_property_id');
+    if (pendingFavId) {
+      addCustomerFavorite(token, pendingFavId)
+        .then(() => {
+          localStorage.removeItem('sola_customer_pending_favorite_property_id');
+          loadFavorites(token);
+        })
+        .catch(() => {
+          loadFavorites(token);
+        });
+    } else {
+      loadFavorites(token);
+    }
+
     setShowAuthModal(false);
 
     // Context Preservation: Return to exact same property & dates post-login
@@ -389,10 +452,15 @@ export function App() {
     localStorage.removeItem('sola_customer_refresh_token');
     localStorage.removeItem('sola_customer_phone');
     localStorage.removeItem('sola_customer_profile');
+    localStorage.removeItem('sola_customer_pending_favorite_property_id');
     setAuthToken(null);
     setCustomerPhone(null);
     setUserProfile(null);
     setAccountSummary(null);
+    setAccountSummaryError(null);
+    setFavoriteProperties([]);
+    setFavoritesLoadState('UNAUTHORIZED');
+    setFavoritesError(null);
     setActiveBooking(null);
     setCustomerBookings([]);
     setBookingDetailId(null);
@@ -523,8 +591,37 @@ export function App() {
         {/* Tab 2: FAVORITES */}
         {activeTab === 'FAVORITES' && (
           <div className="my-4">
-            <h2 className="text-base font-black text-slate-900 mb-3">الوحدات المفضلة ({favorites.length})</h2>
-            {favorites.length === 0 ? (
+            <h2 className="text-base font-black text-slate-900 mb-3">
+              الوحدات المفضلة ({favoritesLoadState === 'SUCCESS' ? favoriteProperties.length : 0})
+            </h2>
+
+            {favoritesLoadState === 'UNAUTHORIZED' ? (
+              <div className="bg-slate-50 p-8 rounded-3xl border border-slate-200 text-center my-6">
+                <Heart className="w-10 h-10 text-slate-300 mx-auto mb-2" />
+                <h3 className="text-sm font-black text-slate-800 mb-1">سجّل الدخول لعرض وحداتك المفضلة</h3>
+                <p className="text-xs text-slate-500 mb-4 font-bold">
+                  يمكنك حفظ ومتابعة الوحدات المفضلة بعد تسجيل الدخول إلى حسابك.
+                </p>
+                <button
+                  onClick={() => setShowAuthModal(true)}
+                  className="px-5 py-2.5 bg-[#0059FF] text-white font-extrabold text-xs rounded-xl shadow-xs cursor-pointer"
+                >
+                  تسجيل الدخول
+                </button>
+              </div>
+            ) : favoritesLoadState === 'LOADING' ? (
+              <div className="py-12">
+                <LoadingStateView message="جاري تحميل الوحدات المفضلة..." />
+              </div>
+            ) : favoritesLoadState === 'ERROR' ? (
+              <div className="py-8">
+                <ErrorStateView
+                  title="تعذر تحميل المفضلة"
+                  message={favoritesError || 'حدث خطأ أثناء تحميل الوحدات المفضلة.'}
+                  onRetry={() => loadFavorites(authToken)}
+                />
+              </div>
+            ) : favoriteProperties.length === 0 ? (
               <div className="bg-slate-50 p-8 rounded-3xl border border-slate-200 text-center my-6">
                 <Heart className="w-10 h-10 text-slate-300 mx-auto mb-2" />
                 <h3 className="text-sm font-black text-slate-800 mb-1">لا توجد وحدات مفضلة بعد</h3>
@@ -533,24 +630,22 @@ export function App() {
                 </p>
                 <button
                   onClick={() => setActiveTab('EXPLORE')}
-                  className="px-5 py-2.5 bg-[#0059FF] text-white font-extrabold text-xs rounded-xl shadow-xs"
+                  className="px-5 py-2.5 bg-[#0059FF] text-white font-extrabold text-xs rounded-xl shadow-xs cursor-pointer"
                 >
                   استكشف الإقامات
                 </button>
               </div>
             ) : (
               <div className="space-y-4">
-                {properties
-                  .filter((p) => favorites.includes(p.id))
-                  .map((prop) => (
-                    <PropertyCard
-                      key={prop.id}
-                      property={prop}
-                      onSelect={() => setSelectedProperty(prop)}
-                      isFavorite={true}
-                      onToggleFavorite={handleToggleFavorite}
-                    />
-                  ))}
+                {favoriteProperties.map((prop) => (
+                  <PropertyCard
+                    key={prop.id}
+                    property={prop}
+                    onSelect={() => setSelectedProperty(prop)}
+                    isFavorite={true}
+                    onToggleFavorite={handleToggleFavorite}
+                  />
+                ))}
               </div>
             )}
           </div>
@@ -676,23 +771,28 @@ export function App() {
                 </div>
 
                 {/* C. Real Account Summary Metrics */}
+                {accountSummaryError && (
+                  <div className="bg-amber-50 p-3 rounded-xl border border-amber-200 text-amber-800 text-xs font-bold text-center">
+                    {accountSummaryError}
+                  </div>
+                )}
                 <div className="grid grid-cols-3 gap-2.5">
                   <div className="bg-white p-3.5 rounded-2xl border border-slate-200 text-center shadow-xs">
                     <p className="text-[11px] font-bold text-slate-400">الحجوزات المؤكدة</p>
                     <p className="text-lg font-black text-slate-900 mt-0.5">
-                      {accountSummary?.confirmedBookingsCount ?? 0}
+                      {accountSummary ? accountSummary.confirmedBookingsCount : '-'}
                     </p>
                   </div>
                   <div className="bg-white p-3.5 rounded-2xl border border-slate-200 text-center shadow-xs">
                     <p className="text-[11px] font-bold text-slate-400">الإقامة القادمة</p>
                     <p className="text-lg font-black text-slate-900 mt-0.5">
-                      {accountSummary?.upcomingStaysCount ?? 0}
+                      {accountSummary ? accountSummary.upcomingStaysCount : '-'}
                     </p>
                   </div>
                   <div className="bg-white p-3.5 rounded-2xl border border-slate-200 text-center shadow-xs">
                     <p className="text-[11px] font-bold text-slate-400">المفضلة</p>
                     <p className="text-lg font-black text-slate-900 mt-0.5">
-                      {favorites.length}
+                      {favoritesLoadState === 'SUCCESS' ? favoriteProperties.length : '-'}
                     </p>
                   </div>
                 </div>

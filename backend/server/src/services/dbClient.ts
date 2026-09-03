@@ -106,6 +106,28 @@ function mapPaymentRestRow(transaction: any) {
   };
 }
 
+// Migration 026 create-booking RPC result fields: booking columns that are
+// NOT NULL in the schema, and the six financial-summary values (numeric, so
+// they must arrive as finite numbers — never null/undefined/NaN).
+const BOOKING_REQUEST_RPC_REQUIRED_FIELDS = [
+  'id', 'bookingNumber', 'propertyId', 'ownerId', 'guestName',
+  'checkIn', 'checkOut', 'nights', 'guestsCount', 'status', 'createdAt',
+] as const;
+const BOOKING_REQUEST_RPC_SNAKE_FALLBACK: Record<string, string> = {
+  bookingNumber: 'booking_number',
+  propertyId: 'property_id',
+  ownerId: 'owner_id',
+  guestName: 'guest_name',
+  checkIn: 'check_in',
+  checkOut: 'check_out',
+  guestsCount: 'guestsCount',
+  createdAt: 'created_at',
+};
+const BOOKING_REQUEST_RPC_SUMMARY_NUMERIC_FIELDS = [
+  'summaryTotalBookingValue', 'summaryDepositAmount', 'summarySolaCommissionAmount',
+  'summaryOwnerNetDepositAmount', 'summaryRemainingBalance', 'summaryCommissionOnRemainingBalance',
+] as const;
+
 async function queryViaSupabaseRest(text: string, params: any[] | undefined, url: string, key: string): Promise<pg.QueryResult<any> | null> {
   const headers: Record<string, string> = {
     'apikey': key,
@@ -118,10 +140,24 @@ async function queryViaSupabaseRest(text: string, params: any[] | undefined, url
   const lowerSql = sql.toLowerCase();
 
   // P1.5: booking request + canonical financial summary are created by ONE
-  // Postgres transaction (migration 026). This mapping is deliberately narrow:
-  // Worker code must never fall back to sequential booking + summary REST
-  // writes with compensating deletes.
-  if (lowerSql.includes('konfrm_create_booking_request')) {
+  // Postgres transaction (migration 026). The matcher is exact and
+  // collision-safe: only the canonical repository query shape
+  // `SELECT * FROM konfrm_create_booking_request($1, ... $18)` enters this
+  // adapter branch; any comment, wrapper, different argument count, or SQL
+  // that merely mentions the function name must fall through. Worker code
+  // must never fall back to sequential booking + summary REST writes with
+  // compensating deletes.
+  const canonicalRpcMatch = sql
+    .replace(/\s+/g, ' ')
+    .match(/^SELECT \* FROM konfrm_create_booking_request\(([^()]*)\)$/i);
+  const rpcPlaceholders = canonicalRpcMatch
+    ? canonicalRpcMatch[1].split(',').map((p) => p.trim())
+    : [];
+  const isCanonicalCreateRpc =
+    !!canonicalRpcMatch &&
+    rpcPlaceholders.length === 18 &&
+    rpcPlaceholders.every((p, i) => p.toLowerCase() === `$${i + 1}`);
+  if (isCanonicalCreateRpc) {
     const res = await fetch(`${url}/rest/v1/rpc/konfrm_create_booking_request`, {
       method: 'POST',
       headers,
@@ -160,8 +196,29 @@ async function queryViaSupabaseRest(text: string, params: any[] | undefined, url
       throw new Error(`REST_BOOKING_REQUEST_CREATE_RPC_ROW_COUNT: expected exactly one created booking row, got ${raw.length}`);
     }
     const r = raw[0];
-    if (!r || typeof r.id !== 'string' || typeof r.status !== 'string' || r.summaryTotalBookingValue === undefined || r.summaryDepositAmount === undefined) {
-      throw new Error('REST_BOOKING_REQUEST_CREATE_MALFORMED_RESPONSE: created row missing required booking/summary fields');
+    if (!r || typeof r !== 'object') {
+      throw new Error('REST_BOOKING_REQUEST_CREATE_MALFORMED_RESPONSE: created row is not an object');
+    }
+    // Migration 026 returns one flat row: booking fields + summary fields.
+    // Validate every field consumed below BEFORE returning success — a partial
+    // row must fail closed, never become a false 201 with missing values.
+    // DB contract: every bookings column returned here is NOT NULL except
+    // customer_id (nullable, ON DELETE SET NULL), which must still be present.
+    const requiredNonNullable = BOOKING_REQUEST_RPC_REQUIRED_FIELDS;
+    for (const key of requiredNonNullable) {
+      const v = r[key] ?? r[BOOKING_REQUEST_RPC_SNAKE_FALLBACK[key]];
+      if (v === undefined || v === null) {
+        throw new Error(`REST_BOOKING_REQUEST_CREATE_MALFORMED_RESPONSE: created row missing required field ${key}`);
+      }
+    }
+    if (r.customerId === undefined && r.customer_id === undefined) {
+      throw new Error('REST_BOOKING_REQUEST_CREATE_MALFORMED_RESPONSE: created row missing required field customerId');
+    }
+    for (const key of BOOKING_REQUEST_RPC_SUMMARY_NUMERIC_FIELDS) {
+      const v = r[key];
+      if (v === undefined || v === null || typeof v !== 'number' || !Number.isFinite(v)) {
+        throw new Error(`REST_BOOKING_REQUEST_CREATE_MALFORMED_RESPONSE: summary field ${key} must be a finite number`);
+      }
     }
     const row = {
       id: r.id,

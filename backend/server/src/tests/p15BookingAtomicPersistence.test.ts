@@ -4,6 +4,7 @@ import path from 'node:path';
 import { ExpressServerApp } from '../app';
 import { signAccessToken } from '../services/jwtService';
 import { bookingDb, propertyAvailabilityDb, propertyDb, userDb } from '../services/dbRepository';
+import { queryDb } from '../services/dbClient';
 import { CustomerDomainController } from '../controllers/domainControllers.js';
 import { calculateBookingFinancials } from '../services/financialEngine.js';
 
@@ -89,8 +90,18 @@ const validInput = (id: string) => ({
 // 2. Worker/PostgREST contract: one narrow transaction-capable RPC call,
 // fail-closed on every unexpected response, never sequential writes.
 // ---------------------------------------------------------------------------
-type Mode = 'success' | 'httpError' | 'malformed' | 'conflict' | 'zeroRows' | 'networkError';
+type Mode = 'success' | 'httpError' | 'malformed' | 'conflict' | 'zeroRows' | 'networkError' | 'missingSummaryField' | 'missingBookingField';
 let mode: Mode = 'success';
+
+// Mirrors the real PostgREST RPC row: quoted RETURNS TABLE names arrive as
+// camelCase keys, summary values as finite numbers.
+const fullRpcRow = {
+  id: 'b-9', bookingNumber: 'BK-9', propertyId, ownerId, customerId, guestName: 'عميل',
+  checkIn: '2026-12-20', checkOut: '2026-12-22', nights: 2, guestsCount: 2,
+  status: 'PENDING_OWNER_APPROVAL', createdAt: '2026-09-02T00:00:00Z',
+  summaryTotalBookingValue: 4000, summaryDepositAmount: 2000, summarySolaCommissionAmount: 400,
+  summaryOwnerNetDepositAmount: 1600, summaryRemainingBalance: 2000, summaryCommissionOnRemainingBalance: 0,
+};
 
 async function withStubFetch(fn: () => Promise<void>) {
   const calls: Array<{ url: string; method: string; body: any }> = [];
@@ -107,15 +118,17 @@ async function withStubFetch(fn: () => Promise<void>) {
     if (mode === 'conflict') return { ok: false, status: 400, json: async () => ({ code: 'P0001' }), text: async () => '{"code":"P0001","message":"DATE_MANUALLY_BLOCKED"}' } as unknown as Response;
     if (mode === 'malformed') return { ok: true, status: 200, json: async () => ({ id: 'x' }), text: async () => '{"id":"x"}' } as unknown as Response;
     if (mode === 'zeroRows') return { ok: true, status: 200, json: async () => [], text: async () => '[]' } as unknown as Response;
+    if (mode === 'missingSummaryField') {
+      const { summaryRemainingBalance, ...partial } = fullRpcRow as any;
+      return { ok: true, status: 201, json: async () => [partial], text: async () => JSON.stringify([partial]) } as unknown as Response;
+    }
+    if (mode === 'missingBookingField') {
+      const { checkIn, ...partial } = fullRpcRow as any;
+      return { ok: true, status: 201, json: async () => [partial], text: async () => JSON.stringify([partial]) } as unknown as Response;
+    }
     return {
       ok: true, status: 201,
-      json: async () => [{
-        id: 'b-9', bookingNumber: 'BK-9', property_id: propertyId, owner_id: ownerId,
-        customer_id: customerId, guest_name: 'عميل', check_in: '2026-12-20', check_out: '2026-12-22',
-        nights: 2, total_guests: 2, status: 'PENDING_OWNER_APPROVAL', created_at: '2026-09-02T00:00:00Z',
-        summaryTotalBookingValue: 4000, summaryDepositAmount: 2000, summarySolaCommissionAmount: 400,
-        summaryOwnerNetDepositAmount: 1600, summaryRemainingBalance: 2000, summaryCommissionOnRemainingBalance: 0,
-      }],
+      json: async () => [fullRpcRow],
       text: async () => '',
     } as unknown as Response;
   }) as typeof fetch;
@@ -177,6 +190,49 @@ async function withStubFetch(fn: () => Promise<void>) {
   });
   assert.equal(calls.length, 1, 'a response without the created row is a failure, never fake success');
   mode = 'success';
+
+  // Correction 3: a partial one-row success must fail closed — never a false
+  // 201 with missing values.
+  mode = 'missingSummaryField';
+  calls = await withStubFetch(async () => {
+    await assert.rejects(() => bookingDb.create(validInput('b-16')), /REST_BOOKING_REQUEST_CREATE_MALFORMED_RESPONSE/);
+  });
+  assert.equal(calls.length, 1);
+  mode = 'missingBookingField';
+  calls = await withStubFetch(async () => {
+    await assert.rejects(() => bookingDb.create(validInput('b-17')), /REST_BOOKING_REQUEST_CREATE_MALFORMED_RESPONSE/);
+  });
+  assert.equal(calls.length, 1);
+  mode = 'success';
+
+  // Correction 2: the RPC adapter branch is exact and collision-safe. SQL that
+  // merely mentions the function (comment, wrapper, wrong arity) must NOT
+  // enter the adapter branch.
+  const foreignSqlCases: Array<{ sql: string; expectReject: boolean }> = [
+    // Comment mention only — may be served by another legitimate matcher,
+    // but never by the create-booking RPC adapter.
+    { sql: 'SELECT id FROM bookings WHERE id = $1 /* konfrm_create_booking_request */', expectReject: false },
+    // Wrapper query with a different shape.
+    { sql: 'SELECT * FROM (SELECT konfrm_create_booking_request($1)) x', expectReject: true },
+    // Canonical function name but wrong argument count.
+    { sql: `SELECT * FROM konfrm_create_booking_request(${Array.from({ length: 17 }, (_, i) => `$${i + 1}`).join(', ')})`, expectReject: true },
+    // Right count, wrong placeholder order.
+    { sql: `SELECT * FROM konfrm_create_booking_request(${Array.from({ length: 18 }, (_, i) => `$${18 - i}`).join(', ')})`, expectReject: true },
+    // Mention inside a string literal.
+    { sql: "SELECT 'konfrm_create_booking_request' AS note", expectReject: true },
+  ];
+  for (const { sql: foreignSql, expectReject } of foreignSqlCases) {
+    const calls = await withStubFetch(async () => {
+      if (expectReject) {
+        // No adapter matcher may serve this SQL: it falls through to the pool
+        // path and must reject (no local PostgreSQL in the test environment).
+        await assert.rejects(() => queryDb(foreignSql, ['x']), /POOL_QUERY_ERROR|REST_QUERY_ERROR|ECONNREFUSED|connect/i);
+      } else {
+        await queryDb(foreignSql, ['x']).catch(() => undefined);
+      }
+    });
+    assert.equal(calls.filter((c) => c.url.includes('/rpc/konfrm_create_booking_request')).length, 0, `collision-safe matcher must ignore: ${foreignSql.slice(0, 60)}`);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -287,6 +343,11 @@ const bodyEnd = migration.indexOf('$$;', bodyStart);
 const fnBody = migration.slice(bodyStart, bodyEnd);
 assert.ok(fnBody.indexOf('INSERT INTO public.bookings') > -1 && fnBody.indexOf('INSERT INTO public.booking_financial_summaries') > fnBody.indexOf('INSERT INTO public.bookings'), 'summary INSERT follows the booking INSERT in the same transaction body');
 assert.ok(fnBody.replace(/\r\n/g, '\n').includes('VALUES (\n    v_booking.id,'), 'summary is FK-anchored to the just-inserted booking');
+// Codex blocker 1 regression guard: guest_name is varchar(100) while the
+// RETURNS TABLE declares "guestName" text — the RETURN QUERY reference must
+// carry an explicit ::text cast.
+assert.ok(/v_booking\.guest_name::text/.test(fnBody), 'guestName result column must cast v_booking.guest_name::text');
+assert.ok(!/v_booking\.guest_name\b(?!::text)/.test(fnBody), 'no uncast v_booking.guest_name reference may remain in the function body');
 // PL/pgSQL ambiguity guard (same class of defect migration 024 fixed): no
 // unqualified id/status/nights column references outside name positions.
 const bodyLines = fnBody.split('\n');

@@ -97,7 +97,7 @@ BEGIN
     v_booking.property_id,
     v_booking.owner_id,
     v_booking.customer_id,
-    v_booking.guest_name,
+    v_booking.guest_name::text,
     v_booking.check_in,
     v_booking.check_out,
     v_booking.nights,

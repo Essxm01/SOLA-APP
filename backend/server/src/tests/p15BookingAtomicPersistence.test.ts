@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { ExpressServerApp } from '../app';
 import { signAccessToken } from '../services/jwtService';
-import { bookingDb, propertyDb, userDb } from '../services/dbRepository';
+import { bookingDb, propertyAvailabilityDb, propertyDb, userDb } from '../services/dbRepository';
 import { CustomerDomainController } from '../controllers/domainControllers.js';
 import { calculateBookingFinancials } from '../services/financialEngine.js';
 
@@ -189,11 +189,13 @@ const originals: Record<string, any> = {
   summary: (bookingDb as any).createFinancialSummary,
   deleteNew: bookingDb.deleteNewBooking,
   blocks: bookingDb.getBlocksByPropertyId,
+  availability: propertyAvailabilityDb.getByPropertyId,
 };
 try {
   (propertyDb as any).getById = async (id: string) => id === propertyId ? { ...publishedProperty } : null;
   (userDb as any).getById = async (id: string) => id === customerId ? { id, fullName: 'عميل', phoneNumber: '+201012345678' } : null;
   (bookingDb as any).getBlocksByPropertyId = async () => [];
+  (propertyAvailabilityDb as any).getByPropertyId = async () => [];
   let createdPayload: any = null;
   let compensationDeletes = 0;
   let createError: any = null;
@@ -256,6 +258,7 @@ try {
   (bookingDb as any).createFinancialSummary = originals.summary;
   (bookingDb as any).deleteNewBooking = originals.deleteNew;
   (bookingDb as any).getBlocksByPropertyId = originals.blocks;
+  (propertyAvailabilityDb as any).getByPropertyId = originals.availability;
 }
 
 // ---------------------------------------------------------------------------
@@ -283,7 +286,7 @@ const bodyStart = migration.indexOf('AS $$');
 const bodyEnd = migration.indexOf('$$;', bodyStart);
 const fnBody = migration.slice(bodyStart, bodyEnd);
 assert.ok(fnBody.indexOf('INSERT INTO public.bookings') > -1 && fnBody.indexOf('INSERT INTO public.booking_financial_summaries') > fnBody.indexOf('INSERT INTO public.bookings'), 'summary INSERT follows the booking INSERT in the same transaction body');
-assert.ok(fnBody.includes('VALUES (\n    v_booking.id,'), 'summary is FK-anchored to the just-inserted booking');
+assert.ok(fnBody.replace(/\r\n/g, '\n').includes('VALUES (\n    v_booking.id,'), 'summary is FK-anchored to the just-inserted booking');
 // PL/pgSQL ambiguity guard (same class of defect migration 024 fixed): no
 // unqualified id/status/nights column references outside name positions.
 const bodyLines = fnBody.split('\n');

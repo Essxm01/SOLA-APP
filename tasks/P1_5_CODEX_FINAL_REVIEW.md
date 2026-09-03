@@ -4,83 +4,73 @@ TASK_ID: P1.5-FINAL-CODEX-REREVIEW
 MODE: READ_ONLY_FINAL_REVIEW
 REPOSITORY: Essxm01/SOLA-APP
 CANDIDATE_BRANCH: validation/p1-5-rc
-FINAL_IMPLEMENTATION_SHA: b0b61bcd1974f15028ff59e2954f74eca14ce27e
+FINAL_IMPLEMENTATION_SHA: 9bb8d7be6d97bebcc21551c74b3c812f8a9984b4
 BASE_MAIN_SHA: 477ef6a1b274e98a7b757f0b0b77ea8815cee741
 PULL_REQUEST: #9
-EXACT_HEAD_CI: Run #164 / 33710265122 — SUCCESS
+EXACT_HEAD_CI: Run #165 / 33711327303 — SUCCESS
 LIVE_MUTATION: FORBIDDEN
 MIGRATION_026: REPOSITORY_ONLY_NOT_APPLIED_LIVE
 
 ## Objective
-Perform the final semantic re-review of the exact P1.5 candidate after the three previously reported Codex blockers were corrected. Decide whether P1.5 safely closes Booking + Financial Summary persistence integrity without changing product, finance, availability, payment, or architecture rules beyond the approved atomic persistence boundary.
+Perform the final semantic re-review of the exact P1.5 candidate after all previously reported Codex blockers and the final invalid-booking-field validation blocker were corrected. Decide whether P1.5 safely closes Booking + Financial Summary persistence integrity.
 
-## Mandatory Re-Review of the Three Prior Blockers
+## Mandatory blocker disposition
 
-### Blocker 1 — Migration return-type correctness
-Verify `backend/database/migrations/026_atomic_booking_request_creation.sql` now returns `v_booking.guest_name::text` for the declared `"guestName" text` result column, and that the migration remains otherwise semantically unchanged.
+### 1. Migration return-type correctness
+Verify `backend/database/migrations/026_atomic_booking_request_creation.sql` returns `v_booking.guest_name::text` for declared `"guestName" text` and remains otherwise semantically sound.
 
-### Blocker 2 — Collision-safe Worker matcher
-Verify `backend/server/src/services/dbClient.ts` recognizes only the exact normalized repository query shape for `SELECT * FROM konfrm_create_booking_request($1 ... $18)` with the canonical ordered 18 placeholders. Comments, wrappers, string mentions, wrong arity, or wrong parameter order must not be reinterpreted as the booking-create RPC.
+### 2. Collision-safe Worker matcher
+Verify `backend/server/src/services/dbClient.ts` accepts only the exact canonical `SELECT * FROM konfrm_create_booking_request($1 ... $18)` shape with ordered 18 placeholders. Comments, wrappers, string mentions, wrong arity, or wrong order must not enter the RPC branch.
 
-### Blocker 3 — Fail closed on partial RPC rows
-Verify the Worker adapter validates every booking and financial-summary field consumed downstream before treating a one-row response as success. Missing/null/invalid required values must fail with `REST_BOOKING_REQUEST_CREATE_MALFORMED_RESPONSE`; `customerId` may remain nullable only where allowed by the DB contract. Confirm tests cover a missing summary field and a missing booking field.
+### 3. Partial/malformed RPC row handling
+Verify every booking and financial-summary field consumed downstream is validated before success. Missing/null/invalid values must fail with `REST_BOOKING_REQUEST_CREATE_MALFORMED_RESPONSE`.
 
-## Full Final Review Focus
+### 4. Final invalid-booking-field validation correction
+Explicitly verify the final commit after `b0b61bcd1974f15028ff59e2954f74eca14ce27e`:
+- changes only `backend/server/src/services/dbClient.ts` and `backend/server/src/tests/p15BookingAtomicPersistence.test.ts`;
+- validates `id`, `propertyId`, `ownerId` as UUID strings;
+- validates `bookingNumber` and `guestName` as non-empty strings;
+- requires `customerId` to be present, allows `null`, otherwise requires UUID string;
+- validates `checkIn` and `checkOut` as real strict `YYYY-MM-DD` calendar dates;
+- validates `nights` and `guestsCount` as positive integers;
+- validates `status` exactly as `PENDING_OWNER_APPROVAL`;
+- validates `createdAt` as a non-empty parseable date/time string;
+- preserves strict finite-number validation for all six financial summary values;
+- preserves `customerId: null` during validation and mapping;
+- adds deterministic malformed-row tests for invalid types/values and a positive nullable-customerId case.
 
-### 1. True transaction atomicity
-Verify customer booking request creation uses ONE narrow PostgreSQL transaction/RPC such that:
-- booking row and `booking_financial_summaries` row persist together or neither persists;
-- summary failure rolls back booking creation;
-- booking/availability constraint failure leaves no summary;
-- there is no sequential REST fallback in the active customer create route.
+## Full final review focus
 
-### 2. Migration 026 correctness and privilege surface
-Verify:
-- PostgreSQL/PLpgSQL return types are valid;
-- ordinary INSERTs still fire Migration 025 availability guards and existing booking constraints;
-- canonical initial status is restricted to `PENDING_OWNER_APPROVAL`;
-- no public/general-purpose booking write surface exists;
-- `SECURITY INVOKER`, controlled `search_path`, and EXECUTE remain restricted to `service_role`;
-- `schema_migrations` is recorded only after successful migration transaction.
+### Atomicity
+Verify customer booking request creation uses ONE narrow PostgreSQL transaction/RPC such that booking + financial summary persist together or neither persists, with no sequential REST fallback or compensating-delete path in the active create route.
 
-### 3. Financial invariants
-The implementation MUST preserve authoritative server-calculated values:
+### Migration 026 and privilege surface
+Verify PostgreSQL correctness, Migration 025 trigger/exclusion compatibility, canonical initial status restriction, `SECURITY INVOKER`, controlled `search_path`, service-role-only EXECUTE, and migration recording only after successful transaction.
+
+### Financial invariants
+Must remain unchanged:
 - deposit = actual first-night price;
 - commission = 20% of deposit only;
 - Owner net deposit = 80% of deposit;
 - remaining balance = total - deposit;
 - commission on remaining balance = 0;
 - Customer-facing response does not expose internal commission split.
-Confirm the RPC persists backend-calculated values rather than introducing a new calculation source.
+The RPC must persist backend-calculated values and not become a new financial calculation source.
 
-### 4. Worker/PostgREST semantics
-Confirm:
-- exactly one RPC request for atomic create;
-- malformed/non-2xx/zero-or-multi-row/network failure fails closed;
-- Migration 025 `DATE_MANUALLY_BLOCKED` evidence remains available for truthful 409 mapping;
-- no generic SQL/RPC execution surface or matcher collision is introduced.
+### Worker/PostgREST semantics
+Confirm exactly one atomic-create RPC request; malformed/non-2xx/zero-or-multi-row/network outcomes fail closed; `DATE_MANUALLY_BLOCKED` evidence survives for truthful 409 mapping; no generic SQL/RPC surface or matcher collision exists.
 
-### 5. Route and regression behavior
-Confirm:
-- booking creation still revalidates availability;
-- `PENDING_OWNER_APPROVAL` remains non-blocking;
-- Owner approval/payment ordering remains unchanged;
-- compensating delete is absent from the active create path;
-- P1.4 semantics remain intact.
+### Route/regression behavior
+Confirm availability is revalidated; `PENDING_OWNER_APPROVAL` remains non-blocking; Owner approval/payment ordering is unchanged; P1.4 semantics remain intact; no booking-create idempotency contract was invented.
 
-### 6. Correction scope and CI evidence
-Compare prior reviewed SHA `88c2dcedc0e76df023446fa9aef46cea1a6f7bc0` to final SHA `b0b61bcd1974f15028ff59e2954f74eca14ce27e`.
-The correction must be one commit touching only:
-- `backend/database/migrations/026_atomic_booking_request_creation.sql`
+## Exact correction scope and CI evidence
+Final correction from `b0b61bcd1974f15028ff59e2954f74eca14ce27e` to `9bb8d7be6d97bebcc21551c74b3c812f8a9984b4` is one commit and must touch only:
 - `backend/server/src/services/dbClient.ts`
 - `backend/server/src/tests/p15BookingAtomicPersistence.test.ts`
 
-Exact-head CI #164 / 33710265122 succeeded. Backend, Customer, Owner, Admin, and Detect Changed Modules all PASS. Cloudflare Worker deployment was skipped because the event is a pull request.
+Exact-head CI #165 / 33711327303 succeeded. Backend, Customer, Owner, Admin, and Detect Changed Modules all PASS. Worker deployment was skipped because the event is a pull request.
 
-### 7. Idempotency boundary
-Do NOT invent booking-create idempotency. No authoritative booking-create idempotency contract has been approved for this scope.
-
-### 8. Live-state boundary
+## Live-state boundary
 Independent read-only Supabase verification immediately before this handoff showed:
 - migration 026 is not recorded in `schema_migrations`;
 - `public.konfrm_create_booking_request(...)` does not exist live.
@@ -108,7 +98,7 @@ Then include:
 - reviewed implementation SHA;
 - base main SHA;
 - PR/head state;
-- disposition of each of the three prior blockers;
+- explicit disposition of all prior blockers including the final invalid-value blocker;
 - exact blocking findings, if any;
 - assessment of transaction atomicity, financial-rule preservation, Worker adapter strictness, Migration 026 privilege surface, and regression coverage;
 - whether Migration 026 remains unapplied live;

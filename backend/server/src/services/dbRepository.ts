@@ -1566,3 +1566,36 @@ export const sessionDb = {
     return true;
   }
 };
+
+// ----------------------------------------------------------------------------
+// 14. CUSTOMER FAVORITES REPOSITORY
+// ----------------------------------------------------------------------------
+export const favoriteDb = {
+  async getByCustomerId(customerId: string) {
+    const res = await queryDb(
+      `SELECT customer_id AS "customerId", property_id AS "propertyId", created_at AS "createdAt"
+       FROM customer_favorites WHERE customer_id = $1 ORDER BY created_at DESC`,
+      [customerId]
+    );
+    return res.rows;
+  },
+
+  async add(customerId: string, propertyId: string) {
+    const res = await queryDb(
+      'SELECT * FROM konfrm_add_customer_favorite($1, $2)',
+      [customerId, propertyId]
+    );
+    if (res.rows.length === 0) return null;
+    if (res.rows.length !== 1) throw new Error('CUSTOMER_FAVORITE_ADD_ROW_COUNT_INVALID');
+    return res.rows[0];
+  },
+
+  async remove(customerId: string, propertyId: string) {
+    await queryDb(
+      `DELETE FROM customer_favorites WHERE customer_id = $1 AND property_id = $2
+       RETURNING customer_id AS "customerId", property_id AS "propertyId", created_at AS "createdAt"`,
+      [customerId, propertyId]
+    );
+  },
+};
+

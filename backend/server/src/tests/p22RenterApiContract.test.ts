@@ -393,6 +393,128 @@ assert.match(sql, /028_customer_favorites\.sql/i, 'Must record version 028_custo
 
 console.log('P2.2 Task 4 migration 028 contract tests passed.');
 
+// ---------------------------------------------------------------------------
+// 5. Task 5: favoriteDb and exact Worker/PostgREST adapter tests
+// ---------------------------------------------------------------------------
+import { favoriteDb } from '../services/dbRepository.js';
+import { queryDb } from '../services/dbClient.js';
+
+assert.ok(favoriteDb, 'favoriteDb must be exported from dbRepository');
+assert.equal(typeof favoriteDb.getByCustomerId, 'function');
+assert.equal(typeof favoriteDb.add, 'function');
+assert.equal(typeof favoriteDb.remove, 'function');
+
+// 5A. Test PostgREST routing for favoriteDb
+const originalFetch = globalThis.fetch;
+const originalDbUrl = process.env.DATABASE_URL;
+delete process.env.DATABASE_URL;
+process.env.SUPABASE_URL = 'https://test-supabase.sola.eg';
+process.env.SUPABASE_SERVICE_ROLE_KEY = 'test-key';
+
+let lastFetchCall: { url: string; method?: string; headers?: any; body?: any } | null = null;
+let mockFetchResponse: { status: number; body: any } = { status: 200, body: [] };
+
+globalThis.fetch = (async (input: any, init?: any) => {
+  lastFetchCall = {
+    url: String(input),
+    method: init?.method || 'GET',
+    headers: init?.headers,
+    body: init?.body ? JSON.parse(init.body) : undefined,
+  };
+  return new Response(JSON.stringify(mockFetchResponse.body), {
+    status: mockFetchResponse.status,
+    headers: { 'Content-Type': 'application/json' },
+  });
+}) as typeof fetch;
+
+try {
+  // 5B. favoriteDb.getByCustomerId
+  mockFetchResponse = {
+    status: 200,
+    body: [
+      { customer_id: testCustomerId, property_id: 'e0000000-0000-4000-8000-000000000002', created_at: '2026-09-03T12:00:00.000Z' },
+    ],
+  };
+  const list = await favoriteDb.getByCustomerId(testCustomerId);
+  assert.equal(list.length, 1);
+  assert.equal(list[0].customerId, testCustomerId);
+  assert.equal(list[0].propertyId, 'e0000000-0000-4000-8000-000000000002');
+  assert.ok(lastFetchCall?.url.includes(`/rest/v1/customer_favorites?customer_id=eq.${testCustomerId}`));
+  assert.ok(lastFetchCall?.url.includes('order=created_at.desc'));
+
+  // 5C. favoriteDb.add - success (1 row)
+  mockFetchResponse = {
+    status: 200,
+    body: [
+      { customerId: testCustomerId, propertyId: 'e0000000-0000-4000-8000-000000000002', createdAt: '2026-09-03T12:00:00.000Z' },
+    ],
+  };
+  const added = await favoriteDb.add(testCustomerId, 'e0000000-0000-4000-8000-000000000002');
+  assert.ok(added);
+  assert.equal(added.customerId, testCustomerId);
+  assert.equal(lastFetchCall?.url, 'https://test-supabase.sola.eg/rest/v1/rpc/konfrm_add_customer_favorite');
+  assert.equal(lastFetchCall?.method, 'POST');
+  assert.deepEqual(lastFetchCall?.body, {
+    p_customer_id: testCustomerId,
+    p_property_id: 'e0000000-0000-4000-8000-000000000002',
+  });
+
+  // 5D. favoriteDb.add - not eligible / unverified (0 rows) returns null
+  mockFetchResponse = { status: 200, body: [] };
+  const addMiss = await favoriteDb.add(testCustomerId, 'e0000000-0000-4000-8000-000000000002');
+  assert.equal(addMiss, null);
+
+  // 5E. favoriteDb.add - cardinality > 1 throws
+  mockFetchResponse = { status: 200, body: [{}, {}] };
+  await assert.rejects(
+    () => favoriteDb.add(testCustomerId, 'e0000000-0000-4000-8000-000000000002'),
+    /CARDINALITY_INVALID/
+  );
+
+  // 5F. favoriteDb.remove
+  mockFetchResponse = {
+    status: 200,
+    body: [
+      { customer_id: testCustomerId, property_id: 'e0000000-0000-4000-8000-000000000002', created_at: '2026-09-03T12:00:00.000Z' },
+    ],
+  };
+  await favoriteDb.remove(testCustomerId, 'e0000000-0000-4000-8000-000000000002');
+  assert.equal(lastFetchCall?.method, 'DELETE');
+  assert.ok(lastFetchCall?.url.includes(`customer_id=eq.${testCustomerId}`));
+  assert.ok(lastFetchCall?.url.includes('property_id=eq.e0000000-0000-4000-8000-000000000002'));
+  assert.equal(lastFetchCall?.headers?.['Prefer'], 'return=representation');
+
+  // 5G. favoriteDb.remove - 0 rows (idempotent remove) succeeds without error
+  mockFetchResponse = { status: 200, body: [] };
+  await favoriteDb.remove(testCustomerId, 'e0000000-0000-4000-8000-000000000002');
+
+  // 5H. Strict collision safety - query shapes that merely mention RPC/table must not match
+  lastFetchCall = null;
+  await assert.rejects(
+    () => queryDb('SELECT * FROM customer_favorites', []),
+    /POOL_QUERY_ERROR/
+  );
+  assert.equal(lastFetchCall, null, 'arbitrary SELECT customer_favorites must not route to PostgREST');
+
+  await assert.rejects(
+    () => queryDb('/* comment */ SELECT * FROM konfrm_add_customer_favorite($1, $2)', [testCustomerId, 'p2']),
+    /POOL_QUERY_ERROR/
+  );
+  assert.equal(lastFetchCall, null, 'comment-prefixed RPC must not route to PostgREST');
+
+  await assert.rejects(
+    () => queryDb('SELECT * FROM konfrm_add_customer_favorite($1)', [testCustomerId]),
+    /POOL_QUERY_ERROR/
+  );
+  assert.equal(lastFetchCall, null, 'wrong placeholder count must not route to PostgREST');
+} finally {
+  globalThis.fetch = originalFetch;
+  if (originalDbUrl) process.env.DATABASE_URL = originalDbUrl;
+}
+
+console.log('P2.2 Task 5 favoriteDb and Worker adapter tests passed.');
+
+
 
 
 

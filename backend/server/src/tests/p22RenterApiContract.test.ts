@@ -571,6 +571,52 @@ assert.match(sql, /028_customer_favorites\.sql/i, 'Must record version 028_custo
 
 console.log('P2.2 Task 4 migration 028 contract tests passed.');
 
+// 4C. Migration 029 ACL Hardening static contract tests
+const migration029Path = path.resolve(process.cwd(), 'database/migrations/029_customer_favorites_acl_hardening.sql');
+assert.ok(fs.existsSync(migration029Path), 'Migration file 029_customer_favorites_acl_hardening.sql must exist');
+
+const sql029 = fs.readFileSync(migration029Path, 'utf8');
+
+// 1. Must execute REVOKE ALL ON TABLE public.customer_favorites FROM service_role
+assert.match(
+  sql029,
+  /REVOKE\s+ALL\s+ON\s+TABLE\s+public\.customer_favorites\s+FROM\s+service_role/i,
+  'Migration 029 must revoke all on customer_favorites from service_role'
+);
+
+// 2. The revoke appears before the replacement grant
+const revokeIndex = sql029.search(/REVOKE\s+ALL\s+ON\s+TABLE\s+public\.customer_favorites\s+FROM\s+service_role/i);
+const grantIndex = sql029.search(/GRANT\s+SELECT,\s*INSERT,\s*DELETE\s+ON\s+TABLE\s+public\.customer_favorites\s+TO\s+service_role/i);
+assert.ok(revokeIndex !== -1, 'REVOKE ALL must be present');
+assert.ok(grantIndex !== -1, 'GRANT SELECT, INSERT, DELETE must be present');
+assert.ok(revokeIndex < grantIndex, 'REVOKE ALL must appear BEFORE the replacement GRANT');
+
+// 3. The only replacement table grant to service_role in migration 029 is SELECT, INSERT, DELETE
+assert.match(
+  sql029,
+  /GRANT\s+SELECT,\s*INSERT,\s*DELETE\s+ON\s+TABLE\s+public\.customer_favorites\s+TO\s+service_role/i,
+  'Migration 029 replacement grant must be exactly SELECT, INSERT, DELETE'
+);
+
+// 4. Migration 029 does not grant UPDATE, TRUNCATE, REFERENCES, TRIGGER, MAINTAIN, or ALL to service_role
+for (const forbiddenPriv of ['UPDATE', 'TRUNCATE', 'REFERENCES', 'TRIGGER', 'MAINTAIN', 'ALL']) {
+  const regex = new RegExp(`GRANT\\s+[^;]*\\b${forbiddenPriv}\\b[^;]*TO\\s+service_role`, 'i');
+  assert.doesNotMatch(
+    sql029,
+    regex,
+    `Migration 029 must not grant ${forbiddenPriv} to service_role`
+  );
+}
+
+// 5. Migration 029 records 029_customer_favorites_acl_hardening.sql in public.schema_migrations
+assert.match(
+  sql029,
+  /INSERT\s+INTO\s+public\.schema_migrations\s*\(\s*version\s*\)\s*VALUES\s*\(\s*'029_customer_favorites_acl_hardening\.sql'\s*\)/i,
+  'Migration 029 must record 029_customer_favorites_acl_hardening.sql in schema_migrations'
+);
+
+console.log('P2.2 Task 4 migration 029 ACL hardening contract tests passed.');
+
 // ---------------------------------------------------------------------------
 // 5. Task 5: favoriteDb and exact Worker/PostgREST adapter tests
 // ---------------------------------------------------------------------------

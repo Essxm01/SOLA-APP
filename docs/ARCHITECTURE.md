@@ -27,6 +27,11 @@ flowchart LR
 - `backend/server/src/services/dbRepository.ts` holds domain repositories. `dbClient.ts` provides the database access layer.
 - The Worker path uses a deliberately narrow SQL-to-Supabase REST/RPC compatibility adapter. It is not a general SQL parser or transaction engine. Matchers must be strict: a prior `owner_id` versus `id` collision is why predicate matching must never rely on unsafe substrings.
 - Authentication middleware verifies role-scoped tokens. Protected owner/customer/admin routes derive authority from the verified subject rather than request-provided owner/customer IDs.
+- Public Property Discovery Contract (P2.1):
+  - Dedicated public read paths (`propertyDb.searchPublic`, `propertyDb.getPublicById`) enforce publication invariants (`deleted_at IS NULL AND status = 'PUBLISHED' AND verification_status = 'VERIFIED'`).
+  - Strict privacy-safe DTO mappers (`toPublicPropertySearchItem`, `toPublicPropertyDetail`) in `backend/server/src/contracts/publicProperty.ts` guarantee no Owner contact/identity details, admin review metadata, internal finances (commission, owner net), or wallet/ledger keys are ever serialized on public routes.
+  - The Cloudflare Worker database adapter (`dbClient.ts`) uses exact, collision-safe SQL matching (`CANONICAL_PUBLIC_PROPERTIES_LIST_SQL`, `CANONICAL_PUBLIC_PROPERTY_DETAIL_SQL`) with explicit PostgREST `select=` projection and fail-closed response validation.
+  - Customer App sends filter criteria to backend (`buildPublicPropertySearchPath`), replacing local client-authoritative filtering with server-authoritative search.
 
 ## Data and deployment boundaries
 

@@ -14,6 +14,7 @@ import { CustomerBottomNav, CustomerTabType } from './components/CustomerBottomN
 import { LoadingStateView, EmptyStateView, ErrorStateView } from './components/StateViews';
 import { getApiUrl } from './utils/api';
 import { fetchCanonicalCollection } from './utils/customerTruthfulState';
+import { buildPublicPropertySearchPath } from './utils/publicPropertySearch';
 import {
   Heart,
   CalendarCheck,
@@ -86,11 +87,19 @@ export function App() {
   const [bookingsLoading, setBookingsLoading] = useState<boolean>(false);
   const [bookingsError, setBookingsError] = useState<string | null>(null);
 
-  // Fetch Published Properties from API (Real PostgreSQL Records)
-  const fetchProperties = async () => {
+  // Fetch Published Properties from API (Server-Authoritative Public Search — P2.1)
+  const fetchProperties = async (filters?: Partial<SearchFilterState>) => {
     setPropertyLoadState('LOADING');
     setPropertyLoadError(null);
-    const result = await fetchCanonicalCollection<CustomerPropertyItem>('/customer/properties/search');
+    let path: string;
+    try {
+      path = buildPublicPropertySearchPath(filters);
+    } catch {
+      setPropertyLoadError('بيانات البحث غير صالحة. راجع الفلاتر وحاول مرة أخرى.');
+      setPropertyLoadState('ERROR');
+      return;
+    }
+    const result = await fetchCanonicalCollection<CustomerPropertyItem>(path);
     if (result.kind === 'success') {
       setProperties(result.data);
       setFilteredProperties(result.data);
@@ -107,41 +116,17 @@ export function App() {
     fetchProperties();
   }, []);
 
-  // Filter Handler
+  // Server-Authoritative Search Filter Handler (P2.1)
   const handleSearchFilters = (filters: SearchFilterState) => {
-    let result = [...properties];
-
-    if (filters.destination && filters.destination !== 'الكل') {
-      result = result.filter(
-        (p) =>
-          p.address.includes(filters.destination) ||
-          p.title.includes(filters.destination)
-      );
-    }
-
-    if (filters.unitType && filters.unitType !== 'ALL') {
-      result = result.filter(
-        (p) => (p.propertyType || p.unitType).toUpperCase() === filters.unitType.toUpperCase()
-      );
-    }
-
-    if (filters.totalGuests) {
-      result = result.filter((p) => p.maxGuests >= filters.totalGuests);
-    }
-
-    if (filters.maxPrice) {
-      result = result.filter((p) => (p.basePricePerNight || 0) <= filters.maxPrice);
-    }
-
-    setFilteredProperties(result);
+    void fetchProperties(filters);
   };
 
   const handleSelectDestinationChip = (dest: string) => {
     setActiveDestination(dest);
     if (dest === 'الكل') {
-      setFilteredProperties(properties);
+      void fetchProperties();
     } else {
-      setFilteredProperties(properties.filter((p) => p.address.includes(dest) || p.title.includes(dest)));
+      void fetchProperties({ destination: dest });
     }
   };
 

@@ -1,7 +1,7 @@
 # Current project state
 
 **Last updated:** 2026-09-03
-**Repository-state baseline:** P1.5 (booking + financial summary persistence integrity) is CLOSED and live-verified at `main`/`origin/main` `49fb158282ddc0963a29e2236d280dde82c5f197`; migration `026_atomic_booking_request_creation.sql` is applied live and the atomic booking-create RPC is verified service-role-only. P1.6 (wallet + immutable ledger persistence integrity) is the active candidate on `validation/p1-6-rc`; its migration `027_wallet_ledger_append_only.sql` remains REPOSITORY_ONLY_NOT_APPLIED_LIVE.
+**Repository-state baseline:** P1.6 (wallet + immutable ledger persistence integrity) is CLOSED and verified at `main`/`origin/main` `317b7c3071fdd167b3419e8fd1b7f96d08ba6427`. P2.1 (Public API Contract) is the active candidate on `validation/p2-1-rc`.
 
 ## Current status
 
@@ -47,4 +47,4 @@ Read [ARCHITECTURE.md](./ARCHITECTURE.md), [DATABASE.md](./DATABASE.md), and [BU
 
 ## Next work
 
-P1.6 (wallet + immutable ledger persistence integrity) is the active candidate on `validation/p1-6-rc`. Read `tasks/P1_6_WALLET_LEDGER_PERSISTENCE.md`. Its migration `027_wallet_ledger_append_only.sql` is NOT applied live; do not publish, merge, deploy, or perform live storage/schema/data operations without separate Founder approval.
+P2.1 (Public API Contract) candidate work is implemented on `validation/p2-1-rc`. Public property discovery and detail contracts enforce server-authoritative exploration, dedicated database reads, explicit DTO allowlists, fail-closed Worker boundary matching, and total privacy isolation. Candidate PR to `main` is prepared.

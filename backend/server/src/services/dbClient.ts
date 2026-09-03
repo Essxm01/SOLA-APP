@@ -139,6 +139,12 @@ const CANONICAL_OWNER_LIFETIME_LEDGER_SQL =
 const CANONICAL_OWNER_PAGINATED_LEDGER_SQL =
   'select id, owner_id as "ownerid", booking_id as "bookingid", payout_request_id as "payoutrequestid", dispute_id as "disputeid", transaction_type as type, amount, balance_after as "newbalance", idempotency_key as "idempotencykey", created_at as "createdat" from wallet_ledger_entries where owner_id = $1 order by created_at desc limit $2 offset $3';
 
+const CANONICAL_PUBLIC_PROPERTIES_LIST_SQL =
+  'select id, title, unit_type as "unittype", property_type as "propertytype", address, region, resort_name as "resortname", bedrooms, bathrooms, max_guests as "maxguests", base_price_per_night as "basepricepernight" from properties where deleted_at is null and status = \'published\' and verification_status = \'verified\' order by created_at desc';
+
+const CANONICAL_PUBLIC_PROPERTY_DETAIL_SQL =
+  'select id, title, unit_type as "unittype", property_type as "propertytype", address, region, resort_name as "resortname", bedrooms, bathrooms, beds_count as "bedscount", max_guests as "maxguests", area_sq_m as "areasqm", description, amenities, house_rules as "houserules", base_price_per_night as "basepricepernight" from properties where id = $1 and deleted_at is null and status = \'published\' and verification_status = \'verified\'';
+
 async function queryViaSupabaseRest(text: string, params: any[] | undefined, url: string, key: string): Promise<pg.QueryResult<any> | null> {
   const headers: Record<string, string> = {
     'apikey': key,
@@ -990,17 +996,69 @@ async function queryViaSupabaseRest(text: string, params: any[] | undefined, url
   }
 
   // 1P. SELECT public property inventory: only canonically published and verified.
-  if (lowerSql.startsWith('select') && lowerSql.includes('from properties') && lowerSql.includes("status = 'published'") && lowerSql.includes("verification_status = 'verified'")) {
-    const res = await fetch(`${url}/rest/v1/properties?deleted_at=is.null&status=eq.PUBLISHED&verification_status=eq.VERIFIED&order=created_at.desc`, { headers });
+  if (normalizedSql === CANONICAL_PUBLIC_PROPERTIES_LIST_SQL) {
+    const res = await fetch(
+      `${url}/rest/v1/properties?select=id,title,unit_type,property_type,address,region,resort_name,bedrooms,bathrooms,max_guests,base_price_per_night&deleted_at=is.null&status=eq.PUBLISHED&verification_status=eq.VERIFIED&order=created_at.desc`,
+      { headers }
+    );
     if (!res.ok) throw new Error(`REST_PUBLIC_PROPERTIES_SELECT_FAILED: HTTP ${res.status}`);
-    const rows: any[] = await res.json().catch(() => []);
+    const rows: any = await res.json().catch(() => null);
+    if (!Array.isArray(rows)) {
+      throw new Error('REST_PUBLIC_PROPERTIES_MALFORMED_RESPONSE: expected an array');
+    }
     const mapped = rows.map(p => ({
-      id: p.id, ownerId: p.owner_id, title: p.title, unitType: p.unit_type, propertyType: p.property_type,
-      address: p.address, bedrooms: p.bedrooms, bathrooms: p.bathrooms, maxGuests: p.max_guests,
-      pricePerNight: p.base_price_per_night, basePricePerNight: p.base_price_per_night,
-      description: p.description || null, region: p.region || null, resortName: p.resort_name || null,
-      areaSqM: p.area_sq_m || null, bedsCount: p.beds_count || null, amenities: p.amenities || [], houseRules: p.house_rules || {},
-      status: p.status, verificationStatus: p.verification_status, createdAt: p.created_at, updatedAt: p.updated_at,
+      id: p.id,
+      title: p.title,
+      unitType: p.unit_type,
+      propertyType: p.property_type ?? null,
+      address: p.address,
+      region: p.region ?? null,
+      resortName: p.resort_name ?? null,
+      bedrooms: p.bedrooms,
+      bathrooms: p.bathrooms,
+      maxGuests: p.max_guests,
+      basePricePerNight: p.base_price_per_night,
+      pricePerNight: p.base_price_per_night,
+    }));
+    return { rows: mapped, command: 'SELECT', rowCount: mapped.length, oid: 0, fields: [] };
+  }
+
+  // 1PD. SELECT public property detail: dedicated public read for verified & published property.
+  if (normalizedSql === CANONICAL_PUBLIC_PROPERTY_DETAIL_SQL) {
+    const propId = params?.[0];
+    const res = await fetch(
+      `${url}/rest/v1/properties?select=id,title,unit_type,property_type,address,region,resort_name,bedrooms,bathrooms,beds_count,max_guests,area_sq_m,description,amenities,house_rules,base_price_per_night&id=eq.${encodeURIComponent(propId)}&deleted_at=is.null&status=eq.PUBLISHED&verification_status=eq.VERIFIED`,
+      { headers }
+    );
+    if (!res.ok) throw new Error(`REST_PUBLIC_PROPERTY_DETAIL_FAILED: HTTP ${res.status}`);
+    const rows: any = await res.json().catch(() => null);
+    if (!Array.isArray(rows)) {
+      throw new Error('REST_PUBLIC_PROPERTY_DETAIL_MALFORMED_RESPONSE: expected an array');
+    }
+    if (rows.length > 1) {
+      throw new Error(`REST_PUBLIC_PROPERTY_DETAIL_MALFORMED_RESPONSE: expected 0 or 1 row, received ${rows.length}`);
+    }
+    if (rows.length === 1 && rows[0].id !== propId) {
+      throw new Error('REST_PUBLIC_PROPERTY_DETAIL_MALFORMED_RESPONSE: returned row id does not match requested id');
+    }
+    const mapped = rows.map(p => ({
+      id: p.id,
+      title: p.title,
+      unitType: p.unit_type,
+      propertyType: p.property_type ?? null,
+      address: p.address,
+      region: p.region ?? null,
+      resortName: p.resort_name ?? null,
+      bedrooms: p.bedrooms,
+      bathrooms: p.bathrooms,
+      bedsCount: p.beds_count ?? null,
+      maxGuests: p.max_guests,
+      areaSqM: p.area_sq_m ?? null,
+      description: p.description ?? null,
+      amenities: p.amenities ?? [],
+      houseRules: p.house_rules ?? {},
+      basePricePerNight: p.base_price_per_night,
+      pricePerNight: p.base_price_per_night,
     }));
     return { rows: mapped, command: 'SELECT', rowCount: mapped.length, oid: 0, fields: [] };
   }
@@ -1041,7 +1099,13 @@ async function queryViaSupabaseRest(text: string, params: any[] | undefined, url
   }
 
   // 1B. SELECT properties WHERE id = $1 (Single Property - Strict regex matching)
-  if (lowerSql.startsWith('select') && lowerSql.includes('from properties') && (/\b(p\.)?id\s*=\s*\$1\b/i.test(text)) && !(/\b(p\.)?owner_id\s*=\s*\$1\b/i.test(text))) {
+  if (
+    lowerSql.startsWith('select') &&
+    lowerSql.includes('from properties') &&
+    (/\b(p\.)?id\s*=\s*\$1\b/i.test(text)) &&
+    !(/\b(p\.)?owner_id\s*=\s*\$1\b/i.test(text)) &&
+    !(lowerSql.includes("status = 'published'") && lowerSql.includes("verification_status = 'verified'"))
+  ) {
     const propId = params?.[0];
     const res = await fetch(`${url}/rest/v1/properties?id=eq.${encodeURIComponent(propId)}&deleted_at=is.null`, { headers });
     if (!res.ok) {

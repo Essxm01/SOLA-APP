@@ -6,6 +6,7 @@
 
 import { queryDb } from './dbClient.js';
 import { GLOBAL_MIN_STAY_NIGHTS, GLOBAL_MAX_STAY_NIGHTS, BLOCKING_BOOKING_STATUSES } from '../constants/bookingRules.js';
+import { PublicPropertySearchFilters, validatePublicPropertyBaseRow } from '../contracts/publicProperty.js';
 
 // Helper to mask PII strings for admin queue outputs
 export function maskPii(val?: string, visibleLength = 4): string {
@@ -189,6 +190,20 @@ export const ownerDb = {
 // ----------------------------------------------------------------------------
 // 2. PROPERTIES REPOSITORY
 // ----------------------------------------------------------------------------
+const defaultGetAllForPublic = async function() {
+  const res = await queryDb(
+    `SELECT id, title, unit_type AS "unitType", property_type AS "propertyType",
+     address, region, resort_name AS "resortName", bedrooms, bathrooms,
+     max_guests AS "maxGuests", base_price_per_night AS "basePricePerNight"
+FROM properties
+WHERE deleted_at IS NULL
+  AND status = 'PUBLISHED'
+  AND verification_status = 'VERIFIED'
+ORDER BY created_at DESC`
+  );
+  return res.rows;
+};
+
 export const propertyDb = {
   async getByOwnerId(ownerId: string) {
     const res = await queryDb(
@@ -360,18 +375,86 @@ export const propertyDb = {
     }));
   },
 
-  async getAllForPublic() {
+  async searchPublic(filters?: PublicPropertySearchFilters) {
+    let rows: any[];
+    if (this.getAllForPublic !== defaultGetAllForPublic && typeof this.getAllForPublic === 'function') {
+      rows = await this.getAllForPublic();
+    } else {
+      rows = await defaultGetAllForPublic();
+    }
+    let mapped = rows.map((p: any) => {
+      const base = validatePublicPropertyBaseRow(p);
+      return {
+        ...p,
+        ...base,
+        pricePerNight: base.basePricePerNight,
+      };
+    });
+
+    if (!filters) {
+      return mapped;
+    }
+
+    if (filters.destination) {
+      const term = filters.destination.toLowerCase();
+      mapped = mapped.filter((p: any) => {
+        const title = (p.title || '').toLowerCase();
+        const address = (p.address || '').toLowerCase();
+        const region = (p.region || '').toLowerCase();
+        const resort = (p.resortName || '').toLowerCase();
+        return title.includes(term) || address.includes(term) || region.includes(term) || resort.includes(term);
+      });
+    }
+
+    if (filters.unitType) {
+      const targetType = filters.unitType.toUpperCase();
+      mapped = mapped.filter((p: any) => {
+        const type = (p.unitType || '').toUpperCase();
+        return type === targetType;
+      });
+    }
+
+    if (filters.guests !== undefined) {
+      const minGuests = filters.guests;
+      mapped = mapped.filter((p: any) => p.maxGuests >= minGuests);
+    }
+
+    if (filters.maxPrice !== undefined) {
+      const cap = filters.maxPrice;
+      mapped = mapped.filter((p: any) => p.basePricePerNight <= cap);
+    }
+
+    return mapped;
+  },
+
+  getAllForPublic: defaultGetAllForPublic,
+
+  async getPublicById(id: string) {
     const res = await queryDb(
-      `SELECT id, owner_id AS "ownerId", title, unit_type AS "unitType", property_type AS "propertyType",
-              address, bedrooms, bathrooms, max_guests AS "maxGuests", base_price_per_night AS "pricePerNight",
-              base_price_per_night AS "basePricePerNight", description, region, resort_name AS "resortName",
-              area_sq_m AS "areaSqM", beds_count AS "bedsCount", amenities, house_rules AS "houseRules",
-              status, verification_status AS "verificationStatus", created_at AS "createdAt", updated_at AS "updatedAt"
+      `SELECT id, title, unit_type AS "unitType", property_type AS "propertyType",
+       address, region, resort_name AS "resortName", bedrooms, bathrooms,
+       beds_count AS "bedsCount", max_guests AS "maxGuests", area_sq_m AS "areaSqM",
+       description, amenities, house_rules AS "houseRules",
+       base_price_per_night AS "basePricePerNight"
        FROM properties
-       WHERE deleted_at IS NULL AND status = 'PUBLISHED' AND verification_status = 'VERIFIED'
-       ORDER BY created_at DESC`
+       WHERE id = $1
+         AND deleted_at IS NULL
+         AND status = 'PUBLISHED'
+         AND verification_status = 'VERIFIED'`,
+      [id]
     );
-    return res.rows.map((p: any) => ({ ...p, pricePerNight: Number(p.pricePerNight), basePricePerNight: Number(p.basePricePerNight) }));
+    const row = res.rows[0];
+    if (!row) return null;
+    return {
+      ...row,
+      pricePerNight: Number(row.basePricePerNight),
+      basePricePerNight: Number(row.basePricePerNight),
+      bedrooms: Number(row.bedrooms),
+      bathrooms: Number(row.bathrooms),
+      bedsCount: row.bedsCount !== null && row.bedsCount !== undefined ? Number(row.bedsCount) : null,
+      maxGuests: Number(row.maxGuests),
+      areaSqM: row.areaSqM !== null && row.areaSqM !== undefined ? Number(row.areaSqM) : null,
+    };
   },
 
   async getPendingForAdmin() {

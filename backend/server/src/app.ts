@@ -16,6 +16,7 @@ import { userDb, ownerDb, propertyDb, bookingDb, conversationDb, messageDb, isBo
 import { paymentTxDb, PaymentService, PaymobGateway, verifyPaymobHmacSha512, getPaymentMode } from './services/paymentService.js';
 import { createStorageProvider, IObjectStorageProvider, verifyMagicBytes, computeSha256 } from './services/storageProvider.js';
 import { GLOBAL_MIN_STAY_NIGHTS, GLOBAL_MAX_STAY_NIGHTS, hasDateRangeOverlap, validateStayLength } from './constants/bookingRules.js';
+import { parsePublicPropertySearchFilters, toPublicPropertySearchItem, toPublicPropertyDetail, PublicPropertySearchFilters, extractPublicImageUrls } from './contracts/publicProperty.js';
 import type { ApiSuccessResponse, ApiErrorResponse } from './types/server';
 
 export interface RouteHandlerResult {
@@ -167,6 +168,16 @@ export class ExpressServerApp {
     searchParams?: URLSearchParams
   ): Promise<RouteHandlerResult> {
     const timestamp = new Date().toISOString();
+
+    let effectiveSearchParams = searchParams;
+    if (path.includes('?')) {
+      const qIndex = path.indexOf('?');
+      const queryString = path.slice(qIndex + 1);
+      path = path.slice(0, qIndex);
+      if (!effectiveSearchParams) {
+        effectiveSearchParams = new URLSearchParams(queryString);
+      }
+    }
 
     try {
       // Helper to format owner phone number
@@ -2951,11 +2962,25 @@ export class ExpressServerApp {
           };
         }
 
-        // 4.1 Property Search (PUBLISHED ONLY — PostgreSQL Driven — M03)
+        // 4.1 Property Search (Public Search / Explore — Server Authoritative — P2.1)
         if (path === '/api/v1/customer/properties/search' && method === 'GET') {
-          let realProps;
+          let filters: PublicPropertySearchFilters;
           try {
-            realProps = await propertyDb.getAllForPublic();
+            filters = parsePublicPropertySearchFilters(effectiveSearchParams);
+          } catch (err: any) {
+            return {
+              statusCode: 400,
+              body: {
+                success: false,
+                error: { code: 'INVALID_PUBLIC_SEARCH_FILTER', message: 'بيانات البحث غير صالحة. راجع الفلاتر وحاول مرة أخرى.' },
+                timestamp,
+              },
+            };
+          }
+
+          let realProps: any[];
+          try {
+            realProps = await propertyDb.searchPublic(filters);
           } catch {
             return {
               statusCode: 500,
@@ -2966,15 +2991,23 @@ export class ExpressServerApp {
               },
             };
           }
+
           let formatted: any[];
           try {
             formatted = await Promise.all(realProps.map(async (p: any) => {
               const images = await imageDb.getImagesByPropertyId(p.id);
-              const imageUrls = images.map((img: any) => img.fileUrl).filter(Boolean);
-              return { ...p, basePricePerNight: Number(p.basePricePerNight ?? p.pricePerNight), images: imageUrls };
+              const imageUrls = extractPublicImageUrls(images);
+              return toPublicPropertySearchItem(p, imageUrls);
             }));
           } catch {
-            return { statusCode: 500, body: { success: false, error: { code: 'PROPERTY_IMAGES_QUERY_FAILED', message: 'تعذر تحميل صور أماكن الإقامة.' }, timestamp } };
+            return {
+              statusCode: 500,
+              body: {
+                success: false,
+                error: { code: 'PROPERTY_IMAGES_QUERY_FAILED', message: 'تعذر تحميل صور أماكن الإقامة.' },
+                timestamp,
+              },
+            };
           }
 
           return {
@@ -3043,15 +3076,12 @@ export class ExpressServerApp {
           };
         }
 
-        // 4.2 Property Details (Public Details Only — PostgreSQL Driven)
+        // 4.2 Property Details (Public Details Only — P2.1)
         if (path.match(/^\/api\/v1\/customer\/properties\/[^\/]+$/) && method === 'GET') {
           const propertyId = path.split('/')[5];
           let prop: any;
           try {
-            prop = await propertyDb.getDetailForAdmin(propertyId);
-            if (!prop) {
-              prop = await propertyDb.getById(propertyId);
-            }
+            prop = await propertyDb.getPublicById(propertyId);
           } catch (err: any) {
             return {
               statusCode: 500,
@@ -3066,36 +3096,32 @@ export class ExpressServerApp {
             };
           }
 
-          if (prop.status !== 'PUBLISHED' || prop.verificationStatus !== 'VERIFIED') {
+          let imageUrls: string[];
+          try {
+            const images = await imageDb.getImagesByPropertyId(propertyId);
+            imageUrls = extractPublicImageUrls(images);
+          } catch {
             return {
-              statusCode: 403,
-              body: { success: false, error: { code: 'UNPUBLISHED_PROPERTY', message: 'هذه الوحدة غير معروضة للنشر حالياً' }, timestamp },
+              statusCode: 500,
+              body: { success: false, error: { code: 'PROPERTY_IMAGES_QUERY_FAILED', message: 'تعذر تحميل صور الوحدة.' }, timestamp },
             };
           }
 
-          const rawPrice = prop.basePricePerNight || prop.pricePerNight;
-          if (!rawPrice || isNaN(Number(rawPrice)) || Number(rawPrice) <= 0) {
+          let detail: any;
+          try {
+            detail = toPublicPropertyDetail(prop, imageUrls);
+          } catch {
             return {
-              statusCode: 400,
-              body: { success: false, error: { code: 'MISSING_PROPERTY_PRICE', message: 'سعر الليلة غير محدد لهذه الوحدة' }, timestamp },
+              statusCode: 500,
+              body: { success: false, error: { code: 'PROPERTY_QUERY_FAILED', message: 'فشل في معالجة بيانات الوحدة' }, timestamp },
             };
           }
-
-          let images: any[];
-          try { images = await imageDb.getImagesByPropertyId(propertyId); } catch { return { statusCode: 500, body: { success: false, error: { code: 'PROPERTY_IMAGES_QUERY_FAILED', message: 'تعذر تحميل صور الوحدة.' }, timestamp } }; }
-          const imageUrls = images.map((img: any) => img.fileUrl).filter(Boolean);
-          const propWithImages = {
-            ...prop,
-            basePricePerNight: Number(rawPrice),
-            images: imageUrls,
-          };
-          const sanitized = CustomerDomainController.sanitizePropertyForCustomer(propWithImages);
 
           return {
             statusCode: 200,
             body: {
               success: true,
-              data: sanitized,
+              data: detail,
               timestamp,
             },
           };

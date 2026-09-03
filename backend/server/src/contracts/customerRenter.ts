@@ -27,9 +27,20 @@ export interface CustomerBookingPropertyItem {
   address: string;
   region: string | null;
   resortName: string | null;
+  locationName: string | null;
   basePricePerNight: number;
   currency: 'EGP';
   images: string[];
+}
+
+export interface CustomerBookingDetailPropertyItem extends CustomerBookingPropertyItem {
+  description: string | null;
+  bedrooms: number;
+  bathrooms: number;
+  maxGuests: number;
+  pricePerNight: number;
+  amenities: string[];
+  houseRules: Record<string, any>;
 }
 
 export interface CustomerBookingListItem {
@@ -40,7 +51,7 @@ export interface CustomerBookingListItem {
   checkIn: string;
   checkOut: string;
   nights: number;
-  guests: number;
+  guestsCount: number;
   totalStay: number;
   depositAmount: number;
   remainingAmount: number;
@@ -49,7 +60,20 @@ export interface CustomerBookingListItem {
   property: CustomerBookingPropertyItem;
 }
 
-export interface CustomerBookingDetailDto extends CustomerBookingListItem {
+export interface CustomerBookingDetailDto {
+  id: string;
+  propertyId: string;
+  bookingNumber: string;
+  status: string;
+  checkIn: string;
+  checkOut: string;
+  nights: number;
+  guestsCount: number;
+  totalStay: number;
+  depositAmount: number;
+  remainingAmount: number;
+  currency: 'EGP';
+  createdAt: string;
   guestName: string | null;
   guestEmail: string | null;
   specialRequests: string | null;
@@ -57,7 +81,7 @@ export interface CustomerBookingDetailDto extends CustomerBookingListItem {
   cancelledAt: string | null;
   confirmedAt: string | null;
   completedAt: string | null;
-  property: PublicPropertyDetail | any;
+  property: CustomerBookingDetailPropertyItem;
 }
 
 export interface CustomerBookingCreateResponseDto {
@@ -68,21 +92,12 @@ export interface CustomerBookingCreateResponseDto {
   checkIn: string;
   checkOut: string;
   nights: number;
-  guests: number;
+  guestsCount: number;
   totalStay: number;
   depositAmount: number;
   remainingAmount: number;
   currency: 'EGP';
   createdAt: string;
-  financialSummary: {
-    totalBookingValue: number;
-    depositAmount: number;
-    depositPaymentStatus: string;
-    remainingBalance: number;
-    remainingBalancePaymentMethod: string;
-    remainingBalanceStatus: string;
-    currency: 'EGP';
-  };
 }
 
 export interface CustomerFavoriteRow {
@@ -209,22 +224,31 @@ function mapCustomerBookingProperty(prop: any): CustomerBookingPropertyItem {
 
   const id = requiredString(prop.id, 'CUSTOMER_BOOKING_PROPERTY_DATA', 'id');
   const title = requiredString(prop.title, 'CUSTOMER_BOOKING_PROPERTY_DATA', 'title');
-  const unitType = optionalString(prop.unitType ?? prop.unit_type, 'CUSTOMER_BOOKING_PROPERTY_DATA', 'unitType') || 'CHALET';
+  const unitType = requiredString(prop.unitType ?? prop.unit_type, 'CUSTOMER_BOOKING_PROPERTY_DATA', 'unitType');
   const propertyType = optionalString(prop.propertyType ?? prop.property_type, 'CUSTOMER_BOOKING_PROPERTY_DATA', 'propertyType');
   const address = requiredString(prop.address, 'CUSTOMER_BOOKING_PROPERTY_DATA', 'address');
   const region = optionalString(prop.region, 'CUSTOMER_BOOKING_PROPERTY_DATA', 'region');
   const resortName = optionalString(prop.resortName ?? prop.resort_name, 'CUSTOMER_BOOKING_PROPERTY_DATA', 'resortName');
+  const locationName = optionalString(prop.locationName ?? prop.location_name ?? prop.resortName ?? prop.resort_name, 'CUSTOMER_BOOKING_PROPERTY_DATA', 'locationName');
   const basePricePerNight = nonNegativeFinite(prop.basePricePerNight ?? prop.base_price_per_night ?? prop.pricePerNight, 'CUSTOMER_BOOKING_PROPERTY_DATA', 'basePricePerNight');
 
   let images: string[] = [];
-  if (Array.isArray(prop.images)) {
+  if (prop.images !== undefined && prop.images !== null) {
+    if (!Array.isArray(prop.images)) {
+      fail('CUSTOMER_BOOKING_PROPERTY_DATA', 'images must be an array');
+    }
     images = prop.images.map((img: any) => {
-      if (typeof img === 'string') return img;
-      if (img && typeof img === 'object' && typeof (img.fileUrl ?? img.file_url) === 'string') {
-        return (img.fileUrl ?? img.file_url);
+      if (typeof img === 'string') {
+        if (img.trim() === '') fail('CUSTOMER_BOOKING_PROPERTY_DATA', 'images must not contain empty strings');
+        return img.trim();
       }
-      return '';
-    }).filter((url: string) => url.trim() !== '');
+      if (img && typeof img === 'object' && typeof (img.fileUrl ?? img.file_url) === 'string') {
+        const url = (img.fileUrl ?? img.file_url).trim();
+        if (url === '') fail('CUSTOMER_BOOKING_PROPERTY_DATA', 'images must not contain empty url');
+        return url;
+      }
+      fail('CUSTOMER_BOOKING_PROPERTY_DATA', 'images must not contain malformed entries');
+    });
   }
 
   return {
@@ -235,9 +259,36 @@ function mapCustomerBookingProperty(prop: any): CustomerBookingPropertyItem {
     address,
     region,
     resortName,
+    locationName,
     basePricePerNight,
     currency: 'EGP',
     images,
+  };
+}
+
+function mapCustomerBookingDetailProperty(prop: any): CustomerBookingDetailPropertyItem {
+  const base = mapCustomerBookingProperty(prop);
+  const description = optionalString(prop.description, 'CUSTOMER_BOOKING_PROPERTY_DATA', 'description');
+  const bedrooms = nonNegativeInteger(prop.bedrooms ?? 0, 'CUSTOMER_BOOKING_PROPERTY_DATA', 'bedrooms');
+  const bathrooms = nonNegativeInteger(prop.bathrooms ?? 0, 'CUSTOMER_BOOKING_PROPERTY_DATA', 'bathrooms');
+  const maxGuests = positiveInteger(prop.maxGuests ?? prop.max_guests ?? 1, 'CUSTOMER_BOOKING_PROPERTY_DATA', 'maxGuests');
+  const pricePerNight = nonNegativeFinite(prop.pricePerNight ?? prop.price_per_night ?? prop.basePricePerNight ?? prop.base_price_per_night ?? base.basePricePerNight, 'CUSTOMER_BOOKING_PROPERTY_DATA', 'pricePerNight');
+  const amenities: string[] = Array.isArray(prop.amenities)
+    ? prop.amenities.filter((a: any) => typeof a === 'string')
+    : [];
+  const houseRules: Record<string, any> = (prop.houseRules && typeof prop.houseRules === 'object' && !Array.isArray(prop.houseRules))
+    ? prop.houseRules
+    : ((prop.house_rules && typeof prop.house_rules === 'object' && !Array.isArray(prop.house_rules)) ? prop.house_rules : {});
+
+  return {
+    ...base,
+    description,
+    bedrooms,
+    bathrooms,
+    maxGuests,
+    pricePerNight,
+    amenities,
+    houseRules,
   };
 }
 
@@ -253,8 +304,8 @@ export function toCustomerBookingListItem(raw: any): CustomerBookingListItem {
   const checkIn = requiredString(raw.checkIn ?? raw.check_in, 'CUSTOMER_BOOKING_DATA', 'checkIn');
   const checkOut = requiredString(raw.checkOut ?? raw.check_out, 'CUSTOMER_BOOKING_DATA', 'checkOut');
   const nights = positiveInteger(raw.nights, 'CUSTOMER_BOOKING_DATA', 'nights');
-  const guests = positiveInteger(raw.guests ?? raw.guestsCount ?? raw.totalGuests ?? raw.total_guests, 'CUSTOMER_BOOKING_DATA', 'guests');
-  const createdAt = validateIsoDate(raw.createdAt ?? raw.created_at ?? new Date().toISOString(), 'CUSTOMER_BOOKING_DATA', 'createdAt');
+  const guestsCount = positiveInteger(raw.guestsCount ?? raw.guests ?? raw.totalGuests ?? raw.total_guests, 'CUSTOMER_BOOKING_DATA', 'guestsCount');
+  const createdAt = validateIsoDate(raw.createdAt ?? raw.created_at, 'CUSTOMER_BOOKING_DATA', 'createdAt');
 
   const fin = raw.financialSummary ?? raw;
   const totalStay = nonNegativeFinite(fin.totalBookingValue ?? fin.totalStay, 'CUSTOMER_BOOKING_DATA', 'totalStay');
@@ -271,7 +322,7 @@ export function toCustomerBookingListItem(raw: any): CustomerBookingListItem {
     checkIn,
     checkOut,
     nights,
-    guests,
+    guestsCount,
     totalStay,
     depositAmount,
     remainingAmount,
@@ -282,7 +333,24 @@ export function toCustomerBookingListItem(raw: any): CustomerBookingListItem {
 }
 
 export function toCustomerBookingDetailDto(raw: any): CustomerBookingDetailDto {
-  const base = toCustomerBookingListItem(raw);
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    fail('CUSTOMER_BOOKING_DATA', 'raw must be an object');
+  }
+
+  const id = requiredString(raw.id, 'CUSTOMER_BOOKING_DATA', 'id');
+  const propertyId = requiredString(raw.propertyId ?? raw.property_id, 'CUSTOMER_BOOKING_DATA', 'propertyId');
+  const bookingNumber = requiredString(raw.bookingNumber ?? raw.booking_number, 'CUSTOMER_BOOKING_DATA', 'bookingNumber');
+  const status = requiredString(raw.status, 'CUSTOMER_BOOKING_DATA', 'status');
+  const checkIn = requiredString(raw.checkIn ?? raw.check_in, 'CUSTOMER_BOOKING_DATA', 'checkIn');
+  const checkOut = requiredString(raw.checkOut ?? raw.check_out, 'CUSTOMER_BOOKING_DATA', 'checkOut');
+  const nights = positiveInteger(raw.nights, 'CUSTOMER_BOOKING_DATA', 'nights');
+  const guestsCount = positiveInteger(raw.guestsCount ?? raw.guests ?? raw.totalGuests ?? raw.total_guests, 'CUSTOMER_BOOKING_DATA', 'guestsCount');
+  const createdAt = validateIsoDate(raw.createdAt ?? raw.created_at, 'CUSTOMER_BOOKING_DATA', 'createdAt');
+
+  const fin = raw.financialSummary ?? raw;
+  const totalStay = nonNegativeFinite(fin.totalBookingValue ?? fin.totalStay, 'CUSTOMER_BOOKING_DATA', 'totalStay');
+  const depositAmount = nonNegativeFinite(fin.depositAmount, 'CUSTOMER_BOOKING_DATA', 'depositAmount');
+  const remainingAmount = nonNegativeFinite(fin.remainingBalance ?? fin.remainingAmount, 'CUSTOMER_BOOKING_DATA', 'remainingAmount');
 
   const guestName = optionalString(raw.guestName ?? raw.guest_name, 'CUSTOMER_BOOKING_DATA', 'guestName');
   const guestEmail = optionalString(raw.guestEmail ?? raw.guest_email, 'CUSTOMER_BOOKING_DATA', 'guestEmail');
@@ -292,8 +360,22 @@ export function toCustomerBookingDetailDto(raw: any): CustomerBookingDetailDto {
   const confirmedAt = optionalIsoDate(raw.confirmedAt ?? raw.confirmed_at, 'CUSTOMER_BOOKING_DATA', 'confirmedAt');
   const completedAt = optionalIsoDate(raw.completedAt ?? raw.completed_at, 'CUSTOMER_BOOKING_DATA', 'completedAt');
 
+  const property = mapCustomerBookingDetailProperty(raw.property);
+
   return {
-    ...base,
+    id,
+    propertyId,
+    bookingNumber,
+    status,
+    checkIn,
+    checkOut,
+    nights,
+    guestsCount,
+    totalStay,
+    depositAmount,
+    remainingAmount,
+    currency: 'EGP',
+    createdAt,
     guestName,
     guestEmail,
     specialRequests,
@@ -301,6 +383,7 @@ export function toCustomerBookingDetailDto(raw: any): CustomerBookingDetailDto {
     cancelledAt,
     confirmedAt,
     completedAt,
+    property,
   };
 }
 
@@ -316,8 +399,8 @@ export function toCustomerBookingCreateResponseDto(raw: any): CustomerBookingCre
   const checkIn = requiredString(raw.checkIn ?? raw.check_in, 'CUSTOMER_BOOKING_DATA', 'checkIn');
   const checkOut = requiredString(raw.checkOut ?? raw.check_out, 'CUSTOMER_BOOKING_DATA', 'checkOut');
   const nights = positiveInteger(raw.nights, 'CUSTOMER_BOOKING_DATA', 'nights');
-  const guests = positiveInteger(raw.guests ?? raw.guestsCount ?? raw.totalGuests ?? raw.total_guests, 'CUSTOMER_BOOKING_DATA', 'guests');
-  const createdAt = validateIsoDate(raw.createdAt ?? raw.created_at ?? new Date().toISOString(), 'CUSTOMER_BOOKING_DATA', 'createdAt');
+  const guestsCount = positiveInteger(raw.guestsCount ?? raw.guests ?? raw.totalGuests ?? raw.total_guests, 'CUSTOMER_BOOKING_DATA', 'guestsCount');
+  const createdAt = validateIsoDate(raw.createdAt ?? raw.created_at, 'CUSTOMER_BOOKING_DATA', 'createdAt');
 
   const fin = raw.financialSummary ?? raw;
   const totalStay = nonNegativeFinite(fin.totalBookingValue ?? fin.totalStay, 'CUSTOMER_BOOKING_DATA', 'totalStay');
@@ -332,21 +415,12 @@ export function toCustomerBookingCreateResponseDto(raw: any): CustomerBookingCre
     checkIn,
     checkOut,
     nights,
-    guests,
+    guestsCount,
     totalStay,
     depositAmount,
     remainingAmount,
     currency: 'EGP',
     createdAt,
-    financialSummary: {
-      totalBookingValue: totalStay,
-      depositAmount,
-      depositPaymentStatus: 'NOT_DUE',
-      remainingBalance: remainingAmount,
-      remainingBalancePaymentMethod: 'CASH_ON_ARRIVAL',
-      remainingBalanceStatus: 'NOT_DUE',
-      currency: 'EGP',
-    },
   };
 }
 

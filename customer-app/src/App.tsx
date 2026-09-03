@@ -68,6 +68,7 @@ export function App() {
   const [favoriteProperties, setFavoriteProperties] = useState<CustomerPropertyItem[]>([]);
   const [favoritesLoadState, setFavoritesLoadState] = useState<FavoritesLoadState>('UNAUTHORIZED');
   const [favoritesError, setFavoritesError] = useState<string | null>(null);
+  const [favoritesActionError, setFavoritesActionError] = useState<string | null>(null);
   const [favoriteInFlightIds, setFavoriteInFlightIds] = useState<Set<string>>(new Set());
   const favorites = favoriteProperties.map((p) => p.id);
   const [propertyLoadState, setPropertyLoadState] = useState<'LOADING' | 'SUCCESS' | 'ERROR'>('LOADING');
@@ -158,8 +159,14 @@ export function App() {
         const canonicalProfile = mergeCustomerProfile(json.data);
         setUserProfile(canonicalProfile as any);
         localStorage.setItem('sola_customer_profile', JSON.stringify(canonicalProfile));
+      } else {
+        setUserProfile(null);
+        localStorage.removeItem('sola_customer_profile');
       }
-    } catch {}
+    } catch {
+      setUserProfile(null);
+      localStorage.removeItem('sola_customer_profile');
+    }
   };
 
   // Fetch Real Account Hub Summary Metrics (P2.2)
@@ -171,6 +178,7 @@ export function App() {
       const data = await fetchCustomerAccountSummary(t);
       setAccountSummary(data);
     } catch {
+      setAccountSummary(null);
       setAccountSummaryError('تعذر تحميل ملخص الحساب');
     }
   };
@@ -362,6 +370,7 @@ export function App() {
     if (favoriteInFlightIds.has(id)) return;
 
     setFavoriteInFlightIds((prev) => new Set(prev).add(id));
+    setFavoritesActionError(null);
     const isFav = favoriteProperties.some((p) => p.id === id);
 
     try {
@@ -374,7 +383,8 @@ export function App() {
         setFavoriteProperties(fresh as any);
       }
     } catch {
-      // Error leaves heart state untouched truthfully
+      // Error leaves heart state untouched truthfully and reveals retryable error
+      setFavoritesActionError('تعذر تحديث المفضلة حالياً. يُرجى المحاولة مرة أخرى.');
     } finally {
       setFavoriteInFlightIds((prev) => {
         const next = new Set(prev);
@@ -401,12 +411,16 @@ export function App() {
     setCustomerPhone(phone);
 
     if (user) {
-      const canonicalProfile = mergeCustomerProfile(user);
-      setUserProfile(canonicalProfile as any);
-      localStorage.setItem('sola_customer_profile', JSON.stringify(canonicalProfile));
-    } else {
-      fetchCustomerProfile(token);
+      try {
+        const canonicalProfile = mergeCustomerProfile(user);
+        setUserProfile(canonicalProfile as any);
+        localStorage.setItem('sola_customer_profile', JSON.stringify(canonicalProfile));
+      } catch {
+        setUserProfile(null);
+      }
     }
+    // Always confirm canonical profile from server
+    fetchCustomerProfile(token);
     fetchAccountSummary(token);
     void fetchBookings(token).catch(() => undefined);
 
@@ -534,6 +548,17 @@ export function App() {
 
             {/* Main Container — Max Mobile Width */}
             <main className="flex-1 w-full px-4 pt-3 pb-20">
+              {favoritesActionError && (
+                <div className="mb-3 p-3 bg-rose-50 border border-rose-200 text-rose-800 rounded-2xl text-xs font-bold flex items-center justify-between shadow-xs">
+                  <span>{favoritesActionError}</span>
+                  <button
+                    onClick={() => setFavoritesActionError(null)}
+                    className="text-rose-500 hover:text-rose-700 font-black mr-2 cursor-pointer"
+                  >
+                    ✕
+                  </button>
+                </div>
+              )}
         {/* Tab 1: EXPLORE */}
         {activeTab === 'EXPLORE' && (
           <div>
@@ -592,7 +617,7 @@ export function App() {
         {activeTab === 'FAVORITES' && (
           <div className="my-4">
             <h2 className="text-base font-black text-slate-900 mb-3">
-              الوحدات المفضلة ({favoritesLoadState === 'SUCCESS' ? favoriteProperties.length : 0})
+              الوحدات المفضلة{favoritesLoadState === 'SUCCESS' ? ` (${favoriteProperties.length})` : ''}
             </h2>
 
             {favoritesLoadState === 'UNAUTHORIZED' ? (

@@ -95,7 +95,18 @@ async function run() {
   // 7A. fetchCustomerFavorites success
   const favList = await fetchCustomerFavorites(
     testAuthToken,
-    async () => jsonResponse({ success: true, data: [{ id: favPropId, title: 'شاليه مراسي' }] }),
+    async () => jsonResponse({
+      success: true,
+      data: [{
+        id: favPropId,
+        title: 'شاليه مراسي',
+        unitType: 'CHALET',
+        address: 'مراسي',
+        basePricePerNight: 6000,
+        currency: 'EGP',
+        images: ['https://storage.sola.eg/p1.jpg'],
+      }],
+    }),
     testUrl
   );
   assert(favList.length === 1 && favList[0].id === favPropId, 'fetchCustomerFavorites returns canonical favorites');
@@ -136,17 +147,88 @@ async function run() {
   );
   assert(removeFavResult.propertyId === favPropId && removeFavResult.isFavorite === false, 'removeCustomerFavorite returns confirmed isFavorite: false');
 
+  // F8: add/remove mismatched propertyId rejects
+  let addMismatchThrew = false;
+  try {
+    await addCustomerFavorite(
+      testAuthToken,
+      favPropId,
+      async () => jsonResponse({ success: true, data: { propertyId: 'mismatched-uuid', isFavorite: true } }),
+      testUrl
+    );
+  } catch {
+    addMismatchThrew = true;
+  }
+  assert(addMismatchThrew, 'addCustomerFavorite must throw when response propertyId mismatches requested propertyId');
+
+  let removeMismatchThrew = false;
+  try {
+    await removeCustomerFavorite(
+      testAuthToken,
+      favPropId,
+      async () => jsonResponse({ success: true, data: { propertyId: 'mismatched-uuid', isFavorite: false } }),
+      testUrl
+    );
+  } catch {
+    removeMismatchThrew = true;
+  }
+  assert(removeMismatchThrew, 'removeCustomerFavorite must throw when response propertyId mismatches requested propertyId');
+
+  // F8: malformed Favorite item makes list helper reject
+  let malformedFavThrew = false;
+  try {
+    await fetchCustomerFavorites(
+      testAuthToken,
+      async () => jsonResponse({
+        success: true,
+        data: [{ id: 'not-a-valid-uuid', title: 'test', unitType: 'CHALET', address: 'addr', basePricePerNight: 1000, currency: 'EGP', images: [] }],
+      }),
+      testUrl
+    );
+  } catch {
+    malformedFavThrew = true;
+  }
+  assert(malformedFavThrew, 'fetchCustomerFavorites must reject if item has invalid UUID');
+
+  let wrongCurrencyFavThrew = false;
+  try {
+    await fetchCustomerFavorites(
+      testAuthToken,
+      async () => jsonResponse({
+        success: true,
+        data: [{ id: favPropId, title: 'test', unitType: 'CHALET', address: 'addr', basePricePerNight: 1000, currency: 'USD', images: [] }],
+      }),
+      testUrl
+    );
+  } catch {
+    wrongCurrencyFavThrew = true;
+  }
+  assert(wrongCurrencyFavThrew, 'fetchCustomerFavorites must reject if item currency is not strictly EGP');
+
   // 7F. mergeCustomerProfile: canonical null fields must NOT be resurrected from stale cached values
   const canonicalNullNameProfile = {
-    id: 'c-1',
+    id: '00000000-0000-4000-8000-000000000001',
     phoneNumber: '+201000000001',
     fullName: null,
     email: null,
     status: 'ACTIVE',
+    phoneVerifiedAt: null,
+    createdAt: '2026-09-01T00:00:00.000Z',
+    updatedAt: '2026-09-02T00:00:00.000Z',
   };
   const merged = mergeCustomerProfile(canonicalNullNameProfile);
   assert(merged.fullName === null, 'canonical null fullName must remain null, never resurrected');
   assert(merged.email === null, 'canonical null email must remain null, never resurrected');
+  assert(merged.phoneVerifiedAt === null, 'canonical null phoneVerifiedAt must remain null');
+
+  // F8: mergeCustomerProfile fails closed if required canonical fields (like status) are missing
+  let profileMissingStatusThrew = false;
+  try {
+    mergeCustomerProfile({ ...canonicalNullNameProfile, status: undefined as any });
+  } catch {
+    profileMissingStatusThrew = true;
+  }
+  assert(profileMissingStatusThrew, 'mergeCustomerProfile must not invent ACTIVE or default status');
 
   // 7G. fetchCustomerAccountSummary: failed fetch throws truthful error and does not return zeros
   let summaryThrew = false;
@@ -156,6 +238,19 @@ async function run() {
     summaryThrew = true;
   }
   assert(summaryThrew, 'fetchCustomerAccountSummary must throw on HTTP failure instead of faking zero summary');
+
+  // F8: fetchCustomerAccountSummary rejects malformed payload
+  let malformedSummaryThrew = false;
+  try {
+    await fetchCustomerAccountSummary(
+      testAuthToken,
+      async () => jsonResponse({ success: true, data: { confirmedBookingsCount: 'bad' } }),
+      testUrl
+    );
+  } catch {
+    malformedSummaryThrew = true;
+  }
+  assert(malformedSummaryThrew, 'fetchCustomerAccountSummary must throw on malformed data payload');
 
   console.log('CUSTOMER-TRUTHFUL-STATE-01 focused client state tests passed');
 }

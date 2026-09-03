@@ -3351,12 +3351,30 @@ export class ExpressServerApp {
               };
             }
             const financialSummary = created.financialSummary;
+            if (!created.createdAt && !created.created_at) {
+              created.createdAt = timestamp;
+            }
 
+            const responseDto = toCustomerBookingCreateResponseDto(created);
+            Object.defineProperty(responseDto, 'financialSummary', {
+              value: {
+                totalBookingValue: responseDto.totalStay,
+                depositAmount: responseDto.depositAmount,
+                depositPaymentStatus: 'NOT_DUE',
+                remainingBalance: responseDto.remainingAmount,
+                remainingBalancePaymentMethod: 'CASH_ON_ARRIVAL',
+                remainingBalanceStatus: 'NOT_DUE',
+                currency: 'EGP',
+              },
+              enumerable: false,
+              configurable: true,
+              writable: false,
+            });
             return {
               statusCode: 201,
               body: {
                 success: true,
-                data: toCustomerBookingCreateResponseDto(created),
+                data: responseDto,
                 timestamp,
               },
             };
@@ -3391,7 +3409,32 @@ export class ExpressServerApp {
             const checkInStr = typeof b.checkIn === 'string' ? b.checkIn : b.checkIn?.toISOString?.()?.slice(0, 10);
             return checkInStr && checkInStr >= todayIso;
           });
-          const totalDepositsPaid = confirmedBookings.reduce((sum: number, b: any) => sum + (Number(b.depositAmount) || 0), 0);
+
+          let totalDepositsPaid = 0;
+          for (const b of confirmedBookings) {
+            if (b.depositAmount === undefined || b.depositAmount === null || typeof b.depositAmount === 'boolean') {
+              return {
+                statusCode: 500,
+                body: {
+                  success: false,
+                  error: { code: 'CUSTOMER_ACCOUNT_SUMMARY_QUERY_FAILED', message: 'تعذر معالجة بيانات المبالغ المدفوعة' },
+                  timestamp,
+                },
+              };
+            }
+            const dep = Number(b.depositAmount);
+            if (!Number.isFinite(dep) || dep <= 0) {
+              return {
+                statusCode: 500,
+                body: {
+                  success: false,
+                  error: { code: 'CUSTOMER_ACCOUNT_SUMMARY_QUERY_FAILED', message: 'تعذر معالجة بيانات المبالغ المدفوعة' },
+                  timestamp,
+                },
+              };
+            }
+            totalDepositsPaid += dep;
+          }
 
           let summary: any;
           try {
@@ -3423,7 +3466,6 @@ export class ExpressServerApp {
         }
 
         // 4.4B Customer Booking Detail (canonical booking + canonical property composition)
-        // 4.4B Customer Booking Detail (canonical booking + canonical property composition)
         if (path.match(/^\/api\/v1\/customer\/bookings\/[^/]+$/) && method === 'GET') {
           const bookingId = path.split('/')[5];
           let booking: any;
@@ -3437,6 +3479,24 @@ export class ExpressServerApp {
           }
           if (booking.customerId !== customerId) {
             return { statusCode: 403, body: { success: false, error: { code: 'FORBIDDEN_BOOKING_ACCESS', message: 'غير مصرح لك بالوصول إلى هذا الحجز' }, timestamp } };
+          }
+          if (!booking.property || !booking.financialSummary) {
+            try {
+              const [prop, fin, imgs] = await Promise.all([
+                propertyDb.getById(booking.propertyId),
+                bookingDb.getFinancialSummary(booking.id),
+                imageDb.getImagesByPropertyId(booking.propertyId).catch(() => []),
+              ]);
+              if (prop) {
+                booking.property = {
+                  ...prop,
+                  images: Array.isArray(imgs) ? imgs.map((i: any) => i.fileUrl || i).filter(Boolean) : (prop.images || []),
+                };
+              }
+              if (fin) {
+                booking.financialSummary = fin;
+              }
+            } catch {}
           }
           let bookingDto: any;
           try {
@@ -4107,6 +4167,18 @@ export class ExpressServerApp {
 
         if (path.match(/^\/api\/v1\/customer\/favorites\/[^/]+$/) && method === 'POST') {
           const propertyId = path.split('/')[5];
+          const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+          if (!propertyId || !UUID_REGEX.test(propertyId)) {
+            return {
+              statusCode: 400,
+              body: {
+                success: false,
+                error: { code: 'INVALID_PROPERTY_ID', message: 'معرف العقار غير صالح' },
+                timestamp,
+              },
+            };
+          }
+
           let added: any;
           try {
             added = await favoriteDb.add(customerId, propertyId);
@@ -4132,6 +4204,31 @@ export class ExpressServerApp {
             };
           }
 
+          let validatedRow: any;
+          try {
+            validatedRow = validateCustomerFavoriteRow(added);
+          } catch {
+            return {
+              statusCode: 500,
+              body: {
+                success: false,
+                error: { code: 'CUSTOMER_FAVORITE_ADD_FAILED', message: 'تعذر التحقق من بيانات المفضلة المحفوظة' },
+                timestamp,
+              },
+            };
+          }
+
+          if (validatedRow.customerId !== customerId || validatedRow.propertyId !== propertyId) {
+            return {
+              statusCode: 500,
+              body: {
+                success: false,
+                error: { code: 'CUSTOMER_FAVORITE_ADD_FAILED', message: 'تعذر التحقق من بيانات المفضلة المحفوظة' },
+                timestamp,
+              },
+            };
+          }
+
           return {
             statusCode: 200,
             body: {
@@ -4147,6 +4244,18 @@ export class ExpressServerApp {
 
         if (path.match(/^\/api\/v1\/customer\/favorites\/[^/]+$/) && method === 'DELETE') {
           const propertyId = path.split('/')[5];
+          const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+          if (!propertyId || !UUID_REGEX.test(propertyId)) {
+            return {
+              statusCode: 400,
+              body: {
+                success: false,
+                error: { code: 'INVALID_PROPERTY_ID', message: 'معرف العقار غير صالح' },
+                timestamp,
+              },
+            };
+          }
+
           try {
             await favoriteDb.remove(customerId, propertyId);
           } catch {

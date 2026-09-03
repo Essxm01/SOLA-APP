@@ -24,10 +24,16 @@ RETURNS TABLE (
   "propertyId" UUID,
   "createdAt" TIMESTAMPTZ
 )
-LANGUAGE sql
+LANGUAGE plpgsql
 SECURITY INVOKER
 SET search_path = public, pg_temp
 AS $$
+DECLARE
+  v_customer_id UUID;
+  v_property_id UUID;
+  v_created_at TIMESTAMPTZ;
+BEGIN
+  -- Attempt atomic insert if property is currently published, verified, and not deleted
   INSERT INTO public.customer_favorites (customer_id, property_id)
   SELECT p_customer_id, p_property_id
   FROM public.properties
@@ -35,9 +41,27 @@ AS $$
     AND deleted_at IS NULL
     AND status = 'PUBLISHED'
     AND verification_status = 'VERIFIED'
-  ON CONFLICT (customer_id, property_id)
-  DO UPDATE SET created_at = customer_favorites.created_at
-  RETURNING customer_id AS "customerId", property_id AS "propertyId", created_at AS "createdAt";
+  ON CONFLICT (customer_id, property_id) DO NOTHING
+  RETURNING customer_id, property_id, created_at
+  INTO v_customer_id, v_property_id, v_created_at;
+
+  -- If a new row was inserted, return it
+  IF v_customer_id IS NOT NULL THEN
+    RETURN QUERY SELECT v_customer_id, v_property_id, v_created_at;
+    RETURN;
+  END IF;
+
+  -- Duplicate idempotency path: return existing favorite ONLY if target property is still public
+  RETURN QUERY
+  SELECT cf.customer_id AS "customerId", cf.property_id AS "propertyId", cf.created_at AS "createdAt"
+  FROM public.customer_favorites cf
+  JOIN public.properties p ON p.id = cf.property_id
+  WHERE cf.customer_id = p_customer_id
+    AND cf.property_id = p_property_id
+    AND p.deleted_at IS NULL
+    AND p.status = 'PUBLISHED'
+    AND p.verification_status = 'VERIFIED';
+END;
 $$;
 
 REVOKE ALL ON FUNCTION public.konfrm_add_customer_favorite(UUID, UUID)

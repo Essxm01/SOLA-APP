@@ -150,7 +150,7 @@ assert.equal(listItem.depositAmount, 6000);
 assert.equal(listItem.remainingAmount, 6000);
 assert.equal(listItem.currency, 'EGP');
 assert.equal(listItem.nights, 2);
-assert.equal(listItem.guests, 3);
+assert.equal(listItem.guestsCount, 3);
 assert.equal(listItem.bookingNumber, 'BKG-2026-001');
 
 // Fail closed on malformed booking numbers or financial summary
@@ -163,6 +163,41 @@ assert.throws(
   /MALFORMED_CUSTOMER_BOOKING_DATA/
 );
 
+// F4: Fail closed on missing unitType (no CHALET default)
+assert.throws(
+  () => toCustomerBookingListItem({ ...poisonedBooking, property: { ...poisonedBooking.property, unitType: undefined as any } }),
+  /CUSTOMER_BOOKING_PROPERTY_DATA/
+);
+assert.throws(
+  () => toCustomerBookingListItem({ ...poisonedBooking, property: { ...poisonedBooking.property, unitType: '' } }),
+  /CUSTOMER_BOOKING_PROPERTY_DATA/
+);
+
+// F4: Fail closed on missing createdAt (no generated timestamp)
+assert.throws(
+  () => toCustomerBookingListItem({ ...poisonedBooking, createdAt: undefined as any }),
+  /CUSTOMER_BOOKING_DATA/
+);
+
+// F4: Fail closed on malformed image elements (no silent drop)
+assert.throws(
+  () => toCustomerBookingListItem({ ...poisonedBooking, property: { ...poisonedBooking.property, images: [''] } }),
+  /CUSTOMER_BOOKING_PROPERTY_DATA/
+);
+assert.throws(
+  () => toCustomerBookingListItem({ ...poisonedBooking, property: { ...poisonedBooking.property, images: ['   '] } }),
+  /CUSTOMER_BOOKING_PROPERTY_DATA/
+);
+assert.throws(
+  () => toCustomerBookingListItem({ ...poisonedBooking, property: { ...poisonedBooking.property, images: [123 as any] } }),
+  /CUSTOMER_BOOKING_PROPERTY_DATA/
+);
+
+// F5: Booking list item uses guestsCount and includes locationName
+assert.equal(listItem.guestsCount, 3, 'listItem must expose guestsCount');
+assert.equal('guests' in listItem, false, 'listItem must not expose legacy guests');
+assert.equal(listItem.property.locationName, 'مراسي', 'listItem.property must include locationName');
+
 // 1D. CustomerBookingDetailDto tests
 const detailItem = toCustomerBookingDetailDto(poisonedBooking);
 for (const forbidden of [
@@ -171,6 +206,7 @@ for (const forbidden of [
   'payoutId', 'walletId', 'ledgerId',
 ]) {
   assert.equal(forbidden in (detailItem as any), false, `${forbidden} must not leak in detailItem`);
+  assert.equal(forbidden in (detailItem.property as any), false, `${forbidden} must not leak in detailItem.property`);
 }
 assert.equal(detailItem.totalStay, 12000);
 assert.equal(detailItem.depositAmount, 6000);
@@ -178,23 +214,34 @@ assert.equal(detailItem.remainingAmount, 6000);
 assert.equal(detailItem.currency, 'EGP');
 assert.equal(detailItem.guestName, 'ضيف اختبار');
 assert.equal(detailItem.guestEmail, 'guest@example.com');
+assert.equal(detailItem.guestsCount, 3, 'detailItem must expose guestsCount');
+assert.equal('guests' in detailItem, false, 'detailItem must not expose legacy guests');
+
+// F5: Detail property explicitly contains safe detail fields needed by BookingDetailModal
+assert.equal(detailItem.property.description, null);
+assert.equal(detailItem.property.bedrooms, 2);
+assert.equal(detailItem.property.bathrooms, 2);
+assert.equal(detailItem.property.maxGuests, 4);
+assert.equal(detailItem.property.pricePerNight, 6000);
+assert.deepEqual(detailItem.property.amenities, []);
+assert.deepEqual(detailItem.property.houseRules, {});
 
 // 1E. CustomerBookingCreateResponseDto tests
 const createResponseDto = toCustomerBookingCreateResponseDto(poisonedBooking);
 for (const forbidden of [
-  'ownerId', 'customerId', 'guestPhone',
+  'ownerId', 'customerId', 'guestPhone', 'financialSummary',
   'solaCommissionAmount', 'ownerNetDepositAmount', 'commissionOnRemainingBalance', 'ownerPayoutStatus',
   'payoutId', 'walletId', 'ledgerId',
 ]) {
   assert.equal(forbidden in (createResponseDto as any), false, `${forbidden} must not leak in createResponseDto`);
-  assert.equal(forbidden in (createResponseDto.financialSummary as any), false, `${forbidden} must not leak in createResponseDto.financialSummary`);
 }
 assert.equal(createResponseDto.totalStay, 12000);
 assert.equal(createResponseDto.depositAmount, 6000);
 assert.equal(createResponseDto.remainingAmount, 6000);
 assert.equal(createResponseDto.currency, 'EGP');
-assert.equal(createResponseDto.financialSummary.depositAmount, 6000);
-assert.equal(createResponseDto.financialSummary.totalBookingValue, 12000);
+assert.equal(createResponseDto.guestsCount, 3, 'createResponseDto must expose guestsCount');
+assert.equal('guests' in createResponseDto, false, 'createResponseDto must not expose legacy guests');
+assert.equal('financialSummary' in createResponseDto, false, 'createResponseDto must not expose nested financialSummary');
 
 // 1F. validateCustomerFavoriteRow tests
 const validFav = {
@@ -375,6 +422,8 @@ assert.match(sql, /PRIMARY KEY\s*\(\s*customer_id\s*,\s*property_id\s*\)/i);
 assert.match(sql, /CREATE INDEX customer_favorites_customer_created_idx\s+ON public\.customer_favorites\s*\(\s*customer_id\s*,\s*created_at DESC\s*\)/i);
 assert.match(sql, /ALTER TABLE public\.customer_favorites ENABLE ROW LEVEL SECURITY/i);
 assert.match(sql, /REVOKE ALL ON TABLE public\.customer_favorites FROM PUBLIC,\s*anon,\s*authenticated/i);
+// F1: Table ACL has no service-role UPDATE grant
+assert.doesNotMatch(sql, /GRANT\s+[^;]*UPDATE[^;]*\s+TO\s+service_role/i, 'Table ACL must NOT grant UPDATE to service_role');
 assert.match(sql, /GRANT SELECT,\s*INSERT,\s*DELETE ON TABLE public\.customer_favorites TO service_role/i);
 
 // 4B. RPC Security & Isolation assertions
@@ -385,7 +434,9 @@ assert.match(sql, /SET search_path = public,\s*pg_temp/i, 'search_path must be p
 assert.match(sql, /status\s*=\s*'PUBLISHED'/i, 'Must check status = PUBLISHED');
 assert.match(sql, /verification_status\s*=\s*'VERIFIED'/i, 'Must check verification_status = VERIFIED');
 assert.match(sql, /deleted_at IS NULL/i, 'Must check deleted_at IS NULL');
-assert.match(sql, /ON CONFLICT\s*\(\s*customer_id\s*,\s*property_id\s*\)\s*DO UPDATE SET created_at\s*=/i, 'Must be idempotent on conflict');
+// F1: RPC duplicate strategy contains NO DO UPDATE, uses ON CONFLICT DO NOTHING
+assert.doesNotMatch(sql, /DO\s+UPDATE/i, 'RPC duplicate strategy must NOT contain DO UPDATE');
+assert.match(sql, /ON CONFLICT\s*\(\s*customer_id\s*,\s*property_id\s*\)\s*DO NOTHING/i, 'RPC must use ON CONFLICT DO NOTHING');
 assert.match(sql, /REVOKE ALL ON FUNCTION public\.konfrm_add_customer_favorite/i, 'Must revoke execute from public/anon/authenticated');
 assert.match(sql, /GRANT EXECUTE ON FUNCTION public\.konfrm_add_customer_favorite\(UUID,\s*UUID\)\s+TO service_role/i, 'Grant execute to service_role only');
 assert.match(sql, /INSERT INTO public\.schema_migrations/i, 'Must record migration in schema_migrations');
@@ -471,6 +522,36 @@ try {
     /CARDINALITY_INVALID/
   );
 
+  // F2: favoriteDb.add - missing/invalid createdAt throws
+  mockFetchResponse = {
+    status: 200,
+    body: [{ customerId: testCustomerId, propertyId: 'e0000000-0000-4000-8000-000000000002', createdAt: 'invalid-date' }],
+  };
+  await assert.rejects(
+    () => favoriteDb.add(testCustomerId, 'e0000000-0000-4000-8000-000000000002'),
+    /REST_CUSTOMER_FAVORITE_ADD_ROW_MALFORMED/
+  );
+
+  // F2: favoriteDb.add - returned customer/property mismatch throws
+  mockFetchResponse = {
+    status: 200,
+    body: [{ customerId: '00000000-0000-4000-8000-000000000099', propertyId: 'e0000000-0000-4000-8000-000000000002', createdAt: '2026-09-03T12:00:00.000Z' }],
+  };
+  await assert.rejects(
+    () => favoriteDb.add(testCustomerId, 'e0000000-0000-4000-8000-000000000002'),
+    /REST_CUSTOMER_FAVORITE_ADD_ROW_MALFORMED/
+  );
+
+  // F2: favoriteDb.getByCustomerId - malformed row fails whole read
+  mockFetchResponse = {
+    status: 200,
+    body: [{ customer_id: 'bad-uuid', property_id: 'bad', created_at: 'bad' }],
+  };
+  await assert.rejects(
+    () => favoriteDb.getByCustomerId(testCustomerId),
+    /REST_CUSTOMER_FAVORITES_ROW_MALFORMED/
+  );
+
   // 5F. favoriteDb.remove
   mockFetchResponse = {
     status: 200,
@@ -487,6 +568,29 @@ try {
   // 5G. favoriteDb.remove - 0 rows (idempotent remove) succeeds without error
   mockFetchResponse = { status: 200, body: [] };
   await favoriteDb.remove(testCustomerId, 'e0000000-0000-4000-8000-000000000002');
+
+  // F2: favoriteDb.remove - >1 rows throws
+  mockFetchResponse = {
+    status: 200,
+    body: [
+      { customer_id: testCustomerId, property_id: 'e0000000-0000-4000-8000-000000000002', created_at: '2026-09-03T12:00:00.000Z' },
+      { customer_id: testCustomerId, property_id: 'e0000000-0000-4000-8000-000000000002', created_at: '2026-09-03T12:00:00.000Z' },
+    ],
+  };
+  await assert.rejects(
+    () => favoriteDb.remove(testCustomerId, 'e0000000-0000-4000-8000-000000000002'),
+    /REST_CUSTOMER_FAVORITES_REMOVE_CARDINALITY_INVALID/
+  );
+
+  // F2: favoriteDb.remove - malformed one row throws
+  mockFetchResponse = {
+    status: 200,
+    body: [{ customer_id: 'bad-uuid', property_id: 'bad', created_at: 'bad' }],
+  };
+  await assert.rejects(
+    () => favoriteDb.remove(testCustomerId, 'e0000000-0000-4000-8000-000000000002'),
+    /REST_CUSTOMER_FAVORITES_REMOVE_ROW_MALFORMED/
+  );
 
   // 5H. Strict collision safety - query shapes that merely mention RPC/table must not match
   lastFetchCall = null;
@@ -644,11 +748,46 @@ try {
   assert.equal(delMissingRes.statusCode, 200);
   assert.deepEqual((delMissingRes.body as any).data, { propertyId: testPropId, isFavorite: false });
 
-  // 6K. Failure in favorites query -> 500, not empty list
-  (favoriteDb as any).getByCustomerId = async () => { throw new Error('db crashed'); };
-  const failListRes = await app.handleHttpRequest('GET', '/api/v1/customer/favorites', customerHeaders);
-  assert.equal(failListRes.statusCode, 500);
-  assert.equal((failListRes.body as any).error?.code, 'CUSTOMER_FAVORITES_QUERY_FAILED');
+  // 6L. F3: Invalid path UUID returns 400 without repository mutation
+  const invalidUuidPost = await app.handleHttpRequest('POST', '/api/v1/customer/favorites/invalid-uuid', customerHeaders);
+  assert.equal(invalidUuidPost.statusCode, 400);
+  assert.equal((invalidUuidPost.body as any).error?.code, 'INVALID_PROPERTY_ID');
+
+  const invalidUuidDel = await app.handleHttpRequest('DELETE', '/api/v1/customer/favorites/invalid-uuid', customerHeaders);
+  assert.equal(invalidUuidDel.statusCode, 400);
+  assert.equal((invalidUuidDel.body as any).error?.code, 'INVALID_PROPERTY_ID');
+
+  // 6M. F3: POST returns 500 if favoriteDb.add returns malformed or mismatched row
+  (favoriteDb as any).add = async () => ({
+    customerId: testCustomerId,
+    propertyId: '00000000-0000-4000-8000-000000000099', // mismatched property ID
+    createdAt: '2026-09-03T12:00:00.000Z',
+  });
+  const mismatchAddRes = await app.handleHttpRequest('POST', `/api/v1/customer/favorites/${testPropId}`, customerHeaders);
+  assert.equal(mismatchAddRes.statusCode, 500);
+  assert.equal((mismatchAddRes.body as any).error?.code, 'CUSTOMER_FAVORITE_ADD_FAILED');
+
+  // 6N. F7: Account Summary malformed deposit amount returns 500
+  const origGetBookings = bookingDb.getByCustomerId;
+  try {
+    (bookingDb as any).getByCustomerId = async () => [
+      {
+        id: 'b-1',
+        customerId: testCustomerId,
+        propertyId: testPropId,
+        status: 'CONFIRMED',
+        checkIn: '2026-10-01',
+        checkOut: '2026-10-05',
+        depositAmount: 'not-a-valid-number',
+        createdAt: '2026-09-01T00:00:00.000Z',
+      },
+    ];
+    const malformedDepositSummaryRes = await app.handleHttpRequest('GET', '/api/v1/customer/account/summary', customerHeaders);
+    assert.equal(malformedDepositSummaryRes.statusCode, 500);
+    assert.equal((malformedDepositSummaryRes.body as any).error?.code, 'CUSTOMER_ACCOUNT_SUMMARY_QUERY_FAILED');
+  } finally {
+    (bookingDb as any).getByCustomerId = origGetBookings;
+  }
 } finally {
   (favoriteDb as any).getByCustomerId = origFavGetByCustomerId;
   (favoriteDb as any).add = origFavAdd;

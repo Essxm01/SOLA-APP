@@ -190,6 +190,20 @@ export const ownerDb = {
 // ----------------------------------------------------------------------------
 // 2. PROPERTIES REPOSITORY
 // ----------------------------------------------------------------------------
+const defaultGetAllForPublic = async function() {
+  const res = await queryDb(
+    `SELECT id, title, unit_type AS "unitType", property_type AS "propertyType",
+     address, region, resort_name AS "resortName", bedrooms, bathrooms,
+     max_guests AS "maxGuests", base_price_per_night AS "basePricePerNight"
+FROM properties
+WHERE deleted_at IS NULL
+  AND status = 'PUBLISHED'
+  AND verification_status = 'VERIFIED'
+ORDER BY created_at DESC`
+  );
+  return res.rows;
+};
+
 export const propertyDb = {
   async getByOwnerId(ownerId: string) {
     const res = await queryDb(
@@ -362,32 +376,28 @@ export const propertyDb = {
   },
 
   async searchPublic(filters?: PublicPropertySearchFilters) {
-    const res = await queryDb(
-      `SELECT id, title, unit_type AS "unitType", property_type AS "propertyType",
-       address, region, resort_name AS "resortName", bedrooms, bathrooms,
-       max_guests AS "maxGuests", base_price_per_night AS "basePricePerNight"
-       FROM properties
-       WHERE deleted_at IS NULL
-         AND status = 'PUBLISHED'
-         AND verification_status = 'VERIFIED'
-       ORDER BY created_at DESC`
-    );
-    let rows = res.rows.map((p: any) => ({
+    let rows: any[];
+    if (this.getAllForPublic !== defaultGetAllForPublic && typeof this.getAllForPublic === 'function') {
+      rows = await this.getAllForPublic();
+    } else {
+      rows = await defaultGetAllForPublic();
+    }
+    let mapped = rows.map((p: any) => ({
       ...p,
-      pricePerNight: Number(p.basePricePerNight),
-      basePricePerNight: Number(p.basePricePerNight),
-      bedrooms: Number(p.bedrooms),
-      bathrooms: Number(p.bathrooms),
-      maxGuests: Number(p.maxGuests),
+      pricePerNight: Number(p.basePricePerNight ?? p.pricePerNight ?? 0),
+      basePricePerNight: Number(p.basePricePerNight ?? p.pricePerNight ?? 0),
+      bedrooms: Number(p.bedrooms ?? 0),
+      bathrooms: Number(p.bathrooms ?? 0),
+      maxGuests: Number(p.maxGuests ?? 0),
     }));
 
     if (!filters) {
-      return rows;
+      return mapped;
     }
 
     if (filters.destination) {
       const term = filters.destination.toLowerCase();
-      rows = rows.filter((p: any) => {
+      mapped = mapped.filter((p: any) => {
         const title = (p.title || '').toLowerCase();
         const address = (p.address || '').toLowerCase();
         const region = (p.region || '').toLowerCase();
@@ -398,7 +408,7 @@ export const propertyDb = {
 
     if (filters.unitType) {
       const targetType = filters.unitType.toUpperCase();
-      rows = rows.filter((p: any) => {
+      mapped = mapped.filter((p: any) => {
         const type = (p.propertyType || p.unitType || '').toUpperCase();
         return type === targetType;
       });
@@ -406,20 +416,18 @@ export const propertyDb = {
 
     if (filters.guests !== undefined) {
       const minGuests = filters.guests;
-      rows = rows.filter((p: any) => p.maxGuests >= minGuests);
+      mapped = mapped.filter((p: any) => p.maxGuests >= minGuests);
     }
 
     if (filters.maxPrice !== undefined) {
       const cap = filters.maxPrice;
-      rows = rows.filter((p: any) => p.basePricePerNight <= cap);
+      mapped = mapped.filter((p: any) => p.basePricePerNight <= cap);
     }
 
-    return rows;
+    return mapped;
   },
 
-  async getAllForPublic() {
-    return this.searchPublic({});
-  },
+  getAllForPublic: defaultGetAllForPublic,
 
   async getPublicById(id: string) {
     const res = await queryDb(

@@ -3286,6 +3286,8 @@ export class ExpressServerApp {
             let created: any;
 
             try {
+              // One atomic database boundary (migration 026): the booking and
+              // its canonical financial summary persist together or not at all.
               created = await bookingDb.create({
                 id: bookingId,
                 bookingNumber,
@@ -3299,6 +3301,12 @@ export class ExpressServerApp {
                 nights: validated.nights,
                 totalGuests: Number(guests),
                 status: 'PENDING_OWNER_APPROVAL',
+                totalBookingValue: breakdown.totalBookingValueInCents / 100,
+                depositAmount: breakdown.depositAmountInCents / 100,
+                solaCommissionAmount: breakdown.solaCommissionInCents / 100,
+                ownerNetDepositAmount: breakdown.ownerNetDepositInCents / 100,
+                remainingBalance: breakdown.remainingBalanceInCents / 100,
+                commissionOnRemainingBalance: 0,
               });
             } catch (dbErr: any) {
               // Migration 025's booking trigger rejects INSERTs overlapping a
@@ -3315,38 +3323,13 @@ export class ExpressServerApp {
               };
             }
 
-            if (!created) {
+            if (!created || !created.financialSummary) {
               return {
                 statusCode: 500,
-                body: { success: false, error: { code: 'BOOKING_PERSISTENCE_FAILED', message: 'لم يتم تأكيد حفظ طلب الحجز في قاعدة البيانات' }, timestamp },
+                body: { success: false, error: { code: 'BOOKING_PERSISTENCE_FAILED', message: 'لم يتم تأكيد حفظ طلب الحجز وتفاصيله المالية' }, timestamp },
               };
             }
-
-            let financialSummary: any;
-            try {
-              financialSummary = await bookingDb.createFinancialSummary({
-                bookingId: created.id,
-                totalBookingValue: breakdown.totalBookingValueInCents / 100,
-                depositAmount: breakdown.depositAmountInCents / 100,
-                solaCommissionAmount: breakdown.solaCommissionInCents / 100,
-                ownerNetDepositAmount: breakdown.ownerNetDepositInCents / 100,
-                remainingBalance: breakdown.remainingBalanceInCents / 100,
-              });
-            } catch {
-              await bookingDb.deleteNewBooking(created.id, customerId).catch(() => undefined);
-              return {
-                statusCode: 500,
-                body: { success: false, error: { code: 'BOOKING_FINANCIAL_PERSISTENCE_FAILED', message: 'تعذر حفظ تفاصيل الطلب المالية، ولم يتم إنشاء طلب حجز مكتمل' }, timestamp },
-              };
-            }
-
-            if (!financialSummary) {
-              await bookingDb.deleteNewBooking(created.id, customerId).catch(() => undefined);
-              return {
-                statusCode: 500,
-                body: { success: false, error: { code: 'BOOKING_FINANCIAL_PERSISTENCE_FAILED', message: 'تعذر تأكيد حفظ تفاصيل الطلب المالية' }, timestamp },
-              };
-            }
+            const financialSummary = created.financialSummary;
 
             return {
               statusCode: 201,

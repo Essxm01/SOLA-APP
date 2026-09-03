@@ -502,12 +502,20 @@ export const bookingDb = {
     return Promise.all(res.rows.map((booking) => hydrateBooking(booking)));
   },
 
+  // P1.5: one atomic database boundary creates the booking request AND its
+  // canonical financial summary (migration 026 RPC). Never fall back to
+  // sequential booking + summary writes with compensating deletes.
   async create(bk: any) {
     const res = await queryDb(
-      `INSERT INTO bookings (id, booking_number, property_id, owner_id, customer_id, guest_name, guest_phone, check_in, check_out, nights, total_guests, status)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-       RETURNING id, booking_number AS "bookingNumber", property_id AS "propertyId", owner_id AS "ownerId", customer_id AS "customerId", guest_name AS "guestName", check_in AS "checkIn", check_out AS "checkOut", nights, total_guests AS "guestsCount", status, created_at AS "createdAt"`,
-      [bk.id, bk.bookingNumber, bk.propertyId, bk.ownerId, bk.customerId, bk.guestName, bk.guestPhone, bk.checkIn, bk.checkOut, bk.nights, bk.totalGuests, bk.status]
+      `SELECT * FROM konfrm_create_booking_request($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)`,
+      [
+        bk.id, bk.bookingNumber, bk.propertyId, bk.ownerId, bk.customerId,
+        bk.guestName, bk.guestPhone, bk.checkIn, bk.checkOut, bk.nights,
+        bk.totalGuests, bk.status,
+        bk.totalBookingValue, bk.depositAmount, bk.solaCommissionAmount,
+        bk.ownerNetDepositAmount, bk.remainingBalance,
+        bk.commissionOnRemainingBalance ?? 0,
+      ]
     );
     return res.rows[0] || null;
   },

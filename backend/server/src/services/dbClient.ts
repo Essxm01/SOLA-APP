@@ -106,6 +106,30 @@ function mapPaymentRestRow(transaction: any) {
   };
 }
 
+// Migration 026 create-booking RPC result fields: booking columns that are
+// NOT NULL in the schema, and the six financial-summary values (numeric, so
+// they must arrive as finite numbers — never null/undefined/NaN).
+const BOOKING_REQUEST_RPC_REQUIRED_FIELDS = [
+  'id', 'bookingNumber', 'propertyId', 'ownerId', 'guestName',
+  'checkIn', 'checkOut', 'nights', 'guestsCount', 'status', 'createdAt',
+] as const;
+const BOOKING_REQUEST_RPC_SNAKE_FALLBACK: Record<string, string> = {
+  bookingNumber: 'booking_number',
+  propertyId: 'property_id',
+  ownerId: 'owner_id',
+  guestName: 'guest_name',
+  checkIn: 'check_in',
+  checkOut: 'check_out',
+  guestsCount: 'guestsCount',
+  createdAt: 'created_at',
+};
+const BOOKING_REQUEST_RPC_SUMMARY_NUMERIC_FIELDS = [
+  'summaryTotalBookingValue', 'summaryDepositAmount', 'summarySolaCommissionAmount',
+  'summaryOwnerNetDepositAmount', 'summaryRemainingBalance', 'summaryCommissionOnRemainingBalance',
+] as const;
+const BOOKING_REQUEST_RPC_UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const BOOKING_REQUEST_RPC_ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+
 async function queryViaSupabaseRest(text: string, params: any[] | undefined, url: string, key: string): Promise<pg.QueryResult<any> | null> {
   const headers: Record<string, string> = {
     'apikey': key,
@@ -116,6 +140,157 @@ async function queryViaSupabaseRest(text: string, params: any[] | undefined, url
 
   const sql = text.trim();
   const lowerSql = sql.toLowerCase();
+
+  // P1.5: booking request + canonical financial summary are created by ONE
+  // Postgres transaction (migration 026). The matcher is exact and
+  // collision-safe: only the canonical repository query shape
+  // `SELECT * FROM konfrm_create_booking_request($1, ... $18)` enters this
+  // adapter branch; any comment, wrapper, different argument count, or SQL
+  // that merely mentions the function name must fall through. Worker code
+  // must never fall back to sequential booking + summary REST writes with
+  // compensating deletes.
+  const canonicalRpcMatch = sql
+    .replace(/\s+/g, ' ')
+    .match(/^SELECT \* FROM konfrm_create_booking_request\(([^()]*)\)$/i);
+  const rpcPlaceholders = canonicalRpcMatch
+    ? canonicalRpcMatch[1].split(',').map((p) => p.trim())
+    : [];
+  const isCanonicalCreateRpc =
+    !!canonicalRpcMatch &&
+    rpcPlaceholders.length === 18 &&
+    rpcPlaceholders.every((p, i) => p.toLowerCase() === `$${i + 1}`);
+  if (isCanonicalCreateRpc) {
+    const res = await fetch(`${url}/rest/v1/rpc/konfrm_create_booking_request`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        p_id: params?.[0],
+        p_booking_number: params?.[1],
+        p_property_id: params?.[2],
+        p_owner_id: params?.[3],
+        p_customer_id: params?.[4],
+        p_guest_name: params?.[5],
+        p_guest_phone: params?.[6],
+        p_check_in: params?.[7],
+        p_check_out: params?.[8],
+        p_nights: params?.[9],
+        p_total_guests: params?.[10],
+        p_status: params?.[11],
+        p_total_booking_value: params?.[12],
+        p_deposit_amount: params?.[13],
+        p_sola_commission_amount: params?.[14],
+        p_owner_net_deposit_amount: params?.[15],
+        p_remaining_balance: params?.[16],
+        p_commission_on_remaining_balance: params?.[17] ?? 0,
+      }),
+    });
+    if (!res.ok) {
+      // Preserve bounded trigger/DB error evidence (e.g. the Migration 025
+      // DATE_MANUALLY_BLOCKED conflict code) for truthful route mapping.
+      const body = await res.text().catch(() => '');
+      throw new Error(`REST_BOOKING_REQUEST_CREATE_RPC_FAILED: HTTP ${res.status} — ${body.slice(0, 240)}`);
+    }
+    const raw: any = await res.json().catch(() => null);
+    if (!Array.isArray(raw)) {
+      throw new Error('REST_BOOKING_REQUEST_CREATE_MALFORMED_RESPONSE: expected a JSON array with the created row');
+    }
+    if (raw.length !== 1) {
+      throw new Error(`REST_BOOKING_REQUEST_CREATE_RPC_ROW_COUNT: expected exactly one created booking row, got ${raw.length}`);
+    }
+    const r = raw[0];
+    if (!r || typeof r !== 'object') {
+      throw new Error('REST_BOOKING_REQUEST_CREATE_MALFORMED_RESPONSE: created row is not an object');
+    }
+    // Migration 026 returns one flat row: booking fields + summary fields.
+    // Validate every field consumed below BEFORE returning success — a partial
+    // row must fail closed, never become a false 201 with missing values.
+    // DB contract: every bookings column returned here is NOT NULL except
+    // customer_id (nullable, ON DELETE SET NULL), which must still be present.
+    const resolveField = (key: string) => r[key] ?? r[BOOKING_REQUEST_RPC_SNAKE_FALLBACK[key]];
+    const failMalformed = (detail: string): never => {
+      throw new Error(`REST_BOOKING_REQUEST_CREATE_MALFORMED_RESPONSE: ${detail}`);
+    };
+    const requiredNonNullable = BOOKING_REQUEST_RPC_REQUIRED_FIELDS;
+    for (const key of requiredNonNullable) {
+      const v = resolveField(key);
+      if (v === undefined || v === null) {
+        throw new Error(`REST_BOOKING_REQUEST_CREATE_MALFORMED_RESPONSE: created row missing required field ${key}`);
+      }
+    }
+    if (r.customerId === undefined && r.customer_id === undefined) {
+      throw new Error('REST_BOOKING_REQUEST_CREATE_MALFORMED_RESPONSE: created row missing required field customerId');
+    }
+    // Semantic value validation: malformed one-row responses (wrong types or
+    // impossible values) must fail closed, never be coerced into valid data.
+    const assertNonEmptyString = (key: string) => {
+      const v = resolveField(key);
+      if (typeof v !== 'string' || v.trim() === '') failMalformed(`field ${key} must be a non-empty string`);
+      return v;
+    };
+    const assertUuid = (key: string) => {
+      const v = assertNonEmptyString(key);
+      if (!BOOKING_REQUEST_RPC_UUID_PATTERN.test(v)) failMalformed(`field ${key} must be a UUID string`);
+    };
+    const assertStrictIsoDate = (key: string) => {
+      const v = assertNonEmptyString(key);
+      if (!BOOKING_REQUEST_RPC_ISO_DATE_PATTERN.test(v)) failMalformed(`field ${key} must be a YYYY-MM-DD date`);
+      const parsed = new Date(`${v}T00:00:00Z`);
+      if (Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== v) failMalformed(`field ${key} must be a real calendar date`);
+    };
+    const assertPositiveInteger = (key: string) => {
+      const v = resolveField(key);
+      if (typeof v !== 'number' || !Number.isInteger(v) || v <= 0) failMalformed(`field ${key} must be a positive integer`);
+    };
+    assertUuid('id');
+    assertNonEmptyString('bookingNumber');
+    assertUuid('propertyId');
+    assertUuid('ownerId');
+    const customerIdValue = r.customerId !== undefined ? r.customerId : r.customer_id;
+    if (customerIdValue !== null && (typeof customerIdValue !== 'string' || !BOOKING_REQUEST_RPC_UUID_PATTERN.test(customerIdValue))) {
+      failMalformed('field customerId must be null or a UUID string');
+    }
+    assertNonEmptyString('guestName');
+    assertStrictIsoDate('checkIn');
+    assertStrictIsoDate('checkOut');
+    assertPositiveInteger('nights');
+    assertPositiveInteger('guestsCount');
+    if (resolveField('status') !== 'PENDING_OWNER_APPROVAL') {
+      failMalformed('field status must be PENDING_OWNER_APPROVAL for a create-booking result');
+    }
+    const createdAtValue = resolveField('createdAt');
+    if (typeof createdAtValue !== 'string' || createdAtValue.trim() === '' || Number.isNaN(Date.parse(createdAtValue))) {
+      failMalformed('field createdAt must be a valid timestamp string');
+    }
+    for (const key of BOOKING_REQUEST_RPC_SUMMARY_NUMERIC_FIELDS) {
+      const v = r[key];
+      if (v === undefined || v === null || typeof v !== 'number' || !Number.isFinite(v)) {
+        throw new Error(`REST_BOOKING_REQUEST_CREATE_MALFORMED_RESPONSE: summary field ${key} must be a finite number`);
+      }
+    }
+    const row = {
+      id: r.id,
+      bookingNumber: r['bookingNumber'] ?? r.booking_number,
+      propertyId: r['propertyId'] ?? r.property_id,
+      ownerId: r['ownerId'] ?? r.owner_id,
+      customerId: r.customerId !== undefined ? r.customerId : r.customer_id,
+      guestName: r['guestName'] ?? r.guest_name,
+      checkIn: r['checkIn'] ?? r.check_in,
+      checkOut: r['checkOut'] ?? r.check_out,
+      nights: r.nights,
+      guestsCount: r['guestsCount'] ?? r.total_guests,
+      status: r.status,
+      createdAt: r['createdAt'] ?? r.created_at,
+      financialSummary: {
+        totalBookingValue: r.summaryTotalBookingValue,
+        depositAmount: r.summaryDepositAmount,
+        solaCommissionAmount: r.summarySolaCommissionAmount,
+        ownerNetDepositAmount: r.summaryOwnerNetDepositAmount,
+        remainingBalance: r.summaryRemainingBalance,
+        commissionOnRemainingBalance: r.summaryCommissionOnRemainingBalance,
+      },
+    };
+    return { rows: [row], command: 'SELECT', rowCount: 1, oid: 0, fields: [] };
+  }
 
   // PAYMENT-01: the only Worker-safe finalization path is the narrow,
   // atomic Postgres RPC. Never fall through to a pg transaction in Workers.

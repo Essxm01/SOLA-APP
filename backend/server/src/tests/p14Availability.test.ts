@@ -62,7 +62,9 @@ try {
   };
   (bookingDb as any).create = async (payload: any) => {
     if (bookingCreateError) throw bookingCreateError;
-    const created = { id: payload.id, ...payload };
+    // P1.5 contract: bookingDb.create is the atomic RPC call and returns the
+    // booking row with its persisted financialSummary attached.
+    const created = { id: payload.id, ...payload, financialSummary: { ...payload, bookingId: payload.id } };
     createdBookings.push(created);
     return created;
   };

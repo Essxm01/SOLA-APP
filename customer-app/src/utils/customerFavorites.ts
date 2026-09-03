@@ -214,4 +214,3 @@ export async function fetchCustomerAccountSummary(
     totalDepositsPaidEgp: d.totalDepositsPaidEgp,
   };
 }
-

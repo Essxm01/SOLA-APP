@@ -1616,4 +1616,3 @@ export const favoriteDb = {
     );
   },
 };
-

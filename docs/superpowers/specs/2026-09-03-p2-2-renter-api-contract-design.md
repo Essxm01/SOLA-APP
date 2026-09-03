@@ -1,10 +1,10 @@
 # P2.2 Renter API Contract Design
 
-**Status:** WRITTEN SPEC APPROVED — FAVORITES RPC AMENDMENT APPROVED IN CHAT  
-**Roadmap:** Phase 2 — Backend Contracts / P2.2 Renter APIs  
-**Base `main` SHA:** `198a00ea39083932012f54144f93fb7516204024`  
-**Design branch:** `spec/p2-2-renter-api-contract`  
-**Risk class:** Architectural / authenticated identity + privacy + persistence boundary  
+**Status:** WRITTEN SPEC APPROVED — FAVORITES RPC AMENDMENT APPROVED IN CHAT
+**Roadmap:** Phase 2 — Backend Contracts / P2.2 Renter APIs
+**Base `main` SHA:** `198a00ea39083932012f54144f93fb7516204024`
+**Design branch:** `spec/p2-2-renter-api-contract`
+**Risk class:** Architectural / authenticated identity + privacy + persistence boundary
 **Implementation authority:** Founder-approved KONFRM product rules + current repository truth. This spec must not change booking lifecycle, availability, finance, payment timing, chat policy, notifications architecture, KYC, cancellation/refund, or publication rules except for the explicitly approved Favorites persistence move and narrow atomic Favorites RPC below.
 
 ---

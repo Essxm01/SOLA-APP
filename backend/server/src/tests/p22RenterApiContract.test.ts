@@ -1026,9 +1026,3 @@ try {
 }
 
 console.log('P2.2 Task 7 real hydration regression and source contract tests passed.');
-
-
-
-
-
-

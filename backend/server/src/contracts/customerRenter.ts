@@ -269,16 +269,27 @@ function mapCustomerBookingProperty(prop: any): CustomerBookingPropertyItem {
 function mapCustomerBookingDetailProperty(prop: any): CustomerBookingDetailPropertyItem {
   const base = mapCustomerBookingProperty(prop);
   const description = optionalString(prop.description, 'CUSTOMER_BOOKING_PROPERTY_DATA', 'description');
-  const bedrooms = nonNegativeInteger(prop.bedrooms ?? 0, 'CUSTOMER_BOOKING_PROPERTY_DATA', 'bedrooms');
-  const bathrooms = nonNegativeInteger(prop.bathrooms ?? 0, 'CUSTOMER_BOOKING_PROPERTY_DATA', 'bathrooms');
-  const maxGuests = positiveInteger(prop.maxGuests ?? prop.max_guests ?? 1, 'CUSTOMER_BOOKING_PROPERTY_DATA', 'maxGuests');
+  const bedrooms = nonNegativeInteger(prop.bedrooms, 'CUSTOMER_BOOKING_PROPERTY_DATA', 'bedrooms');
+  const bathrooms = nonNegativeInteger(prop.bathrooms, 'CUSTOMER_BOOKING_PROPERTY_DATA', 'bathrooms');
+  const maxGuests = positiveInteger(prop.maxGuests ?? prop.max_guests, 'CUSTOMER_BOOKING_PROPERTY_DATA', 'maxGuests');
   const pricePerNight = nonNegativeFinite(prop.pricePerNight ?? prop.price_per_night ?? prop.basePricePerNight ?? prop.base_price_per_night ?? base.basePricePerNight, 'CUSTOMER_BOOKING_PROPERTY_DATA', 'pricePerNight');
-  const amenities: string[] = Array.isArray(prop.amenities)
-    ? prop.amenities.filter((a: any) => typeof a === 'string')
-    : [];
-  const houseRules: Record<string, any> = (prop.houseRules && typeof prop.houseRules === 'object' && !Array.isArray(prop.houseRules))
-    ? prop.houseRules
-    : ((prop.house_rules && typeof prop.house_rules === 'object' && !Array.isArray(prop.house_rules)) ? prop.house_rules : {});
+
+  let amenities: string[] = [];
+  if (prop.amenities !== undefined && prop.amenities !== null) {
+    if (!Array.isArray(prop.amenities)) {
+      fail('CUSTOMER_BOOKING_PROPERTY_DATA', 'amenities must be an array');
+    }
+    amenities = prop.amenities.map((a: any) => requiredString(a, 'CUSTOMER_BOOKING_PROPERTY_DATA', 'amenities entry'));
+  }
+
+  let houseRules: Record<string, any> = {};
+  const rawRules = prop.houseRules ?? prop.house_rules;
+  if (rawRules !== undefined && rawRules !== null) {
+    if (typeof rawRules !== 'object' || Array.isArray(rawRules)) {
+      fail('CUSTOMER_BOOKING_PROPERTY_DATA', 'houseRules must be an object');
+    }
+    houseRules = rawRules;
+  }
 
   return {
     ...base,

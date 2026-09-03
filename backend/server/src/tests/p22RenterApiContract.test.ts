@@ -226,6 +226,24 @@ assert.equal(detailItem.property.pricePerNight, 6000);
 assert.deepEqual(detailItem.property.amenities, []);
 assert.deepEqual(detailItem.property.houseRules, {});
 
+// C2-F4: Booking detail DTO rejects missing bedrooms, bathrooms, and maxGuests
+assert.throws(
+  () => toCustomerBookingDetailDto({ ...poisonedBooking, property: { ...poisonedBooking.property, bedrooms: undefined as any } }),
+  /CUSTOMER_BOOKING_PROPERTY_DATA/
+);
+assert.throws(
+  () => toCustomerBookingDetailDto({ ...poisonedBooking, property: { ...poisonedBooking.property, bathrooms: undefined as any } }),
+  /CUSTOMER_BOOKING_PROPERTY_DATA/
+);
+assert.throws(
+  () => toCustomerBookingDetailDto({ ...poisonedBooking, property: { ...poisonedBooking.property, maxGuests: undefined as any } }),
+  /CUSTOMER_BOOKING_PROPERTY_DATA/
+);
+assert.throws(
+  () => toCustomerBookingDetailDto({ ...poisonedBooking, property: { ...poisonedBooking.property, maxGuests: 0 } }),
+  /CUSTOMER_BOOKING_PROPERTY_DATA/
+);
+
 // 1E. CustomerBookingCreateResponseDto tests
 const createResponseDto = toCustomerBookingCreateResponseDto(poisonedBooking);
 for (const forbidden of [
@@ -263,7 +281,7 @@ console.log('P2.2 Task 1 authenticated customer DTO unit tests passed.');
 // ---------------------------------------------------------------------------
 import { ExpressServerApp } from '../app.js';
 import { signAccessToken } from '../services/jwtService.js';
-import { userDb, bookingDb } from '../services/dbRepository.js';
+import { userDb, bookingDb, propertyDb, imageDb, propertyAvailabilityDb } from '../services/dbRepository.js';
 
 const app = new ExpressServerApp();
 const testCustomerId = '00000000-0000-4000-8000-000000000001';
@@ -399,6 +417,115 @@ try {
   assert.equal((res.body as any).error?.code, 'FORBIDDEN_BOOKING_ACCESS');
 } finally {
   (bookingDb as any).getById = origBookingGetById;
+}
+
+// 3D. C2-F3: Partial booking missing property or financial summary fails closed and DOES NOT trigger compensating reads
+const origPropGetById = propertyDb.getById;
+const origImageGetByProp = imageDb.getImagesByPropertyId;
+let compensatingPropReads = 0;
+let compensatingImageReads = 0;
+(propertyDb as any).getById = async () => { compensatingPropReads += 1; return null; };
+(imageDb as any).getImagesByPropertyId = async () => { compensatingImageReads += 1; return []; };
+(bookingDb as any).getById = async (id: string) => {
+  if (id === poisonedBooking.id) {
+    return { ...poisonedBooking, customerId: testCustomerId, property: null };
+  }
+  return null;
+};
+try {
+  const res = await app.handleHttpRequest('GET', `/api/v1/customer/bookings/${poisonedBooking.id}`, customerHeaders);
+  assert.equal(res.statusCode, 500, 'Partial booking must fail closed with 500');
+  assert.equal(compensatingPropReads, 0, 'Must NOT perform compensating propertyDb.getById');
+  assert.equal(compensatingImageReads, 0, 'Must NOT perform compensating imageDb.getImagesByPropertyId');
+} finally {
+  (bookingDb as any).getById = origBookingGetById;
+  (propertyDb as any).getById = origPropGetById;
+  (imageDb as any).getImagesByPropertyId = origImageGetByProp;
+}
+
+// 3E. C2-F1: POST /customer/bookings response has no financialSummary and missing createdAt fails closed
+const origBookingCreate = bookingDb.create;
+const origPropAvailability = propertyAvailabilityDb.getByPropertyId;
+const origBookingBlocks = bookingDb.getBlocksByPropertyId;
+(userDb as any).getById = async (id: string) => (id === testCustomerId ? { id, fullName: 'عميل', phoneNumber: '+201012345678' } : null);
+(propertyAvailabilityDb as any).getByPropertyId = async () => [];
+(bookingDb as any).getBlocksByPropertyId = async () => [];
+(propertyDb as any).getById = async () => ({
+  id: 'e0000000-0000-4000-8000-000000000002',
+  ownerId: '00000000-0000-4000-8000-000000000009',
+  title: 'شاليه',
+  unitType: 'CHALET',
+  address: 'مراسي',
+  basePricePerNight: 2000,
+  pricePerNight: 2000,
+  maxGuests: 4,
+  status: 'PUBLISHED',
+  verificationStatus: 'VERIFIED',
+});
+
+// Case 1: Success response must NOT contain financialSummary in any form
+(bookingDb as any).create = async (payload: any) => ({
+  id: payload.id,
+  propertyId: payload.propertyId,
+  bookingNumber: payload.bookingNumber,
+  status: payload.status,
+  checkIn: payload.checkIn,
+  checkOut: payload.checkOut,
+  nights: payload.nights,
+  guestsCount: payload.totalGuests,
+  createdAt: '2026-09-03T12:00:00.000Z',
+  financialSummary: {
+    totalBookingValue: 4000,
+    depositAmount: 2000,
+    remainingBalance: 2000,
+  },
+});
+try {
+  const res = await app.handleHttpRequest('POST', '/api/v1/customer/bookings', customerHeaders, {
+    propertyId: 'e0000000-0000-4000-8000-000000000002',
+    checkIn: '2026-12-20',
+    checkOut: '2026-12-22',
+    guests: 2,
+  });
+  assert.equal(res.statusCode, 201);
+  const data = (res.body as any).data;
+  assert.equal('financialSummary' in data, false, 'financialSummary in data must be false');
+  assert.equal(Object.getOwnPropertyDescriptor(data, 'financialSummary'), undefined, 'financialSummary descriptor must be undefined');
+  assert.equal(JSON.stringify(data).includes('financialSummary'), false, 'serialized JSON must not contain financialSummary');
+} finally {
+  (bookingDb as any).create = origBookingCreate;
+}
+
+// Case 2: Persisted result missing createdAt must fail closed with 500, never receiving server time
+(bookingDb as any).create = async (payload: any) => ({
+  id: payload.id,
+  propertyId: payload.propertyId,
+  bookingNumber: payload.bookingNumber,
+  status: payload.status,
+  checkIn: payload.checkIn,
+  checkOut: payload.checkOut,
+  nights: payload.nights,
+  guestsCount: payload.totalGuests,
+  // createdAt omitted!
+  financialSummary: {
+    totalBookingValue: 4000,
+    depositAmount: 2000,
+    remainingBalance: 2000,
+  },
+});
+try {
+  const res = await app.handleHttpRequest('POST', '/api/v1/customer/bookings', customerHeaders, {
+    propertyId: 'e0000000-0000-4000-8000-000000000002',
+    checkIn: '2026-12-20',
+    checkOut: '2026-12-22',
+    guests: 2,
+  });
+  assert.equal(res.statusCode, 500, 'Missing persisted createdAt must return 500 fail-closed');
+} finally {
+  (bookingDb as any).create = origBookingCreate;
+  (propertyDb as any).getById = origPropGetById;
+  (propertyAvailabilityDb as any).getByPropertyId = origPropAvailability;
+  (bookingDb as any).getBlocksByPropertyId = origBookingBlocks;
 }
 
 console.log('P2.2 Task 3 customer booking privacy and IDOR tests passed.');
@@ -621,8 +748,6 @@ console.log('P2.2 Task 5 favoriteDb and Worker adapter tests passed.');
 // ---------------------------------------------------------------------------
 // 6. Task 6: Authenticated Favorites routes tests
 // ---------------------------------------------------------------------------
-import { propertyDb, imageDb } from '../services/dbRepository.js';
-
 const ownerToken = signAccessToken({ sub: 'owner-uuid-1', role: 'ROLE_OWNER' });
 const ownerHeaders = { authorization: `Bearer ${ownerToken}` };
 

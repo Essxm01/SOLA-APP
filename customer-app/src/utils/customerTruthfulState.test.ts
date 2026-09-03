@@ -102,6 +102,9 @@ async function run() {
         title: 'شاليه مراسي',
         unitType: 'CHALET',
         address: 'مراسي',
+        bedrooms: 2,
+        bathrooms: 2,
+        maxGuests: 4,
         basePricePerNight: 6000,
         currency: 'EGP',
         images: ['https://storage.sola.eg/p1.jpg'],
@@ -181,7 +184,7 @@ async function run() {
       testAuthToken,
       async () => jsonResponse({
         success: true,
-        data: [{ id: 'not-a-valid-uuid', title: 'test', unitType: 'CHALET', address: 'addr', basePricePerNight: 1000, currency: 'EGP', images: [] }],
+        data: [{ id: 'not-a-valid-uuid', title: 'test', unitType: 'CHALET', address: 'addr', bedrooms: 2, bathrooms: 2, maxGuests: 4, basePricePerNight: 1000, currency: 'EGP', images: [] }],
       }),
       testUrl
     );
@@ -196,7 +199,7 @@ async function run() {
       testAuthToken,
       async () => jsonResponse({
         success: true,
-        data: [{ id: favPropId, title: 'test', unitType: 'CHALET', address: 'addr', basePricePerNight: 1000, currency: 'USD', images: [] }],
+        data: [{ id: favPropId, title: 'test', unitType: 'CHALET', address: 'addr', bedrooms: 2, bathrooms: 2, maxGuests: 4, basePricePerNight: 1000, currency: 'USD', images: [] }],
       }),
       testUrl
     );
@@ -204,6 +207,45 @@ async function run() {
     wrongCurrencyFavThrew = true;
   }
   assert(wrongCurrencyFavThrew, 'fetchCustomerFavorites must reject if item currency is not strictly EGP');
+
+  // C2-F5: Customer Favorites helper parity with P2.1 public DTO
+  for (const invalidCapacity of [
+    { bedrooms: undefined },
+    { bedrooms: -1 },
+    { bathrooms: undefined },
+    { bathrooms: -1 },
+    { maxGuests: undefined },
+    { maxGuests: 0 },
+    { basePricePerNight: 0 },
+    { basePricePerNight: -100 },
+  ]) {
+    let capThrew = false;
+    try {
+      await fetchCustomerFavorites(
+        testAuthToken,
+        async () => jsonResponse({
+          success: true,
+          data: [{
+            id: favPropId,
+            title: 'شاليه',
+            unitType: 'CHALET',
+            address: 'مراسي',
+            bedrooms: 2,
+            bathrooms: 2,
+            maxGuests: 4,
+            basePricePerNight: 5000,
+            currency: 'EGP',
+            images: ['https://storage.sola.eg/p1.jpg'],
+            ...invalidCapacity,
+          }],
+        }),
+        testUrl
+      );
+    } catch {
+      capThrew = true;
+    }
+    assert(capThrew, `fetchCustomerFavorites must reject item with ${JSON.stringify(invalidCapacity)}`);
+  }
 
   // 7F. mergeCustomerProfile: canonical null fields must NOT be resurrected from stale cached values
   const canonicalNullNameProfile = {

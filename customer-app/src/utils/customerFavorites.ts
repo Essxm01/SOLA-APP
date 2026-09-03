@@ -27,7 +27,10 @@ function validateFavoriteItem(item: any): CustomerFavoriteItem {
   if (typeof item.title !== 'string' || item.title.trim() === '') throw new Error('INVALID_TITLE');
   if (typeof item.unitType !== 'string' || item.unitType.trim() === '') throw new Error('INVALID_UNIT_TYPE');
   if (typeof item.address !== 'string' || item.address.trim() === '') throw new Error('INVALID_ADDRESS');
-  if (typeof item.basePricePerNight !== 'number' || !Number.isFinite(item.basePricePerNight) || item.basePricePerNight < 0) throw new Error('INVALID_BASE_PRICE');
+  if (typeof item.bedrooms !== 'number' || !Number.isInteger(item.bedrooms) || item.bedrooms < 0) throw new Error('INVALID_BEDROOMS');
+  if (typeof item.bathrooms !== 'number' || !Number.isInteger(item.bathrooms) || item.bathrooms < 0) throw new Error('INVALID_BATHROOMS');
+  if (typeof item.maxGuests !== 'number' || !Number.isInteger(item.maxGuests) || item.maxGuests <= 0) throw new Error('INVALID_MAX_GUESTS');
+  if (typeof item.basePricePerNight !== 'number' || !Number.isFinite(item.basePricePerNight) || item.basePricePerNight <= 0) throw new Error('INVALID_BASE_PRICE');
   if (item.currency !== 'EGP') throw new Error('INVALID_CURRENCY');
   if (!Array.isArray(item.images)) throw new Error('INVALID_IMAGES');
   for (const img of item.images) {
@@ -42,9 +45,9 @@ function validateFavoriteItem(item: any): CustomerFavoriteItem {
     address: item.address.trim(),
     region: typeof item.region === 'string' ? item.region.trim() : (item.region === null ? null : undefined),
     resortName: typeof item.resortName === 'string' ? item.resortName.trim() : (item.resortName === null ? null : undefined),
-    bedrooms: typeof item.bedrooms === 'number' && Number.isFinite(item.bedrooms) ? item.bedrooms : 0,
-    bathrooms: typeof item.bathrooms === 'number' && Number.isFinite(item.bathrooms) ? item.bathrooms : 0,
-    maxGuests: typeof item.maxGuests === 'number' && Number.isFinite(item.maxGuests) ? item.maxGuests : 1,
+    bedrooms: item.bedrooms,
+    bathrooms: item.bathrooms,
+    maxGuests: item.maxGuests,
     basePricePerNight: item.basePricePerNight,
     currency: 'EGP',
     images: item.images.map((s: string) => s.trim()),

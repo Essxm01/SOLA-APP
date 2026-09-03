@@ -24,6 +24,7 @@ import {
   toCustomerBookingDetailDto,
   toCustomerBookingCreateResponseDto,
   validateCustomerFavoriteRow,
+  type CustomerBookingCreateResponseDto,
 } from './contracts/customerRenter.js';
 import type { ApiSuccessResponse, ApiErrorResponse } from './types/server';
 
@@ -3328,6 +3329,7 @@ export class ExpressServerApp {
                 ownerNetDepositAmount: breakdown.ownerNetDepositInCents / 100,
                 remainingBalance: breakdown.remainingBalanceInCents / 100,
                 commissionOnRemainingBalance: 0,
+                createdAt: new Date().toISOString(),
               });
             } catch (dbErr: any) {
               // Migration 025's booking trigger rejects INSERTs overlapping a
@@ -3350,26 +3352,21 @@ export class ExpressServerApp {
                 body: { success: false, error: { code: 'BOOKING_PERSISTENCE_FAILED', message: 'لم يتم تأكيد حفظ طلب الحجز وتفاصيله المالية' }, timestamp },
               };
             }
-            const financialSummary = created.financialSummary;
-            if (!created.createdAt && !created.created_at) {
-              created.createdAt = timestamp;
+
+            let responseDto: CustomerBookingCreateResponseDto;
+            try {
+              responseDto = toCustomerBookingCreateResponseDto(created);
+            } catch {
+              return {
+                statusCode: 500,
+                body: {
+                  success: false,
+                  error: { code: 'BOOKING_PERSISTENCE_FAILED', message: 'تعذر معالجة بيانات الحجز المحفوظة' },
+                  timestamp,
+                },
+              };
             }
 
-            const responseDto = toCustomerBookingCreateResponseDto(created);
-            Object.defineProperty(responseDto, 'financialSummary', {
-              value: {
-                totalBookingValue: responseDto.totalStay,
-                depositAmount: responseDto.depositAmount,
-                depositPaymentStatus: 'NOT_DUE',
-                remainingBalance: responseDto.remainingAmount,
-                remainingBalancePaymentMethod: 'CASH_ON_ARRIVAL',
-                remainingBalanceStatus: 'NOT_DUE',
-                currency: 'EGP',
-              },
-              enumerable: false,
-              configurable: true,
-              writable: false,
-            });
             return {
               statusCode: 201,
               body: {
@@ -3479,24 +3476,6 @@ export class ExpressServerApp {
           }
           if (booking.customerId !== customerId) {
             return { statusCode: 403, body: { success: false, error: { code: 'FORBIDDEN_BOOKING_ACCESS', message: 'غير مصرح لك بالوصول إلى هذا الحجز' }, timestamp } };
-          }
-          if (!booking.property || !booking.financialSummary) {
-            try {
-              const [prop, fin, imgs] = await Promise.all([
-                propertyDb.getById(booking.propertyId),
-                bookingDb.getFinancialSummary(booking.id),
-                imageDb.getImagesByPropertyId(booking.propertyId).catch(() => []),
-              ]);
-              if (prop) {
-                booking.property = {
-                  ...prop,
-                  images: Array.isArray(imgs) ? imgs.map((i: any) => i.fileUrl || i).filter(Boolean) : (prop.images || []),
-                };
-              }
-              if (fin) {
-                booking.financialSummary = fin;
-              }
-            } catch {}
           }
           let bookingDto: any;
           try {

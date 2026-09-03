@@ -31,6 +31,13 @@ CREATE TRIGGER konfrm_wallet_ledger_append_only_trg
   FOR EACH ROW
   EXECUTE FUNCTION public.konfrm_wallet_ledger_append_only_guard();
 
+DROP TRIGGER IF EXISTS konfrm_wallet_ledger_truncate_guard_trg ON public.wallet_ledger_entries;
+CREATE TRIGGER konfrm_wallet_ledger_truncate_guard_trg
+  BEFORE TRUNCATE
+  ON public.wallet_ledger_entries
+  FOR EACH STATEMENT
+  EXECUTE FUNCTION public.konfrm_wallet_ledger_append_only_guard();
+
 -- The guard is an implementation internal: no direct executable surface.
 REVOKE ALL ON FUNCTION public.konfrm_wallet_ledger_append_only_guard()
   FROM PUBLIC, anon, authenticated;

@@ -384,14 +384,23 @@ async function queryViaSupabaseRest(text: string, params: any[] | undefined, url
     // Fail closed: a malformed 200 payload must never become a false zero wallet.
     if (!Array.isArray(raw)) throw new Error('REST_OWNER_WALLET_MALFORMED_RESPONSE: expected a JSON array');
     const rows = raw.map((wallet: any) => {
-      if (!wallet || typeof wallet.owner_id !== 'string') {
-        throw new Error('REST_OWNER_WALLET_MALFORMED_RESPONSE: wallet row missing required owner_id');
+      if (!wallet || typeof wallet !== 'object' || Array.isArray(wallet)) {
+        throw new Error('REST_OWNER_WALLET_MALFORMED_RESPONSE: wallet row must be an object');
       }
-      for (const balanceKey of ['available_balance', 'pending_balance', 'held_balance', 'reserved_for_payout_balance']) {
+      if (typeof wallet.owner_id !== 'string' || wallet.owner_id.trim() === '' || wallet.owner_id !== ownerId) {
+        throw new Error('REST_OWNER_WALLET_MALFORMED_RESPONSE: wallet row owner_id must match requested ownerId');
+      }
+      if (typeof wallet.currency !== 'string' || wallet.currency.trim() === '') {
+        throw new Error('REST_OWNER_WALLET_MALFORMED_RESPONSE: wallet field currency must be a non-empty string');
+      }
+      for (const balanceKey of ['available_balance', 'pending_balance', 'held_balance', 'reserved_for_payout_balance'] as const) {
         const v = wallet[balanceKey];
-        if (v === undefined || v === null || typeof v !== 'number' || !Number.isFinite(v)) {
+        if (typeof v !== 'number' || !Number.isFinite(v)) {
           throw new Error(`REST_OWNER_WALLET_MALFORMED_RESPONSE: wallet field ${balanceKey} must be a finite number`);
         }
+      }
+      if (typeof wallet.updated_at !== 'string' || wallet.updated_at.trim() === '' || Number.isNaN(Date.parse(wallet.updated_at))) {
+        throw new Error('REST_OWNER_WALLET_MALFORMED_RESPONSE: wallet field updated_at must be a valid timestamp string');
       }
       return {
         ownerId: wallet.owner_id,
@@ -420,15 +429,35 @@ async function queryViaSupabaseRest(text: string, params: any[] | undefined, url
     // Fail closed: a malformed 200 payload must never become a false empty ledger.
     if (!Array.isArray(raw)) throw new Error('REST_OWNER_WALLET_LEDGER_MALFORMED_RESPONSE: expected a JSON array');
     const rows = raw.map((entry: any) => {
-      if (!entry || typeof entry.owner_id !== 'string' || typeof entry.transaction_type !== 'string' || entry.transaction_type === ''
-          || typeof entry.idempotency_key !== 'string' || entry.idempotency_key === '') {
-        throw new Error('REST_OWNER_WALLET_LEDGER_MALFORMED_RESPONSE: ledger row missing required owner/transaction fields');
+      if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
+        throw new Error('REST_OWNER_WALLET_LEDGER_MALFORMED_RESPONSE: ledger row must be an object');
       }
-      for (const numericKey of ['amount', 'balance_after']) {
+      if (typeof entry.id !== 'string' || !BOOKING_REQUEST_RPC_UUID_PATTERN.test(entry.id)) {
+        throw new Error('REST_OWNER_WALLET_LEDGER_MALFORMED_RESPONSE: ledger field id must be a UUID string');
+      }
+      if (typeof entry.owner_id !== 'string' || !BOOKING_REQUEST_RPC_UUID_PATTERN.test(entry.owner_id) || entry.owner_id !== ownerId) {
+        throw new Error('REST_OWNER_WALLET_LEDGER_MALFORMED_RESPONSE: ledger field owner_id must be a UUID matching requested ownerId');
+      }
+      for (const nullableIdKey of ['booking_id', 'payout_request_id', 'dispute_id'] as const) {
+        const v = entry[nullableIdKey];
+        if (v !== null && (typeof v !== 'string' || !BOOKING_REQUEST_RPC_UUID_PATTERN.test(v))) {
+          throw new Error(`REST_OWNER_WALLET_LEDGER_MALFORMED_RESPONSE: ledger field ${nullableIdKey} must be null or a UUID string`);
+        }
+      }
+      if (typeof entry.transaction_type !== 'string' || entry.transaction_type.trim() === '') {
+        throw new Error('REST_OWNER_WALLET_LEDGER_MALFORMED_RESPONSE: ledger field transaction_type must be a non-empty string');
+      }
+      for (const numericKey of ['amount', 'balance_after'] as const) {
         const v = entry[numericKey];
-        if (v === undefined || v === null || typeof v !== 'number' || !Number.isFinite(v)) {
+        if (typeof v !== 'number' || !Number.isFinite(v)) {
           throw new Error(`REST_OWNER_WALLET_LEDGER_MALFORMED_RESPONSE: ledger field ${numericKey} must be a finite number`);
         }
+      }
+      if (typeof entry.idempotency_key !== 'string' || entry.idempotency_key.trim() === '') {
+        throw new Error('REST_OWNER_WALLET_LEDGER_MALFORMED_RESPONSE: ledger field idempotency_key must be a non-empty string');
+      }
+      if (typeof entry.created_at !== 'string' || entry.created_at.trim() === '' || Number.isNaN(Date.parse(entry.created_at))) {
+        throw new Error('REST_OWNER_WALLET_LEDGER_MALFORMED_RESPONSE: ledger field created_at must be a valid timestamp string');
       }
       return {
         id: entry.id,

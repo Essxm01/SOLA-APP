@@ -104,6 +104,8 @@ class DepositCompletionModel {
 type Mode = 'success' | 'walletHttpError' | 'ledgerHttpError' | 'walletMalformed' | 'ledgerMalformed' | 'walletBadRow' | 'ledgerBadRow';
 let mode: Mode = 'success';
 let lastCalls: Array<{ url: string; method: string }> = [];
+let customWalletPayload: any = null;
+let customLedgerPayload: any = null;
 
 const validWalletRow = {
   owner_id: ownerId, currency: 'EGP', available_balance: 0, pending_balance: 800,
@@ -124,6 +126,12 @@ async function withWalletFetch(fn: () => Promise<any>) {
   process.env.SUPABASE_SERVICE_ROLE_KEY = 'test-service-role-key';
   globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
     calls.push({ url: String(input), method: init?.method || 'GET' });
+    if (customWalletPayload !== null && String(input).includes('owner_wallets')) {
+      return { ok: true, status: 200, json: async () => customWalletPayload, text: async () => '' } as unknown as Response;
+    }
+    if (customLedgerPayload !== null && String(input).includes('wallet_ledger_entries')) {
+      return { ok: true, status: 200, json: async () => customLedgerPayload, text: async () => '' } as unknown as Response;
+    }
     if (mode === 'walletHttpError' && String(input).includes('owner_wallets')) return { ok: false, status: 503, json: async () => ({}), text: async () => '' } as unknown as Response;
     if (mode === 'ledgerHttpError' && String(input).includes('wallet_ledger_entries')) return { ok: false, status: 503, json: async () => ({}), text: async () => '' } as unknown as Response;
     if (mode === 'walletMalformed' && String(input).includes('owner_wallets')) return { ok: true, status: 200, json: async () => ({ owner_id: ownerId }), text: async () => '{}' } as unknown as Response;
@@ -175,7 +183,68 @@ async function withWalletFetch(fn: () => Promise<any>) {
   mode = 'ledgerMalformed';
   await withWalletFetch(async () => { await assert.rejects(() => walletDb.getOwnerWalletSummary(ownerId), /REST_OWNER_WALLET_LEDGER_MALFORMED_RESPONSE/); });
   mode = 'ledgerBadRow';
-  await withWalletFetch(async () => { await assert.rejects(() => walletDb.getOwnerWalletSummary(ownerId), /missing required owner\/transaction fields/); });
+  await withWalletFetch(async () => { await assert.rejects(() => walletDb.getOwnerWalletSummary(ownerId), /idempotency_key must be a non-empty string/); });
+  mode = 'success';
+
+  // Table-driven malformed response validations for wallet:
+  const walletMalformedCases: Array<[string, any, RegExp]> = [
+    ['wallet owner mismatch', { ...validWalletRow, owner_id: otherOwnerId }, /wallet row owner_id must match requested ownerId/],
+    ['missing currency', { ...validWalletRow, currency: '' }, /wallet field currency must be a non-empty string/],
+    ['invalid currency (non-string)', { ...validWalletRow, currency: 123 }, /wallet field currency must be a non-empty string/],
+    ['invalid wallet updated_at (unparseable)', { ...validWalletRow, updated_at: 'invalid-date' }, /wallet field updated_at must be a valid timestamp string/],
+    ['invalid wallet updated_at (empty)', { ...validWalletRow, updated_at: '' }, /wallet field updated_at must be a valid timestamp string/],
+    ['non-numeric available_balance', { ...validWalletRow, available_balance: 'zero' }, /wallet field available_balance must be a finite number/],
+    ['null pending_balance', { ...validWalletRow, pending_balance: null }, /wallet field pending_balance must be a finite number/],
+    ['NaN held_balance', { ...validWalletRow, held_balance: NaN }, /wallet field held_balance must be a finite number/],
+    ['Infinity reserved_for_payout_balance', { ...validWalletRow, reserved_for_payout_balance: Infinity }, /wallet field reserved_for_payout_balance must be a finite number/],
+    ['wallet row not an object', 'not-an-object', /wallet row must be an object/],
+  ];
+  for (const [name, badRow, pattern] of walletMalformedCases) {
+    customWalletPayload = [badRow];
+    try {
+      await withWalletFetch(async () => {
+        await assert.rejects(
+          () => walletDb.getOwnerWalletSummary(ownerId),
+          pattern,
+          `expected ${name} to be rejected with ${pattern}`
+        );
+      });
+    } finally {
+      customWalletPayload = null;
+    }
+  }
+
+  // Table-driven malformed response validations for ledger:
+  const ledgerMalformedCases: Array<[string, any, RegExp]> = [
+    ['invalid ledger id (not UUID)', { ...validLedgerRow, id: 'not-a-uuid' }, /ledger field id must be a UUID string/],
+    ['ledger owner mismatch', { ...validLedgerRow, owner_id: otherOwnerId }, /ledger field owner_id must be a UUID matching requested ownerId/],
+    ['invalid ledger owner_id (not UUID)', { ...validLedgerRow, owner_id: 'bad-owner' }, /ledger field owner_id must be a UUID matching requested ownerId/],
+    ['invalid non-null nullable booking_id', { ...validLedgerRow, booking_id: 'not-a-uuid' }, /ledger field booking_id must be null or a UUID string/],
+    ['invalid non-null nullable payout_request_id', { ...validLedgerRow, payout_request_id: 'bad-payout-id' }, /ledger field payout_request_id must be null or a UUID string/],
+    ['invalid non-null nullable dispute_id (non-string)', { ...validLedgerRow, dispute_id: 123 }, /ledger field dispute_id must be null or a UUID string/],
+    ['missing transaction_type', { ...validLedgerRow, transaction_type: '' }, /ledger field transaction_type must be a non-empty string/],
+    ['invalid non-string transaction_type', { ...validLedgerRow, transaction_type: null }, /ledger field transaction_type must be a non-empty string/],
+    ['non-numeric amount', { ...validLedgerRow, amount: '800' }, /ledger field amount must be a finite number/],
+    ['null balance_after', { ...validLedgerRow, balance_after: null }, /ledger field balance_after must be a finite number/],
+    ['missing idempotency_key', { ...validLedgerRow, idempotency_key: '' }, /ledger field idempotency_key must be a non-empty string/],
+    ['invalid ledger created_at (unparseable)', { ...validLedgerRow, created_at: 'bad-timestamp' }, /ledger field created_at must be a valid timestamp string/],
+    ['invalid ledger created_at (empty)', { ...validLedgerRow, created_at: '' }, /ledger field created_at must be a valid timestamp string/],
+    ['ledger row not an object', 'not-an-object', /ledger row must be an object/],
+  ];
+  for (const [name, badRow, pattern] of ledgerMalformedCases) {
+    customLedgerPayload = [badRow];
+    try {
+      await withWalletFetch(async () => {
+        await assert.rejects(
+          () => walletDb.getOwnerLedger(ownerId),
+          pattern,
+          `expected ${name} to be rejected with ${pattern}`
+        );
+      });
+    } finally {
+      customLedgerPayload = null;
+    }
+  }
 
   // Ledger read: canonical mapping, pagination URL shape, fail-closed reads.
   mode = 'success';
@@ -269,8 +338,8 @@ assert.ok(!/DELETE\s+FROM\s+wallet_ledger_entries/i.test(appSrc), 'routes must n
 const migration = fs.readFileSync(path.resolve('database/migrations/027_wallet_ledger_append_only.sql'), 'utf8');
 for (const required of [
   'BEGIN;', 'COMMIT;', 'konfrm_wallet_ledger_append_only_guard', 'WALLET_LEDGER_IMMUTABLE',
-  'BEFORE UPDATE OR DELETE', 'ON public.wallet_ledger_entries', 'schema_migrations',
-  'SECURITY INVOKER', 'SET search_path = public, pg_temp',
+  'BEFORE UPDATE OR DELETE', 'BEFORE TRUNCATE', 'ON public.wallet_ledger_entries', 'schema_migrations',
+  'SECURITY INVOKER', 'SET search_path = public, pg_temp', 'FOR EACH ROW', 'FOR EACH STATEMENT',
 ]) {
   assert.ok(migration.includes(required), `migration 027 must contain ${required}`);
 }
@@ -278,10 +347,16 @@ assert.ok(!migration.includes('SECURITY DEFINER'), 'no SECURITY DEFINER may be i
 assert.ok(/REVOKE ALL ON FUNCTION public\.konfrm_wallet_ledger_append_only_guard\(\)\s+FROM PUBLIC, anon, authenticated;/.test(migration), 'guard function must be revoked from PUBLIC, anon, authenticated');
 const guardBody = migration.slice(migration.indexOf('AS $$'), migration.indexOf('$$;'));
 assert.ok(!/INSERT/i.test(guardBody), 'the guard body must not touch INSERTs (append-only, not insert-locked)');
+assert.ok(!/BEFORE INSERT|AFTER INSERT/i.test(migration), 'migration must not define an INSERT trigger');
 assert.ok(!migration.includes('konfrm_complete_deposit_payment'), 'migration 019 RPC must not be redefined or revoked');
 assert.ok(!/DISABLE TRIGGER|ALTER TABLE/i.test(migration), 'existing triggers/constraints must remain untouched');
-const dropTriggerLines = migration.split('\n').filter((l) => /DROP TRIGGER/i.test(l));
-assert.equal(dropTriggerLines.length, 1, 'only the P1.6 guard trigger may be recreated');
-assert.ok(/DROP TRIGGER IF EXISTS konfrm_wallet_ledger_append_only_trg ON public\.wallet_ledger_entries/.test(dropTriggerLines[0]), 'no foreign trigger may be dropped');
+const dropTriggerLines = migration.split('\n').map((l) => l.trim()).filter((l) => /DROP TRIGGER/i.test(l));
+assert.equal(dropTriggerLines.length, 2, 'both P1.6 guard triggers (row update/delete and statement truncate) must be recreated');
+assert.ok(/DROP TRIGGER IF EXISTS konfrm_wallet_ledger_append_only_trg ON public\.wallet_ledger_entries/.test(dropTriggerLines[0]), 'row trigger dropped');
+assert.ok(/DROP TRIGGER IF EXISTS konfrm_wallet_ledger_truncate_guard_trg ON public\.wallet_ledger_entries/.test(dropTriggerLines[1]), 'truncate trigger dropped');
+
+const normalizedMigration = migration.replace(/\s+/g, ' ');
+assert.ok(/BEFORE UPDATE OR DELETE ON public\.wallet_ledger_entries FOR EACH ROW EXECUTE FUNCTION public\.konfrm_wallet_ledger_append_only_guard\(\)/.test(normalizedMigration), 'row trigger guards UPDATE and DELETE');
+assert.ok(/BEFORE TRUNCATE ON public\.wallet_ledger_entries FOR EACH STATEMENT EXECUTE FUNCTION public\.konfrm_wallet_ledger_append_only_guard\(\)/.test(normalizedMigration), 'statement trigger guards TRUNCATE');
 
 console.log('P1.6 wallet + immutable ledger persistence suite passed');

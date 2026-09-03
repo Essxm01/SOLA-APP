@@ -26,6 +26,7 @@ import {
   validateCustomerFavoriteRow,
   type CustomerBookingCreateResponseDto,
 } from './contracts/customerRenter.js';
+import { toOwnerProfileDto, type OwnerProfileDto } from './contracts/ownerCore.js';
 import type { ApiSuccessResponse, ApiErrorResponse } from './types/server';
 
 export interface RouteHandlerResult {
@@ -469,7 +470,20 @@ export class ExpressServerApp {
 
         // --- A0. Real Owner Profile Endpoints (PostgreSQL Driven) ---
         if (path === '/api/v1/owner/profile' && method === 'GET') {
-          const owner = await ownerDb.getById(ownerId).catch(() => null);
+          let owner: any;
+          try {
+            owner = await ownerDb.getById(ownerId);
+          } catch {
+            return {
+              statusCode: 500,
+              body: {
+                success: false,
+                error: { code: 'OWNER_PROFILE_QUERY_FAILED', message: 'تعذر تحميل بيانات حساب المالك.' },
+                timestamp,
+              },
+            };
+          }
+
           if (!owner) {
             return {
               statusCode: 404,
@@ -481,18 +495,43 @@ export class ExpressServerApp {
             };
           }
 
-          return {
-            statusCode: 200,
-            body: {
-              success: true,
-              data: owner,
-              timestamp,
-            },
-          };
+          try {
+            const dto = toOwnerProfileDto(owner);
+            return {
+              statusCode: 200,
+              body: {
+                success: true,
+                data: dto,
+                timestamp,
+              },
+            };
+          } catch {
+            return {
+              statusCode: 500,
+              body: {
+                success: false,
+                error: { code: 'OWNER_PROFILE_MALFORMED', message: 'بيانات حساب المالك غير صالحة.' },
+                timestamp,
+              },
+            };
+          }
         }
 
         if (path === '/api/v1/owner/profile' && method === 'PUT') {
-          const existingOwner = await ownerDb.getById(ownerId).catch(() => null);
+          let existingOwner: any;
+          try {
+            existingOwner = await ownerDb.getById(ownerId);
+          } catch {
+            return {
+              statusCode: 500,
+              body: {
+                success: false,
+                error: { code: 'OWNER_PROFILE_QUERY_FAILED', message: 'تعذر التحقق من بيانات حساب المالك.' },
+                timestamp,
+              },
+            };
+          }
+
           if (!existingOwner) {
             return {
               statusCode: 404,
@@ -503,11 +542,25 @@ export class ExpressServerApp {
               },
             };
           }
-          const owner = await ownerDb.updateProfile(ownerId, {
-            fullName: bodyPayload?.fullName,
-            email: bodyPayload?.email,
-            avatarUrl: bodyPayload?.avatarUrl,
-          }).catch(() => null);
+
+          let owner: any;
+          try {
+            owner = await ownerDb.updateProfile(ownerId, {
+              fullName: bodyPayload?.fullName,
+              email: bodyPayload?.email,
+              avatarUrl: bodyPayload?.avatarUrl,
+            });
+          } catch {
+            return {
+              statusCode: 500,
+              body: {
+                success: false,
+                error: { code: 'OWNER_PROFILE_UPDATE_FAILED', message: 'تعذر حفظ تعديلات حساب المالك.' },
+                timestamp,
+              },
+            };
+          }
+
           if (!owner) {
             return {
               statusCode: 500,
@@ -519,14 +572,26 @@ export class ExpressServerApp {
             };
           }
 
-          return {
-            statusCode: 200,
-            body: {
-              success: true,
-              data: owner,
-              timestamp,
-            },
-          };
+          try {
+            const dto = toOwnerProfileDto(owner);
+            return {
+              statusCode: 200,
+              body: {
+                success: true,
+                data: dto,
+                timestamp,
+              },
+            };
+          } catch {
+            return {
+              statusCode: 500,
+              body: {
+                success: false,
+                error: { code: 'OWNER_PROFILE_MALFORMED', message: 'بيانات حساب المالك غير صالحة.' },
+                timestamp,
+              },
+            };
+          }
         }
 
         // --- A1. Canonical private Owner KYC package ---

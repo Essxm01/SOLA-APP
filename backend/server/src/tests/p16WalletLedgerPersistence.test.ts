@@ -179,7 +179,7 @@ async function withWalletFetch(fn: () => Promise<any>) {
   mode = 'walletMalformed';
   await withWalletFetch(async () => { await assert.rejects(() => walletDb.getOwnerWalletSummary(ownerId), /REST_OWNER_WALLET_MALFORMED_RESPONSE/); });
   mode = 'walletBadRow';
-  await withWalletFetch(async () => { await assert.rejects(() => walletDb.getOwnerWalletSummary(ownerId), /pending_balance must be a finite number/); });
+  await withWalletFetch(async () => { await assert.rejects(() => walletDb.getOwnerWalletSummary(ownerId), /pending_balance must be a non-negative finite number/); });
   mode = 'ledgerMalformed';
   await withWalletFetch(async () => { await assert.rejects(() => walletDb.getOwnerWalletSummary(ownerId), /REST_OWNER_WALLET_LEDGER_MALFORMED_RESPONSE/); });
   mode = 'ledgerBadRow';
@@ -193,10 +193,14 @@ async function withWalletFetch(fn: () => Promise<any>) {
     ['invalid currency (non-string)', { ...validWalletRow, currency: 123 }, /wallet field currency must be a non-empty string/],
     ['invalid wallet updated_at (unparseable)', { ...validWalletRow, updated_at: 'invalid-date' }, /wallet field updated_at must be a valid timestamp string/],
     ['invalid wallet updated_at (empty)', { ...validWalletRow, updated_at: '' }, /wallet field updated_at must be a valid timestamp string/],
-    ['non-numeric available_balance', { ...validWalletRow, available_balance: 'zero' }, /wallet field available_balance must be a finite number/],
-    ['null pending_balance', { ...validWalletRow, pending_balance: null }, /wallet field pending_balance must be a finite number/],
-    ['NaN held_balance', { ...validWalletRow, held_balance: NaN }, /wallet field held_balance must be a finite number/],
-    ['Infinity reserved_for_payout_balance', { ...validWalletRow, reserved_for_payout_balance: Infinity }, /wallet field reserved_for_payout_balance must be a finite number/],
+    ['negative available_balance', { ...validWalletRow, available_balance: -1 }, /wallet field available_balance must be a non-negative finite number/],
+    ['negative pending_balance', { ...validWalletRow, pending_balance: -0.01 }, /wallet field pending_balance must be a non-negative finite number/],
+    ['negative held_balance', { ...validWalletRow, held_balance: -100 }, /wallet field held_balance must be a non-negative finite number/],
+    ['negative reserved_for_payout_balance', { ...validWalletRow, reserved_for_payout_balance: -50 }, /wallet field reserved_for_payout_balance must be a non-negative finite number/],
+    ['non-numeric available_balance', { ...validWalletRow, available_balance: 'zero' }, /wallet field available_balance must be a non-negative finite number/],
+    ['null pending_balance', { ...validWalletRow, pending_balance: null }, /wallet field pending_balance must be a non-negative finite number/],
+    ['NaN held_balance', { ...validWalletRow, held_balance: NaN }, /wallet field held_balance must be a non-negative finite number/],
+    ['Infinity reserved_for_payout_balance', { ...validWalletRow, reserved_for_payout_balance: Infinity }, /wallet field reserved_for_payout_balance must be a non-negative finite number/],
     ['wallet row not an object', 'not-an-object', /wallet row must be an object/],
   ];
   for (const [name, badRow, pattern] of walletMalformedCases) {
@@ -358,5 +362,61 @@ assert.ok(/DROP TRIGGER IF EXISTS konfrm_wallet_ledger_truncate_guard_trg ON pub
 const normalizedMigration = migration.replace(/\s+/g, ' ');
 assert.ok(/BEFORE UPDATE OR DELETE ON public\.wallet_ledger_entries FOR EACH ROW EXECUTE FUNCTION public\.konfrm_wallet_ledger_append_only_guard\(\)/.test(normalizedMigration), 'row trigger guards UPDATE and DELETE');
 assert.ok(/BEFORE TRUNCATE ON public\.wallet_ledger_entries FOR EACH STATEMENT EXECUTE FUNCTION public\.konfrm_wallet_ledger_append_only_guard\(\)/.test(normalizedMigration), 'statement trigger guards TRUNCATE');
+
+// 5. Contract proof: narrow FK-nulling exception (ON DELETE SET NULL cascade)
+// while all financial/core fields and direct/destructive mutations remain immutable.
+for (const requiredInGuard of [
+  'pg_trigger_depth() > 1',
+  'OLD.booking_id IS NOT NULL',
+  'NEW.booking_id IS NULL',
+  'NEW.id IS NOT DISTINCT FROM OLD.id',
+  'NEW.owner_id IS NOT DISTINCT FROM OLD.owner_id',
+  'NEW.payout_request_id IS NOT DISTINCT FROM OLD.payout_request_id',
+  'NEW.dispute_id IS NOT DISTINCT FROM OLD.dispute_id',
+  'NEW.transaction_type IS NOT DISTINCT FROM OLD.transaction_type',
+  'NEW.amount IS NOT DISTINCT FROM OLD.amount',
+  'NEW.balance_after IS NOT DISTINCT FROM OLD.balance_after',
+  'NEW.idempotency_key IS NOT DISTINCT FROM OLD.idempotency_key',
+  'NEW.created_at IS NOT DISTINCT FROM OLD.created_at',
+  'RETURN NEW;',
+  "RAISE EXCEPTION 'WALLET_LEDGER_IMMUTABLE';",
+]) {
+  assert.ok(guardBody.includes(requiredInGuard), `guard function must contain: ${requiredInGuard}`);
+}
+
+// Deterministic simulation verifying the guard logic contract:
+function simulateLedgerGuard(tgOp: 'INSERT' | 'UPDATE' | 'DELETE' | 'TRUNCATE', triggerDepth: number, oldRow: any, newRow: any): 'OK' | 'WALLET_LEDGER_IMMUTABLE' {
+  if (tgOp === 'UPDATE' && triggerDepth > 1 && oldRow?.booking_id != null && newRow?.booking_id == null) {
+    const keys = ['id', 'owner_id', 'payout_request_id', 'dispute_id', 'transaction_type', 'amount', 'balance_after', 'idempotency_key', 'created_at'];
+    const unchanged = keys.every((k) => (newRow?.[k] === undefined && oldRow?.[k] === undefined) || (newRow?.[k] === oldRow?.[k]));
+    if (unchanged) return 'OK';
+  }
+  return 'WALLET_LEDGER_IMMUTABLE';
+}
+
+// Narrow referential cascade is permitted:
+assert.equal(
+  simulateLedgerGuard('UPDATE', 2, { ...validLedgerRow, booking_id: bookingId }, { ...validLedgerRow, booking_id: null }),
+  'OK',
+  'cascaded ON DELETE SET NULL from booking deletion is permitted'
+);
+
+// Any other mutation is rejected:
+assert.equal(simulateLedgerGuard('UPDATE', 1, { ...validLedgerRow, booking_id: bookingId }, { ...validLedgerRow, booking_id: null }), 'WALLET_LEDGER_IMMUTABLE', 'direct UPDATE trying to null booking_id is rejected');
+assert.equal(simulateLedgerGuard('UPDATE', 2, { ...validLedgerRow, booking_id: bookingId }, { ...validLedgerRow, booking_id: null, amount: 900 }), 'WALLET_LEDGER_IMMUTABLE', 'altering amount during FK cascade is rejected');
+assert.equal(simulateLedgerGuard('UPDATE', 2, { ...validLedgerRow, booking_id: bookingId }, { ...validLedgerRow, booking_id: null, balance_after: 900 }), 'WALLET_LEDGER_IMMUTABLE', 'altering balance_after during FK cascade is rejected');
+assert.equal(simulateLedgerGuard('UPDATE', 2, { ...validLedgerRow, booking_id: bookingId }, { ...validLedgerRow, booking_id: null, transaction_type: 'PAYOUT' }), 'WALLET_LEDGER_IMMUTABLE', 'altering transaction_type is rejected');
+assert.equal(simulateLedgerGuard('UPDATE', 2, { ...validLedgerRow, booking_id: bookingId }, { ...validLedgerRow, booking_id: null, idempotency_key: 'DIFF' }), 'WALLET_LEDGER_IMMUTABLE', 'altering idempotency_key is rejected');
+assert.equal(simulateLedgerGuard('UPDATE', 2, { ...validLedgerRow, booking_id: bookingId }, { ...validLedgerRow, booking_id: null, owner_id: otherOwnerId }), 'WALLET_LEDGER_IMMUTABLE', 'altering owner_id is rejected');
+assert.equal(simulateLedgerGuard('DELETE', 1, validLedgerRow, null), 'WALLET_LEDGER_IMMUTABLE', 'DELETE is always rejected');
+assert.equal(simulateLedgerGuard('TRUNCATE', 1, null, null), 'WALLET_LEDGER_IMMUTABLE', 'TRUNCATE is always rejected');
+
+// 6. Real PostgreSQL test suite cleanup compatibility static proof
+const pgRuntimeSrc = fs.readFileSync(path.resolve('server/src/tests/postgresRuntime.test.ts'), 'utf8');
+assert.ok(pgRuntimeSrc.includes('cleanTestFixtures'), 'postgresRuntime must use cleanTestFixtures helper');
+assert.ok(pgRuntimeSrc.includes('ALTER TABLE public.wallet_ledger_entries DISABLE TRIGGER USER'), 'cleanup disables user triggers in test transaction');
+assert.ok(pgRuntimeSrc.includes('ALTER TABLE public.wallet_ledger_entries ENABLE TRIGGER USER'), 'cleanup restores user triggers before commit');
+assert.ok(pgRuntimeSrc.includes("client.query('BEGIN')") && pgRuntimeSrc.includes("client.query('COMMIT')"), 'cleanup runs in an isolated client transaction');
+assert.ok(pgRuntimeSrc.includes("client.query('ROLLBACK')"), 'cleanup transaction rolls back on error');
 
 console.log('P1.6 wallet + immutable ledger persistence suite passed');

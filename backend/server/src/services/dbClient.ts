@@ -395,8 +395,8 @@ async function queryViaSupabaseRest(text: string, params: any[] | undefined, url
       }
       for (const balanceKey of ['available_balance', 'pending_balance', 'held_balance', 'reserved_for_payout_balance'] as const) {
         const v = wallet[balanceKey];
-        if (typeof v !== 'number' || !Number.isFinite(v)) {
-          throw new Error(`REST_OWNER_WALLET_MALFORMED_RESPONSE: wallet field ${balanceKey} must be a finite number`);
+        if (typeof v !== 'number' || !Number.isFinite(v) || v < 0) {
+          throw new Error(`REST_OWNER_WALLET_MALFORMED_RESPONSE: wallet field ${balanceKey} must be a non-negative finite number`);
         }
       }
       if (typeof wallet.updated_at !== 'string' || wallet.updated_at.trim() === '' || Number.isNaN(Date.parse(wallet.updated_at))) {

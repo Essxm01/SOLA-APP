@@ -20,6 +20,27 @@ SECURITY INVOKER
 SET search_path = public, pg_temp
 AS $$
 BEGIN
+  -- Reconcile ledger immutability with the existing booking FK ON DELETE SET NULL.
+  -- The only permitted UPDATE is a nested referential-nulling transition where
+  -- OLD.booking_id IS NOT NULL -> NEW.booking_id IS NULL, triggered by a foreign key
+  -- action (pg_trigger_depth() > 1), with every other ledger field unchanged.
+  IF TG_OP = 'UPDATE'
+     AND pg_trigger_depth() > 1
+     AND OLD.booking_id IS NOT NULL
+     AND NEW.booking_id IS NULL
+     AND NEW.id IS NOT DISTINCT FROM OLD.id
+     AND NEW.owner_id IS NOT DISTINCT FROM OLD.owner_id
+     AND NEW.payout_request_id IS NOT DISTINCT FROM OLD.payout_request_id
+     AND NEW.dispute_id IS NOT DISTINCT FROM OLD.dispute_id
+     AND NEW.transaction_type IS NOT DISTINCT FROM OLD.transaction_type
+     AND NEW.amount IS NOT DISTINCT FROM OLD.amount
+     AND NEW.balance_after IS NOT DISTINCT FROM OLD.balance_after
+     AND NEW.idempotency_key IS NOT DISTINCT FROM OLD.idempotency_key
+     AND NEW.created_at IS NOT DISTINCT FROM OLD.created_at
+  THEN
+    RETURN NEW;
+  END IF;
+
   RAISE EXCEPTION 'WALLET_LEDGER_IMMUTABLE';
 END;
 $$;

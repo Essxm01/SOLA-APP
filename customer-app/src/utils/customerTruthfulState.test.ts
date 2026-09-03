@@ -60,6 +60,26 @@ async function run() {
     'empty destination and unitType ALL must return base search path'
   );
 
+  // Finding 3: Customer search helper must never silently omit invalid numeric filters
+  const assertThrowsFilter = (filters: any, label: string) => {
+    let threw = false;
+    try {
+      buildPublicPropertySearchPath(filters);
+    } catch {
+      threw = true;
+    }
+    assert(threw, `invalid filter must throw instead of silently degrading: ${label}`);
+  };
+
+  assertThrowsFilter({ totalGuests: 0 }, 'totalGuests=0');
+  assertThrowsFilter({ totalGuests: -1 }, 'totalGuests=-1');
+  assertThrowsFilter({ totalGuests: 1.5 }, 'totalGuests=1.5');
+  assertThrowsFilter({ totalGuests: NaN }, 'totalGuests=NaN');
+  assertThrowsFilter({ maxPrice: 0 }, 'maxPrice=0');
+  assertThrowsFilter({ maxPrice: -500 }, 'maxPrice=-500');
+  assertThrowsFilter({ maxPrice: NaN }, 'maxPrice=NaN');
+  assertThrowsFilter({ maxPrice: Infinity }, 'maxPrice=Infinity');
+
   console.log('CUSTOMER-TRUTHFUL-STATE-01 focused client state tests passed');
 }
 

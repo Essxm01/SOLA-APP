@@ -6,7 +6,7 @@
 
 import { queryDb } from './dbClient.js';
 import { GLOBAL_MIN_STAY_NIGHTS, GLOBAL_MAX_STAY_NIGHTS, BLOCKING_BOOKING_STATUSES } from '../constants/bookingRules.js';
-import { PublicPropertySearchFilters } from '../contracts/publicProperty.js';
+import { PublicPropertySearchFilters, validatePublicPropertyBaseRow } from '../contracts/publicProperty.js';
 
 // Helper to mask PII strings for admin queue outputs
 export function maskPii(val?: string, visibleLength = 4): string {
@@ -382,14 +382,14 @@ export const propertyDb = {
     } else {
       rows = await defaultGetAllForPublic();
     }
-    let mapped = rows.map((p: any) => ({
-      ...p,
-      pricePerNight: Number(p.basePricePerNight ?? p.pricePerNight ?? 0),
-      basePricePerNight: Number(p.basePricePerNight ?? p.pricePerNight ?? 0),
-      bedrooms: Number(p.bedrooms ?? 0),
-      bathrooms: Number(p.bathrooms ?? 0),
-      maxGuests: Number(p.maxGuests ?? 0),
-    }));
+    let mapped = rows.map((p: any) => {
+      const base = validatePublicPropertyBaseRow(p);
+      return {
+        ...p,
+        ...base,
+        pricePerNight: base.basePricePerNight,
+      };
+    });
 
     if (!filters) {
       return mapped;

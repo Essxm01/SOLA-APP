@@ -40,7 +40,7 @@ try {
   assert.equal(lifecycleWrite.statusCode, 400, 'owner edit cannot publish');
   const missingImageSubmit = await app.handleHttpRequest('POST', `/api/v1/owner/properties/${property.id}/submit`, headers(ownerA, 'ROLE_OWNER'));
   assert.equal(missingImageSubmit.statusCode, 400, 'draft without committed image cannot submit');
-  property.images = [{ id: 'image-1' }];
+  property.images = [{ id: 'image-1', fileUrl: 'https://safe.test/properties/image-1.jpg' }];
   const submit = await app.handleHttpRequest('POST', `/api/v1/owner/properties/${property.id}/submit`, headers(ownerA, 'ROLE_OWNER'));
   assert.equal(submit.statusCode, 200); assert.equal(property.status, 'PENDING_REVIEW'); assert.equal(property.verificationStatus, 'PENDING_VERIFICATION');
   const reject = await app.handleHttpRequest('POST', `/api/v1/admin/properties/${property.id}/review`, headers(admin, 'ROLE_ADMIN'), { decision: 'REJECTED', reviewNotes: 'تحتاج صورة أوضح' });

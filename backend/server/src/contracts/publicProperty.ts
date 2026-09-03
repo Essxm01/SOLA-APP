@@ -81,24 +81,24 @@ export function parsePublicPropertySearchFilters(
   return filters;
 }
 
-function validateImages(images: unknown): string[] {
-  if (!Array.isArray(images)) {
-    throw new Error('MALFORMED_PUBLIC_PROPERTY_DATA: images must be an array');
-  }
-  for (const img of images) {
-    if (typeof img !== 'string' || img.trim() === '') {
-      throw new Error('MALFORMED_PUBLIC_PROPERTY_DATA: images must contain non-empty strings only');
-    }
-  }
-  return images;
+export interface PublicPropertyBaseRow {
+  id: string;
+  title: string;
+  unitType: string;
+  propertyType: string | null;
+  address: string;
+  region: string | null;
+  resortName: string | null;
+  bedrooms: number;
+  bathrooms: number;
+  maxGuests: number;
+  basePricePerNight: number;
 }
 
-export function toPublicPropertySearchItem(raw: any, images: string[]): PublicPropertySearchItem {
+export function validatePublicPropertyBaseRow(raw: any): PublicPropertyBaseRow {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
     throw new Error('MALFORMED_PUBLIC_PROPERTY_DATA: raw property row must be a non-null object');
   }
-
-  const validatedImages = validateImages(images);
 
   const id = raw.id;
   if (typeof id !== 'string' || id.trim() === '') {
@@ -110,13 +110,20 @@ export function toPublicPropertySearchItem(raw: any, images: string[]): PublicPr
     throw new Error('MALFORMED_PUBLIC_PROPERTY_DATA: title must be a non-empty string');
   }
 
-  const unitType = raw.unitType ?? raw.unit_type;
-  if (typeof unitType !== 'string' || unitType.trim() === '') {
+  const unitTypeRaw = raw.unitType ?? raw.unit_type;
+  if (typeof unitTypeRaw !== 'string' || unitTypeRaw.trim() === '') {
     throw new Error('MALFORMED_PUBLIC_PROPERTY_DATA: unitType must be a non-empty string');
   }
+  const unitType = unitTypeRaw.trim();
 
   const propertyTypeRaw = raw.propertyType ?? raw.property_type;
-  const propertyType = propertyTypeRaw !== undefined && propertyTypeRaw !== null ? String(propertyTypeRaw) : null;
+  let propertyType: string | null = null;
+  if (propertyTypeRaw !== undefined && propertyTypeRaw !== null) {
+    if (typeof propertyTypeRaw !== 'string' || propertyTypeRaw.trim() === '') {
+      throw new Error('MALFORMED_PUBLIC_PROPERTY_DATA: propertyType must be null, undefined, or a non-empty string');
+    }
+    propertyType = propertyTypeRaw.trim();
+  }
 
   const address = raw.address;
   if (typeof address !== 'string' || address.trim() === '') {
@@ -124,27 +131,53 @@ export function toPublicPropertySearchItem(raw: any, images: string[]): PublicPr
   }
 
   const regionRaw = raw.region;
-  const region = regionRaw !== undefined && regionRaw !== null ? String(regionRaw) : null;
+  let region: string | null = null;
+  if (regionRaw !== undefined && regionRaw !== null) {
+    if (typeof regionRaw !== 'string') {
+      throw new Error('MALFORMED_PUBLIC_PROPERTY_DATA: region must be null, undefined, or a string');
+    }
+    region = regionRaw;
+  }
 
   const resortNameRaw = raw.resortName ?? raw.resort_name;
-  const resortName = resortNameRaw !== undefined && resortNameRaw !== null ? String(resortNameRaw) : null;
+  let resortName: string | null = null;
+  if (resortNameRaw !== undefined && resortNameRaw !== null) {
+    if (typeof resortNameRaw !== 'string') {
+      throw new Error('MALFORMED_PUBLIC_PROPERTY_DATA: resortName must be null, undefined, or a string');
+    }
+    resortName = resortNameRaw;
+  }
 
+  if (raw.bedrooms === undefined || raw.bedrooms === null) {
+    throw new Error('MALFORMED_PUBLIC_PROPERTY_DATA: bedrooms must be a non-negative integer');
+  }
   const bedroomsNum = Number(raw.bedrooms);
   if (!Number.isInteger(bedroomsNum) || bedroomsNum < 0) {
     throw new Error('MALFORMED_PUBLIC_PROPERTY_DATA: bedrooms must be a non-negative integer');
   }
 
+  if (raw.bathrooms === undefined || raw.bathrooms === null) {
+    throw new Error('MALFORMED_PUBLIC_PROPERTY_DATA: bathrooms must be a non-negative integer');
+  }
   const bathroomsNum = Number(raw.bathrooms);
   if (!Number.isInteger(bathroomsNum) || bathroomsNum < 0) {
     throw new Error('MALFORMED_PUBLIC_PROPERTY_DATA: bathrooms must be a non-negative integer');
   }
 
-  const maxGuestsNum = Number(raw.maxGuests ?? raw.max_guests);
+  const maxGuestsRaw = raw.maxGuests ?? raw.max_guests;
+  if (maxGuestsRaw === undefined || maxGuestsRaw === null) {
+    throw new Error('MALFORMED_PUBLIC_PROPERTY_DATA: maxGuests must be a positive integer');
+  }
+  const maxGuestsNum = Number(maxGuestsRaw);
   if (!Number.isInteger(maxGuestsNum) || maxGuestsNum <= 0) {
     throw new Error('MALFORMED_PUBLIC_PROPERTY_DATA: maxGuests must be a positive integer');
   }
 
-  const basePriceNum = Number(raw.basePricePerNight ?? raw.base_price_per_night);
+  const basePriceRaw = raw.basePricePerNight ?? raw.base_price_per_night ?? raw.pricePerNight ?? raw.price_per_night;
+  if (basePriceRaw === undefined || basePriceRaw === null) {
+    throw new Error('MALFORMED_PUBLIC_PROPERTY_DATA: basePricePerNight must be a positive number');
+  }
+  const basePriceNum = Number(basePriceRaw);
   if (!Number.isFinite(basePriceNum) || basePriceNum <= 0) {
     throw new Error('MALFORMED_PUBLIC_PROPERTY_DATA: basePricePerNight must be a positive number');
   }
@@ -161,6 +194,43 @@ export function toPublicPropertySearchItem(raw: any, images: string[]): PublicPr
     bathrooms: bathroomsNum,
     maxGuests: maxGuestsNum,
     basePricePerNight: basePriceNum,
+  };
+}
+
+export function extractPublicImageUrls(images: unknown): string[] {
+  if (!Array.isArray(images)) {
+    throw new Error('MALFORMED_PUBLIC_MEDIA_DATA: images must be an array');
+  }
+  return images.map((img, idx) => {
+    if (!img || typeof img !== 'object') {
+      throw new Error(`MALFORMED_PUBLIC_MEDIA_DATA: image at index ${idx} must be an object`);
+    }
+    const url = img.fileUrl ?? img.file_url;
+    if (typeof url !== 'string' || url.trim() === '') {
+      throw new Error(`MALFORMED_PUBLIC_MEDIA_DATA: image at index ${idx} must contain a non-empty fileUrl string`);
+    }
+    return url;
+  });
+}
+
+function validateImages(images: unknown): string[] {
+  if (!Array.isArray(images)) {
+    throw new Error('MALFORMED_PUBLIC_PROPERTY_DATA: images must be an array');
+  }
+  for (const img of images) {
+    if (typeof img !== 'string' || img.trim() === '') {
+      throw new Error('MALFORMED_PUBLIC_PROPERTY_DATA: images must contain non-empty strings only');
+    }
+  }
+  return images;
+}
+
+export function toPublicPropertySearchItem(raw: any, images: string[]): PublicPropertySearchItem {
+  const baseRow = validatePublicPropertyBaseRow(raw);
+  const validatedImages = validateImages(images);
+
+  return {
+    ...baseRow,
     currency: 'EGP',
     images: validatedImages,
   };
@@ -190,7 +260,13 @@ export function toPublicPropertyDetail(raw: any, images: string[]): PublicProper
   }
 
   const descriptionRaw = raw.description;
-  const description = descriptionRaw !== undefined && descriptionRaw !== null ? String(descriptionRaw) : null;
+  let description: string | null = null;
+  if (descriptionRaw !== undefined && descriptionRaw !== null) {
+    if (typeof descriptionRaw !== 'string') {
+      throw new Error('MALFORMED_PUBLIC_PROPERTY_DATA: description must be null, undefined, or a string');
+    }
+    description = descriptionRaw;
+  }
 
   const amenitiesRaw = raw.amenities;
   let amenities: unknown[] = [];

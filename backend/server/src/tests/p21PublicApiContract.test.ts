@@ -144,8 +144,21 @@ assert.equal('ledgerId' in detail, false);
 // Fail closed on malformed source fields
 assert.throws(() => toPublicPropertySearchItem({ ...poisoned, id: '' }, ['img.jpg']), /MALFORMED_PUBLIC_PROPERTY_DATA/);
 assert.throws(() => toPublicPropertySearchItem({ ...poisoned, title: null as any }, ['img.jpg']), /MALFORMED_PUBLIC_PROPERTY_DATA/);
+assert.throws(() => toPublicPropertySearchItem({ ...poisoned, unitType: '' }, ['img.jpg']), /MALFORMED_PUBLIC_PROPERTY_DATA/);
+assert.throws(() => toPublicPropertySearchItem({ ...poisoned, propertyType: '' }, ['img.jpg']), /MALFORMED_PUBLIC_PROPERTY_DATA/);
+assert.throws(() => toPublicPropertySearchItem({ ...poisoned, propertyType: 123 as any }, ['img.jpg']), /MALFORMED_PUBLIC_PROPERTY_DATA/);
+assert.throws(() => toPublicPropertySearchItem({ ...poisoned, region: 123 as any }, ['img.jpg']), /MALFORMED_PUBLIC_PROPERTY_DATA/);
+assert.throws(() => toPublicPropertySearchItem({ ...poisoned, resortName: 123 as any }, ['img.jpg']), /MALFORMED_PUBLIC_PROPERTY_DATA/);
+assert.throws(() => toPublicPropertySearchItem({ ...poisoned, bedrooms: null as any }, ['img.jpg']), /MALFORMED_PUBLIC_PROPERTY_DATA/);
+assert.throws(() => toPublicPropertySearchItem({ ...poisoned, bedrooms: -1 }, ['img.jpg']), /MALFORMED_PUBLIC_PROPERTY_DATA/);
+assert.throws(() => toPublicPropertySearchItem({ ...poisoned, bathrooms: null as any }, ['img.jpg']), /MALFORMED_PUBLIC_PROPERTY_DATA/);
+assert.throws(() => toPublicPropertySearchItem({ ...poisoned, bathrooms: -1 }, ['img.jpg']), /MALFORMED_PUBLIC_PROPERTY_DATA/);
+assert.throws(() => toPublicPropertySearchItem({ ...poisoned, maxGuests: null as any }, ['img.jpg']), /MALFORMED_PUBLIC_PROPERTY_DATA/);
+assert.throws(() => toPublicPropertySearchItem({ ...poisoned, maxGuests: 0 }, ['img.jpg']), /MALFORMED_PUBLIC_PROPERTY_DATA/);
+assert.throws(() => toPublicPropertySearchItem({ ...poisoned, basePricePerNight: 0 }, ['img.jpg']), /MALFORMED_PUBLIC_PROPERTY_DATA/);
 assert.throws(() => toPublicPropertySearchItem({ ...poisoned, basePricePerNight: -10 }, ['img.jpg']), /MALFORMED_PUBLIC_PROPERTY_DATA/);
 assert.throws(() => toPublicPropertySearchItem({ ...poisoned, basePricePerNight: 'invalid' as any }, ['img.jpg']), /MALFORMED_PUBLIC_PROPERTY_DATA/);
+assert.throws(() => toPublicPropertyDetail({ ...poisoned, description: 123 as any }, ['img.jpg']), /MALFORMED_PUBLIC_PROPERTY_DATA/);
 assert.throws(() => toPublicPropertySearchItem(poisoned, 'not-an-array' as any), /MALFORMED_PUBLIC_PROPERTY_DATA/);
 assert.throws(() => toPublicPropertySearchItem(poisoned, ['']), /MALFORMED_PUBLIC_PROPERTY_DATA/);
 
@@ -278,6 +291,33 @@ try {
     guests: 6, // p1 only has 4
   });
   assert.deepEqual(combinedZero, []);
+
+  // Finding 1: Malformed source rows must fail closed before any filtering
+  const badRows = [
+    { ...mockPropertiesSource[0], bedrooms: null },
+    { ...mockPropertiesSource[1], basePricePerNight: 0 },
+    { ...mockPropertiesSource[2], maxGuests: -1 },
+    { ...mockPropertiesSource[0], id: '' },
+    { ...mockPropertiesSource[0], title: '' },
+    { ...mockPropertiesSource[0], propertyType: 123 },
+    { ...mockPropertiesSource[0], region: 123 },
+  ];
+  for (const badRow of badRows) {
+    globalThis.fetch = (async () => {
+      return new Response(JSON.stringify([badRow]), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }) as any;
+    await assert.rejects(
+      async () => propertyDb.searchPublic(),
+      /MALFORMED_PUBLIC_PROPERTY_DATA/
+    );
+    await assert.rejects(
+      async () => propertyDb.searchPublic({ guests: 10, maxPrice: 100 }),
+      /MALFORMED_PUBLIC_PROPERTY_DATA/
+    );
+  }
 } finally {
   globalThis.fetch = origFetch;
   if (envUrl === undefined) delete process.env.SUPABASE_URL; else process.env.SUPABASE_URL = envUrl;
@@ -607,6 +647,29 @@ try {
   assert.equal(failedMediaDetail.statusCode, 500);
   assert.equal((failedMediaDetail.body as any).error?.code, 'PROPERTY_IMAGES_QUERY_FAILED');
 
+  // Finding 2: Malformed active media row (missing, null, empty fileUrl) must fail closed with HTTP 500
+  for (const badMedia of [
+    [{ fileUrl: '' }],
+    [{ fileUrl: null }],
+    [{ otherField: 'no-url' }],
+  ]) {
+    (imageDb as any).getImagesByPropertyId = async () => badMedia;
+    const searchBadMediaRes = await app.handleHttpRequest('GET', '/api/v1/customer/properties/search');
+    assert.equal(searchBadMediaRes.statusCode, 500, 'search must fail closed with HTTP 500 on malformed active media fileUrl');
+
+    const detailBadMediaRes = await app.handleHttpRequest('GET', '/api/v1/customer/properties/prop-public-001');
+    assert.equal(detailBadMediaRes.statusCode, 500, 'detail must fail closed with HTTP 500 on malformed active media fileUrl');
+  }
+
+  // Genuine zero-media response ([]) returns 200 with images: []
+  (imageDb as any).getImagesByPropertyId = async () => [];
+  const zeroMediaSearchRes = await app.handleHttpRequest('GET', '/api/v1/customer/properties/search');
+  assert.equal(zeroMediaSearchRes.statusCode, 200);
+  assert.deepEqual((zeroMediaSearchRes.body as any).data[0].images, []);
+
+  const zeroMediaDetailRes = await app.handleHttpRequest('GET', '/api/v1/customer/properties/prop-public-001');
+  assert.equal(zeroMediaDetailRes.statusCode, 200);
+  assert.deepEqual((zeroMediaDetailRes.body as any).data.images, []);
 } finally {
   (propertyDb as any).searchPublic = origSearchPublic;
   (propertyDb as any).getPublicById = origGetPublicById;

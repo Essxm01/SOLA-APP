@@ -91,7 +91,14 @@ export function App() {
   const fetchProperties = async (filters?: Partial<SearchFilterState>) => {
     setPropertyLoadState('LOADING');
     setPropertyLoadError(null);
-    const path = buildPublicPropertySearchPath(filters);
+    let path: string;
+    try {
+      path = buildPublicPropertySearchPath(filters);
+    } catch {
+      setPropertyLoadError('بيانات البحث غير صالحة. راجع الفلاتر وحاول مرة أخرى.');
+      setPropertyLoadState('ERROR');
+      return;
+    }
     const result = await fetchCanonicalCollection<CustomerPropertyItem>(path);
     if (result.kind === 'success') {
       setProperties(result.data);

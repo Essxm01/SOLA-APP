@@ -16,7 +16,7 @@ import { userDb, ownerDb, propertyDb, bookingDb, conversationDb, messageDb, isBo
 import { paymentTxDb, PaymentService, PaymobGateway, verifyPaymobHmacSha512, getPaymentMode } from './services/paymentService.js';
 import { createStorageProvider, IObjectStorageProvider, verifyMagicBytes, computeSha256 } from './services/storageProvider.js';
 import { GLOBAL_MIN_STAY_NIGHTS, GLOBAL_MAX_STAY_NIGHTS, hasDateRangeOverlap, validateStayLength } from './constants/bookingRules.js';
-import { parsePublicPropertySearchFilters, toPublicPropertySearchItem, toPublicPropertyDetail, PublicPropertySearchFilters } from './contracts/publicProperty.js';
+import { parsePublicPropertySearchFilters, toPublicPropertySearchItem, toPublicPropertyDetail, PublicPropertySearchFilters, extractPublicImageUrls } from './contracts/publicProperty.js';
 import type { ApiSuccessResponse, ApiErrorResponse } from './types/server';
 
 export interface RouteHandlerResult {
@@ -2996,7 +2996,7 @@ export class ExpressServerApp {
           try {
             formatted = await Promise.all(realProps.map(async (p: any) => {
               const images = await imageDb.getImagesByPropertyId(p.id);
-              const imageUrls = images.map((img: any) => img.fileUrl).filter(Boolean);
+              const imageUrls = extractPublicImageUrls(images);
               return toPublicPropertySearchItem(p, imageUrls);
             }));
           } catch {
@@ -3096,9 +3096,10 @@ export class ExpressServerApp {
             };
           }
 
-          let images: any[];
+          let imageUrls: string[];
           try {
-            images = await imageDb.getImagesByPropertyId(propertyId);
+            const images = await imageDb.getImagesByPropertyId(propertyId);
+            imageUrls = extractPublicImageUrls(images);
           } catch {
             return {
               statusCode: 500,
@@ -3108,7 +3109,6 @@ export class ExpressServerApp {
 
           let detail: any;
           try {
-            const imageUrls = images.map((img: any) => img.fileUrl).filter(Boolean);
             detail = toPublicPropertyDetail(prop, imageUrls);
           } catch {
             return {

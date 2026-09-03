@@ -182,16 +182,19 @@ assert.equal(detailItem.guestEmail, 'guest@example.com');
 // 1E. CustomerBookingCreateResponseDto tests
 const createResponseDto = toCustomerBookingCreateResponseDto(poisonedBooking);
 for (const forbidden of [
-  'ownerId', 'customerId', 'guestPhone', 'financialSummary',
+  'ownerId', 'customerId', 'guestPhone',
   'solaCommissionAmount', 'ownerNetDepositAmount', 'commissionOnRemainingBalance', 'ownerPayoutStatus',
   'payoutId', 'walletId', 'ledgerId',
 ]) {
   assert.equal(forbidden in (createResponseDto as any), false, `${forbidden} must not leak in createResponseDto`);
+  assert.equal(forbidden in (createResponseDto.financialSummary as any), false, `${forbidden} must not leak in createResponseDto.financialSummary`);
 }
 assert.equal(createResponseDto.totalStay, 12000);
 assert.equal(createResponseDto.depositAmount, 6000);
 assert.equal(createResponseDto.remainingAmount, 6000);
 assert.equal(createResponseDto.currency, 'EGP');
+assert.equal(createResponseDto.financialSummary.depositAmount, 6000);
+assert.equal(createResponseDto.financialSummary.totalBookingValue, 12000);
 
 // 1F. validateCustomerFavoriteRow tests
 const validFav = {
@@ -284,5 +287,74 @@ try {
 }
 
 console.log('P2.2 Task 2 profile and account fail-closed tests passed.');
+
+// ---------------------------------------------------------------------------
+// 3. Task 3: Customer booking create/list/detail privacy and IDOR tests
+// ---------------------------------------------------------------------------
+const forbiddenBookingKeys = [
+  'ownerId', 'customerId', 'guestPhone', 'financialSummary',
+  'solaCommissionAmount', 'ownerNetDepositAmount', 'commissionOnRemainingBalance', 'ownerPayoutStatus',
+  'payoutId', 'walletId', 'ledgerId',
+];
+
+// 3A. Customer booking list GET /api/v1/customer/bookings
+(bookingDb as any).getByCustomerId = async () => [{ ...poisonedBooking, customerId: testCustomerId }];
+try {
+  const res = await app.handleHttpRequest('GET', '/api/v1/customer/bookings', customerHeaders);
+  assert.equal(res.statusCode, 200);
+  assert.equal((res.body as any).success, true);
+  const bookings = (res.body as any).data;
+  assert.ok(Array.isArray(bookings));
+  assert.equal(bookings.length, 1);
+  const item = bookings[0];
+  for (const forbidden of forbiddenBookingKeys) {
+    assert.equal(forbidden in item, false, `List item must not contain ${forbidden}`);
+    assert.equal(forbidden in (item.property || {}), false, `List item property must not contain ${forbidden}`);
+  }
+  assert.equal(item.totalStay, 12000);
+  assert.equal(item.depositAmount, 6000);
+  assert.equal(item.remainingAmount, 6000);
+  assert.equal(item.currency, 'EGP');
+} finally {
+  (bookingDb as any).getByCustomerId = origGetByCustomerId;
+}
+
+// 3B. Customer booking detail GET /api/v1/customer/bookings/:id
+const origBookingGetById = bookingDb.getById;
+(bookingDb as any).getById = async (id: string) => {
+  if (id === poisonedBooking.id) return { ...poisonedBooking, customerId: testCustomerId };
+  return null;
+};
+try {
+  const res = await app.handleHttpRequest('GET', `/api/v1/customer/bookings/${poisonedBooking.id}`, customerHeaders);
+  assert.equal(res.statusCode, 200);
+  assert.equal((res.body as any).success, true);
+  const detail = (res.body as any).data;
+  for (const forbidden of forbiddenBookingKeys) {
+    assert.equal(forbidden in detail, false, `Detail must not contain ${forbidden}`);
+  }
+  assert.equal(detail.totalStay, 12000);
+  assert.equal(detail.depositAmount, 6000);
+  assert.equal(detail.remainingAmount, 6000);
+  assert.equal(detail.currency, 'EGP');
+} finally {
+  (bookingDb as any).getById = origBookingGetById;
+}
+
+// 3C. IDOR: Customer A cannot read Customer B booking
+(bookingDb as any).getById = async (id: string) => {
+  if (id === poisonedBooking.id) return { ...poisonedBooking, customerId: 'other-customer-uuid' };
+  return null;
+};
+try {
+  const res = await app.handleHttpRequest('GET', `/api/v1/customer/bookings/${poisonedBooking.id}`, customerHeaders);
+  assert.equal(res.statusCode, 403, 'Customer A reading Customer B booking must return 403');
+  assert.equal((res.body as any).error?.code, 'FORBIDDEN_BOOKING_ACCESS');
+} finally {
+  (bookingDb as any).getById = origBookingGetById;
+}
+
+console.log('P2.2 Task 3 customer booking privacy and IDOR tests passed.');
+
 
 

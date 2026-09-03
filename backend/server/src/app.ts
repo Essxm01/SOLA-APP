@@ -17,7 +17,13 @@ import { paymentTxDb, PaymentService, PaymobGateway, verifyPaymobHmacSha512, get
 import { createStorageProvider, IObjectStorageProvider, verifyMagicBytes, computeSha256 } from './services/storageProvider.js';
 import { GLOBAL_MIN_STAY_NIGHTS, GLOBAL_MAX_STAY_NIGHTS, hasDateRangeOverlap, validateStayLength } from './constants/bookingRules.js';
 import { parsePublicPropertySearchFilters, toPublicPropertySearchItem, toPublicPropertyDetail, PublicPropertySearchFilters, extractPublicImageUrls } from './contracts/publicProperty.js';
-import { toCustomerProfileDto, toCustomerAccountSummaryDto } from './contracts/customerRenter.js';
+import {
+  toCustomerProfileDto,
+  toCustomerAccountSummaryDto,
+  toCustomerBookingListItem,
+  toCustomerBookingDetailDto,
+  toCustomerBookingCreateResponseDto,
+} from './contracts/customerRenter.js';
 import type { ApiSuccessResponse, ApiErrorResponse } from './types/server';
 
 export interface RouteHandlerResult {
@@ -3349,18 +3355,7 @@ export class ExpressServerApp {
               statusCode: 201,
               body: {
                 success: true,
-                data: {
-                  ...created,
-                  financialSummary: {
-                    totalBookingValue: Number(financialSummary.totalBookingValue),
-                    depositAmount: Number(financialSummary.depositAmount),
-                    depositPaymentStatus: 'NOT_DUE',
-                    remainingBalance: Number(financialSummary.remainingBalance),
-                    remainingBalancePaymentMethod: 'CASH_ON_ARRIVAL',
-                    remainingBalanceStatus: 'NOT_DUE',
-                    currency: 'EGP',
-                  },
-                },
+                data: toCustomerBookingCreateResponseDto(created),
                 timestamp,
               },
             };
@@ -3427,16 +3422,28 @@ export class ExpressServerApp {
         }
 
         // 4.4B Customer Booking Detail (canonical booking + canonical property composition)
+        // 4.4B Customer Booking Detail (canonical booking + canonical property composition)
         if (path.match(/^\/api\/v1\/customer\/bookings\/[^/]+$/) && method === 'GET') {
           const bookingId = path.split('/')[5];
-          const booking = await bookingDb.getById(bookingId).catch(() => null);
+          let booking: any;
+          try {
+            booking = await bookingDb.getById(bookingId);
+          } catch {
+            return { statusCode: 500, body: { success: false, error: { code: 'CUSTOMER_BOOKING_QUERY_FAILED', message: 'تعذر جلب تفاصيل الحجز' }, timestamp } };
+          }
           if (!booking) {
             return { statusCode: 404, body: { success: false, error: { code: 'BOOKING_NOT_FOUND', message: 'طلب الحجز غير موجود' }, timestamp } };
           }
           if (booking.customerId !== customerId) {
             return { statusCode: 403, body: { success: false, error: { code: 'FORBIDDEN_BOOKING_ACCESS', message: 'غير مصرح لك بالوصول إلى هذا الحجز' }, timestamp } };
           }
-          return { statusCode: 200, body: { success: true, data: booking, timestamp } };
+          let bookingDto: any;
+          try {
+            bookingDto = toCustomerBookingDetailDto(booking);
+          } catch {
+            return { statusCode: 500, body: { success: false, error: { code: 'CUSTOMER_BOOKING_DATA_MALFORMED', message: 'تعذر معالجة تفاصيل الحجز' }, timestamp } };
+          }
+          return { statusCode: 200, body: { success: true, data: bookingDto, timestamp } };
         }
 
         // 4.4C Customer Booking List (Real PostgreSQL IDOR Scoped)
@@ -3451,11 +3458,21 @@ export class ExpressServerApp {
             };
           }
 
+          let mappedBookings: any[];
+          try {
+            mappedBookings = bookings.map((b: any) => toCustomerBookingListItem(b));
+          } catch {
+            return {
+              statusCode: 500,
+              body: { success: false, error: { code: 'CUSTOMER_BOOKING_DATA_MALFORMED', message: 'تعذر معالجة قائمة الحجوزات' }, timestamp },
+            };
+          }
+
           return {
             statusCode: 200,
             body: {
               success: true,
-              data: bookings,
+              data: mappedBookings,
               timestamp,
             },
           };

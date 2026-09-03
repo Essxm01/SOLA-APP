@@ -74,6 +74,15 @@ export interface CustomerBookingCreateResponseDto {
   remainingAmount: number;
   currency: 'EGP';
   createdAt: string;
+  financialSummary: {
+    totalBookingValue: number;
+    depositAmount: number;
+    depositPaymentStatus: string;
+    remainingBalance: number;
+    remainingBalancePaymentMethod: string;
+    remainingBalanceStatus: string;
+    currency: 'EGP';
+  };
 }
 
 export interface CustomerFavoriteRow {
@@ -200,7 +209,7 @@ function mapCustomerBookingProperty(prop: any): CustomerBookingPropertyItem {
 
   const id = requiredString(prop.id, 'CUSTOMER_BOOKING_PROPERTY_DATA', 'id');
   const title = requiredString(prop.title, 'CUSTOMER_BOOKING_PROPERTY_DATA', 'title');
-  const unitType = requiredString(prop.unitType ?? prop.unit_type, 'CUSTOMER_BOOKING_PROPERTY_DATA', 'unitType');
+  const unitType = optionalString(prop.unitType ?? prop.unit_type, 'CUSTOMER_BOOKING_PROPERTY_DATA', 'unitType') || 'CHALET';
   const propertyType = optionalString(prop.propertyType ?? prop.property_type, 'CUSTOMER_BOOKING_PROPERTY_DATA', 'propertyType');
   const address = requiredString(prop.address, 'CUSTOMER_BOOKING_PROPERTY_DATA', 'address');
   const region = optionalString(prop.region, 'CUSTOMER_BOOKING_PROPERTY_DATA', 'region');
@@ -244,8 +253,8 @@ export function toCustomerBookingListItem(raw: any): CustomerBookingListItem {
   const checkIn = requiredString(raw.checkIn ?? raw.check_in, 'CUSTOMER_BOOKING_DATA', 'checkIn');
   const checkOut = requiredString(raw.checkOut ?? raw.check_out, 'CUSTOMER_BOOKING_DATA', 'checkOut');
   const nights = positiveInteger(raw.nights, 'CUSTOMER_BOOKING_DATA', 'nights');
-  const guests = positiveInteger(raw.guests, 'CUSTOMER_BOOKING_DATA', 'guests');
-  const createdAt = validateIsoDate(raw.createdAt ?? raw.created_at, 'CUSTOMER_BOOKING_DATA', 'createdAt');
+  const guests = positiveInteger(raw.guests ?? raw.guestsCount ?? raw.totalGuests ?? raw.total_guests, 'CUSTOMER_BOOKING_DATA', 'guests');
+  const createdAt = validateIsoDate(raw.createdAt ?? raw.created_at ?? new Date().toISOString(), 'CUSTOMER_BOOKING_DATA', 'createdAt');
 
   const fin = raw.financialSummary ?? raw;
   const totalStay = nonNegativeFinite(fin.totalBookingValue ?? fin.totalStay, 'CUSTOMER_BOOKING_DATA', 'totalStay');
@@ -307,8 +316,8 @@ export function toCustomerBookingCreateResponseDto(raw: any): CustomerBookingCre
   const checkIn = requiredString(raw.checkIn ?? raw.check_in, 'CUSTOMER_BOOKING_DATA', 'checkIn');
   const checkOut = requiredString(raw.checkOut ?? raw.check_out, 'CUSTOMER_BOOKING_DATA', 'checkOut');
   const nights = positiveInteger(raw.nights, 'CUSTOMER_BOOKING_DATA', 'nights');
-  const guests = positiveInteger(raw.guests, 'CUSTOMER_BOOKING_DATA', 'guests');
-  const createdAt = validateIsoDate(raw.createdAt ?? raw.created_at, 'CUSTOMER_BOOKING_DATA', 'createdAt');
+  const guests = positiveInteger(raw.guests ?? raw.guestsCount ?? raw.totalGuests ?? raw.total_guests, 'CUSTOMER_BOOKING_DATA', 'guests');
+  const createdAt = validateIsoDate(raw.createdAt ?? raw.created_at ?? new Date().toISOString(), 'CUSTOMER_BOOKING_DATA', 'createdAt');
 
   const fin = raw.financialSummary ?? raw;
   const totalStay = nonNegativeFinite(fin.totalBookingValue ?? fin.totalStay, 'CUSTOMER_BOOKING_DATA', 'totalStay');
@@ -329,6 +338,15 @@ export function toCustomerBookingCreateResponseDto(raw: any): CustomerBookingCre
     remainingAmount,
     currency: 'EGP',
     createdAt,
+    financialSummary: {
+      totalBookingValue: totalStay,
+      depositAmount,
+      depositPaymentStatus: 'NOT_DUE',
+      remainingBalance: remainingAmount,
+      remainingBalancePaymentMethod: 'CASH_ON_ARRIVAL',
+      remainingBalanceStatus: 'NOT_DUE',
+      currency: 'EGP',
+    },
   };
 }
 

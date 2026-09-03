@@ -356,5 +356,43 @@ try {
 
 console.log('P2.2 Task 3 customer booking privacy and IDOR tests passed.');
 
+// ---------------------------------------------------------------------------
+// 4. Task 4: Migration 028 and atomic Favorites RPC static contract tests
+// ---------------------------------------------------------------------------
+import fs from 'node:fs';
+import path from 'node:path';
+
+const migrationPath = path.resolve(process.cwd(), 'database/migrations/028_customer_favorites.sql');
+assert.ok(fs.existsSync(migrationPath), 'Migration file 028_customer_favorites.sql must exist');
+
+const sql = fs.readFileSync(migrationPath, 'utf8');
+
+// 4A. Table DDL assertions
+assert.match(sql, /CREATE TABLE public\.customer_favorites/i);
+assert.match(sql, /customer_id UUID NOT NULL REFERENCES public\.users\(id\) ON DELETE CASCADE/i);
+assert.match(sql, /property_id UUID NOT NULL REFERENCES public\.properties\(id\) ON DELETE CASCADE/i);
+assert.match(sql, /PRIMARY KEY\s*\(\s*customer_id\s*,\s*property_id\s*\)/i);
+assert.match(sql, /CREATE INDEX customer_favorites_customer_created_idx\s+ON public\.customer_favorites\s*\(\s*customer_id\s*,\s*created_at DESC\s*\)/i);
+assert.match(sql, /ALTER TABLE public\.customer_favorites ENABLE ROW LEVEL SECURITY/i);
+assert.match(sql, /REVOKE ALL ON TABLE public\.customer_favorites FROM PUBLIC,\s*anon,\s*authenticated/i);
+assert.match(sql, /GRANT SELECT,\s*INSERT,\s*DELETE ON TABLE public\.customer_favorites TO service_role/i);
+
+// 4B. RPC Security & Isolation assertions
+assert.match(sql, /FUNCTION public\.konfrm_add_customer_favorite\s*\(\s*p_customer_id UUID,\s*p_property_id UUID\s*\)/i);
+assert.match(sql, /SECURITY INVOKER/i, 'RPC MUST be SECURITY INVOKER');
+assert.doesNotMatch(sql, /SECURITY DEFINER/i, 'SECURITY DEFINER is strictly forbidden');
+assert.match(sql, /SET search_path = public,\s*pg_temp/i, 'search_path must be pinned to public, pg_temp');
+assert.match(sql, /status\s*=\s*'PUBLISHED'/i, 'Must check status = PUBLISHED');
+assert.match(sql, /verification_status\s*=\s*'VERIFIED'/i, 'Must check verification_status = VERIFIED');
+assert.match(sql, /deleted_at IS NULL/i, 'Must check deleted_at IS NULL');
+assert.match(sql, /ON CONFLICT\s*\(\s*customer_id\s*,\s*property_id\s*\)\s*DO UPDATE SET created_at\s*=/i, 'Must be idempotent on conflict');
+assert.match(sql, /REVOKE ALL ON FUNCTION public\.konfrm_add_customer_favorite/i, 'Must revoke execute from public/anon/authenticated');
+assert.match(sql, /GRANT EXECUTE ON FUNCTION public\.konfrm_add_customer_favorite\(UUID,\s*UUID\)\s+TO service_role/i, 'Grant execute to service_role only');
+assert.match(sql, /INSERT INTO public\.schema_migrations/i, 'Must record migration in schema_migrations');
+assert.match(sql, /028_customer_favorites\.sql/i, 'Must record version 028_customer_favorites.sql');
+
+console.log('P2.2 Task 4 migration 028 contract tests passed.');
+
+
 
 

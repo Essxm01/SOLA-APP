@@ -154,7 +154,7 @@ console.log('P2.1 public contract unit tests passed.');
 // ---------------------------------------------------------------------------
 // 3. Dedicated repository reads and filtering logic tests
 // ---------------------------------------------------------------------------
-import { propertyDb } from '../services/dbRepository.js';
+import { propertyDb, imageDb } from '../services/dbRepository.js';
 import { queryDb } from '../services/dbClient.js';
 
 const mockPropertiesSource = [
@@ -458,4 +458,157 @@ try {
   globalThis.fetch = originalFetch;
   if (originalEnvUrl === undefined) delete process.env.SUPABASE_URL; else process.env.SUPABASE_URL = originalEnvUrl;
   if (originalEnvKey === undefined) delete process.env.SUPABASE_SERVICE_ROLE_KEY; else process.env.SUPABASE_SERVICE_ROLE_KEY = originalEnvKey;
+}
+
+// ---------------------------------------------------------------------------
+// 5. Route contract tests for public search and details
+// ---------------------------------------------------------------------------
+import { ExpressServerApp } from '../app.js';
+
+const app = new ExpressServerApp();
+
+// Verify search works unauthenticated
+// Test 5A: Invalid search filters return 400 with INVALID_PUBLIC_SEARCH_FILTER
+const badFilter1 = await app.handleHttpRequest('GET', '/api/v1/customer/properties/search?guests=0');
+assert.equal(badFilter1.statusCode, 400);
+assert.equal((badFilter1.body as any).error?.code, 'INVALID_PUBLIC_SEARCH_FILTER');
+
+const badFilter2 = await app.handleHttpRequest('GET', '/api/v1/customer/properties/search?guests=2.5');
+assert.equal(badFilter2.statusCode, 400);
+assert.equal((badFilter2.body as any).error?.code, 'INVALID_PUBLIC_SEARCH_FILTER');
+
+const badFilter3 = await app.handleHttpRequest('GET', '/api/v1/customer/properties/search?maxPrice=0');
+assert.equal(badFilter3.statusCode, 400);
+assert.equal((badFilter3.body as any).error?.code, 'INVALID_PUBLIC_SEARCH_FILTER');
+
+const badFilter4 = await app.handleHttpRequest('GET', '/api/v1/customer/properties/search?maxPrice=abc');
+assert.equal(badFilter4.statusCode, 400);
+assert.equal((badFilter4.body as any).error?.code, 'INVALID_PUBLIC_SEARCH_FILTER');
+
+// Test 5B: Explore (no query params) succeeds unauthenticated and returns explicit allowlisted keys
+// Stub propertyDb.searchPublic and imageDb.getImagesByPropertyId
+const origSearchPublic = propertyDb.searchPublic;
+const origGetPublicById = propertyDb.getPublicById;
+const origGetImages = imageDb.getImagesByPropertyId;
+
+try {
+  // Poisoned source property returned by DB
+  const poisonedDbProperty = {
+    id: 'prop-public-001',
+    title: 'شاليه مراسي فاخر',
+    unitType: 'CHALET',
+    propertyType: 'CHALET',
+    address: 'سيدي عبد الرحمن، مراسي',
+    region: 'الساحل الشمالي',
+    resortName: 'مراسي',
+    bedrooms: 2,
+    bathrooms: 2,
+    bedsCount: 3,
+    maxGuests: 4,
+    areaSqM: 120,
+    description: 'وصف شاليه بحري',
+    amenities: ['POOL', 'WIFI'],
+    houseRules: { pets: false },
+    basePricePerNight: 7500,
+    pricePerNight: 7500,
+    // Poisoned fields that must never leak:
+    ownerId: 'owner-secret-id',
+    ownerName: 'المالك السري',
+    ownerPhone: '+201012345678',
+    ownerEmail: 'owner@secret.com',
+    ownerVerificationStatus: 'VERIFIED',
+    status: 'PUBLISHED',
+    verificationStatus: 'VERIFIED',
+    solaCommissionAmount: 1500,
+    solaCommissionRate: 0.2,
+    ownerNetDepositAmount: 6000,
+    createdAt: '2026-09-03T00:00:00.000Z',
+    updatedAt: '2026-09-03T00:00:00.000Z',
+  };
+
+  (propertyDb as any).searchPublic = async () => [poisonedDbProperty];
+  (imageDb as any).getImagesByPropertyId = async () => [
+    { fileUrl: 'https://media.test/img1.jpg' },
+    { fileUrl: 'https://media.test/img2.jpg' },
+  ];
+
+  const searchRes = await app.handleHttpRequest('GET', '/api/v1/customer/properties/search');
+  assert.equal(searchRes.statusCode, 200);
+  const searchItems = (searchRes.body as any).data;
+  assert.equal(Array.isArray(searchItems), true);
+  assert.equal(searchItems.length, 1);
+  const searchItem = searchItems[0];
+
+  assert.deepEqual(Object.keys(searchItem).sort(), [
+    'address', 'basePricePerNight', 'bathrooms', 'bedrooms', 'currency', 'id', 'images',
+    'maxGuests', 'propertyType', 'region', 'resortName', 'title', 'unitType',
+  ].sort());
+  assert.equal(searchItem.currency, 'EGP');
+  assert.deepEqual(searchItem.images, ['https://media.test/img1.jpg', 'https://media.test/img2.jpg']);
+  assert.equal('ownerId' in searchItem, false);
+  assert.equal('ownerPhone' in searchItem, false);
+  assert.equal('ownerEmail' in searchItem, false);
+  assert.equal('verificationStatus' in searchItem, false);
+  assert.equal('status' in searchItem, false);
+  assert.equal('solaCommissionAmount' in searchItem, false);
+
+  // Test 5C: Genuine zero results returns 200 with empty array
+  (propertyDb as any).searchPublic = async () => [];
+  const zeroSearchRes = await app.handleHttpRequest('GET', '/api/v1/customer/properties/search?destination=unknown');
+  assert.equal(zeroSearchRes.statusCode, 200);
+  assert.deepEqual((zeroSearchRes.body as any).data, []);
+
+  // Test 5D: DB failure in search returns 500, not empty array
+  (propertyDb as any).searchPublic = async () => { throw new Error('DB connection failed'); };
+  const failedSearchRes = await app.handleHttpRequest('GET', '/api/v1/customer/properties/search');
+  assert.equal(failedSearchRes.statusCode, 500);
+  assert.equal((failedSearchRes.body as any).error?.code, 'CUSTOMER_PROPERTIES_QUERY_FAILED');
+
+  // Test 5E: Media failure in search returns 500, not empty images
+  (propertyDb as any).searchPublic = async () => [poisonedDbProperty];
+  (imageDb as any).getImagesByPropertyId = async () => { throw new Error('Media query failed'); };
+  const failedMediaSearchRes = await app.handleHttpRequest('GET', '/api/v1/customer/properties/search');
+  assert.equal(failedMediaSearchRes.statusCode, 500);
+  assert.equal((failedMediaSearchRes.body as any).error?.code, 'PROPERTY_IMAGES_QUERY_FAILED');
+
+  // Test 5F: Public detail route returns explicit detail DTO
+  (propertyDb as any).getPublicById = async (id: string) => id === 'prop-public-001' ? poisonedDbProperty : null;
+  (imageDb as any).getImagesByPropertyId = async () => [
+    { fileUrl: 'https://media.test/detail1.jpg' },
+  ];
+
+  const detailRes = await app.handleHttpRequest('GET', '/api/v1/customer/properties/prop-public-001');
+  assert.equal(detailRes.statusCode, 200);
+  const detailItem = (detailRes.body as any).data;
+  assert.deepEqual(Object.keys(detailItem).sort(), [
+    'address', 'amenities', 'areaSqM', 'basePricePerNight', 'bathrooms', 'bedrooms',
+    'bedsCount', 'currency', 'description', 'houseRules', 'id', 'images',
+    'maxGuests', 'propertyType', 'region', 'resortName', 'title', 'unitType',
+  ].sort());
+  assert.equal(detailItem.currency, 'EGP');
+  assert.equal('ownerId' in detailItem, false);
+  assert.equal('ownerPhone' in detailItem, false);
+  assert.equal('ownerEmail' in detailItem, false);
+  assert.equal('ownerName' in detailItem, false);
+  assert.equal('verificationStatus' in detailItem, false);
+  assert.equal('status' in detailItem, false);
+  assert.equal('solaCommissionAmount' in detailItem, false);
+  assert.equal('solaCommissionRate' in detailItem, false);
+  assert.equal('ownerNetDepositAmount' in detailItem, false);
+
+  // Test 5G: Missing / non-public property collapses to 404 PROPERTY_NOT_FOUND (not 403)
+  const notFoundDetail = await app.handleHttpRequest('GET', '/api/v1/customer/properties/non-existent-prop');
+  assert.equal(notFoundDetail.statusCode, 404);
+  assert.equal((notFoundDetail.body as any).error?.code, 'PROPERTY_NOT_FOUND');
+
+  // Test 5H: Media failure in detail returns 500
+  (imageDb as any).getImagesByPropertyId = async () => { throw new Error('Media failed'); };
+  const failedMediaDetail = await app.handleHttpRequest('GET', '/api/v1/customer/properties/prop-public-001');
+  assert.equal(failedMediaDetail.statusCode, 500);
+  assert.equal((failedMediaDetail.body as any).error?.code, 'PROPERTY_IMAGES_QUERY_FAILED');
+
+} finally {
+  (propertyDb as any).searchPublic = origSearchPublic;
+  (propertyDb as any).getPublicById = origGetPublicById;
+  (imageDb as any).getImagesByPropertyId = origGetImages;
 }

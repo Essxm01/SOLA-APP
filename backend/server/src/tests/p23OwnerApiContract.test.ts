@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { ExpressServerApp } from '../app.js';
 import { signAccessToken } from '../services/jwtService.js';
-import { ownerDb, propertyDb, bookingDb, walletDb } from '../services/dbRepository.js';
+import { ownerDb, propertyDb, bookingDb, walletDb, propertyAvailabilityDb } from '../services/dbRepository.js';
 
 const app = new ExpressServerApp();
 
@@ -227,4 +227,81 @@ const rawPropertyRow = {
 }
 
 console.log('P2.3 Task 2 owner property contract tests passed.');
+
+// ---------------------------------------------------------------------------
+// 3. Task 3: Calendar / Availability Regression Lock
+// ---------------------------------------------------------------------------
+
+// 3A. Foreign owner calendar read returns 403
+{
+  const origGetById = propertyDb.getById;
+  (propertyDb as any).getById = async () => ({ ...rawPropertyRow, ownerId: ownerB });
+  try {
+    const res = await app.handleHttpRequest('GET', `/api/v1/owner/calendar/${propertyIdA}`, ownerHeaders(ownerTokenA));
+    assert.equal(res.statusCode, 403, 'Foreign owner calendar read must return 403');
+    assert.equal((res.body as any).error?.code, 'FORBIDDEN_PROPERTY_ACCESS');
+  } finally {
+    (propertyDb as any).getById = origGetById;
+  }
+}
+
+// 3B. Foreign owner toggle-block returns 403
+{
+  const origGetById = propertyDb.getById;
+  (propertyDb as any).getById = async () => ({ ...rawPropertyRow, ownerId: ownerB });
+  try {
+    const res = await app.handleHttpRequest('POST', '/api/v1/owner/calendar/toggle-block', ownerHeaders(ownerTokenA), {
+      propertyId: propertyIdA,
+      date: '2026-09-15',
+      note: 'BLOCKED',
+    });
+    assert.equal(res.statusCode, 403, 'Foreign owner toggle-block must return 403');
+    assert.equal((res.body as any).error?.code, 'FORBIDDEN_PROPERTY_ACCESS');
+  } finally {
+    (propertyDb as any).getById = origGetById;
+  }
+}
+
+// 3C. Overlap with active booking in toggle-block returns 409 DATE_OVERLAP
+{
+  const origGetById = propertyDb.getById;
+  const origSetBlocked = propertyAvailabilityDb.setBlockedForDate;
+  (propertyDb as any).getById = async () => ({ ...rawPropertyRow, ownerId: ownerA });
+  (propertyAvailabilityDb as any).setBlockedForDate = async () => {
+    throw new Error('DATE_COVERED_BY_ACTIVE_BOOKING');
+  };
+  try {
+    const res = await app.handleHttpRequest('POST', '/api/v1/owner/calendar/toggle-block', ownerHeaders(ownerTokenA), {
+      propertyId: propertyIdA,
+      date: '2026-09-15',
+      note: 'BLOCKED',
+    });
+    assert.equal(res.statusCode, 409, 'Active booking overlap must return 409 DATE_OVERLAP');
+    assert.equal((res.body as any).error?.code, 'DATE_OVERLAP');
+  } finally {
+    (propertyDb as any).getById = origGetById;
+    (propertyAvailabilityDb as any).setBlockedForDate = origSetBlocked;
+  }
+}
+
+// 3D. Calendar query failure in GET /api/v1/owner/calendar/:propertyId returns 500 AVAILABILITY_QUERY_FAILED
+{
+  const origGetById = propertyDb.getById;
+  const origGetAvailability = propertyAvailabilityDb.getByPropertyId;
+  (propertyDb as any).getById = async () => ({ ...rawPropertyRow, ownerId: ownerA });
+  (propertyAvailabilityDb as any).getByPropertyId = async () => {
+    throw new Error('availability db outage');
+  };
+  try {
+    const res = await app.handleHttpRequest('GET', `/api/v1/owner/calendar/${propertyIdA}`, ownerHeaders(ownerTokenA));
+    assert.equal(res.statusCode, 500, 'Calendar query outage must return 500 AVAILABILITY_QUERY_FAILED, never empty array');
+    assert.equal((res.body as any).error?.code, 'AVAILABILITY_QUERY_FAILED');
+  } finally {
+    (propertyDb as any).getById = origGetById;
+    (propertyAvailabilityDb as any).getByPropertyId = origGetAvailability;
+  }
+}
+
+console.log('P2.3 Task 3 owner calendar availability contract tests passed.');
+
 

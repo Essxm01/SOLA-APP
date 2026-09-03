@@ -1,19 +1,38 @@
-# Current Task
+# P1.4 — Availability Persistence and Blocking Integrity Candidate
 
-**Status:** Awaiting Founder authorization — no implementation task is active.
+TASK_ID: P1.4-CANDIDATE
+STAGE: REVIEW_CANDIDATE
+BRANCH: validation/p1-4-refresh
+BASE_MAIN_SHA: ee38f2e90ee4d25fc237929f9756a42e89a22b4b
+HISTORICAL_CANDIDATE_SHA: 67601a1364192f502186da3bd10e9c2fd5eadb54
+LIVE_MUTATION: FORBIDDEN
+MIGRATION_025: CANDIDATE_ONLY_NOT_APPLIED
+MIGRATION_024: LIVE_VERIFIED (P1.3 closed on main)
 
-## Current routing
+## Objective
+Refreshed P1.4 candidate based on current `main` (`ee38f2e90ee4d25fc237929f9756a42e89a22b4b`). Carries the availability persistence and blocking integrity implementation and tests from historical candidate `67601a1` with updated operational current-state documentation.
 
-P1.3 — Property and media persistence integrity is closed and live-verified at `main` `fb38414d9076f89083bdc680e48e1a0b0329be06` (migration 024 applied live in Supabase). Its historical validation report remains preserved at `docs/codex/P1_3_PROPERTY_MEDIA_PERSISTENCE_REPORT.md`; it is not an active task contract.
+## Preserved Invariants
+- Stay length: 2–30 nights.
+- `PENDING_OWNER_APPROVAL` does NOT block dates.
+- `APPROVED_PENDING_PAYMENT` blocks dates.
+- `CONFIRMED` blocks dates.
+- Quote is not a hold.
+- Booking creation revalidates availability.
+- Canonical availability read/DB failure must fail closed; never manufacture empty availability/success.
+- No payment before Owner approval.
 
-The next dependency-ordered boundary is **P1.4 — Availability persistence and blocking integrity**. A candidate exists at `origin/validation/p1-4-rc` `67601a1364192f502186da3bd10e9c2fd5eadb54`, one commit above the P1.3 merge baseline, but it is not published or dispatched. Treat it as implementation evidence only until a Founder-approved task contract names its exact scope, validation, publication, and live-mutation gates.
+## Migration 025
+File: `backend/database/migrations/025_availability_blocking_integrity.sql`
+Status: Repository candidate only. NOT APPLIED LIVE. Requires explicit Founder rollout gate before live application.
 
-## Constraints
-
-- Do not start P1.4 or any later phase without a new approved task contract.
-- Do not infer that merged migration files prove live Supabase application without verification (P1.3 migration 024 is verified live; future migrations require separate verification).
-- Preserve the PHASE 0–22 roadmap and use `docs/codex/KONFRM_EXECUTION_MAP.md` for dependency routing.
-
-## Next dispatch preparation
-
-When P1.4 is authorized, read `AGENTS.md`, `docs/INDEX.md`, `docs/CURRENT_STATE.md`, `docs/codex/KONFRM_MASTER_RULES.md`, the availability sections of `docs/BUSINESS_RULES.md` and `docs/DATABASE.md`, then inspect the published baseline and only the affected availability/booking code, migrations, tests, CI, and Git evidence.
+## Validation Suite
+Run at minimum:
+- `npm --prefix backend run check`
+- `npm --prefix backend run test:booking-01`
+- `npm --prefix backend run test:booking-01-1`
+- `npm --prefix backend run test:p1-4-availability`
+- `npm --prefix backend run test:p1-4-worker-availability`
+- `npm --prefix backend run test:p1-4-migration`
+- `npm --prefix backend run test:p13-worker-adapter`
+- `git diff --check`

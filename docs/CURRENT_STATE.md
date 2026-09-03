@@ -1,7 +1,7 @@
 # Current project state
 
 **Last updated:** 2026-09-03
-**Repository-state baseline:** P1.3 property/media persistence is published and live-verified at `main`/`origin/main` `fb38414d9076f89083bdc680e48e1a0b0329be06`. Migration 024 (`024_atomic_property_media_commit.sql`), the atomic property-media RPC (`public.konfrm_commit_property_media`), and unique index exist live in Supabase.
+**Repository-state baseline:** P1.3 property/media persistence is published and live-verified at `main`/`origin/main` `fb38414d9076f89083bdc680e48e1a0b0329be06`. Migration 024 (`024_atomic_property_media_commit.sql`), the atomic property-media RPC (`public.konfrm_commit_property_media`), and unique index exist live in Supabase. P1.4 (availability persistence & blocking integrity) is the refreshed candidate on `validation/p1-4-refresh`.
 
 ## Current status
 
@@ -47,4 +47,4 @@ Read [ARCHITECTURE.md](./ARCHITECTURE.md), [DATABASE.md](./DATABASE.md), and [BU
 
 ## Next work
 
-No implementation task is currently dispatched. The next dependency-ordered boundary is **P1.4 — Availability persistence and blocking integrity**: its remote candidate `origin/validation/p1-4-rc` is `67601a1364192f502186da3bd10e9c2fd5eadb54`, one commit above `main`, but is neither merged/published nor an authorization to implement. Read `tasks/CURRENT_TASK.md` before dispatching it. Do not publish, deploy, or perform live storage/schema/data operations without separate Founder approval.
+P1.4 (availability persistence & blocking integrity) is the refreshed candidate on `validation/p1-4-refresh`. Read `tasks/CURRENT_TASK.md`. Do not publish, merge, deploy, or perform live storage/schema/data operations without separate Founder approval.

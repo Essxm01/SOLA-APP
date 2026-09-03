@@ -1146,6 +1146,62 @@ export const imageDb = {
 };
 
 // ----------------------------------------------------------------------------
+// 8.5 PROPERTY AVAILABILITY REPOSITORY (P1.4 — manual blocks + unified view)
+// ----------------------------------------------------------------------------
+// DATE values are rendered with to_char so both the PostgreSQL pool and the
+// Worker REST adapter return deterministic 'YYYY-MM-DD' strings.
+export const propertyAvailabilityDb = {
+  async getByPropertyId(propertyId: string) {
+    const res = await queryDb(
+      `SELECT id, property_id AS "propertyId", to_char(date, 'YYYY-MM-DD') AS "date",
+              is_booked AS "isBooked", custom_price_per_night AS "customPricePerNight",
+              note
+       FROM property_availability
+       WHERE property_id = $1
+       ORDER BY date ASC`,
+      [propertyId]
+    );
+    return res.rows;
+  },
+
+  // Upsert one date's block state. custom_price_per_night is deliberately not
+  // in the SET list: toggling availability never destroys a price override.
+  async setBlockedForDate(propertyId: string, date: string, isBooked: boolean, note?: string | null) {
+    const res = await queryDb(
+      `INSERT INTO property_availability (property_id, date, is_booked, note)
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (property_id, date) DO UPDATE
+         SET is_booked = EXCLUDED.is_booked,
+             note = EXCLUDED.note
+       RETURNING id, property_id AS "propertyId", to_char(date, 'YYYY-MM-DD') AS "date",
+                 is_booked AS "isBooked", custom_price_per_night AS "customPricePerNight",
+                 note`,
+      [propertyId, date, isBooked, note ?? null]
+    );
+    return res.rows[0] || null;
+  },
+};
+
+// Unified availability source: canonical blocking booking intervals plus
+// manual one-night blocks [D, D+1). Manual entries carry no booking status so
+// hasDateRangeOverlap treats them as hard blocks. Fail-closed: callers must
+// let read failures surface as 5xx, never as empty availability.
+export async function getUnifiedUnavailableBlocks(propertyId: string) {
+  const [bookingBlocks, manualRows] = await Promise.all([
+    bookingDb.getBlocksByPropertyId(propertyId),
+    propertyAvailabilityDb.getByPropertyId(propertyId),
+  ]);
+  const manualBlocks = manualRows
+    .filter((row: any) => row.isBooked === true)
+    .map((row: any) => {
+      const dayStart = new Date(`${row.date}T00:00:00Z`);
+      const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000);
+      return { checkIn: row.date, checkOut: dayEnd.toISOString().slice(0, 10) };
+    });
+  return [...bookingBlocks, ...manualBlocks];
+}
+
+// ----------------------------------------------------------------------------
 // 9. ADMIN OVERVIEW STATS REPOSITORY
 // ----------------------------------------------------------------------------
 export const adminStatsDb = {

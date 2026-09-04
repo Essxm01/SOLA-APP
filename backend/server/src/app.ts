@@ -848,7 +848,12 @@ export class ExpressServerApp {
 
         if (path.startsWith('/api/v1/owner/bookings/') && path.endsWith('/approve') && method === 'POST') {
           const bookingId = path.split('/')[5];
-          const booking = await bookingDb.getById(bookingId).catch(() => null);
+          let booking: any;
+          try {
+            booking = await bookingDb.getById(bookingId);
+          } catch {
+            return { statusCode: 500, body: { success: false, error: { code: 'BOOKING_QUERY_FAILED', message: 'تعذر الاستعلام عن طلب الحجز' }, timestamp } };
+          }
           if (!booking) {
             return { statusCode: 404, body: { success: false, error: { code: 'BOOKING_NOT_FOUND', message: 'طلب الحجز غير موجود' }, timestamp } };
           }
@@ -884,11 +889,18 @@ export class ExpressServerApp {
             return { statusCode: 409, body: { success: false, error: { code: 'BOOKING_DECISION_CONFLICT', message: 'تمت معالجة هذا الطلب أو تغيّرت حالته' }, timestamp } };
           }
 
+          let safeApproved: any;
+          try {
+            safeApproved = toOwnerBookingListItem(approved);
+          } catch {
+            return { statusCode: 500, body: { success: false, error: { code: 'OWNER_BOOKING_RESPONSE_MALFORMED', message: 'تعذر تنسيق بيانات الرد الآمن' }, timestamp } };
+          }
+
           return {
             statusCode: 200,
             body: {
               success: true,
-              data: approved,
+              data: safeApproved,
               timestamp,
             },
           };
@@ -896,7 +908,12 @@ export class ExpressServerApp {
 
         if (path.startsWith('/api/v1/owner/bookings/') && path.endsWith('/reject') && method === 'POST') {
           const bookingId = path.split('/')[5];
-          const booking = await bookingDb.getById(bookingId).catch(() => null);
+          let booking: any;
+          try {
+            booking = await bookingDb.getById(bookingId);
+          } catch {
+            return { statusCode: 500, body: { success: false, error: { code: 'BOOKING_QUERY_FAILED', message: 'تعذر الاستعلام عن طلب الحجز' }, timestamp } };
+          }
           if (!booking) {
             return { statusCode: 404, body: { success: false, error: { code: 'BOOKING_NOT_FOUND', message: 'طلب الحجز غير موجود' }, timestamp } };
           }
@@ -906,16 +923,29 @@ export class ExpressServerApp {
           if (booking.status !== 'PENDING_OWNER_APPROVAL') {
             return { statusCode: 409, body: { success: false, error: { code: 'INVALID_BOOKING_STATUS', message: 'لا يمكن رفض طلب لم يعد بانتظار موافقتك' }, timestamp } };
           }
-          const rejected = await bookingDb.updateStatusForOwner(bookingId, ownerId, 'REJECTED').catch(() => null);
+
+          let rejected: any;
+          try {
+            rejected = await bookingDb.updateStatusForOwner(bookingId, ownerId, 'REJECTED');
+          } catch {
+            return { statusCode: 500, body: { success: false, error: { code: 'REJECTION_PERSISTENCE_FAILED', message: 'تعذر حفظ قرار الرفض. حاول مرة أخرى.' }, timestamp } };
+          }
           if (!rejected) {
             return { statusCode: 409, body: { success: false, error: { code: 'BOOKING_DECISION_CONFLICT', message: 'تمت معالجة هذا الطلب أو تغيّرت حالته' }, timestamp } };
+          }
+
+          let safeRejected: any;
+          try {
+            safeRejected = toOwnerBookingListItem(rejected);
+          } catch {
+            return { statusCode: 500, body: { success: false, error: { code: 'OWNER_BOOKING_RESPONSE_MALFORMED', message: 'تعذر تنسيق بيانات الرد الآمن' }, timestamp } };
           }
 
           return {
             statusCode: 200,
             body: {
               success: true,
-              data: rejected,
+              data: safeRejected,
               timestamp,
             },
           };

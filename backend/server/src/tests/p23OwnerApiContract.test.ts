@@ -466,9 +466,25 @@ assert.equal(itemDto.remainingAmount, 7500);
   (propertyAvailabilityDb as any).getByPropertyId = async () => [];
   (bookingDb as any).updateStatusForOwner = async (id: string, owner: string, status: string) => ({
     id,
+    bookingNumber: 'BK-000001',
+    propertyId: propertyIdA,
     ownerId: owner,
     status,
-    bookingNumber: 'BK-000001',
+    checkIn: '2026-09-10',
+    checkOut: '2026-09-14',
+    nights: 4,
+    guestsCount: 2,
+    createdAt: '2026-09-01T00:00:00.000Z',
+    financialSummary: {
+      bookingId: id,
+      totalBookingValue: 10000,
+      depositAmount: 2500,
+      solaCommissionAmount: 500,
+      ownerNetDepositAmount: 2000,
+      remainingBalance: 7500,
+      commissionOnRemainingBalance: 0,
+      currency: 'EGP',
+    },
   });
 
   try {
@@ -780,4 +796,240 @@ console.log('P2.3 Task 5 tests passed.');
   );
 }
 
-console.log('P2.3 Correction 01 and 02 tests passed.');
+// ---------------------------------------------------------------------------
+// 7. P2.3 Correction 03: Decision Privacy & DB Error Separation
+// ---------------------------------------------------------------------------
+
+// 7A. Route-level privacy regression: approve and reject success responses must never return raw hydrated booking objects or customer identifiers
+{
+  const testBookingId = 'b0000000-0000-4000-8000-000000000099';
+  const origBookingGetById = bookingDb.getById;
+  const origUpdateStatus = bookingDb.updateStatusForOwner;
+  const origGetBlocks = bookingDb.getBlocksByPropertyId;
+  const origGetAvailability = propertyAvailabilityDb.getByPropertyId;
+
+  const rawBookingFromDb = {
+    id: testBookingId,
+    bookingNumber: 'BK-999999',
+    propertyId: propertyIdA,
+    ownerId: ownerA,
+    status: 'PENDING_OWNER_APPROVAL',
+    checkIn: '2026-09-10',
+    checkOut: '2026-09-14',
+    nights: 4,
+    guestsCount: 2,
+    totalGuests: 2,
+    customerId: 'cust-secret-uuid-999',
+    guestName: 'أحمد مستأجر',
+    guestPhone: '+201011111111',
+    customerPhoneNumber: '+201011111111',
+    customerEmail: 'secret@renter.com',
+    customerNationalId: '29901010101010',
+    renter: { id: 'cust-secret-uuid-999', name: 'أحمد مستأجر', avatar: 'https://cdn.example.com/avatar.jpg', rating: 5, phone: '+201011111111' },
+    property: {
+      id: propertyIdA,
+      title: 'شاليه فاخر',
+      images: ['https://cdn.example.com/p1.jpg'],
+      address: 'الساحل الشمالي',
+      locationName: 'مراسي',
+      bedrooms: 2,
+      bathrooms: 1,
+      maxGuests: 4,
+    },
+    totalPrice: 10000,
+    deposit: 2500,
+    remainingAmount: 7500,
+    createdAt: '2026-09-01T00:00:00.000Z',
+    financialSummary: {
+      bookingId: testBookingId,
+      totalBookingValue: 10000,
+      depositAmount: 2500,
+      solaCommissionAmount: 500,
+      ownerNetDepositAmount: 2000,
+      remainingBalance: 7500,
+      commissionOnRemainingBalance: 0,
+      currency: 'EGP',
+    },
+  };
+
+  (bookingDb as any).getById = async () => ({ ...rawBookingFromDb });
+  (bookingDb as any).getBlocksByPropertyId = async () => [];
+  (propertyAvailabilityDb as any).getByPropertyId = async () => [];
+  (bookingDb as any).updateStatusForOwner = async (id: string, owner: string, status: string) => ({
+    ...rawBookingFromDb,
+    status,
+    confirmedAt: status === 'APPROVED_PENDING_PAYMENT' ? '2026-09-02T00:00:00.000Z' : null,
+    rejectedAt: status === 'REJECTED' ? '2026-09-02T00:00:00.000Z' : null,
+  });
+
+  try {
+    // Approve route privacy assertions
+    const approveRes = await app.handleHttpRequest('POST', `/api/v1/owner/bookings/${testBookingId}/approve`, ownerHeaders(ownerTokenA));
+    assert.equal(approveRes.statusCode, 200);
+    const approveData = (approveRes.body as any).data;
+    assert.equal(approveData.status, 'APPROVED_PENDING_PAYMENT');
+    assert.equal('customerId' in approveData, false, 'Approve response must NOT expose customerId');
+    assert.equal('customerPhoneNumber' in approveData, false, 'Approve response must NOT expose customerPhoneNumber');
+    assert.equal('customerEmail' in approveData, false, 'Approve response must NOT expose customerEmail');
+    assert.equal('customerNationalId' in approveData, false, 'Approve response must NOT expose customerNationalId');
+    assert.equal('guestPhone' in approveData, false, 'Approve response must NOT expose guestPhone');
+    assert.equal('id' in (approveData.renter || {}), false, 'Approve response must NOT expose renter.id');
+    assert.equal('phone' in (approveData.renter || {}), false, 'Approve response must NOT expose renter.phone');
+    assert.equal(approveData.renter?.name, 'أحمد مستأجر');
+
+    // Reject route privacy assertions
+    const rejectRes = await app.handleHttpRequest('POST', `/api/v1/owner/bookings/${testBookingId}/reject`, ownerHeaders(ownerTokenA));
+    assert.equal(rejectRes.statusCode, 200);
+    const rejectData = (rejectRes.body as any).data;
+    assert.equal(rejectData.status, 'REJECTED');
+    assert.equal('customerId' in rejectData, false, 'Reject response must NOT expose customerId');
+    assert.equal('customerPhoneNumber' in rejectData, false, 'Reject response must NOT expose customerPhoneNumber');
+    assert.equal('customerEmail' in rejectData, false, 'Reject response must NOT expose customerEmail');
+    assert.equal('customerNationalId' in rejectData, false, 'Reject response must NOT expose customerNationalId');
+    assert.equal('guestPhone' in rejectData, false, 'Reject response must NOT expose guestPhone');
+    assert.equal('id' in (rejectData.renter || {}), false, 'Reject response must NOT expose renter.id');
+    assert.equal('phone' in (rejectData.renter || {}), false, 'Reject response must NOT expose renter.phone');
+    assert.equal(rejectData.renter?.name, 'أحمد مستأجر');
+  } finally {
+    (bookingDb as any).getById = origBookingGetById;
+    (bookingDb as any).updateStatusForOwner = origUpdateStatus;
+    (bookingDb as any).getBlocksByPropertyId = origGetBlocks;
+    (propertyAvailabilityDb as any).getByPropertyId = origGetAvailability;
+  }
+}
+
+// 7B. Separate DB failures from business absence / conflict:
+// - bookingDb.getById throws on approve/reject => explicit 500 BOOKING_QUERY_FAILED, NOT 404
+{
+  const testBookingId = 'b0000000-0000-4000-8000-000000000098';
+  const origBookingGetById = bookingDb.getById;
+  (bookingDb as any).getById = async () => {
+    throw new Error('Postgres connection terminated unexpectedly');
+  };
+
+  try {
+    const approveDbErr = await app.handleHttpRequest('POST', `/api/v1/owner/bookings/${testBookingId}/approve`, ownerHeaders(ownerTokenA));
+    assert.equal(approveDbErr.statusCode, 500, 'Approve must return 500 when bookingDb.getById throws');
+    assert.equal((approveDbErr.body as any).error?.code, 'BOOKING_QUERY_FAILED');
+
+    const rejectDbErr = await app.handleHttpRequest('POST', `/api/v1/owner/bookings/${testBookingId}/reject`, ownerHeaders(ownerTokenA));
+    assert.equal(rejectDbErr.statusCode, 500, 'Reject must return 500 when bookingDb.getById throws');
+    assert.equal((rejectDbErr.body as any).error?.code, 'BOOKING_QUERY_FAILED');
+  } finally {
+    (bookingDb as any).getById = origBookingGetById;
+  }
+}
+
+// 7C. Genuine null booking => 404 BOOKING_NOT_FOUND
+{
+  const testBookingId = 'b0000000-0000-4000-8000-000000000097';
+  const origBookingGetById = bookingDb.getById;
+  (bookingDb as any).getById = async () => null;
+
+  try {
+    const approveNotFound = await app.handleHttpRequest('POST', `/api/v1/owner/bookings/${testBookingId}/approve`, ownerHeaders(ownerTokenA));
+    assert.equal(approveNotFound.statusCode, 404);
+    assert.equal((approveNotFound.body as any).error?.code, 'BOOKING_NOT_FOUND');
+
+    const rejectNotFound = await app.handleHttpRequest('POST', `/api/v1/owner/bookings/${testBookingId}/reject`, ownerHeaders(ownerTokenA));
+    assert.equal(rejectNotFound.statusCode, 404);
+    assert.equal((rejectNotFound.body as any).error?.code, 'BOOKING_NOT_FOUND');
+  } finally {
+    (bookingDb as any).getById = origBookingGetById;
+  }
+}
+
+// 7D. Reject updateStatusForOwner throws => explicit 500 REJECTION_PERSISTENCE_FAILED, NOT 409
+{
+  const testBookingId = 'b0000000-0000-4000-8000-000000000096';
+  const origBookingGetById = bookingDb.getById;
+  const origUpdateStatus = bookingDb.updateStatusForOwner;
+
+  (bookingDb as any).getById = async () => ({
+    id: testBookingId,
+    ownerId: ownerA,
+    propertyId: propertyIdA,
+    status: 'PENDING_OWNER_APPROVAL',
+  });
+  (bookingDb as any).updateStatusForOwner = async () => {
+    throw new Error('Database deadlocked on row update');
+  };
+
+  try {
+    const rejectPersistenceErr = await app.handleHttpRequest('POST', `/api/v1/owner/bookings/${testBookingId}/reject`, ownerHeaders(ownerTokenA));
+    assert.equal(rejectPersistenceErr.statusCode, 500, 'Reject must return 500 when updateStatusForOwner throws');
+    assert.equal((rejectPersistenceErr.body as any).error?.code, 'REJECTION_PERSISTENCE_FAILED');
+  } finally {
+    (bookingDb as any).getById = origBookingGetById;
+    (bookingDb as any).updateStatusForOwner = origUpdateStatus;
+  }
+}
+
+// 7E. Reject updateStatusForOwner returning null because conditional update lost => retain 409 BOOKING_DECISION_CONFLICT
+{
+  const testBookingId = 'b0000000-0000-4000-8000-000000000095';
+  const origBookingGetById = bookingDb.getById;
+  const origUpdateStatus = bookingDb.updateStatusForOwner;
+
+  (bookingDb as any).getById = async () => ({
+    id: testBookingId,
+    ownerId: ownerA,
+    propertyId: propertyIdA,
+    status: 'PENDING_OWNER_APPROVAL',
+  });
+  (bookingDb as any).updateStatusForOwner = async () => null;
+
+  try {
+    const rejectConflict = await app.handleHttpRequest('POST', `/api/v1/owner/bookings/${testBookingId}/reject`, ownerHeaders(ownerTokenA));
+    assert.equal(rejectConflict.statusCode, 409, 'Reject must return 409 when conditional update returns null (conflict)');
+    assert.equal((rejectConflict.body as any).error?.code, 'BOOKING_DECISION_CONFLICT');
+  } finally {
+    (bookingDb as any).getById = origBookingGetById;
+    (bookingDb as any).updateStatusForOwner = origUpdateStatus;
+  }
+}
+
+// 7F. Fail closed with 500 if decision response data is malformed
+{
+  const testBookingId = 'b0000000-0000-4000-8000-000000000094';
+  const origBookingGetById = bookingDb.getById;
+  const origUpdateStatus = bookingDb.updateStatusForOwner;
+  const origGetBlocks = bookingDb.getBlocksByPropertyId;
+  const origGetAvailability = propertyAvailabilityDb.getByPropertyId;
+
+  (bookingDb as any).getById = async () => ({
+    id: testBookingId,
+    ownerId: ownerA,
+    propertyId: propertyIdA,
+    status: 'PENDING_OWNER_APPROVAL',
+    checkIn: '2026-09-10',
+    checkOut: '2026-09-14',
+  });
+  (bookingDb as any).getBlocksByPropertyId = async () => [];
+  (propertyAvailabilityDb as any).getByPropertyId = async () => [];
+  // Return malformed object (missing nights, financialSummary, etc.)
+  (bookingDb as any).updateStatusForOwner = async (id: string, owner: string, status: string) => ({
+    id,
+    ownerId: owner,
+    status,
+    bookingNumber: 'BK-000001',
+    // Missing required canonical fields
+  });
+
+  try {
+    const approveMalformed = await app.handleHttpRequest('POST', `/api/v1/owner/bookings/${testBookingId}/approve`, ownerHeaders(ownerTokenA));
+    assert.equal(approveMalformed.statusCode, 500, 'Approve must fail closed with 500 if booking response is malformed');
+    assert.equal((approveMalformed.body as any).error?.code, 'OWNER_BOOKING_RESPONSE_MALFORMED');
+
+    const rejectMalformed = await app.handleHttpRequest('POST', `/api/v1/owner/bookings/${testBookingId}/reject`, ownerHeaders(ownerTokenA));
+    assert.equal(rejectMalformed.statusCode, 500, 'Reject must fail closed with 500 if booking response is malformed');
+    assert.equal((rejectMalformed.body as any).error?.code, 'OWNER_BOOKING_RESPONSE_MALFORMED');
+  } finally {
+    (bookingDb as any).getById = origBookingGetById;
+    (bookingDb as any).updateStatusForOwner = origUpdateStatus;
+    (bookingDb as any).getBlocksByPropertyId = origGetBlocks;
+    (propertyAvailabilityDb as any).getByPropertyId = origGetAvailability;
+  }
+}
+
+console.log('P2.3 Correction 01, 02, and 03 tests passed.');

@@ -157,4 +157,3 @@ const assertThrows = (fn: () => unknown, pattern: RegExp) => {
 }
 
 console.log('OWNER client contract tests passed.');
-

@@ -1,6 +1,6 @@
 # KONFRM execution map
 
-> **Active sequence update (2026-09-03):** P14.1 is published/live verified at `5decd03f59f3bd3039e12e00caf234f28def5201`; P1.2 is published/live verified at `92dc3916afe7a8e7d15620efee31afa58e826870`; P1.3 is closed and live-verified at `fb38414d9076f89083bdc680e48e1a0b0329be06` (migration 024 applied live in Supabase). The next candidate, P1.4, is not yet published or dispatched.
+> **Active sequence update (2026-09-04):** Product code baseline before BS-02 is `origin/main` at `baecc9f7f9c16aafa1954ddf7aa6e3cead5c757a` (incorporates published P1.6, P2.1, and P2.2 work). The durable Brain Sync governance layer is introduced by `tooling/brain-sync-bs02` / PR #15 (documentation and governance only; no product code change). Product candidate P2.3 (Owner API Contract) remains an unmerged candidate awaiting Bridge review and closure verification on `implementation/p2-3-owner-api-contract` (PR #14). Macro phase sequencing and execution prerequisites are governed by the Founder-approved dependency graph in `KONFRM_EXECUTION_DEPENDENCY_ORDER.md`. The 75 micro-boundaries below define detailed verification gates and acceptance criteria.
 
 `خطة عمل التطبيق.txt` supplies the immutable PHASE 0–22 macro roadmap. The **75** detailed execution boundaries below were derived from current repository evidence, dependency boundaries, risk, and independent acceptance scope—not from a target quota. The Phase Zero hardening review split mixed property/availability, booking/financial, role-shell, and E2E boundaries where they require different acceptance evidence; future phases change only when new evidence creates a real dependency or acceptance boundary.
 
@@ -84,6 +84,6 @@
 | P21.1 | **PHASE 21** — demo polish and acceptance package | All apps | P15–P20 | Medium | Deferred; only after core gates |
 | P22.1 | **PHASE 22** — final product blueprint/handoff | Docs, architecture, product | All applicable phases | Medium | Deferred; evidence-led closure |
 
-## Next recommended execution phase
+## Active execution routing
 
-**P1.4 availability persistence and blocking integrity.** P1.3 is closed and live-verified at `fb38414…` (migration 024 live); P1.4 is the next unresolved prerequisite in the dependency chain. Its candidate is not a published baseline or active task contract, so a Founder-approved dispatch must first establish its exact scope, validation, and any migration/live rollout gates.
+Candidate P2.3 (Owner API Contract) is an unmerged candidate on `implementation/p2-3-owner-api-contract` (PR #14) awaiting Bridge review and closure verification. The durable Brain Sync governance layer is established. Macro sequencing proceeds according to the Founder-approved dependency graph in `KONFRM_EXECUTION_DEPENDENCY_ORDER.md`, establishing Phase 3 (Owner → Admin → Renter Vertical Slice) as the immediate cross-app target and `PHASE_3_LIVE_CLOSED` as the hard stop for autonomous execution.

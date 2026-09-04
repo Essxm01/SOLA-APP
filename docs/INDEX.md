@@ -1,6 +1,6 @@
 # Repository knowledge index
 
-Read selectively. Before implementing any approved task, the mandatory core sequence is `../AGENTS.md` → this index → `CURRENT_STATE.md` → `../tasks/CURRENT_TASK.md` → `codex/KONFRM_MASTER_RULES.md`; then load only the documents below that match the task.
+Read selectively. Before implementing any approved task, the mandatory core sequence is `../AGENTS.md` → this index → `CURRENT_STATE.md` → `../tasks/CURRENT_TASK.md` → `codex/KONFRM_MASTER_RULES.md` → active task contract; then load only the documents below that match the task per [CONTEXT_ROUTER.md](./CONTEXT_ROUTER.md).
 
 | Document | Read when | Usually skip when |
 | --- | --- | --- |
@@ -12,21 +12,26 @@ Read selectively. Before implementing any approved task, the mandatory core sequ
 | [INTEGRATIONS.md](./INTEGRATIONS.md) | Touching Supabase, storage, payment mode, Workers, Pages, CI, or environment configuration | Local code without external-service impact |
 | [DECISIONS.md](./DECISIONS.md) | Questioning an intentional architectural choice or considering reversal/migration | The choice is not relevant to the task |
 | [CURRENT_STATE.md](./CURRENT_STATE.md) | Onboarding, handoff, current debt, implemented areas, or likely next work | Never skip during a fresh-session recovery |
+| [BRAIN_SYNC_PROTOCOL.md](./BRAIN_SYNC_PROTOCOL.md) | Ingesting ChatGPT decisions, formatting closure reports, or clarifying agent roles | Local task implementation with clear contracts |
+| [CONTEXT_ROUTER.md](./CONTEXT_ROUTER.md) | Determining selective document loading tiers and quota management | Context is already loaded |
 
 ## Operating-system documents
 
-Read these selectively after the default recovery sequence. They govern planning and evidence classification; they do not replace product, database, or design authorities.
+Read these selectively after the default recovery sequence. They govern planning, evidence classification, and Founder alignment; they do not replace product, database, or design authorities.
 
 | Document | Read when | Usually skip when |
 | --- | --- | --- |
 | [codex/KONFRM_MASTER_RULES.md](./codex/KONFRM_MASTER_RULES.md) | Every approved execution task; source conflicts; phase authority | Never skip before implementation; it is part of the mandatory core refresh |
+| [codex/KONFRM_FOUNDER_OPERATING_CONTEXT.md](./codex/KONFRM_FOUNDER_OPERATING_CONTEXT.md) | Founder working style, agent delegation, stop conditions, or executive priorities | Pure isolated unit test fixes with defined specs |
+| [../KONFRM_EXECUTION_DEPENDENCY_ORDER.md](../KONFRM_EXECUTION_DEPENDENCY_ORDER.md) | Macro phase sequencing, dependency prerequisites, or Phase 3 closure gates | Working inside an already-approved micro task |
 | [codex/KONFRM_CURRENT_REALITY.md](./codex/KONFRM_CURRENT_REALITY.md) | Assessing whether a feature is actually verified, partial, or only historically claimed | A local change with fresh direct evidence |
-| [codex/KONFRM_EXECUTION_MAP.md](./codex/KONFRM_EXECUTION_MAP.md) | Selecting or sequencing work across roadmap phases | Completing an already-approved narrow task |
+| [codex/KONFRM_EXECUTION_MAP.md](./codex/KONFRM_EXECUTION_MAP.md) | Inspecting detailed 75 micro-execution boundaries and validation gates | Completing an already-approved narrow task |
 | [codex/KONFRM_COMPLETION_MATRIX.md](./codex/KONFRM_COMPLETION_MATRIX.md) | Checking cross-app readiness, dependencies, or acceptance gaps | Isolated documentation-only work |
-| [codex/KONFRM_RESCUE_BACKLOG.md](./codex/KONFRM_RESCUE_BACKLOG.md) | Looking for verified defects, gaps, or deferred work | When the active task already sets scope |
+| [codex/KONFRM_RESCUE_BACKLOG.md](./codex/KONFRM_RESCUE_BACKLOG.md) | Looking for verified defects, gaps, or deferred technical debt | When the active task already sets scope |
 | [codex/KONFRM_QUALITY_GATES.md](./codex/KONFRM_QUALITY_GATES.md) | Defining validation and closure evidence | Read-only discovery with no phase closure |
 | [codex/KONFRM_UI_QA_PROTOCOL.md](./codex/KONFRM_UI_QA_PROTOCOL.md) | Any visible UI/UX phase | Backend-only tasks |
 | [codex/KONFRM_CROSS_APP_MATRIX.md](./codex/KONFRM_CROSS_APP_MATRIX.md) | A shared entity/state changes across roles | A single-role static presentation change |
+| [codex/KONFRM_DECISION_CONFLICTS.md](./codex/KONFRM_DECISION_CONFLICTS.md) | Contradictions between sources, precedence checks, or open Founder questions | Unambiguous tasks with existing tests |
 | [codex/KONFRM_DOCUMENT_RECONCILIATION.md](./codex/KONFRM_DOCUMENT_RECONCILIATION.md) | Determining whether a repository document is current, historical, or superseded | Ordinary implementation after authority is already clear |
 | [codex/P1_1_SCHEMA_RLS_BASELINE_REPORT.md](./codex/P1_1_SCHEMA_RLS_BASELINE_REPORT.md) | Touching Supabase schema, RLS, grants, public RPCs, Storage, migrations, or identity persistence | UI-only work with no persistence/security effect |
 

@@ -1,8 +1,8 @@
 # KONFRM Founder Operating Context
 
-**Status:** CANDIDATE — BRIDGE REVIEW IN PROGRESS
-**Founder Direction:** APPROVED
-**Document Version:** PENDING FINAL APPROVAL
+**Status:** FOUNDER APPROVED — CANONICAL
+**Founder Approval:** FINAL — 2026-09-04
+**Document Version:** 1.0
 **Date:** 2026-09-04
 **Authority:** Founder Operating Principles & Autonomous Execution Envelope
 

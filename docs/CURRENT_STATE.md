@@ -1,7 +1,9 @@
 # Current project state
 
 **Last updated:** 2026-09-04
-**Repository-state baseline:** Published baseline on `main` is at `baecc9f7f9c16aafa1954ddf7aa6e3cead5c757a` (incorporates P1.6, P2.1, and P2.2 candidate merges, plus the durable Brain Sync governance layer). Product candidate P2.3 (Owner API Contract) remains an unmerged candidate awaiting Bridge review and closure verification on `implementation/p2-3-owner-api-contract` (PR #14).
+**Product code baseline before BS-02:** `origin/main` at `baecc9f7f9c16aafa1954ddf7aa6e3cead5c757a` (incorporates published P1.6, P2.1, and P2.2 work).
+**Brain Sync governance:** Introduced by `tooling/brain-sync-bs02` / PR #15; documentation and governance only, no product code changes.
+**Active product candidate:** P2.3 (Owner API Contract) remains an unmerged candidate awaiting Bridge review and closure verification on `implementation/p2-3-owner-api-contract` (PR #14).
 
 ## Current status
 

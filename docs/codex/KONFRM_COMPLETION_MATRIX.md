@@ -1,6 +1,6 @@
 # KONFRM completion matrix
 
-> **P1.2/P1.3/P14.1 status (2026-09-03):** P14.1 is published/live verified at `5decd03f59f3bd3039e12e00caf234f28def5201`; P1.2 is published/live verified at `92dc3916afe7a8e7d15620efee31afa58e826870`; P1.3 is published/live verified at `fb38414d9076f89083bdc680e48e1a0b0329be06`.
+> **2026-09-04 status reconciliation:** Product code baseline before BS-02 is `origin/main` at `baecc9f7f9c16aafa1954ddf7aa6e3cead5c757a` (incorporates published P1.6, P2.1, and P2.2 work). The durable Brain Sync governance layer is introduced by `tooling/brain-sync-bs02` / PR #15 (documentation and governance only; no product code change). Product candidate P2.3 (Owner API Contract) remains an unmerged candidate awaiting Bridge review and closure verification on `implementation/p2-3-owner-api-contract` (PR #14). Sequencing governed by `KONFRM_EXECUTION_DEPENDENCY_ORDER.md`.
 
 This is a current acceptance map, not a changelog. “Repository evidence” does not mean live accepted. A row can be **verified** only with concrete applicable functional, data/API, cross-app, failure-state, regression, security/privacy, visual, and live evidence.
 
@@ -28,7 +28,7 @@ This inventory prevents a later phase from rebuilding a slice merely because it 
 | Customer property detail/calendar/quote | P5.2 | Implemented but unverified | Detail, calendar, guest/quote components | Date/guest/price/failure visual and API evidence | Availability/quote source | Preserve; verify |
 | Customer booking request/detail/status | P5.3, P8.1 | Implemented but unverified | Booking components/routes and lifecycle code | Cross-role status and retry/failure acceptance | Owner decision, Admin context | Preserve; verify |
 | Customer prototype payment UI | P5.3, P10.1 | Implemented but unverified | Payment CTA/sheet and API flow code | Canonical amount/privacy/completion evidence | Booking, wallet, Admin | Preserve; verify |
-| Customer Favorites | P5.4 | Not started | Approved capability documented | Canonical persistence/auth design and tests | Identity/backend/DB | Complete; never fake locally |
+| Customer Favorites | P2.2 (former P5.4) | Implemented in repo; live DB pending | Migrations 028/029, backend endpoints, and client code | Live database migration verification | Identity/backend/DB | Verify live DB application |
 | Customer account/history/payment history | P2.1, P5.3, P17.1 | Partial | Account/history components, payment-state fix evidence | Unauthorized/error/empty semantics | Customer auth/payment contract | Verify; repair only if evidence fails |
 | Owner entry, Login, first run | P0.2, P4.4, P6.1 | Implemented but unverified | Owner auth gate/first-run/KONFRM entry commits | Exact first-run/session/live acceptance | Canonical Owner auth | Preserve; verify |
 | Owner Home action-first surface | P6.1 | Implemented but unverified | Recent Home/header/action commits | Founder visual and real-data acceptance | Bookings/properties/wallet | Preserve; verify |
@@ -44,8 +44,8 @@ This inventory prevents a later phase from rebuilding a slice merely because it 
 | Admin property review queue | P3.2, P7.4 | Implemented but unverified | Review queue/components/routes | Reason/status propagation and desktop QA | Owner property/Customer visibility | Preserve; verify |
 | Admin payout queue | P7.5, P11.2 | Partial | Queue/code references exist | Current payout-rule, reservation, provider-fee, audit evidence | Owner wallet/ledger | Verify; complete only within current rule |
 | Admin disputes/reviews | P7.6, P13.2–P13.3 | Blocked | Legacy/current components may exist | Approved cancellation/dispute/review contracts | Booking/payment/completed stay | Preserve evidence; await decision |
-| Public/customer API contract | P2.1 | Partial | Backend route surface and Customer repositories | Exact success/error/ownership contract inventory | Customer surfaces | Verify; repair only if evidence fails |
-| Owner/Admin API contract | P2.2–P2.3 | Partial | Authenticated route families/repositories | Role/ownership/error inventory | Owner/Admin surfaces | Verify; repair only if evidence fails |
+| Public/customer API contract | P2.1 | Implemented & verified | Public search/detail routes, allowlist DTOs, tests | Merged to main baseline | Customer surfaces | Baseline published |
+| Owner/Admin API contract | P2.2–P2.3 | P2.2 merged; P2.3 candidate | Owner core routes/DTOs, failure tests, calendar locks | P2.3 Bridge review and PR #14 merge | Owner/Admin surfaces | Complete P2.3 verification gates |
 | Worker REST/RPC compatibility | P2.4 | Partial | `dbClient` strict matcher and Worker config | Touched-operation coverage/matcher collision tests | Every Worker-backed flow | Repair only when scoped evidence fails |
 | DB baseline/RLS | P1.1, P14.1 | P14.1 critical RPC ACL remediation published/live verified | N/A | N/A | N/A | P1.1 published at `d7462f13…`; P14.1 migration 021 was applied and ACL-verified at `5decd03f…` | Broader no-policy RLS and sensitive Storage verification remain P14.2 work |
 | Property media/private KYC storage | P1.3, P14.2 | Implemented but unverified | Public property-media/private owner-verification code and migration evidence | Bucket policy/object access live verification | Owner/Admin/Customer | Preserve; verify |

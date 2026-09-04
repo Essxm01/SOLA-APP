@@ -1,6 +1,6 @@
 # KONFRM completion matrix
 
-> **2026-09-04 status reconciliation:** Baseline published on `main` is at `baecc9f7f9c16aafa1954ddf7aa6e3cead5c757a` (incorporating P1.6, P2.1, and P2.2 candidate merges). Tooling task BS-02 (Durable Brain Layer) is active on `tooling/brain-sync-bs02`. Product candidate P2.3 (Owner API Contract) is candidate-complete and awaiting Bridge review on `implementation/p2-3-owner-api-contract` (PR #14). Sequencing governed by `KONFRM_EXECUTION_DEPENDENCY_ORDER.md`.
+> **2026-09-04 status reconciliation:** Baseline published on `main` is at `baecc9f7f9c16aafa1954ddf7aa6e3cead5c757a` (incorporating P1.6, P2.1, and P2.2 candidate merges, plus the durable Brain Sync governance layer). Product candidate P2.3 (Owner API Contract) remains an unmerged candidate awaiting Bridge review and closure verification on `implementation/p2-3-owner-api-contract` (PR #14). Sequencing governed by `KONFRM_EXECUTION_DEPENDENCY_ORDER.md`.
 
 This is a current acceptance map, not a changelog. “Repository evidence” does not mean live accepted. A row can be **verified** only with concrete applicable functional, data/API, cross-app, failure-state, regression, security/privacy, visual, and live evidence.
 

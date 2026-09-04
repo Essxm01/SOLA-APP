@@ -1,6 +1,8 @@
 # KONFRM Quota-Aware Context Router
 
-**Status:** Founder Approved
+**Status:** CANDIDATE — BRIDGE REVIEW IN PROGRESS
+**Founder Direction:** APPROVED
+**Document Version:** PENDING FINAL APPROVAL
 **Date:** 2026-09-04
 **Authority:** Operational Governance — Context Management & Token Conservation
 
@@ -14,7 +16,7 @@ To operate efficiently within existing subscription quotas (particularly for Z C
 ┌────────────────────────────────────────────────────────────────────────┐
 │ LAYER 1: MANDATORY UNIVERSAL CORE                                      │
 │ Qualitative Load: LOW                                                  │
-│ Read on EVERY invocation, in exact sequence.                           │
+│ Load on NEW TASK / SESSION / CONTEXT RESET; refresh for closure.       │
 └───────────────────────────────────┬────────────────────────────────────┘
                                     │
                                     ▼
@@ -44,7 +46,14 @@ To operate efficiently within existing subscription quotas (particularly for Z C
 
 ## 2. Layer 1: Mandatory Universal Core (LOW Load)
 
-Every agent, in every session, must read this core sequence in exact order before touching code or forming a plan:
+Every agent must load this core sequence in exact order:
+- **Once at the beginning of a NEW TASK, NEW SESSION, or CONTEXT RESET.**
+- **Again if a relevant dynamic authority materially changed.**
+- **As a focused refresh of required dynamic/closure authorities before final task closure.**
+
+Do **NOT** reload all six core documents on every tool call, subagent call, reasoning round, `/goal` round, or retry inside the same uninterrupted task. Within an active task context, reuse already verified context unless concrete evidence indicates it has become stale.
+
+### Exact Mandatory Core Sequence:
 
 1. **`AGENTS.md`** — Universal engineering laws, safety bounds, single-writer rule, fail-closed principles.
 2. **`docs/INDEX.md`** — Master document router and authority definitions.

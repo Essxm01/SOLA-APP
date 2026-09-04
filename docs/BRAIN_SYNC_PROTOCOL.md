@@ -1,6 +1,8 @@
 # KONFRM Brain Synchronization Protocol
 
-**Status:** Founder Approved
+**Status:** CANDIDATE — BRIDGE REVIEW IN PROGRESS
+**Founder Direction:** APPROVED
+**Document Version:** PENDING FINAL APPROVAL
 **Date:** 2026-09-04
 **Authority:** Governance Master — Interface between Strategic Brain & Repository Memory
 
@@ -13,17 +15,18 @@ KONFRM operates on a two-tier knowledge hierarchy designed to prevent split auth
 ```
                   ┌────────────────────────────────────────┐
                   │                FOUNDER                 │
+                  │   - Final Product/Business/Arch/Scope  │
                   └───────────────────┬────────────────────┘
                                       │
                                       ▼
                   ┌────────────────────────────────────────┐
                   │         ChatGPT KONFRM Project         │
-                  │        (Strategic Brain / Bible)       │
+                  │    (Strategic Brain / Orchestrator)    │
                   │  - Contextual strategic reasoning      │
                   │  - Founder conversational interface    │
-                  │  - Product / business / UX authority   │
+                  │  - Product & technical orchestration   │
                   │  - Reviews agent results & reports     │
-                  │  - Origin of new Founder decisions     │
+                  │  - Compiles Founder policy decisions   │
                   └───────────────────┬────────────────────┘
                                       │ Ingestion /
                                       │ Dispatch
@@ -45,15 +48,21 @@ KONFRM operates on a two-tier knowledge hierarchy designed to prevent split auth
          └───────────────────────────────┘ └──────────────────────┘
 ```
 
-1. **ChatGPT KONFRM Project (The Strategic Brain):**
+1. **The Founder:**
+   - The final Product, Business, Financial, Architecture, and priority authority.
+   - All strategic policies, commercial models, and macro sequencing originate with the Founder.
+2. **ChatGPT KONFRM Project (The Strategic Brain / Orchestrator):**
+   - Serves as the strategic brain, product and technical orchestrator, and interactive Founder interface.
    - Holds the macro context, Founder story, strategic market posture, and conversational evolution.
-   - Is the single origin for all high-level business model, financial, UX, and architectural decisions.
+   - Analyzes, recommends, reconciles, and compiles Founder decisions into durable repository truth.
+   - Must NOT independently invent a new Product, Business, Financial, Legal, Booking, Availability, or major Architecture policy.
    - Does NOT manage low-level line-by-line syntax or local ephemeral file state.
-2. **The Repository (Durable Shared Execution Memory):**
+3. **The Repository (Durable Shared Execution Memory):**
    - Translates strategic intent into machine-readable, unambiguous, fail-closed contracts, tests, and schemas.
    - Must NOT compete with ChatGPT as an independent product authority.
-   - Contains all rules necessary for autonomous agent execution without requiring interactive questioning.
-3. **Execution Agents:**
+   - Contains all currently approved durable rules, known open decisions, stop conditions, and execution constraints necessary for safe autonomous work.
+   - If a required policy remains unresolved: `FOUNDER_DECISION_REQUIRED`. Never invent the missing rule simply to keep automation running.
+4. **Execution Agents:**
    - Execute strictly under repository authorities; they may never invent business, booking, financial, availability, or UX policy.
 
 ---
@@ -109,7 +118,12 @@ Repository truth is distributed across Git branches by design. A difference betw
 - **Feature / Validation / Tooling Branches:**
   - Isolated candidate states relative to a recorded `BASE_MAIN_SHA`.
   - `tasks/CURRENT_TASK.md` and candidate docs record in-progress candidate state.
-  - A candidate branch must NEVER claim `CLOSED`, `PUBLISHED`, or `LIVE_VERIFIED` for itself until it has passed all verification gates and is merged into `main`.
+  - A candidate revision must never masquerade as published `main` state.
+  - **Evidence-Based Status Semantics:**
+    - `PUBLISHED`: Requires actual publication / merge evidence for the referenced baseline.
+    - `LIVE_VERIFIED`: Requires exact deployed revision + actual live scenario/behavior evidence. It is evidence-based, not branch-name-based. (A candidate revision may possess live verification evidence if an authorized, exact deployment revision was actually tested, but it still must not claim to be the published `main` baseline).
+    - `CLOSED`: Requires satisfying the governing task's complete closure gates.
+    - `CANDIDATE`: An active or completed candidate revision pending integration or publication.
 
 ---
 
@@ -117,15 +131,15 @@ Repository truth is distributed across Git branches by design. A difference betw
 
 The following operational directives supersede all older agent-role descriptions (including raw sections in older Founder OS notes):
 
-1. **Strategic Brain:** ChatGPT KONFRM Project is the highest strategic brain and Founder interface.
+1. **Strategic Brain:** ChatGPT KONFRM Project is the highest strategic brain, orchestrator, and Founder interface.
 2. **Executive Control:** The Founder is the ultimate authority.
 3. **Execution Engines:** **Z Code** and **Antigravity** are technical execution agents, selected according to task complexity, tool capability, and active subscription quota.
 4. **Independent Reviewer:** **Codex** is a scarce, high-value independent reviewer reserved primarily for high-risk, security, financial, and final pre-merge reviews. Codex is NOT the default runtime orchestrator.
 5. **No OpenCode:** OpenCode is not part of the approved stack.
-6. **No Paid API Spend:** No additional paid API or token spending is approved. Agents must operate within existing subscription quotas. Quota exhaustion must never trigger automated credits or paid overages.
+6. **No Paid API Spend:** No additional paid AI/API/token/credit/overage spending is approved for autonomous execution. Agents must operate strictly within existing subscription quotas. Quota exhaustion must never trigger automated credits or paid overages.
 7. **Quota vs. Roadmap:** Quota limitations dictate execution pacing, but never alter the Product Roadmap or Quality Gates.
 8. **Autonomous Scope Hard Stop:** Autonomous execution across Phase 0 through Phase 3 is authorized only up to **`PHASE_3_LIVE_CLOSED`**.
-9. **Phase 4 Boundary Gate:** Phase 4 (Unified Design System) and beyond requires a formal Founder continuation authorization, a revised operating model, and Live Access Protocol (LAP) entry.
+9. **Phase 4 Boundary Gate:** Phase 4 (Unified Design System) and subsequent UI/UX phases represent a formal design program entry where the **UI/UX Design Lab — LAP** (the Design & User Experience Authority inside approved product boundaries) officially joins. Phase 4 and beyond requires a formal Founder continuation authorization, a revised operating model, and entry of UI/UX Design Lab — LAP under the approved *KONFRM — UI/UX DESIGN LAB × BRIDGE OPERATING CONTRACT*.
 
 ---
 

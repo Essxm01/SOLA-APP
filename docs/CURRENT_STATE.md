@@ -1,7 +1,7 @@
 # Current project state
 
 **Last updated:** 2026-09-04
-**Repository-state baseline:** Base `origin/main` at `baecc9f7f9c16aafa1954ddf7aa6e3cead5c757a` (incorporates P1.6, P2.1, and P2.2 candidate merges). Tooling task BS-02 (Durable Brain Layer) is active on isolated branch `tooling/brain-sync-bs02`. Product candidate P2.3 (Owner API Contract) is candidate-complete and awaiting Bridge review on `implementation/p2-3-owner-api-contract` (PR #14).
+**Repository-state baseline:** Published baseline on `main` is at `baecc9f7f9c16aafa1954ddf7aa6e3cead5c757a` (incorporates P1.6, P2.1, and P2.2 candidate merges, plus the durable Brain Sync governance layer). Product candidate P2.3 (Owner API Contract) remains an unmerged candidate awaiting Bridge review and closure verification on `implementation/p2-3-owner-api-contract` (PR #14).
 
 ## Current status
 
@@ -37,7 +37,7 @@ Read [ARCHITECTURE.md](./ARCHITECTURE.md), [DATABASE.md](./DATABASE.md), and [BU
 - Payment is intentionally `PROTOTYPE`; real Paymob credentials/networking are not implemented.
 - Design-system legacy drift remains inventoried under `DESIGN_SYSTEM/`; the anti-drift baseline prevents new violations but does not migrate old screens.
 - Cloudflare Pages project linkage/revision state is external to repository configuration and requires live verification after frontend deployment work.
-- Local baseline runtime: Customer, Owner, and Admin retain Node 20 declarations; the backend now declares Node 22 to match CI and the installed Supabase runtime's native-WebSocket requirement.
+- Local baseline runtime: Customer, Owner, and Admin retain Node 20 declarations; the backend now declares Node 22 to match CI and the installed Supabase runtime's native-WebSocket requirement. The Codex restricted filesystem context can fail while resolving the Windows user profile, but portable Node 20/22 and host Node 25 work in an authorized local process context. The user-prefix PowerShell `npm` remains inaccessible; use bundled `npm.cmd` or a process-scoped official runtime rather than treating that shell shim as the project authority.
 
 ## Open product/implementation decisions
 
@@ -47,6 +47,5 @@ Read [ARCHITECTURE.md](./ARCHITECTURE.md), [DATABASE.md](./DATABASE.md), and [BU
 
 ## Next work
 
-1. Tooling task BS-02 (Durable Brain Layer) completes isolated synchronization and review PR.
-2. Product candidate P2.3 (Owner API Contract) completes Bridge review and publication gates on `implementation/p2-3-owner-api-contract` (PR #14).
-3. Following P2.3 closure, subsequent work executes according to [KONFRM_EXECUTION_DEPENDENCY_ORDER.md](../KONFRM_EXECUTION_DEPENDENCY_ORDER.md) leading directly to Phase 3 (Owner → Admin → Renter Vertical Slice).
+1. Product candidate P2.3 (Owner API Contract) completes Bridge review and publication gates on `implementation/p2-3-owner-api-contract` (PR #14).
+2. Following P2.3 closure, subsequent work executes according to [KONFRM_EXECUTION_DEPENDENCY_ORDER.md](../KONFRM_EXECUTION_DEPENDENCY_ORDER.md) leading directly to Phase 3 (Owner → Admin → Renter Vertical Slice).

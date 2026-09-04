@@ -52,4 +52,4 @@ Implement the durable repository brain synchronization layer. Establish canonica
 10. Stale dynamic docs are factually reconciled without overclaiming live verification.
 11. P2.3 remains candidate/open.
 12. No product code or live environment changed.
-13. Phase 4 cannot be autonomously entered without explicit Founder continuation authorization and LAP entry.
+13. Phase 4 cannot be autonomously entered without explicit Founder continuation authorization, a revised operating model, and entry of UI/UX Design Lab — LAP under the approved *KONFRM — UI/UX DESIGN LAB × BRIDGE OPERATING CONTRACT*.

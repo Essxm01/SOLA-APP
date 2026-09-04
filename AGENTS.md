@@ -23,6 +23,8 @@ Before implementing any approved task, read the mandatory core sequence in exact
 5. `docs/codex/KONFRM_MASTER_RULES.md`
 6. Active task contract (when one exists)
 
+Load this Mandatory Universal Core once at the beginning of a NEW TASK, NEW SESSION, or CONTEXT RESET. Refresh it if a relevant dynamic authority materially changes, and re-verify required closure authorities before final closure. Do NOT reload the entire core on every tool call or step inside an uninterrupted task.
+
 Then use `docs/CONTEXT_ROUTER.md` to load only the selective domain authorities matching the task. Do not load all documentation files at once; preserve token quotas for execution and verification.
 
 For substantial or cross-system work, also review `docs/codex/KONFRM_FOUNDER_OPERATING_CONTEXT.md` and the applicable current-reality, conflict, completion-matrix, rescue-backlog, and quality-gate documents named by the index.
@@ -43,7 +45,12 @@ Before trusting dynamic markdown or selecting work, perform a branch-aware reali
 4. **Distinguish Published Baseline from Candidate Reality:**
    - Files on `main` represent the shared published baseline.
    - Files on a feature branch represent isolated candidate state.
-   - Candidate state must NEVER be claimed as `CLOSED`, `PUBLISHED`, or `LIVE_VERIFIED` on `main` until it passes all verification gates and is formally merged.
+   - Candidate state must never masquerade as the published `main` baseline.
+   - **Status Semantics (Evidence-Based):**
+     - `PUBLISHED`: Requires actual publication / merge evidence for the referenced baseline.
+     - `LIVE_VERIFIED`: Requires exact deployed revision + actual live behavior evidence (evidence-based, not branch-name-based).
+     - `CLOSED`: Requires satisfying the governing task's complete closure gates.
+     - `CANDIDATE`: An active or pending candidate revision under review.
    - Branch divergence is normal Git lifecycle behavior, not knowledge corruption.
 
 ## Source-of-truth hierarchy

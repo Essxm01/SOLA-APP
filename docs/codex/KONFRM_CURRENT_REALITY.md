@@ -1,6 +1,6 @@
 # KONFRM current reality assessment
 
-> **2026-09-04 reconciliation:** Baseline published state on `main` is at `baecc9f7f9c16aafa1954ddf7aa6e3cead5c757a` (incorporating P1.6, P2.1, and P2.2 candidate merges). Tooling task BS-02 (Durable Brain Layer) is active on `tooling/brain-sync-bs02`. Product candidate P2.3 (Owner API Contract) is candidate-complete and awaiting Bridge review on `implementation/p2-3-owner-api-contract` (PR #14). Historical validation reports remain preserved. Subsequent work sequences per `KONFRM_EXECUTION_DEPENDENCY_ORDER.md`.
+> **2026-09-04 reconciliation:** Baseline published state on `main` is at `baecc9f7f9c16aafa1954ddf7aa6e3cead5c757a` (incorporating P1.6, P2.1, and P2.2 candidate merges, plus the durable Brain Sync governance layer). Product candidate P2.3 (Owner API Contract) remains an unmerged candidate awaiting Bridge review and closure verification on `implementation/p2-3-owner-api-contract` (PR #14). Historical validation reports remain preserved. Subsequent work sequences per `KONFRM_EXECUTION_DEPENDENCY_ORDER.md`.
 
 **Audited repository baseline:** P0.1 began at `main`/`origin/main` `3acb94e` on 2026-08-29. This is a repository/Git/configuration assessment, not blanket live-production proof.
 

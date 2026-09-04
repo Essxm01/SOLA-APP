@@ -1,6 +1,6 @@
 # KONFRM current reality assessment
 
-> **2026-09-03 reconciliation:** P14.1 remains closed/live-verified. P1.2 published and completed its staged session alignment at `92dc3916afe7a8e7d15620efee31afa58e826870`; the authoritative evidence is [the P1.2 report](./P1_2_IDENTITY_SESSION_PERSISTENCE_REPORT.md). P1.3 is closed and live-verified at `fb38414d9076f89083bdc680e48e1a0b0329be06` (migration 024 and atomic property-media RPC verified applied live in Supabase). Historical validation reports remain preserved; current routing proceeds to P1.4.
+> **2026-09-04 reconciliation:** Baseline published state on `main` is at `baecc9f7f9c16aafa1954ddf7aa6e3cead5c757a` (incorporating P1.6, P2.1, and P2.2 candidate merges). Tooling task BS-02 (Durable Brain Layer) is active on `tooling/brain-sync-bs02`. Product candidate P2.3 (Owner API Contract) is candidate-complete and awaiting Bridge review on `implementation/p2-3-owner-api-contract` (PR #14). Historical validation reports remain preserved. Subsequent work sequences per `KONFRM_EXECUTION_DEPENDENCY_ORDER.md`.
 
 **Audited repository baseline:** P0.1 began at `main`/`origin/main` `3acb94e` on 2026-08-29. This is a repository/Git/configuration assessment, not blanket live-production proof.
 
@@ -12,7 +12,7 @@
 - **Deferred / decision needed:** product behavior cannot be safely inferred.
 
 | Area | Classification | Evidence tag | Evidence and remaining proof |
-| --- | --- | --- |
+| --- | --- | --- | --- |
 | Three React applications / screens | Implemented—repository evidence | `CODE_OBSERVED` | `customer-app`, `owner-app`, `admin-app` are React/TypeScript/Vite applications with role-specific components and contexts. Each screen’s runtime state still needs per-slice verification. |
 | Backend routes/services | Implemented—repository evidence | `CODE_OBSERVED` | TypeScript `ExpressServerApp`, route families for auth/customer/owner/admin, repositories, and Worker entry exist. Route-by-route contract/error audit remains. |
 | Authentication | Implemented—local verification | `LOCAL_VERIFIED` | P0.2 signed-token route tests and role/client-state regressions cover prototype Customer/Owner/Admin access, candidate-session bootstrap, logout, and representative authorization. Exact deployed revision and complete production-auth/RLS assurance remain outside this local phase. |
@@ -27,10 +27,10 @@
 | Recent Owner migrations | Partial / acceptance gap | `GIT_OBSERVED` | Home, Wallet, Properties/Wizard, and Bookings recent commits exist. Founder visual acceptance, exact Pages revision, and closure evidence are outstanding. |
 | CI / Cloudflare / Vercel | Partial / acceptance gap | `VERIFIED` / `CONFIG_OBSERVED` | P0.2 published commit `6d37b4589fca47fe56b294c4c12292b44a2db138` triggered GitHub Actions run #129 (`33279518425`), including successful Worker deployment and public health. Pages revisions remain external/unverified. |
 | Connected infrastructure audit | Partial / security prerequisite | `LIVE_DB_OBSERVED` | P1.1 connected Supabase metadata confirmed project health/PostgreSQL 17, table/RLS/grant/storage baseline, and a live PUBLIC-RPC grant contradiction. Cloudflare account revision metadata remains unavailable. |
-| Test infrastructure / runtime errors | Partial / environment caveat | `LOCAL_VERIFIED` | Builds/checks, focused backend suites, Vite shells, and backend localhost health now execute. Backend `.nvmrc` is 22, matching CI and the installed Supabase runtime; frontend declarations remain 20. Restricted Codex filesystem execution can still fail while resolving the Windows user profile, so use a process-scoped runtime/authorized local process for local validation. |
+| Test infrastructure / runtime errors | Partial / environment caveat | `LOCAL_VERIFIED` | Builds/checks, focused backend suites, Vite shells, and backend localhost health now execute. Backend `.nvmrc` is 22, matching CI and the installed Supabase runtime; frontend declarations remain 20. |
 | Mocks / hardcoded/legacy | Partial / acceptance gap | `CODE_OBSERVED` | Mock repositories and legacy comments/constants remain discoverable. They require scoped audit, not blanket deletion. |
 | RLS / public RPC exposure | Partial / residual architecture concern | `LIVE_DB_OBSERVED` / `LIVE_VERIFIED` | P14.1 applied migration 021 and verified that the four critical KONFRM RPCs are no longer executable by anon/authenticated; service-role access remains. Public app tables remain RLS-enabled/no-policy and object-level Storage access remains P14.2 work. |
-| Favorites, notifications, cancellation, disputes/reviews | Deferred / decision needed or incomplete | `DOC_OBSERVED` | Persistent Favorites is approved but not implemented; notification model, cancellation/refund matrix, remaining-balance method, and some dispute/review behavior require scoped audit/decisions. |
+| Favorites, notifications, cancellation, disputes/reviews | Deferred / decision needed or incomplete | `DOC_OBSERVED` / `CODE_OBSERVED` | Customer Favorites is repository-implemented with migrations 028/029 and client/backend routes (live DB application unverified); notification model, cancellation/refund matrix, remaining-balance method, and dispute/review behavior require scoped audit/decisions. |
 
 ## What not to assume
 

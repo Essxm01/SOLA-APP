@@ -14,7 +14,7 @@ Only evidence-backed, deferred, or decision-blocked items belong here. This back
 | RB-06 | High / UX + Deployment | Recent Owner slices | Recent UI commits lack fresh visual/founder and exact Pages evidence. | No—unless closure claimed | P6.1 onward / PHASE 20 |
 | RB-07 | High / Data + UX | Notifications/messages | No confirmed canonical unread/notification model; fake counts are forbidden. | No | P9.1 |
 | RB-08 | High / Product rule | Booking/cancellation/disputes | Cancellation/refund, deadline, and remaining-payment details are unresolved; current payout release/minimum/fee rules are not part of this uncertainty. | Yes—those open flows | P8.5 / P13.1 |
-| RB-09 | Medium / Functional | Customer favorites | Persistent favorites is approved but unavailable. | No | P5.4 |
+| RB-09 | Medium / Functional | Customer favorites | Resolved in repository baseline via migrations 028/029 and customer endpoints (live DB verification pending). | No | Resolved (P2.2) |
 | RB-10 | Medium / Data | Test fixtures | Roadmap’s realistic data task risks unsafe production mutation. | No | P18.1 |
 | RB-11 | Medium / UX + UI | All role audits | Audit inventories predate recent migration commits. | No | P15.1 / P16.1 |
 | RB-12 | Medium / Local tooling ergonomics | Local PowerShell/Codex runner | The user-prefix PowerShell npm shim remains inaccessible; restricted Codex filesystem execution can fail while resolving the Windows user profile. Portable Node 20/22 runtimes and an authorized local process provide a non-destructive workaround; backend requires Node 22, matching CI. | No—P0.1 baseline is complete | Maintenance only if developer experience requires it |
@@ -22,3 +22,7 @@ Only evidence-backed, deferred, or decision-blocked items belong here. This back
 ## Resolved by P0.2 (not backlog items)
 
 - Patterned non-production JWT strings and matching Admin detail-screen fallback tokens were removed. Persisted Customer/Owner tokens now remain unauthenticated candidates until canonical validation or an explicit retryable failure state. See `P0_2_AUTH_ACCESS_REPORT.md`.
+
+## Resolved by repository evidence (not active backlog items)
+
+- **RB-09 (Customer Favorites):** Repository schema, migrations (`028_customer_favorites.sql`, `029_customer_favorites_acl_hardening.sql`), backend endpoints, and Customer client integration are implemented in repository baseline. Live Supabase database verification remains pending live rollout evidence.

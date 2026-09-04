@@ -10,24 +10,56 @@ KONFRM / كونفرم is a three-role vacation-rental product: Customer discover
 - Design and experience authority: `DESIGN_SYSTEM/`
 - Repository memory: `docs/`
 - Active task contract: `tasks/CURRENT_TASK.md`
+- Context router: `docs/CONTEXT_ROUTER.md`
+- Brain sync protocol: `docs/BRAIN_SYNC_PROTOCOL.md`
 
 ## Mandatory context refresh before every execution task
 
-Before implementing any approved task, read the mandatory core: this file, `docs/INDEX.md`, `docs/CURRENT_STATE.md`, `tasks/CURRENT_TASK.md`, and `docs/codex/KONFRM_MASTER_RULES.md`.
+Before implementing any approved task, read the mandatory core sequence in exact order:
+1. This file (`AGENTS.md`)
+2. `docs/INDEX.md`
+3. `docs/CURRENT_STATE.md`
+4. `tasks/CURRENT_TASK.md`
+5. `docs/codex/KONFRM_MASTER_RULES.md`
+6. Active task contract (when one exists)
 
-For substantial or cross-system work, also review the applicable current-reality, conflict, completion-matrix, rescue-backlog, and quality-gate documents named by the index. Then load only the relevant domain authorities and affected code, migrations, configuration, tests, and Git evidence.
+Then use `docs/CONTEXT_ROUTER.md` to load only the selective domain authorities matching the task. Do not load all documentation files at once; preserve token quotas for execution and verification.
+
+For substantial or cross-system work, also review `docs/codex/KONFRM_FOUNDER_OPERATING_CONTEXT.md` and the applicable current-reality, conflict, completion-matrix, rescue-backlog, and quality-gate documents named by the index.
 
 Before editing, establish the objective, governing authorities, affected systems, non-negotiable rules, open decisions, evidence to verify, and explicit non-goals. Historical material, old code, mocks, constants, and prior behavior never silently override that current context.
 
 Use this recovery prompt in a fresh session:
 
-> Onboard yourself to this repository. Read AGENTS.md, docs/INDEX.md, docs/CURRENT_STATE.md, tasks/CURRENT_TASK.md, and docs/codex/KONFRM_MASTER_RULES.md. Then inspect only the code and additional documentation relevant to the active task. Do not modify anything until you understand the current task and affected architecture.
+> Onboard yourself to this repository. Read AGENTS.md, docs/INDEX.md, docs/CURRENT_STATE.md, tasks/CURRENT_TASK.md, and docs/codex/KONFRM_MASTER_RULES.md. Follow docs/CONTEXT_ROUTER.md to selectively inspect only the code and additional documentation relevant to the active task. Do not modify anything until you understand the current task and affected architecture.
+
+## Branch-aware preflight
+
+Before trusting dynamic markdown or selecting work, perform a branch-aware reality check:
+
+1. **Identify Branch & HEAD:** Run `git rev-parse --abbrev-ref HEAD` and `git rev-parse HEAD`.
+2. **Identify Published Baseline:** Run `git rev-parse origin/main`.
+3. **Verify Candidate Ancestry:** If on a feature, validation, or tooling branch, verify that the `BASE_MAIN_SHA` recorded in `tasks/CURRENT_TASK.md` is an ancestor of the branch. Verify that `tasks/CURRENT_TASK.md` reflects this branch's assigned `TASK_ID`.
+4. **Distinguish Published Baseline from Candidate Reality:**
+   - Files on `main` represent the shared published baseline.
+   - Files on a feature branch represent isolated candidate state.
+   - Candidate state must NEVER be claimed as `CLOSED`, `PUBLISHED`, or `LIVE_VERIFIED` on `main` until it passes all verification gates and is formally merged.
+   - Branch divergence is normal Git lifecycle behavior, not knowledge corruption.
 
 ## Source-of-truth hierarchy
 
-Use the governing precedence in `docs/codex/KONFRM_MASTER_RULES.md`: latest explicit Founder decision, newer execution override, confirmed Product Context, approved specification, live verification as evidence, code, then legacy/default material. Code and migrations remain the implementation and persistence truth; a mismatch with product intent is a conflict to investigate, not a silent decision.
+Use the governing precedence in `docs/codex/KONFRM_MASTER_RULES.md` and `docs/BRAIN_SYNC_PROTOCOL.md`:
+1. Latest explicit Founder decision
+2. Newer approved execution override
+3. Confirmed rule in Master Project Context / Master Rules
+4. Approved product, UX, architecture, or design specification
+5. Verified live behavior as implementation evidence
+6. Current code and migrations as implementation/persistence reality
+7. Mocks, constants, comments, legacy plans, defaults, and old TODOs
 
-If sources conflict, investigate; do not silently choose or invent a rule. Mark unresolved facts as uncertain.
+Code and migrations remain implementation and persistence truth; a mismatch with product intent is a conflict to investigate, not a silent decision.
+
+If sources conflict, investigate; do not silently choose or invent a rule. Mark unresolved facts as uncertain in `docs/codex/KONFRM_DECISION_CONFLICTS.md`.
 
 ## Working rules
 
@@ -56,6 +88,10 @@ If sources conflict, investigate; do not silently choose or invent a rule. Mark 
 - durable rationale → `docs/DECISIONS.md`
 - current handoff state → `docs/CURRENT_STATE.md`
 - one active delivery contract → `tasks/CURRENT_TASK.md`
+- strategic brain sync protocol → `docs/BRAIN_SYNC_PROTOCOL.md`
+- quota-aware context loading → `docs/CONTEXT_ROUTER.md`
+- founder operational directives → `docs/codex/KONFRM_FOUNDER_OPERATING_CONTEXT.md`
+- macro dependency graph order → `KONFRM_EXECUTION_DEPENDENCY_ORDER.md`
 - operating rules, evidence classification, dependency map, completion matrix, and rescue backlog → `docs/codex/`
 
 ## Repository Memory Maintenance
@@ -74,8 +110,8 @@ When a task ends, mark `tasks/CURRENT_TASK.md` complete, update only applicable 
 
 For a material execution phase, also update the applicable `docs/codex/` reality, matrix, rescue-backlog, and execution-map entries with evidence. Do not alter historical source documents to hide a conflict; log the conflict and its authority instead.
 
-Immediately before closure, re-read the active task, Master Rules, relevant domain authority, and applicable Quality Gates; resolve any divergence, retest, and include concise Context Compliance Evidence in the closure report.
+Immediately before closure, re-read the active task, Master Rules, relevant domain authority, and applicable Quality Gates; resolve any divergence, retest, and format the final result using the standard handshake envelope defined in `docs/BRAIN_SYNC_PROTOCOL.md`.
 
 ## Git practice
 
-Do not rewrite existing history. Prefer concise conventional commits such as `feat(bookings): add renter cancellation flow`, `fix(payments): prevent duplicate payment release`, or `docs(memory): establish repository knowledge architecture`. Add a short body when the rationale would otherwise be lost.
+Do not rewrite existing history. Prefer concise conventional commits such as `feat(bookings): add renter cancellation flow`, `fix(payments): prevent duplicate payment release`, or `docs(brain): establish KONFRM durable synchronization layer`. Add a short body when the rationale would otherwise be lost.

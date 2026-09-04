@@ -1,8 +1,8 @@
 # KONFRM execution map
 
-> **Active sequence update (2026-09-04):** Product code baseline before BS-02 is `origin/main` at `baecc9f7f9c16aafa1954ddf7aa6e3cead5c757a` (incorporates published P1.6, P2.1, and P2.2 work). The durable Brain Sync governance layer is introduced by `tooling/brain-sync-bs02` / PR #15 (documentation and governance only; no product code change). Product candidate P2.3 (Owner API Contract) remains an unmerged candidate awaiting Bridge review and closure verification on `implementation/p2-3-owner-api-contract` (PR #14). Macro phase sequencing and execution prerequisites are governed by the Founder-approved dependency graph in `KONFRM_EXECUTION_DEPENDENCY_ORDER.md`. The 75 micro-boundaries below define detailed verification gates and acceptance criteria.
+> **Active sequence update (2026-09-04):** Product code baseline before BS-02 is `origin/main` at `baecc9f7f9c16aafa1954ddf7aa6e3cead5c757a` (incorporates published P1.6, P2.1, and P2.2 work). The durable Brain Sync governance layer is introduced by `tooling/brain-sync-bs02` / PR #15 (documentation and governance only; no product code change). Product candidate P2.3 (Owner API Contract) remains an unmerged candidate awaiting Bridge review and closure verification on `implementation/p2-3-owner-api-contract` (PR #14). Macro phase sequencing and execution prerequisites are governed by the Founder-approved dependency graph in `KONFRM_EXECUTION_DEPENDENCY_ORDER.md`. The 76 micro-boundaries below define detailed verification gates and acceptance criteria.
 
-`خطة عمل التطبيق.txt` supplies the immutable PHASE 0–22 macro roadmap. The **75** detailed execution boundaries below were derived from current repository evidence, dependency boundaries, risk, and independent acceptance scope—not from a target quota. The Phase Zero hardening review split mixed property/availability, booking/financial, role-shell, and E2E boundaries where they require different acceptance evidence; future phases change only when new evidence creates a real dependency or acceptance boundary.
+`خطة عمل التطبيق.txt` supplies the immutable PHASE 0–22 macro roadmap. The **76** detailed execution boundaries below were derived from current repository evidence (reflecting the published P2.1 Public / P2.2 Renter split and downstream Phase 2 mapping), dependency boundaries, risk, and independent acceptance scope—not from a target quota. The Phase Zero hardening review split mixed property/availability, booking/financial, role-shell, and E2E boundaries where they require different acceptance evidence; future phases change only when new evidence creates a real dependency or acceptance boundary.
 
 **Status key:** `Preserve/verify` = implementation evidence exists but closure is unverified; `Partial` = material gap remains; `Deferred` = decision/prerequisite missing; `Planned` = no completion evidence yet.
 
@@ -16,11 +16,12 @@
 | P1.4 | Availability persistence and blocking integrity | Customer, Owner, backend, DB | P1.1 | Critical | Next dependency-ordered boundary; candidate `67601a1…` exists on `validation/p1-4-rc` but is unmerged and not dispatched |
 | P1.5 | Booking and financial-summary persistence integrity | Backend, DB, all roles | P1.1 | Critical | Preserve/verify; status/quote/idempotency tests |
 | P1.6 | Wallet and immutable-ledger persistence integrity | Backend, DB, Owner/Admin | P1.1 | Critical | Preserve/verify; balance/ledger/privacy tests |
-| P2.1 | **PHASE 2** — public/customer contract audit and error truthfulness | Customer, backend | P1.2–P1.6 | High | Partial; route contract/failure tests |
-| P2.2 | Owner contract and authorization audit | Owner, backend | P1.2–P1.6 | High | Partial; role/ownership tests |
-| P2.3 | Admin contract and authorization audit | Admin, backend | P1.2–P1.6 | High | Partial; role/ownership tests |
-| P2.4 | Worker REST/RPC adapter contract hardening | Backend, Worker, Supabase | P2.1–P2.3 | High | Partial; exact-query/matcher regression tests |
-| P3.1 | **PHASE 3** — Owner property create/draft/media preserve-and-verify | Owner, backend, DB/storage | P1.3, P2.2 | High | Preserve/verify; wizard/media evidence |
+| P2.1 | **PHASE 2** — Public API contract audit and error truthfulness | Customer, backend | P1.2–P1.6 | High | Closed + published at `198a00e…`; dedicated public search/detail routes and privacy DTO allowlists in `publicProperty.ts` |
+| P2.2 | Renter API contract and customer favorites boundary | Customer, backend | P1.2–P1.6, P2.1 | High | Closed + published at `3b7e895…`; authenticated customer profile, persistent favorites (migrations 028/029), and customer DTO mappers |
+| P2.3 | Owner contract and authorization audit | Owner, backend | P1.2–P1.6, P2.1–P2.2 | High | Candidate complete on PR #14 (head `9c2a59e…`); owner profile, property, calendar, booking financials, and wallet/ledger contracts |
+| P2.4 | Admin contract and authorization audit | Admin, backend | P1.2–P1.6, P2.1–P2.3 | High | Planned; role/ownership tests |
+| P2.5 | Worker REST/RPC adapter contract hardening | Backend, Worker, Supabase | P2.1–P2.4 | High | Partial; exact-query/matcher regression tests |
+| P3.1 | **PHASE 3** — Owner property create/draft/media preserve-and-verify | Owner, backend, DB/storage | P1.3, P2.3 | High | Preserve/verify; wizard/media evidence |
 | P3.2 | Admin property review and reason propagation | Admin, Owner, backend, DB | P3.1 | High | Preserve/verify; review/rejection tests |
 | P3.3 | Customer published-property eligibility/visibility | Customer, backend, DB | P3.2 | High | Preserve/verify; public eligibility live-safe proof |
 | P4.1 | **PHASE 4** — token/component/RTL governance reconciliation | Design System, all apps | P0.1 | Medium | Preserve/verify; token/check validation |
@@ -30,7 +31,7 @@
 | P5.1 | **PHASE 5** — Customer discovery/search truthful state and mobile UX | Customer, backend | P2.1, P3.3, P4.1 | High | Partial; real-empty/error/filter QA |
 | P5.2 | Customer property detail, availability, and quote decision UX | Customer, backend | P5.1, P1.4 | High | Partial; dates/guests/quote/failure QA |
 | P5.3 | Customer booking journey/status/payment entry UX | Customer, backend | P5.2, P8.1 | High | Partial; canonical status/privacy QA |
-| P5.4 | Persistent Customer Favorites vertical slice | Customer, backend, DB | P1.2, P2.1 | Medium | Deferred; approved capability, no local-only state |
+| P5.4 | Persistent Customer Favorites vertical slice | Customer, backend, DB | P1.2, P2.1–P2.2 | Medium | Partial; core persistence and backend API published in P2.2 (migrations 028/029), full mobile UX slice deferred to Phase 5 |
 | P6.1 | **PHASE 6** — Owner Home evidence-led closure | Owner | P0.2, P4.1 | Medium | Partial; action-first/data/visual acceptance |
 | P6.2 | Owner property hub and details lifecycle UX | Owner, backend | P3.1, P4.1 | High | Partial; mobile status/empty/error QA |
 | P6.3 | Owner property wizard, draft, and media lifecycle UX | Owner, backend, storage | P3.1, P6.2 | High | Partial; create/edit/media/submit QA |
@@ -38,19 +39,19 @@
 | P6.5 | Owner booking requests/active/history UX | Owner, backend | P8.1, P4.1 | High | Partial; correct grouping/write-failure UX |
 | P6.6 | Owner wallet/payout operational UX | Owner, backend | P1.6, P4.1 | High | Partial; finance/error/eligibility QA |
 | P6.7 | Owner profile, registration, and KYC operational UX | Owner, backend, storage | P1.2, P4.1 | High | Partial; KYC privacy and visual QA |
-| P7.1 | **PHASE 7** — Admin shell/session truthfulness | Admin, backend | P0.2, P2.3, P4.1 | High | Preserve/verify; session/entry QA |
-| P7.2 | Admin overview/notification truthfulness | Admin, backend | P7.1, P2.3 | High | Preserve/verify; zero/error/retry QA |
+| P7.1 | **PHASE 7** — Admin shell/session truthfulness | Admin, backend | P0.2, P2.4, P4.1 | High | Preserve/verify; session/entry QA |
+| P7.2 | Admin overview/notification truthfulness | Admin, backend | P7.1, P2.4 | High | Preserve/verify; zero/error/retry QA |
 | P7.3 | Admin Owner-verification queue/private evidence review | Admin, backend, DB/storage | P1.2, P6.7 | Critical | Partial; private document/review tests |
 | P7.4 | Admin property review queue and feedback UX | Admin, backend, DB | P3.2, P4.1 | High | Partial; decision/reason/audit QA |
 | P7.5 | Admin payout queue and accounting operations audit | Admin, backend, DB | P1.6, P11.1 | High | Partial; current payout rule verification, not policy invention |
 | P7.6 | Admin dispute queue/review operations audit | Admin, backend, DB | DC-08, P13.1 | High | Deferred; cancellation/dispute policy prerequisite |
 | P7.7 | Admin auditability/search/filter operational pass | Admin, backend | P7.1–P7.6 | Medium | Planned; desktop QA |
-| P8.1 | **PHASE 8** — request → Owner decision propagation | Customer, Owner, Admin, backend, DB | P1.5, P2.1–P2.3 | Critical | Preserve/verify; status/ownership/retry tests |
+| P8.1 | **PHASE 8** — request → Owner decision propagation | Customer, Owner, Admin, backend, DB | P1.5, P2.1–P2.4 | Critical | Preserve/verify; status/ownership/retry tests |
 | P8.2 | Availability blocking and competing-request integrity | Customer, Owner, backend, DB | P8.1 | Critical | Partial; date/status conflict tests |
 | P8.3 | Approved-pending-payment → confirmed propagation | Customer, Owner, Admin, backend, DB | P8.1, P10.1 | Critical | Preserve/verify; cross-app acceptance |
 | P8.4 | Booking lifecycle technical failure/recovery integrity | All roles, backend, DB | P8.1–P8.3 | Critical | Partial; retries, conflicts, idempotency, and truthful errors |
 | P8.5 | Cancellation policy boundary and contract | All roles, backend, DB | P8.1–P8.4, DC-08 | Critical | Deferred; Founder decision required |
-| P9.1 | **PHASE 9** — notification data model/authorization decision | All roles, backend, DB | P1.2, P2.2 | High | Deferred; no fake unread state |
+| P9.1 | **PHASE 9** — notification data model/authorization decision | All roles, backend, DB | P1.2, P2.3 | High | Deferred; no fake unread state |
 | P9.2 | Notification delivery/UI truthful states | All roles | P9.1 | Medium | Planned; error/empty/permission QA |
 | P10.1 | **PHASE 10** — prototype deposit initiation/completion preserve-and-verify | Customer, Owner, backend, DB | P1.4, P8.1 | Critical | Preserve/verify; idempotency/amount/privacy tests |
 | P10.2 | Live-payment boundary and webhook failure closure | Backend, Admin | P10.1, DC-08 | Critical | Deferred; no real Paymob networking without approval |
@@ -70,7 +71,7 @@
 | P15.2 | Prioritized cross-app visual migration slices | All apps, Design System | P15.1, P4.2 as applicable | Medium | Planned; no wholesale redesign |
 | P16.1 | **PHASE 16** — refresh role UX audit and IA gaps | All roles, Experience authority | P5–P7 evidence | High | Partial; audit current reality |
 | P16.2 | Approved high-value role UX migrations | All roles | P16.1 | Medium | Planned; slice by role/job |
-| P17.1 | **PHASE 17** — error/empty/loading/disabled state matrix | All apps, backend | P2.1–P2.2 | High | Partial; prevent false empty/zero |
+| P17.1 | **PHASE 17** — error/empty/loading/disabled state matrix | All apps, backend | P2.1–P2.3 | High | Partial; prevent false empty/zero |
 | P17.2 | Retry/conflict/idempotency user-recovery pass | All apps, backend, DB | P17.1, P8–P12 | High | Planned; focused regression tests |
 | P17.3 | Offline/slow-network behavior audit | Customer, Owner, Admin | P17.1 | Medium | Planned; controlled simulation |
 | P18.1 | **PHASE 18** — controlled fixture/test-data governance | DB, storage, tests | P1.1, P14.1 | High | Deferred; no production mutation |

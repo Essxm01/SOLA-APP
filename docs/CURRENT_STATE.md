@@ -2,8 +2,8 @@
 
 **Last updated:** 2026-09-04
 **Product code baseline before BS-02:** `origin/main` at `baecc9f7f9c16aafa1954ddf7aa6e3cead5c757a` (incorporates published P1.6, P2.1, and P2.2 work).
-**Brain Sync governance:** Introduced by `tooling/brain-sync-bs02` / PR #15; documentation and governance only, no product code changes.
-**Active product candidate:** P2.3 (Owner API Contract) remains an unmerged candidate awaiting Bridge review and closure verification on `implementation/p2-3-owner-api-contract` (PR #14).
+**Brain Sync governance:** Canonical on `main` (`0dcc613755e5cb3db046fdbfd5d4bba374ffa42f`) via PR #15; documentation and governance only, no product code changes.
+**Active branch candidate:** P2.3 (Owner API Contract) candidate complete on `implementation/p2-3-owner-api-contract` (PR #14), reconciled with canonical Brain main, awaiting closure verification.
 
 ## Current status
 
@@ -49,5 +49,5 @@ Read [ARCHITECTURE.md](./ARCHITECTURE.md), [DATABASE.md](./DATABASE.md), and [BU
 
 ## Next work
 
-1. Product candidate P2.3 (Owner API Contract) completes Bridge review and publication gates on `implementation/p2-3-owner-api-contract` (PR #14).
+1. P2.3 (Owner API Contract) candidate work is implemented on `implementation/p2-3-owner-api-contract`. Core Owner contracts enforce server-authoritative truth for Profile, Properties, Calendar availability, Booking decisions, canonical financial summaries (`bookingDb.getFinancialSummary`), and immutable wallet/ledger reads. Fake payout creation has been retired to 501, and mock/fallback behaviors are removed in favor of fail-closed DB error handling. Candidate branch is reconciled with canonical Brain main and prepared for verification and Bridge review gates.
 2. Following P2.3 closure, subsequent work executes according to [KONFRM_EXECUTION_DEPENDENCY_ORDER.md](../KONFRM_EXECUTION_DEPENDENCY_ORDER.md) leading directly to Phase 3 (Owner → Admin → Renter Vertical Slice).

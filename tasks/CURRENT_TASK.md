@@ -1,27 +1,35 @@
-# P2.3 — Owner API Contract (External Active Candidate)
+# P2.3 — Owner API Contract
 
 TASK_ID: P2.3
 ROADMAP_PHASE: PHASE_2
-ROUTING_STATE: EXTERNAL_CANDIDATE_OPEN
-CANDIDATE_BRANCH: implementation/p2-3-owner-api-contract
+STAGE: IMPLEMENTATION_CANDIDATE_COMPLETE
+EXECUTOR: Antigravity
+BRANCH: implementation/p2-3-owner-api-contract
 PR: #14
 BASE_MAIN_SHA: baecc9f7f9c16aafa1954ddf7aa6e3cead5c757a
-CURRENT_HEAD_AT_LAST_SYNC: 6eec3203116a63402a91cb88e103feaa45a1fcf1
-CANONICAL_TASK_STATE: read tasks/CURRENT_TASK.md and task contract from the candidate branch
+STARTING_CANDIDATE_SHA: b16bf297386775aa42d0e5104ec9745a85e9b303
+RECONCILED_MAIN_SHA: 0dcc613755e5cb3db046fdbfd5d4bba374ffa42f
+TASK_CONTRACT: tasks/P2_3_OWNER_API_CONTRACT.md
 
-## Routing rules & branch-aware reality
+## Current routing
 
-- **Candidate branch owns implementation state:** The `implementation/p2-3-owner-api-contract` branch owns the canonical task contract, executor designation, and detailed step-by-step progress.
-- **Main routing role:** This file on `main` acts strictly as an execution router to the external candidate branch; it must not duplicate or override branch-local task metadata.
-- **Informational head SHA:** `CURRENT_HEAD_AT_LAST_SYNC` records the verified candidate commit at the time this router was synchronized. It is informational and may advance during active candidate iterations. Before taking action, agents must refresh GitHub and branch reality (`git rev-parse origin/implementation/p2-3-owner-api-contract`).
-- **Unpublished candidate boundary:** P2.3 is an external, unmerged candidate. It must **NOT** be treated as `CLOSED`, `PUBLISHED`, or `LIVE_VERIFIED` on `main` until PR #14 passes all closure gates, review, and is formally merged into `main`.
-- **No execution of unmerged code:** Code on `main` reflects only merged baseline behavior and must not execute candidate P2.3 code as though it is already merged.
-- **Governance layer status:** The durable Brain Sync governance layer (tooling task BS-02 / PR #15) is completed upon merge and is no longer an active implementation task.
+P2.3 implementation candidate is complete on `implementation/p2-3-owner-api-contract`.
+Candidate is reconciled with canonical Brain main (`0dcc613755e5cb3db046fdbfd5d4bba374ffa42f`) and is awaiting verification, exact-head review, and Bridge publication gates (not claimed closed/published).
+
+Core outcomes:
+- Dedicated Owner profile, property, and booking financial DTO allowlists in `backend/server/src/contracts/ownerCore.ts`.
+- Profile queries fail closed on DB errors (500 `OWNER_PROFILE_QUERY_FAILED`) instead of swallowing to 404.
+- Property contract preserves `address: ''` as valid product state and handles canonical price fallback (`pricePerNight` / `basePricePerNight`).
+- Calendar and manual block endpoints locked with strict foreign owner IDOR rejection (403), active booking conflict rejection (409 `DATE_OVERLAP`), and fail-closed calendar outage handling (500).
+- Booking financial summary reads canonical persisted values from `bookingDb.getFinancialSummary` with owner authorization checks, eliminating hardcoded `1500` / `500` financials.
+- Booking list items sanitized to protect customer private account data.
+- Retired fake payout success (HTTP 501 `PAYOUT_NOT_AVAILABLE_IN_CURRENT_PROTOTYPE`) eliminating fabricated IDs and mock 5000 EGP balance assumptions.
+- Fail-closed notification reads (500 `OWNER_NOTIFICATIONS_QUERY_FAILED`) eliminating in-memory fallback.
 
 ## Hard boundaries preserved
 
-- Zero product code changes in governance/tooling merges.
-- No database migrations, schemas, or RPCs touched without explicit phase authorization.
-- No unapproved live mutations to Supabase, Cloudflare, or Storage.
-- No changes to business, booking, availability, or financial formulas.
+- Zero product code changes in governance/tooling reconciliation.
+- No migrations/schema/indexes/dependencies added.
+- No changes to booking, availability, or finance business rules.
+- No deployment, main merge, or live database/storage mutations performed.
 - Following P2.3 closure, subsequent work executes according to `KONFRM_EXECUTION_DEPENDENCY_ORDER.md` leading directly to Phase 3 (Owner → Admin → Renter Vertical Slice).

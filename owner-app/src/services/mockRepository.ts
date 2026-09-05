@@ -1833,7 +1833,7 @@ export const mockRepository = {
       id: `mod-req-${Date.now()}`,
       bookingId: booking.id,
       propertyId: booking.propertyId,
-      renterId: booking.renter.id,
+      renterId: booking.renter.id || '',
       ownerId: currentOwner.id,
 
       originalCheckIn: booking.checkIn,
@@ -1889,7 +1889,7 @@ export const mockRepository = {
     const chatMsg: ChatMessage = {
       id: `msg-mod-${Date.now()}`,
       conversationId: conv.id,
-      senderId: booking.renter.id,
+      senderId: booking.renter.id || '',
       senderName: booking.renter.name,
       senderRole: 'RENTER',
       text: params.reason || 'أرسل طلب تعديل تواريخ الإقامة',
@@ -2203,7 +2203,7 @@ export const mockRepository = {
       id: `canc-req-${Date.now()}`,
       bookingId: booking.id,
       propertyId: booking.propertyId,
-      renterId: booking.renter.id,
+      renterId: booking.renter.id || '',
       ownerId: currentOwner.id,
       requestedBy: params.requestedBy,
       reason: params.reason,
@@ -2248,7 +2248,7 @@ export const mockRepository = {
     const chatMsg: ChatMessage = {
       id: `msg-canc-${Date.now()}`,
       conversationId: conv.id,
-      senderId: params.requestedBy === 'RENTER' ? booking.renter.id : currentOwner.id,
+      senderId: params.requestedBy === 'RENTER' ? (booking.renter.id || '') : currentOwner.id,
       senderName: params.requestedBy === 'RENTER' ? booking.renter.name : currentOwner.name,
       senderRole: params.requestedBy === 'RENTER' ? 'RENTER' : 'OWNER',
       text: params.reason || 'أرسل طلب إلغاء الحجز',

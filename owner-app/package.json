@@ -12,7 +12,8 @@
     "test:properties": "tsx src/utils/ownerProperties.test.ts && node scripts/check-properties-design.mjs",
     "test:property-wizard": "tsx src/utils/ownerPropertyWizard.test.ts && node scripts/check-property-wizard-design.mjs",
     "test:wallet": "tsx src/utils/ownerWallet.test.ts && node scripts/check-wallet-design.mjs",
-    "test:home": "tsx src/utils/ownerHome.test.ts && tsx src/utils/ownerBookings.test.ts && tsx src/utils/ownerProperties.test.ts && npm run test:property-wizard && npm run test:wallet && tsx src/utils/ownerBootstrap.test.ts && tsx src/utils/ownerFirstRun.test.ts",
+    "test:contract": "tsx src/utils/ownerClientContract.test.ts",
+    "test:home": "tsx src/utils/ownerHome.test.ts && tsx src/utils/ownerBookings.test.ts && tsx src/utils/ownerProperties.test.ts && npm run test:property-wizard && npm run test:wallet && tsx src/utils/ownerBootstrap.test.ts && tsx src/utils/ownerFirstRun.test.ts && tsx src/utils/ownerClientContract.test.ts",
     "lint": "oxlint",
     "preview": "vite preview"
   },

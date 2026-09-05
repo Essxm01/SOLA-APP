@@ -18,6 +18,7 @@ export const NotificationsModal: React.FC = () => {
     isNotificationsOpen,
     setIsNotificationsOpen,
     notifications,
+    notificationsError,
     markAllNotificationsAsRead,
     handleNotificationClick,
   } = useApp();
@@ -97,7 +98,12 @@ export const NotificationsModal: React.FC = () => {
         </div>
 
         {/* Notifications Stream */}
-        {filteredNotifs.length === 0 ? (
+        {notificationsError ? (
+          <div className="text-center py-8 text-amber-600 bg-amber-50/50 rounded-2xl border border-amber-200/60 p-4">
+            <AlertTriangle className="w-12 h-12 text-amber-500 mx-auto mb-2" />
+            <p className="text-sm font-semibold">{notificationsError}</p>
+          </div>
+        ) : filteredNotifs.length === 0 ? (
           <div className="text-center py-8 text-slate-500">
             <Bell className="w-12 h-12 text-slate-300 mx-auto mb-2" />
             <p className="text-sm font-semibold">لا توجد إشعارات حالياً</p>

@@ -26,6 +26,16 @@ import {
   validateCustomerFavoriteRow,
   type CustomerBookingCreateResponseDto,
 } from './contracts/customerRenter.js';
+import {
+  toOwnerProfileDto,
+  toOwnerPropertyDto,
+  toOwnerBookingFinancialDto,
+  toOwnerBookingListItem,
+  type OwnerProfileDto,
+  type OwnerPropertyDto,
+  type OwnerBookingFinancialDto,
+  type OwnerBookingListItemDto,
+} from './contracts/ownerCore.js';
 import type { ApiSuccessResponse, ApiErrorResponse } from './types/server';
 
 export interface RouteHandlerResult {
@@ -469,7 +479,20 @@ export class ExpressServerApp {
 
         // --- A0. Real Owner Profile Endpoints (PostgreSQL Driven) ---
         if (path === '/api/v1/owner/profile' && method === 'GET') {
-          const owner = await ownerDb.getById(ownerId).catch(() => null);
+          let owner: any;
+          try {
+            owner = await ownerDb.getById(ownerId);
+          } catch {
+            return {
+              statusCode: 500,
+              body: {
+                success: false,
+                error: { code: 'OWNER_PROFILE_QUERY_FAILED', message: 'تعذر تحميل بيانات حساب المالك.' },
+                timestamp,
+              },
+            };
+          }
+
           if (!owner) {
             return {
               statusCode: 404,
@@ -481,18 +504,43 @@ export class ExpressServerApp {
             };
           }
 
-          return {
-            statusCode: 200,
-            body: {
-              success: true,
-              data: owner,
-              timestamp,
-            },
-          };
+          try {
+            const dto = toOwnerProfileDto(owner);
+            return {
+              statusCode: 200,
+              body: {
+                success: true,
+                data: dto,
+                timestamp,
+              },
+            };
+          } catch {
+            return {
+              statusCode: 500,
+              body: {
+                success: false,
+                error: { code: 'OWNER_PROFILE_MALFORMED', message: 'بيانات حساب المالك غير صالحة.' },
+                timestamp,
+              },
+            };
+          }
         }
 
         if (path === '/api/v1/owner/profile' && method === 'PUT') {
-          const existingOwner = await ownerDb.getById(ownerId).catch(() => null);
+          let existingOwner: any;
+          try {
+            existingOwner = await ownerDb.getById(ownerId);
+          } catch {
+            return {
+              statusCode: 500,
+              body: {
+                success: false,
+                error: { code: 'OWNER_PROFILE_QUERY_FAILED', message: 'تعذر التحقق من بيانات حساب المالك.' },
+                timestamp,
+              },
+            };
+          }
+
           if (!existingOwner) {
             return {
               statusCode: 404,
@@ -503,11 +551,25 @@ export class ExpressServerApp {
               },
             };
           }
-          const owner = await ownerDb.updateProfile(ownerId, {
-            fullName: bodyPayload?.fullName,
-            email: bodyPayload?.email,
-            avatarUrl: bodyPayload?.avatarUrl,
-          }).catch(() => null);
+
+          let owner: any;
+          try {
+            owner = await ownerDb.updateProfile(ownerId, {
+              fullName: bodyPayload?.fullName,
+              email: bodyPayload?.email,
+              avatarUrl: bodyPayload?.avatarUrl,
+            });
+          } catch {
+            return {
+              statusCode: 500,
+              body: {
+                success: false,
+                error: { code: 'OWNER_PROFILE_UPDATE_FAILED', message: 'تعذر حفظ تعديلات حساب المالك.' },
+                timestamp,
+              },
+            };
+          }
+
           if (!owner) {
             return {
               statusCode: 500,
@@ -519,14 +581,26 @@ export class ExpressServerApp {
             };
           }
 
-          return {
-            statusCode: 200,
-            body: {
-              success: true,
-              data: owner,
-              timestamp,
-            },
-          };
+          try {
+            const dto = toOwnerProfileDto(owner);
+            return {
+              statusCode: 200,
+              body: {
+                success: true,
+                data: dto,
+                timestamp,
+              },
+            };
+          } catch {
+            return {
+              statusCode: 500,
+              body: {
+                success: false,
+                error: { code: 'OWNER_PROFILE_MALFORMED', message: 'بيانات حساب المالك غير صالحة.' },
+                timestamp,
+              },
+            };
+          }
         }
 
         // --- A1. Canonical private Owner KYC package ---
@@ -625,7 +699,19 @@ export class ExpressServerApp {
 
         // --- A2. Owner Notifications Endpoint (PostgreSQL Driven) ---
         if (path === '/api/v1/owner/notifications' && method === 'GET') {
-          const notifs = await notificationDb.getByOwnerId(ownerId).catch(() => dbNotificationsStore.get(ownerId) || []);
+          let notifs: any[];
+          try {
+            notifs = await notificationDb.getByOwnerId(ownerId);
+          } catch {
+            return {
+              statusCode: 500,
+              body: {
+                success: false,
+                error: { code: 'OWNER_NOTIFICATIONS_QUERY_FAILED', message: 'تعذر تحميل الإشعارات.' },
+                timestamp,
+              },
+            };
+          }
           return {
             statusCode: 200,
             body: {
@@ -641,73 +727,66 @@ export class ExpressServerApp {
           return { statusCode: 410, body: { success: false, error: { code: 'LEGACY_KYC_UPLOAD_RETIRED', message: 'استخدم مسار رفع توثيق المالك الآمن.' }, timestamp } };
         }
 
-        // --- B. Payout Creation Endpoint (RULE-5A-01, RULE-5A-03, RULE-5A-05) ---
+        // --- B. Payout Creation Endpoint (Retire fake success — Phase 11 Deferred) ---
         if (path === '/api/v1/owner/payouts' && method === 'POST') {
-          const grossAmount = bodyPayload?.amount || 0;
-          const idempotencyKey = headers['idempotency-key'] || headers['Idempotency-Key'] || bodyPayload?.idempotencyKey;
-
-          if (!idempotencyKey) {
-            return {
-              statusCode: 400,
-              body: {
-                success: false,
-                error: { code: 'IDEMPOTENCY_KEY_REQUIRED', message: 'مطلوب مفتاح Idempotency-Key لمنع تكرار المعاملات' },
-                timestamp,
-              },
-            };
-          }
-
-          const validation = validatePayoutRequest(grossAmount, 5000, 15); // Mock available balance 5000 EGP
-          if (!validation.isValid) {
-            return {
-              statusCode: 400,
-              body: {
-                success: false,
-                error: { code: validation.errorCode!, message: 'طلب السحب غير صالح' },
-                timestamp,
-              },
-            };
-          }
-
           return {
-            statusCode: 201,
+            statusCode: 501,
             body: {
-              success: true,
-              data: {
-                id: `payout_${Date.now()}`,
-                ownerId,
-                grossAmount,
-                fee: 15,
-                netAmount: validation.netAmountEgp,
-                status: 'PENDING_ADMIN_PROCESSING',
-                idempotencyKey,
-                requestedAt: timestamp,
+              success: false,
+              error: {
+                code: 'PAYOUT_NOT_AVAILABLE_IN_CURRENT_PROTOTYPE',
+                message: 'طلبات السحب ستتاح بعد تفعيل مسار السحب المالي المعتمد.',
               },
               timestamp,
             },
           };
         }
 
-        // --- C. Financials Calculation Endpoint (RULE-3E-01 to RULE-3E-05) ---
+        // --- C. Financials Read Endpoint (Canonical Persisted Summary — P2.3) ---
         if (path.startsWith('/api/v1/owner/bookings/') && path.endsWith('/financials') && method === 'GET') {
-          const breakdown = calculateBookingFinancials(1500, 500); // 1500 total, 500 first night
-          return {
-            statusCode: 200,
-            body: {
-              success: true,
-              data: {
-                bookingId: path.split('/')[4],
-                totalBookingValue: breakdown.totalBookingValueInCents / 100,
-                depositAmount: breakdown.depositAmountInCents / 100,
-                solaCommissionRate: 0.20,
-                solaCommissionAmount: breakdown.solaCommissionInCents / 100,
-                ownerNetDepositAmount: breakdown.ownerNetDepositInCents / 100,
-                remainingBalance: breakdown.remainingBalanceInCents / 100,
-                remainingBalanceStatus: 'NOT_DUE',
+          const bookingId = path.split('/')[5];
+          if (!bookingId) {
+            return { statusCode: 400, body: { success: false, error: { code: 'MISSING_BOOKING_ID', message: 'مطلوب معرف الحجز.' }, timestamp } };
+          }
+
+          let booking: any;
+          try {
+            booking = await bookingDb.getOwnershipById(bookingId);
+          } catch {
+            return { statusCode: 500, body: { success: false, error: { code: 'BOOKING_QUERY_FAILED', message: 'تعذر تحميل بيانات الحجز.' }, timestamp } };
+          }
+
+          if (!booking) {
+            return { statusCode: 404, body: { success: false, error: { code: 'BOOKING_NOT_FOUND', message: 'طلب الحجز غير موجود.' }, timestamp } };
+          }
+          if (booking.ownerId !== ownerId) {
+            return { statusCode: 403, body: { success: false, error: { code: 'BOOKING_NOT_OWNED', message: 'غير مصرح بالاطلاع على التفاصيل المالية لهذا الحجز.' }, timestamp } };
+          }
+
+          let summary: any;
+          try {
+            summary = await bookingDb.getFinancialSummary(bookingId);
+          } catch {
+            return { statusCode: 500, body: { success: false, error: { code: 'BOOKING_FINANCIAL_SUMMARY_QUERY_FAILED', message: 'تعذر تحميل الملخص المالي للحجز.' }, timestamp } };
+          }
+
+          if (!summary) {
+            return { statusCode: 500, body: { success: false, error: { code: 'BOOKING_FINANCIAL_SUMMARY_MISSING', message: 'الملخص المالي المعتمد غير موجود لهذا الحجز.' }, timestamp } };
+          }
+
+          try {
+            const dto = toOwnerBookingFinancialDto(summary);
+            return {
+              statusCode: 200,
+              body: {
+                success: true,
+                data: dto,
+                timestamp,
               },
-              timestamp,
-            },
-          };
+            };
+          } catch {
+            return { statusCode: 500, body: { success: false, error: { code: 'BOOKING_FINANCIAL_SUMMARY_MALFORMED', message: 'بيانات الملخص المالي غير صالحة.' }, timestamp } };
+          }
         }
 
         // --- C1. Owner Wallet Summary Endpoint (RULE-5A-01) — PostgreSQL Driven ---
@@ -745,19 +824,36 @@ export class ExpressServerApp {
               body: { success: false, error: { code: 'OWNER_BOOKINGS_QUERY_FAILED', message: 'تعذر جلب طلبات الحجز من قاعدة البيانات' }, timestamp },
             };
           }
-          return {
-            statusCode: 200,
-            body: {
-              success: true,
-              data: ownerBookings,
-              timestamp,
-            },
-          };
+          try {
+            const dtos = ownerBookings.map(toOwnerBookingListItem);
+            return {
+              statusCode: 200,
+              body: {
+                success: true,
+                data: dtos,
+                timestamp,
+              },
+            };
+          } catch {
+            return {
+              statusCode: 500,
+              body: {
+                success: false,
+                error: { code: 'OWNER_BOOKINGS_MALFORMED', message: 'بيانات طلبات الحجز غير صالحة.' },
+                timestamp,
+              },
+            };
+          }
         }
 
         if (path.startsWith('/api/v1/owner/bookings/') && path.endsWith('/approve') && method === 'POST') {
           const bookingId = path.split('/')[5];
-          const booking = await bookingDb.getById(bookingId).catch(() => null);
+          let booking: any;
+          try {
+            booking = await bookingDb.getById(bookingId);
+          } catch {
+            return { statusCode: 500, body: { success: false, error: { code: 'BOOKING_QUERY_FAILED', message: 'تعذر الاستعلام عن طلب الحجز' }, timestamp } };
+          }
           if (!booking) {
             return { statusCode: 404, body: { success: false, error: { code: 'BOOKING_NOT_FOUND', message: 'طلب الحجز غير موجود' }, timestamp } };
           }
@@ -793,11 +889,18 @@ export class ExpressServerApp {
             return { statusCode: 409, body: { success: false, error: { code: 'BOOKING_DECISION_CONFLICT', message: 'تمت معالجة هذا الطلب أو تغيّرت حالته' }, timestamp } };
           }
 
+          let safeApproved: any;
+          try {
+            safeApproved = toOwnerBookingListItem(approved);
+          } catch {
+            return { statusCode: 500, body: { success: false, error: { code: 'OWNER_BOOKING_RESPONSE_MALFORMED', message: 'تعذر تنسيق بيانات الرد الآمن' }, timestamp } };
+          }
+
           return {
             statusCode: 200,
             body: {
               success: true,
-              data: approved,
+              data: safeApproved,
               timestamp,
             },
           };
@@ -805,7 +908,12 @@ export class ExpressServerApp {
 
         if (path.startsWith('/api/v1/owner/bookings/') && path.endsWith('/reject') && method === 'POST') {
           const bookingId = path.split('/')[5];
-          const booking = await bookingDb.getById(bookingId).catch(() => null);
+          let booking: any;
+          try {
+            booking = await bookingDb.getById(bookingId);
+          } catch {
+            return { statusCode: 500, body: { success: false, error: { code: 'BOOKING_QUERY_FAILED', message: 'تعذر الاستعلام عن طلب الحجز' }, timestamp } };
+          }
           if (!booking) {
             return { statusCode: 404, body: { success: false, error: { code: 'BOOKING_NOT_FOUND', message: 'طلب الحجز غير موجود' }, timestamp } };
           }
@@ -815,16 +923,29 @@ export class ExpressServerApp {
           if (booking.status !== 'PENDING_OWNER_APPROVAL') {
             return { statusCode: 409, body: { success: false, error: { code: 'INVALID_BOOKING_STATUS', message: 'لا يمكن رفض طلب لم يعد بانتظار موافقتك' }, timestamp } };
           }
-          const rejected = await bookingDb.updateStatusForOwner(bookingId, ownerId, 'REJECTED').catch(() => null);
+
+          let rejected: any;
+          try {
+            rejected = await bookingDb.updateStatusForOwner(bookingId, ownerId, 'REJECTED');
+          } catch {
+            return { statusCode: 500, body: { success: false, error: { code: 'REJECTION_PERSISTENCE_FAILED', message: 'تعذر حفظ قرار الرفض. حاول مرة أخرى.' }, timestamp } };
+          }
           if (!rejected) {
             return { statusCode: 409, body: { success: false, error: { code: 'BOOKING_DECISION_CONFLICT', message: 'تمت معالجة هذا الطلب أو تغيّرت حالته' }, timestamp } };
+          }
+
+          let safeRejected: any;
+          try {
+            safeRejected = toOwnerBookingListItem(rejected);
+          } catch {
+            return { statusCode: 500, body: { success: false, error: { code: 'OWNER_BOOKING_RESPONSE_MALFORMED', message: 'تعذر تنسيق بيانات الرد الآمن' }, timestamp } };
           }
 
           return {
             statusCode: 200,
             body: {
               success: true,
-              data: rejected,
+              data: safeRejected,
               timestamp,
             },
           };
@@ -942,6 +1063,7 @@ export class ExpressServerApp {
           // Property identity is server-generated. A client draft identifier is never canonical.
           const propId = crypto.randomUUID();
 
+          const nowIso = new Date().toISOString();
           const createdProperty = await propertyDb.create({
             id: propId,
             ownerId,
@@ -962,6 +1084,8 @@ export class ExpressServerApp {
             houseRules: bodyPayload?.houseRules || {},
             status: 'DRAFT',
             verificationStatus: 'UNVERIFIED',
+            createdAt: nowIso,
+            updatedAt: nowIso,
           }).catch((err) => {
             console.error('❌ [propertyDb.create DB ERROR]:', err);
             return null;
@@ -984,14 +1108,19 @@ export class ExpressServerApp {
             return { statusCode: 500, body: { success: false, error: { code: 'PROPERTY_READ_AFTER_WRITE_FAILED', message: 'تعذر تأكيد حفظ الوحدة.' }, timestamp } };
           }
 
-          return {
-            statusCode: 201,
-            body: {
-              success: true,
-              data: persistedProperty,
-              timestamp,
-            },
-          };
+          try {
+            const dto = toOwnerPropertyDto(persistedProperty);
+            return {
+              statusCode: 201,
+              body: {
+                success: true,
+                data: dto,
+                timestamp,
+              },
+            };
+          } catch {
+            return { statusCode: 500, body: { success: false, error: { code: 'PROPERTY_MALFORMED', message: 'بيانات الوحدة غير صالحة.' }, timestamp } };
+          }
         }
 
         if (path === '/api/v1/owner/properties' && method === 'GET') {
@@ -1001,14 +1130,26 @@ export class ExpressServerApp {
           } catch {
             return { statusCode: 500, body: { success: false, error: { code: 'OWNER_PROPERTIES_QUERY_FAILED', message: 'تعذر تحميل الوحدات.' }, timestamp } };
           }
-          return {
-            statusCode: 200,
-            body: {
-              success: true,
-              data: ownerProperties,
-              timestamp,
-            },
-          };
+          try {
+            const dtos = ownerProperties.map(toOwnerPropertyDto);
+            return {
+              statusCode: 200,
+              body: {
+                success: true,
+                data: dtos,
+                timestamp,
+              },
+            };
+          } catch {
+            return {
+              statusCode: 500,
+              body: {
+                success: false,
+                error: { code: 'OWNER_PROPERTIES_MALFORMED', message: 'بيانات الوحدات غير صالحة.' },
+                timestamp,
+              },
+            };
+          }
         }
 
         // --- E0.5. Owner Property Update & Resubmit Endpoint — PostgreSQL Driven ---
@@ -1058,14 +1199,19 @@ export class ExpressServerApp {
           const persistedProperty = await propertyDb.getByOwnerAndId(propertyId, ownerId).catch(() => null);
           if (!persistedProperty) return { statusCode: 500, body: { success: false, error: { code: 'PROPERTY_READ_AFTER_WRITE_FAILED', message: 'تعذر تأكيد حفظ تعديلات الوحدة.' }, timestamp } };
 
-          return {
-            statusCode: 200,
-            body: {
-              success: true,
-              data: persistedProperty,
-              timestamp,
-            },
-          };
+          try {
+            const dto = toOwnerPropertyDto(persistedProperty);
+            return {
+              statusCode: 200,
+              body: {
+                success: true,
+                data: dto,
+                timestamp,
+              },
+            };
+          } catch {
+            return { statusCode: 500, body: { success: false, error: { code: 'PROPERTY_MALFORMED', message: 'بيانات الوحدة غير صالحة.' }, timestamp } };
+          }
         }
 
         // --- E0.6. Owner Property Submit For Review Endpoint — PostgreSQL Driven (M03) ---

@@ -44,6 +44,7 @@ import type {
 
 import type {
   Owner,
+  VerificationStatus,
   Property,
   AvailabilityRecord,
   Booking,
@@ -63,6 +64,70 @@ import type {
   AnalyticsTimeRange,
   OwnerVerificationDocument,
 } from '../../types';
+export function mapOwnerProfileDtoToOwner(rawDto: unknown): Owner {
+  if (!rawDto || typeof rawDto !== 'object') {
+    throw new Error('MALFORMED_OWNER_PROFILE_DTO');
+  }
+  const dto = rawDto as Record<string, unknown>;
+  const id = typeof dto.id === 'string' && dto.id.trim() !== '' ? dto.id.trim() : '';
+  if (!id) {
+    throw new Error('MALFORMED_OWNER_PROFILE_DTO: missing or invalid id');
+  }
+
+  const phone = typeof dto.phoneNumber === 'string' && dto.phoneNumber.trim() !== ''
+    ? dto.phoneNumber.trim()
+    : (typeof dto.phone === 'string' && dto.phone.trim() !== '' ? dto.phone.trim() : '');
+  if (!phone) {
+    throw new Error('MALFORMED_OWNER_PROFILE_DTO: missing or invalid phoneNumber');
+  }
+
+  const rawVerification = typeof dto.verificationStatus === 'string' && dto.verificationStatus.trim() !== ''
+    ? dto.verificationStatus.trim()
+    : (typeof dto.verification_status === 'string' && dto.verification_status.trim() !== '' ? dto.verification_status.trim() : '');
+  if (!rawVerification) {
+    throw new Error('MALFORMED_OWNER_PROFILE_DTO: missing or invalid verificationStatus');
+  }
+
+  const createdAt = typeof dto.createdAt === 'string' && dto.createdAt.trim() !== ''
+    ? dto.createdAt.trim()
+    : (typeof dto.created_at === 'string' && dto.created_at.trim() !== '' ? dto.created_at.trim() : '');
+  if (!createdAt) {
+    throw new Error('MALFORMED_OWNER_PROFILE_DTO: missing or invalid createdAt');
+  }
+
+  const updatedAt = typeof dto.updatedAt === 'string' && dto.updatedAt.trim() !== ''
+    ? dto.updatedAt.trim()
+    : (typeof dto.updated_at === 'string' && dto.updated_at.trim() !== '' ? dto.updated_at.trim() : '');
+  if (!updatedAt) {
+    throw new Error('MALFORMED_OWNER_PROFILE_DTO: missing or invalid updatedAt');
+  }
+
+  const name = typeof dto.fullName === 'string'
+    ? dto.fullName
+    : (typeof dto.name === 'string' ? dto.name : '');
+  const email = typeof dto.email === 'string' ? dto.email : (dto.email === null ? null : null);
+  const avatar = typeof dto.avatarUrl === 'string'
+    ? dto.avatarUrl
+    : (typeof dto.avatar === 'string' ? dto.avatar : '');
+  const verificationStatus = rawVerification as VerificationStatus;
+  const verificationBadgeText =
+    verificationStatus === 'VERIFIED'
+      ? 'موثق'
+      : (verificationStatus === 'PENDING_VERIFICATION' ? 'قيد المراجعة' : 'غير موثق');
+
+  return {
+    id,
+    name,
+    phone,
+    email,
+    avatar,
+    verificationStatus,
+    verificationBadgeText,
+    ownerOnboardingCompletedAt: typeof dto.ownerOnboardingCompletedAt === 'string' ? dto.ownerOnboardingCompletedAt : (typeof dto.owner_onboarding_completed_at === 'string' ? dto.owner_onboarding_completed_at : null),
+    createdAt,
+    updatedAt,
+  };
+}
 
 export class HttpRepository implements
   IAuthRepository,
@@ -177,14 +242,27 @@ export class HttpRepository implements
 
   // 2. Owner Repository
   async getCurrentOwner(): Promise<Owner> {
-    return this.fetchJson('/owner/profile');
+    const raw = await this.fetchJson<any>('/owner/profile');
+    return mapOwnerProfileDtoToOwner(raw);
   }
 
   async updateOwnerProfile(updates: UpdateOwnerProfilePayload): Promise<Owner> {
-    return this.fetchJson('/owner/profile', {
+    const payload: Record<string, any> = {};
+    if (updates.name !== undefined || updates.fullName !== undefined) {
+      payload.fullName = updates.fullName !== undefined ? updates.fullName : updates.name;
+    }
+    if (updates.email !== undefined) {
+      payload.email = updates.email;
+    }
+    if (updates.avatar !== undefined || updates.avatarUrl !== undefined) {
+      payload.avatarUrl = updates.avatarUrl !== undefined ? updates.avatarUrl : updates.avatar;
+    }
+
+    const raw = await this.fetchJson<any>('/owner/profile', {
       method: 'PUT',
-      body: JSON.stringify(updates),
+      body: JSON.stringify(payload),
     });
+    return mapOwnerProfileDtoToOwner(raw);
   }
 
   async uploadOwnerDocument(document: OwnerVerificationDocument): Promise<Owner> {

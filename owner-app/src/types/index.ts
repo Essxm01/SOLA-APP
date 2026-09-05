@@ -471,19 +471,21 @@ export interface Owner {
   id: string;
   name: string;
   phone: string;
+  email?: string | null;
   avatar: string;
   verificationStatus: VerificationStatus;
   verificationBadgeText: string;
   ownerOnboardingCompletedAt?: string | null;
   createdAt: string;
+  updatedAt?: string;
 }
 
 export interface Renter {
-  id: string;
+  id?: string;
   name: string;
-  phone: string;
-  avatar: string;
-  rating: number;
+  phone?: string;
+  avatar?: string;
+  rating?: number;
 }
 
 export interface BookingFinancialSummary {

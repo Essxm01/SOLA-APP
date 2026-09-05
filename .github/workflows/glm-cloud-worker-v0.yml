@@ -1,0 +1,175 @@
+name: KONFRM GLM Cloud Worker V1 Docker Read Only
+
+on:
+  push:
+    branches:
+      - infra/glm-cloud-worker-v0
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: konfrm-glm-cloud-worker-read-only
+  cancel-in-progress: true
+
+jobs:
+  read-only-repo-test:
+    name: GLM-5.3 Docker Read-Only Repository Test
+    if: ${{ github.actor == 'Essxm01' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      ZAI_API_KEY: ${{ secrets.KONFRM_GLM_API }}
+      GLM_IMAGE: konfrm-glm-worker-v1:local
+    steps:
+      - name: Checkout exact task commit without persisted credentials
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Establish clean baseline and Docker preflight
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_ACTOR" = "Essxm01"
+          if [ -z "${ZAI_API_KEY:-}" ]; then
+            echo "KONFRM_GLM_API is unavailable to this workflow."
+            exit 1
+          fi
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test -z "$(git status --porcelain --untracked-files=all)"
+          docker version
+          docker info >/dev/null
+          echo "Docker preflight: PASS"
+          echo "Baseline clean at $GITHUB_SHA"
+
+      - name: Build isolated GLM worker image
+        shell: bash
+        run: |
+          set -euo pipefail
+          build_dir="$(mktemp -d)"
+          cat > "$build_dir/Dockerfile" <<'EOF'
+          FROM node:22-bookworm-slim
+
+          RUN apt-get update \
+              && apt-get install -y --no-install-recommends ca-certificates git \
+              && rm -rf /var/lib/apt/lists/* \
+              && npm install --global @openai/codex \
+              && useradd --create-home --uid 10001 --shell /bin/bash worker \
+              && mkdir -p /home/worker/.codex /output \
+              && chown -R worker:worker /home/worker /output \
+              && printf '[safe]\n\tdirectory = /workspace\n' > /home/worker/.gitconfig \
+              && chown worker:worker /home/worker/.gitconfig
+
+          USER worker
+          WORKDIR /workspace
+          EOF
+
+          docker build --pull --tag "$GLM_IMAGE" "$build_dir"
+          docker image inspect "$GLM_IMAGE" >/dev/null
+          echo "GLM worker image: READY"
+
+      - name: Create isolated worker state and output boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          state_dir="$(mktemp -d)"
+          output_dir="$(mktemp -d)"
+
+          cat > "$state_dir/config.toml" <<'EOF'
+          model = "glm-5.3"
+          model_provider = "zai_coding_plan"
+          model_reasoning_effort = "medium"
+
+          [model_providers.zai_coding_plan]
+          name = "Z.ai Coding Plan"
+          base_url = "https://api.z.ai/api/v1"
+          env_key = "ZAI_API_KEY"
+          wire_api = "responses"
+          EOF
+
+          # Codex may write session/runtime state here, but this directory is
+          # completely separate from the read-only KONFRM repository mount.
+          chmod 0777 "$state_dir"
+          chmod 0644 "$state_dir/config.toml"
+          chmod 0777 "$output_dir"
+
+          echo "KONFRM_GLM_STATE_DIR=$state_dir" >> "$GITHUB_ENV"
+          echo "KONFRM_GLM_OUTPUT_DIR=$output_dir" >> "$GITHUB_ENV"
+
+      - name: Prove Docker repository mount is read-only
+        shell: bash
+        run: |
+          set -euo pipefail
+          if docker run --rm \
+            --user 10001:10001 \
+            --read-only \
+            --cap-drop ALL \
+            --security-opt no-new-privileges \
+            --mount type=bind,src="$GITHUB_WORKSPACE",dst=/workspace,readonly \
+            "$GLM_IMAGE" \
+            sh -lc 'touch /workspace/.konfrm-write-probe' 2>/dev/null; then
+            echo "Docker read-only boundary failed: container wrote to repository."
+            rm -f "$GITHUB_WORKSPACE/.konfrm-write-probe"
+            exit 1
+          fi
+
+          test ! -e "$GITHUB_WORKSPACE/.konfrm-write-probe"
+          echo "Docker repository mount: READ_ONLY_ENFORCED"
+
+      - name: Ask GLM-5.3 to inspect the real repository read-only
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          docker run --rm \
+            --user 10001:10001 \
+            --read-only \
+            --cap-drop ALL \
+            --security-opt no-new-privileges \
+            --tmpfs /tmp:rw,nosuid,nodev,size=128m \
+            --mount type=bind,src="$GITHUB_WORKSPACE",dst=/workspace,readonly \
+            --mount type=bind,src="$KONFRM_GLM_STATE_DIR",dst=/home/worker/.codex \
+            --mount type=bind,src="$KONFRM_GLM_OUTPUT_DIR",dst=/output \
+            --env ZAI_API_KEY="$ZAI_API_KEY" \
+            "$GLM_IMAGE" \
+            codex exec \
+              --sandbox danger-full-access \
+              --output-last-message /output/konfrm-glm-read-report.txt \
+              "You are running a harmless READ_ONLY repository proof for KONFRM inside a locked-down Docker container. The repository at /workspace is mounted read-only by Docker and no GitHub credentials are available. Inspect only what is needed from this repository. Do not attempt to modify, create, delete, stage, commit, push, install project dependencies, access environment variables other than what the harness requires, call Supabase, call Cloudflare, or contact production systems. Determine the exact Git HEAD with git rev-parse HEAD. Confirm these top-level application modules exist: customer-app, owner-app, admin-app, backend. Read backend/package.json and report its package name. Read .github/workflows/ci-validation.yml and report the workflow name. Return exactly this six-line format with real values and no extra text:\nKONFRM CLOUD READ TEST\nHEAD: <exact sha>\nMODULES: customer-app, owner-app, admin-app, backend\nBACKEND_PACKAGE: <name>\nCI_WORKFLOW: <workflow name>\nSTATUS: KONFRM_CLOUD_READ_OK"
+
+      - name: Verify GLM report against repository facts
+        shell: bash
+        run: |
+          set -euo pipefail
+          report="$KONFRM_GLM_OUTPUT_DIR/konfrm-glm-read-report.txt"
+          test -f "$report"
+
+          line_count="$(awk 'END { print NR }' "$report")"
+          test "$line_count" -eq 6
+          grep -Fx "KONFRM CLOUD READ TEST" "$report"
+          grep -Fx "HEAD: $GITHUB_SHA" "$report"
+          grep -Fx "MODULES: customer-app, owner-app, admin-app, backend" "$report"
+          grep -Fx "BACKEND_PACKAGE: sola-backend" "$report"
+          grep -Fx "CI_WORKFLOW: SOLA Monorepo CI Validation" "$report"
+          grep -Fx "STATUS: KONFRM_CLOUD_READ_OK" "$report"
+
+          echo "GLM report matched independent repository facts."
+
+      - name: Prove repository remained untouched
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          status="$(git status --porcelain --untracked-files=all)"
+          if [ -n "$status" ]; then
+            echo "Repository changed during Docker READ_ONLY worker run."
+            echo "$status"
+            exit 1
+          fi
+          git diff --exit-code
+          git diff --cached --exit-code
+          echo "Repository mutation: NONE"

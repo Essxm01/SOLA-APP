@@ -1072,3 +1072,376 @@ try {
 }
 
 console.log('P2.2 Task 7 real hydration regression and source contract tests passed.');
+
+// ---------------------------------------------------------------------------
+// 8. P2.3 Live Correction 01: Customer Booking Hydration Contract Regression
+// ---------------------------------------------------------------------------
+
+// RED 1 — REAL HYDRATION UNIT TYPE
+{
+  const origPropGet = propertyDb.getById;
+  const origFinGet = bookingDb.getFinancialSummary;
+  try {
+    (propertyDb as any).getById = async () => ({
+      id: 'e0000000-0000-4000-8000-000000000002',
+      title: 'شاليه على البحر',
+      unitType: 'CHALET',
+      propertyType: 'CHALET',
+      address: 'مراسي، الساحل الشمالي',
+      region: 'الساحل الشمالي',
+      bedrooms: 2,
+      bathrooms: 2,
+      maxGuests: 4,
+      pricePerNight: 2000,
+      images: ['https://storage.sola.eg/p1.jpg'],
+    });
+    (bookingDb as any).getFinancialSummary = async () => ({
+      totalBookingValue: 4000,
+      depositAmount: 2000,
+      remainingBalance: 2000,
+      solaCommissionAmount: 400,
+      ownerNetDepositAmount: 1600,
+    });
+
+    const hydratedBooking = await hydrateBooking({
+      id: 'b0000000-0000-4000-8000-000000000001',
+      bookingNumber: 'BK-123456',
+      propertyId: 'e0000000-0000-4000-8000-000000000002',
+      customerId: testCustomerId,
+      guestName: 'عميل حقيقي',
+      checkIn: '2026-12-20',
+      checkOut: '2026-12-22',
+      nights: 2,
+      guestsCount: 2,
+      status: 'APPROVED_PENDING_PAYMENT',
+      createdAt: '2026-09-03T12:00:00.000Z',
+    });
+
+    // In current code before fix: hydratedBooking.property lacks unitType
+    const listItemDto = toCustomerBookingListItem(hydratedBooking);
+    assert.equal(listItemDto.property.unitType, 'CHALET', 'unitType must survive into CustomerBookingListItem');
+
+    const detailDto = toCustomerBookingDetailDto(hydratedBooking);
+    assert.equal(detailDto.property.unitType, 'CHALET', 'unitType must survive into CustomerBookingDetailDto');
+    assert.equal(detailDto.property.propertyType, 'CHALET', 'propertyType must survive into CustomerBookingDetailDto');
+  } finally {
+    (propertyDb as any).getById = origPropGet;
+    (bookingDb as any).getFinancialSummary = origFinGet;
+  }
+}
+
+// RED 2 — EMPTY OPTIONAL ADDRESS
+{
+  const origPropGet = propertyDb.getById;
+  const origFinGet = bookingDb.getFinancialSummary;
+  try {
+    (propertyDb as any).getById = async () => ({
+      id: 'e0000000-0000-4000-8000-000000000003',
+      title: 'شاليه بمنتجع مميز',
+      unitType: 'CHALET',
+      propertyType: 'CHALET',
+      address: '', // Canonical optional empty address
+      region: 'الساحل الشمالي',
+      bedrooms: 2,
+      bathrooms: 2,
+      maxGuests: 4,
+      pricePerNight: 2000,
+      images: ['https://storage.sola.eg/p1.jpg'],
+    });
+    (bookingDb as any).getFinancialSummary = async () => ({
+      totalBookingValue: 4000,
+      depositAmount: 2000,
+      remainingBalance: 2000,
+      solaCommissionAmount: 400,
+      ownerNetDepositAmount: 1600,
+    });
+
+    const hydratedBookingEmptyAddr = await hydrateBooking({
+      id: 'b0000000-0000-4000-8000-000000000002',
+      bookingNumber: 'BK-123457',
+      propertyId: 'e0000000-0000-4000-8000-000000000003',
+      customerId: testCustomerId,
+      guestName: 'عميل حقيقي',
+      checkIn: '2026-12-20',
+      checkOut: '2026-12-22',
+      nights: 2,
+      guestsCount: 2,
+      status: 'APPROVED_PENDING_PAYMENT',
+      createdAt: '2026-09-03T12:00:00.000Z',
+    });
+
+    const listItemEmptyAddr = toCustomerBookingListItem(hydratedBookingEmptyAddr);
+    assert.equal(listItemEmptyAddr.property.address, '', 'Empty address must remain empty string in listItemDto');
+
+    const detailEmptyAddr = toCustomerBookingDetailDto(hydratedBookingEmptyAddr);
+    assert.equal(detailEmptyAddr.property.address, '', 'Empty address must remain empty string in detailDto');
+  } finally {
+    (propertyDb as any).getById = origPropGet;
+    (bookingDb as any).getFinancialSummary = origFinGet;
+  }
+}
+
+// B. Missing canonical unitType STILL fails closed (no fallback, no CHALET default, no inference)
+{
+  const origPropGet = propertyDb.getById;
+  const origFinGet = bookingDb.getFinancialSummary;
+  try {
+    (propertyDb as any).getById = async () => ({
+      id: 'e0000000-0000-4000-8000-000000000004',
+      title: 'شاليه بدون نوع وحدة',
+      // unitType missing / undefined
+      propertyType: 'CHALET', // must not infer from propertyType!
+      address: 'مراسي',
+      bedrooms: 2,
+      bathrooms: 2,
+      maxGuests: 4,
+      pricePerNight: 2000,
+      images: ['https://storage.sola.eg/p1.jpg'],
+    });
+    (bookingDb as any).getFinancialSummary = async () => ({
+      totalBookingValue: 4000,
+      depositAmount: 2000,
+      remainingBalance: 2000,
+      solaCommissionAmount: 400,
+      ownerNetDepositAmount: 1600,
+    });
+
+    const bookingMissingUnitType = await hydrateBooking({
+      id: 'b0000000-0000-4000-8000-000000000003',
+      bookingNumber: 'BK-123458',
+      propertyId: 'e0000000-0000-4000-8000-000000000004',
+      customerId: testCustomerId,
+      guestName: 'عميل حقيقي',
+      checkIn: '2026-12-20',
+      checkOut: '2026-12-22',
+      nights: 2,
+      guestsCount: 2,
+      status: 'APPROVED_PENDING_PAYMENT',
+      createdAt: '2026-09-03T12:00:00.000Z',
+    });
+
+    assert.equal(bookingMissingUnitType.property.unitType, undefined, 'Must not default unitType in hydrateBooking');
+    assert.throws(
+      () => toCustomerBookingListItem(bookingMissingUnitType),
+      /MALFORMED_CUSTOMER_BOOKING_PROPERTY_DATA: unitType/,
+      'Missing unitType must fail closed in toCustomerBookingListItem'
+    );
+    assert.throws(
+      () => toCustomerBookingDetailDto(bookingMissingUnitType),
+      /MALFORMED_CUSTOMER_BOOKING_PROPERTY_DATA: unitType/,
+      'Missing unitType must fail closed in toCustomerBookingDetailDto'
+    );
+  } finally {
+    (propertyDb as any).getById = origPropGet;
+    (bookingDb as any).getFinancialSummary = origFinGet;
+  }
+}
+
+// C. propertyType remains truthful/nullable
+{
+  const origPropGet = propertyDb.getById;
+  const origFinGet = bookingDb.getFinancialSummary;
+  try {
+    (propertyDb as any).getById = async () => ({
+      id: 'e0000000-0000-4000-8000-000000000005',
+      title: 'شاليه بمنتجع',
+      unitType: 'CHALET',
+      propertyType: null, // nullable propertyType
+      address: 'مراسي',
+      bedrooms: 2,
+      bathrooms: 2,
+      maxGuests: 4,
+      pricePerNight: 2000,
+      images: ['https://storage.sola.eg/p1.jpg'],
+    });
+    (bookingDb as any).getFinancialSummary = async () => ({
+      totalBookingValue: 4000,
+      depositAmount: 2000,
+      remainingBalance: 2000,
+      solaCommissionAmount: 400,
+      ownerNetDepositAmount: 1600,
+    });
+
+    const bookingNullPropertyType = await hydrateBooking({
+      id: 'b0000000-0000-4000-8000-000000000004',
+      bookingNumber: 'BK-123459',
+      propertyId: 'e0000000-0000-4000-8000-000000000005',
+      customerId: testCustomerId,
+      guestName: 'عميل حقيقي',
+      checkIn: '2026-12-20',
+      checkOut: '2026-12-22',
+      nights: 2,
+      guestsCount: 2,
+      status: 'APPROVED_PENDING_PAYMENT',
+      createdAt: '2026-09-03T12:00:00.000Z',
+    });
+
+    const detailDto = toCustomerBookingDetailDto(bookingNullPropertyType);
+    assert.equal(detailDto.property.propertyType, null, 'propertyType null must remain null');
+  } finally {
+    (propertyDb as any).getById = origPropGet;
+    (bookingDb as any).getFinancialSummary = origFinGet;
+  }
+}
+
+// E. non-string address fails closed
+{
+  assert.throws(
+    () => toCustomerBookingListItem({
+      id: 'b0000000-0000-4000-8000-000000000005',
+      bookingNumber: 'BK-ADDR-01',
+      propertyId: 'e0000000-0000-4000-8000-000000000005',
+      customerId: testCustomerId,
+      checkIn: '2026-12-20',
+      checkOut: '2026-12-22',
+      nights: 2,
+      guestsCount: 2,
+      status: 'APPROVED_PENDING_PAYMENT',
+      createdAt: '2026-09-03T12:00:00.000Z',
+      totalStay: 4000,
+      depositAmount: 2000,
+      remainingAmount: 2000,
+      property: {
+        id: 'e0000000-0000-4000-8000-000000000005',
+        title: 'شاليه',
+        unitType: 'CHALET',
+        address: null as any,
+        bedrooms: 2,
+        bathrooms: 2,
+        maxGuests: 4,
+        basePricePerNight: 2000,
+        images: [],
+      },
+    }),
+    /MALFORMED_CUSTOMER_BOOKING_PROPERTY_DATA: address/
+  );
+  assert.throws(
+    () => toCustomerBookingListItem({
+      id: 'b0000000-0000-4000-8000-000000000005',
+      bookingNumber: 'BK-ADDR-02',
+      propertyId: 'e0000000-0000-4000-8000-000000000005',
+      customerId: testCustomerId,
+      checkIn: '2026-12-20',
+      checkOut: '2026-12-22',
+      nights: 2,
+      guestsCount: 2,
+      status: 'APPROVED_PENDING_PAYMENT',
+      createdAt: '2026-09-03T12:00:00.000Z',
+      totalStay: 4000,
+      depositAmount: 2000,
+      remainingAmount: 2000,
+      property: {
+        id: 'e0000000-0000-4000-8000-000000000005',
+        title: 'شاليه',
+        unitType: 'CHALET',
+        address: 123 as any,
+        bedrooms: 2,
+        bathrooms: 2,
+        maxGuests: 4,
+        basePricePerNight: 2000,
+        images: [],
+      },
+    }),
+    /MALFORMED_CUSTOMER_BOOKING_PROPERTY_DATA: address/
+  );
+}
+
+// ROUTE-LEVEL REGRESSION: Customer list and detail routes with genuinely hydrated booking
+{
+  const origBookingGetByCustomerId = bookingDb.getByCustomerId;
+  const origBookingGetById = bookingDb.getById;
+  const origPropGet = propertyDb.getById;
+  const origFinGet = bookingDb.getFinancialSummary;
+
+  try {
+    (propertyDb as any).getById = async () => ({
+      id: 'e0000000-0000-4000-8000-000000000006',
+      title: 'شاليه مسايا الساحل',
+      unitType: 'CHALET',
+      propertyType: 'CHALET',
+      address: '', // empty optional address
+      region: 'الساحل الشمالي',
+      bedrooms: 3,
+      bathrooms: 2,
+      maxGuests: 6,
+      pricePerNight: 3000,
+      images: ['https://storage.sola.eg/chalet.jpg'],
+    });
+    (bookingDb as any).getFinancialSummary = async () => ({
+      totalBookingValue: 9000,
+      depositAmount: 3000,
+      remainingBalance: 6000,
+      solaCommissionAmount: 600,
+      ownerNetDepositAmount: 2400,
+    });
+
+    // 1. APPROVED_PENDING_PAYMENT route checks
+    const approvedBookingRaw = {
+      id: 'b0000000-0000-4000-8000-000000000010',
+      bookingNumber: 'BK-APP-01',
+      propertyId: 'e0000000-0000-4000-8000-000000000006',
+      customerId: testCustomerId,
+      guestName: 'عميل معتمد',
+      checkIn: '2026-12-10',
+      checkOut: '2026-12-13',
+      nights: 3,
+      guestsCount: 4,
+      status: 'APPROVED_PENDING_PAYMENT',
+      createdAt: '2026-09-03T12:00:00.000Z',
+    };
+
+    // Use genuine hydrateBooking
+    const approvedHydrated = await hydrateBooking(approvedBookingRaw);
+    (bookingDb as any).getByCustomerId = async (cid: string) => (cid === testCustomerId ? [approvedHydrated] : []);
+    (bookingDb as any).getById = async (bid: string) => (bid === approvedBookingRaw.id ? approvedHydrated : null);
+
+    // GET /api/v1/customer/bookings
+    const listResApprove = await app.handleHttpRequest('GET', '/api/v1/customer/bookings', customerHeaders);
+    assert.equal(listResApprove.statusCode, 200, 'Customer list route must return 200 for hydrated approved booking');
+    assert.equal((listResApprove.body as any).success, true);
+    const listItems = (listResApprove.body as any).data;
+    assert.equal(listItems.length, 1);
+    assert.equal(listItems[0].status, 'APPROVED_PENDING_PAYMENT');
+    assert.equal(listItems[0].property.unitType, 'CHALET');
+    assert.equal(listItems[0].property.address, '');
+    assert.equal(listItems[0].solaCommissionAmount, undefined, 'Forbidden internal financial field must not leak');
+    assert.equal(listItems[0].ownerNetDepositAmount, undefined, 'Forbidden owner net deposit must not leak');
+
+    // GET /api/v1/customer/bookings/:id
+    const detailResApprove = await app.handleHttpRequest('GET', `/api/v1/customer/bookings/${approvedBookingRaw.id}`, customerHeaders);
+    assert.equal(detailResApprove.statusCode, 200, 'Customer detail route must return 200 for hydrated approved booking');
+    assert.equal((detailResApprove.body as any).success, true);
+    const detailItem = (detailResApprove.body as any).data;
+    assert.equal(detailItem.status, 'APPROVED_PENDING_PAYMENT');
+    assert.equal(detailItem.property.unitType, 'CHALET');
+    assert.equal(detailItem.property.address, '');
+    assert.equal(detailItem.solaCommissionAmount, undefined, 'Forbidden internal financial field must not leak');
+    assert.equal(detailItem.ownerNetDepositAmount, undefined, 'Forbidden owner net deposit must not leak');
+
+    // 2. REJECTED route checks
+    const rejectedBookingRaw = {
+      ...approvedBookingRaw,
+      id: 'b0000000-0000-4000-8000-000000000011',
+      bookingNumber: 'BK-REJ-01',
+      status: 'REJECTED',
+    };
+    const rejectedHydrated = await hydrateBooking(rejectedBookingRaw);
+    (bookingDb as any).getByCustomerId = async (cid: string) => (cid === testCustomerId ? [rejectedHydrated] : []);
+    (bookingDb as any).getById = async (bid: string) => (bid === rejectedBookingRaw.id ? rejectedHydrated : null);
+
+    const listResRej = await app.handleHttpRequest('GET', '/api/v1/customer/bookings', customerHeaders);
+    assert.equal(listResRej.statusCode, 200, 'Customer list route must return 200 for hydrated rejected booking');
+    assert.equal((listResRej.body as any).data[0].status, 'REJECTED');
+
+    const detailResRej = await app.handleHttpRequest('GET', `/api/v1/customer/bookings/${rejectedBookingRaw.id}`, customerHeaders);
+    assert.equal(detailResRej.statusCode, 200, 'Customer detail route must return 200 for hydrated rejected booking');
+    assert.equal((detailResRej.body as any).data.status, 'REJECTED');
+  } finally {
+    (bookingDb as any).getByCustomerId = origBookingGetByCustomerId;
+    (bookingDb as any).getById = origBookingGetById;
+    (propertyDb as any).getById = origPropGet;
+    (bookingDb as any).getFinancialSummary = origFinGet;
+  }
+}
+
+console.log('P2.3 Live Correction 01 real hydration and address regression tests passed.');

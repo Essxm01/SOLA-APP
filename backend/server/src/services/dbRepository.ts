@@ -727,6 +727,8 @@ export async function hydrateBooking(booking: any) {
     property: {
       id: property.id,
       title: property.title,
+      unitType: property.unitType ?? property.unit_type,
+      propertyType: property.propertyType ?? property.property_type,
       images: property.images || [],
       address: property.address || '',
       region: property.region || '',

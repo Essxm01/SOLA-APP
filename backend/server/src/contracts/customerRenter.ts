@@ -121,6 +121,11 @@ function requiredString(value: unknown, scope: string, field: string): string {
   return value.trim();
 }
 
+function validStringOrEmpty(value: unknown, scope: string, field: string): string {
+  if (typeof value !== 'string') fail(scope, field);
+  return value.trim();
+}
+
 function optionalString(value: unknown, scope: string, field: string): string | null {
   if (value === undefined || value === null) return null;
   if (typeof value !== 'string') fail(scope, field);
@@ -226,7 +231,7 @@ function mapCustomerBookingProperty(prop: any): CustomerBookingPropertyItem {
   const title = requiredString(prop.title, 'CUSTOMER_BOOKING_PROPERTY_DATA', 'title');
   const unitType = requiredString(prop.unitType ?? prop.unit_type, 'CUSTOMER_BOOKING_PROPERTY_DATA', 'unitType');
   const propertyType = optionalString(prop.propertyType ?? prop.property_type, 'CUSTOMER_BOOKING_PROPERTY_DATA', 'propertyType');
-  const address = requiredString(prop.address, 'CUSTOMER_BOOKING_PROPERTY_DATA', 'address');
+  const address = validStringOrEmpty(prop.address, 'CUSTOMER_BOOKING_PROPERTY_DATA', 'address');
   const region = optionalString(prop.region, 'CUSTOMER_BOOKING_PROPERTY_DATA', 'region');
   const resortName = optionalString(prop.resortName ?? prop.resort_name, 'CUSTOMER_BOOKING_PROPERTY_DATA', 'resortName');
   const locationName = optionalString(prop.locationName ?? prop.location_name ?? prop.resortName ?? prop.resort_name, 'CUSTOMER_BOOKING_PROPERTY_DATA', 'locationName');

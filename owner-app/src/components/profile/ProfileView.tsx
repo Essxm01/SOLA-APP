@@ -34,7 +34,7 @@ export const ProfileView: React.FC = () => {
 
   // Edit profile form state
   const [fullName, setFullName] = useState<string>((owner as any)?.fullName || owner?.name || '');
-  const [email, setEmail] = useState<string>((owner as any)?.email || '');
+  const [email, setEmail] = useState<string>(owner?.email || '');
   const [avatarUrl, setAvatarUrl] = useState<string>(
     owner?.avatar || ''
   );
@@ -71,7 +71,7 @@ export const ProfileView: React.FC = () => {
       }
       if (owner) {
         (owner as any).fullName = fullName;
-        (owner as any).email = email;
+        owner.email = email;
         (owner as any).avatar = avatarUrl;
       }
       showToast('تم تحديث البيانات الشخصية بنجاح 🟢', 'success');
@@ -203,7 +203,7 @@ export const ProfileView: React.FC = () => {
         <button
           onClick={() => {
             setFullName((owner as any)?.fullName || owner?.name || '');
-            setEmail((owner as any)?.email || '');
+            setEmail(owner?.email || '');
             setIsEditProfileOpen(true);
           }}
           className="w-full p-4 flex items-center justify-between text-slate-800 hover:bg-slate-50 transition-colors"

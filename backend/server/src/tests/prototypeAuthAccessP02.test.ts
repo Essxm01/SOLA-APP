@@ -26,7 +26,18 @@ async function run() {
 
   const originalOwner = ownerDb.getById;
   const originalBookings = bookingDb.getByCustomerId;
-  (ownerDb as any).getById = async (id: string) => id === ownerId ? { id: ownerId, phoneNumber: '+201013154939', fullName: 'Owner', verificationStatus: 'VERIFIED' } : null;
+  (ownerDb as any).getById = async (id: string) => id === ownerId ? {
+    id: ownerId,
+    phoneNumber: '+201013154939',
+    fullName: 'Owner',
+    email: null,
+    avatarUrl: null,
+    status: 'ACTIVE',
+    verificationStatus: 'VERIFIED',
+    ownerOnboardingCompletedAt: null,
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+  } : null;
   (bookingDb as any).getByCustomerId = async (id: string) => {
     assert.equal(id, customerId, 'Customer booking ownership must derive from verified JWT subject');
     return [];

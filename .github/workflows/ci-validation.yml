@@ -140,6 +140,8 @@ jobs:
           npm run test:p1-6-wallet-ledger
           npm run test:p2-1-public-api
           npm run test:p2-2-renter-api
+          npm run test:auth-p02
+          npm run test:p2-3-owner-api
       - name: Deploy to Cloudflare Workers
         if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
         uses: cloudflare/wrangler-action@v3

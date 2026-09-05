@@ -308,17 +308,20 @@ console.log('P2.3 Task 3 owner calendar availability contract tests passed.');
 // 4. Task 4: Owner Booking DTOs + Canonical Financial Summary
 // ---------------------------------------------------------------------------
 
-// 4A. Financials must use canonical persisted summary, not hardcoded constants
+// 4A. Financials must use narrow ownership query, not over-hydrated bookingDb.getById
 {
   const testBookingId = 'b0000000-0000-4000-8000-000000000001';
+  const origOwnershipById = bookingDb.getOwnershipById;
   const origBookingGetById = bookingDb.getById;
+  const origPropertyGetById = propertyDb.getById;
   const origGetFinancialSummary = bookingDb.getFinancialSummary;
 
-  (bookingDb as any).getById = async () => ({
-    id: testBookingId,
-    ownerId: ownerA,
-    status: 'PENDING_OWNER_APPROVAL',
-  });
+  // Narrow ownership query only
+  (bookingDb as any).getOwnershipById = async (id: string) => id === testBookingId ? { id: testBookingId, ownerId: ownerA } : null;
+  // Over-hydrated dependencies must NOT be invoked
+  (bookingDb as any).getById = async () => { throw new Error('Over-hydrated bookingDb.getById must NOT be invoked by financials endpoint'); };
+  (propertyDb as any).getById = async () => { throw new Error('propertyDb.getById must NOT be invoked by financials endpoint'); };
+
   (bookingDb as any).getFinancialSummary = async () => ({
     bookingId: testBookingId,
     totalBookingValue: 9300,
@@ -339,52 +342,86 @@ console.log('P2.3 Task 3 owner calendar availability contract tests passed.');
     assert.equal((res.body as any).data.commissionOnRemainingBalance, 0);
     assert.equal((res.body as any).data.currency, 'EGP');
   } finally {
+    (bookingDb as any).getOwnershipById = origOwnershipById;
     (bookingDb as any).getById = origBookingGetById;
+    (propertyDb as any).getById = origPropertyGetById;
     (bookingDb as any).getFinancialSummary = origGetFinancialSummary;
+  }
+}
+
+// 4A2. Financials: missing summary reaches BOOKING_FINANCIAL_SUMMARY_MISSING
+{
+  const testBookingId = 'b0000000-0000-4000-8000-000000000001';
+  const origOwnershipById = bookingDb.getOwnershipById;
+  const origGetFinancialSummary = bookingDb.getFinancialSummary;
+
+  (bookingDb as any).getOwnershipById = async () => ({ id: testBookingId, ownerId: ownerA });
+  (bookingDb as any).getFinancialSummary = async () => null;
+  try {
+    const res = await app.handleHttpRequest('GET', `/api/v1/owner/bookings/${testBookingId}/financials`, ownerHeaders(ownerTokenA));
+    assert.equal(res.statusCode, 500);
+    assert.equal((res.body as any).error?.code, 'BOOKING_FINANCIAL_SUMMARY_MISSING');
+  } finally {
+    (bookingDb as any).getOwnershipById = origOwnershipById;
+    (bookingDb as any).getFinancialSummary = origGetFinancialSummary;
+  }
+}
+
+// 4A3. Financials: ownership query DB failure is 500 BOOKING_QUERY_FAILED, not 404
+{
+  const testBookingId = 'b0000000-0000-4000-8000-000000000001';
+  const origOwnershipById = bookingDb.getOwnershipById;
+  (bookingDb as any).getOwnershipById = async () => { throw new Error('DB connection reset'); };
+  try {
+    const res = await app.handleHttpRequest('GET', `/api/v1/owner/bookings/${testBookingId}/financials`, ownerHeaders(ownerTokenA));
+    assert.equal(res.statusCode, 500);
+    assert.equal((res.body as any).error?.code, 'BOOKING_QUERY_FAILED');
+  } finally {
+    (bookingDb as any).getOwnershipById = origOwnershipById;
   }
 }
 
 // 4B. Financials foreign owner returns 403
 {
   const testBookingId = 'b0000000-0000-4000-8000-000000000001';
-  const origBookingGetById = bookingDb.getById;
-  (bookingDb as any).getById = async () => ({ id: testBookingId, ownerId: ownerB, status: 'PENDING_OWNER_APPROVAL' });
+  const origOwnershipById = bookingDb.getOwnershipById;
+  (bookingDb as any).getOwnershipById = async () => ({ id: testBookingId, ownerId: ownerB });
   try {
     const res = await app.handleHttpRequest('GET', `/api/v1/owner/bookings/${testBookingId}/financials`, ownerHeaders(ownerTokenA));
     assert.equal(res.statusCode, 403, 'Foreign owner must receive 403 BOOKING_NOT_OWNED');
     assert.equal((res.body as any).error?.code, 'BOOKING_NOT_OWNED');
   } finally {
-    (bookingDb as any).getById = origBookingGetById;
+    (bookingDb as any).getOwnershipById = origOwnershipById;
   }
 }
 
 // 4C. Financials missing booking returns 404
 {
   const testBookingId = 'b0000000-0000-4000-8000-000000000001';
-  const origBookingGetById = bookingDb.getById;
-  (bookingDb as any).getById = async () => null;
+  const origOwnershipById = bookingDb.getOwnershipById;
+  (bookingDb as any).getOwnershipById = async () => null;
   try {
     const res = await app.handleHttpRequest('GET', `/api/v1/owner/bookings/${testBookingId}/financials`, ownerHeaders(ownerTokenA));
     assert.equal(res.statusCode, 404, 'Missing booking must receive 404 BOOKING_NOT_FOUND');
     assert.equal((res.body as any).error?.code, 'BOOKING_NOT_FOUND');
   } finally {
-    (bookingDb as any).getById = origBookingGetById;
+    (bookingDb as any).getOwnershipById = origOwnershipById;
   }
 }
 
 // 4D. Financials query failure returns 500
 {
   const testBookingId = 'b0000000-0000-4000-8000-000000000001';
-  const origBookingGetById = bookingDb.getById;
+  const origOwnershipById = bookingDb.getOwnershipById;
   const origGetFinancialSummary = bookingDb.getFinancialSummary;
-  (bookingDb as any).getById = async () => ({ id: testBookingId, ownerId: ownerA, status: 'PENDING_OWNER_APPROVAL' });
+  (bookingDb as any).getOwnershipById = async () => ({ id: testBookingId, ownerId: ownerA });
   (bookingDb as any).getFinancialSummary = async () => { throw new Error('summary db outage'); };
   try {
     const res = await app.handleHttpRequest('GET', `/api/v1/owner/bookings/${testBookingId}/financials`, ownerHeaders(ownerTokenA));
     assert.equal(res.statusCode, 500, 'Summary DB outage must receive 500');
     assert.equal((res.body as any).error?.code, 'BOOKING_FINANCIAL_SUMMARY_QUERY_FAILED');
   } finally {
-    (bookingDb as any).getById = origBookingGetById;
+    (bookingDb as any).getOwnershipById = origOwnershipById;
     (bookingDb as any).getFinancialSummary = origGetFinancialSummary;
   }
 }
@@ -445,6 +482,38 @@ assert.equal('phone' in (itemDto.renter as any), false);
 assert.equal(itemDto.totalPrice, 10000);
 assert.equal(itemDto.deposit, 2500);
 assert.equal(itemDto.remainingAmount, 7500);
+
+// Finding 1 regression: valid decimal amounts (3000.30 / 1000.10 / 2000.20)
+const decimalBooking = {
+  ...rawHydratedBooking,
+  totalPrice: 3000.30,
+  deposit: 1000.10,
+  financialSummary: {
+    bookingId: 'b0000000-0000-4000-8000-000000000001',
+    totalBookingValue: 3000.30,
+    depositAmount: 1000.10,
+    solaCommissionAmount: 200.02,
+    ownerNetDepositAmount: 800.08,
+    remainingBalance: 2000.20,
+    commissionOnRemainingBalance: 0,
+  },
+};
+const decimalItemDto = toOwnerBookingListItem(decimalBooking);
+assert.equal(decimalItemDto.totalPrice, 3000.30);
+assert.equal(decimalItemDto.deposit, 1000.10);
+assert.equal(decimalItemDto.remainingAmount, 2000.20);
+
+// Inconsistent remaining amount must still fail closed
+assert.throws(
+  () => toOwnerBookingListItem({
+    ...decimalBooking,
+    financialSummary: {
+      ...decimalBooking.financialSummary,
+      remainingBalance: 2000.25, // Inconsistent
+    },
+  }),
+  /MALFORMED_OWNER_BOOKING: invalid financial amounts/
+);
 
 // 4F. Decision lifecycle: approve -> APPROVED_PENDING_PAYMENT, reject -> REJECTED
 {

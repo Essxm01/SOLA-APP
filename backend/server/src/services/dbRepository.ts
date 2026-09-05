@@ -629,6 +629,14 @@ export const bookingDb = {
     return res.rows[0] || null;
   },
 
+  async getOwnershipById(id: string): Promise<{ id: string; ownerId: string } | null> {
+    const res = await queryDb(
+      `SELECT id, owner_id AS "ownerId" FROM bookings WHERE id = $1`,
+      [id]
+    );
+    return res.rows[0] ? { id: res.rows[0].id, ownerId: res.rows[0].ownerId } : null;
+  },
+
   async getById(id: string) {
     const res = await queryDb(
       `SELECT id, booking_number AS "bookingNumber", property_id AS "propertyId", owner_id AS "ownerId", customer_id AS "customerId", guest_name AS "guestName", check_in AS "checkIn", check_out AS "checkOut", nights, total_guests AS "guestsCount", status, created_at AS "createdAt", confirmed_at AS "confirmedAt", rejected_at AS "rejectedAt"

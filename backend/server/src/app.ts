@@ -751,7 +751,7 @@ export class ExpressServerApp {
 
           let booking: any;
           try {
-            booking = await bookingDb.getById(bookingId);
+            booking = await bookingDb.getOwnershipById(bookingId);
           } catch {
             return { statusCode: 500, body: { success: false, error: { code: 'BOOKING_QUERY_FAILED', message: 'تعذر تحميل بيانات الحجز.' }, timestamp } };
           }

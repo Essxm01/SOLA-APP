@@ -23,12 +23,13 @@ const assert = (condition: unknown, message: string) => {
   assert(owner.id === 'owner-uuid-1', 'owner.id must match');
   assert(owner.name === 'محمد صاحب العقار', 'owner.name must be mapped from fullName');
   assert(owner.phone === '+201012345678', 'owner.phone must be mapped from phoneNumber');
+  assert(owner.email === 'owner@example.com', 'owner.email must be preserved from backendDto');
   assert(owner.avatar === 'https://storage.sola.eg/avatars/avatar1.jpg', 'owner.avatar must be mapped from avatarUrl');
   assert(owner.verificationStatus === 'VERIFIED', 'verificationStatus must match');
   assert(owner.verificationBadgeText === 'موثق', 'verificationBadgeText must be derived correctly');
 }
 
-// Test 2: Avatar survival when avatarUrl is present vs null
+// Test 2: Avatar and email survival when present vs null
 {
   const withAvatar = mapOwnerProfileDtoToOwner({
     id: 'owner-uuid-2',
@@ -43,6 +44,7 @@ const assert = (condition: unknown, message: string) => {
     updatedAt: '2026-01-01T00:00:00.000Z',
   });
   assert(withAvatar.avatar === 'https://cdn.example.com/canonical.png', 'avatar must survive profile mapping');
+  assert(withAvatar.email === null, 'owner.email must preserve null truthfully');
 
   const withoutAvatar = mapOwnerProfileDtoToOwner({
     id: 'owner-uuid-3',

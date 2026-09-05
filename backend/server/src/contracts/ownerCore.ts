@@ -368,7 +368,8 @@ export function toOwnerBookingListItem(raw: unknown): OwnerBookingListItemDto {
   const deposit = financialSummary.depositAmount;
   const remainingAmount = financialSummary.remainingBalance;
 
-  if (totalPrice <= 0 || deposit <= 0 || remainingAmount !== (totalPrice - deposit)) {
+  const toCents = (amt: number): number => Math.round(amt * 100);
+  if (totalPrice <= 0 || deposit <= 0 || toCents(remainingAmount) !== (toCents(totalPrice) - toCents(deposit))) {
     throw new Error('MALFORMED_OWNER_BOOKING: invalid financial amounts');
   }
 

@@ -105,6 +105,7 @@ export function mapOwnerProfileDtoToOwner(rawDto: unknown): Owner {
   const name = typeof dto.fullName === 'string'
     ? dto.fullName
     : (typeof dto.name === 'string' ? dto.name : '');
+  const email = typeof dto.email === 'string' ? dto.email : (dto.email === null ? null : null);
   const avatar = typeof dto.avatarUrl === 'string'
     ? dto.avatarUrl
     : (typeof dto.avatar === 'string' ? dto.avatar : '');
@@ -118,6 +119,7 @@ export function mapOwnerProfileDtoToOwner(rawDto: unknown): Owner {
     id,
     name,
     phone,
+    email,
     avatar,
     verificationStatus,
     verificationBadgeText,

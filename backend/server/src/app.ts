@@ -272,7 +272,14 @@ export class ExpressServerApp {
       }
 
       if (path === '/api/v1/admin/auth/login' && method === 'POST') {
-        const response = await this.authController.adminLogin(bodyPayload?.email, bodyPayload?.password);
+        const rawIp = String(
+          headers['cf-connecting-ip'] ||
+          headers['x-real-ip'] ||
+          headers['x-forwarded-for']?.split(',')[0] ||
+          '127.0.0.1'
+        ).trim();
+        const clientIp = rawIp || '127.0.0.1';
+        const response = await this.authController.adminLogin(bodyPayload?.email, bodyPayload?.password, clientIp);
         const statusCode = response.success ? 200 : (response.error?.code === 'ADMIN_LOGIN_THROTTLED' ? 429 : 401);
         return { statusCode, body: response };
       }
@@ -1758,11 +1765,20 @@ export class ExpressServerApp {
         // persisted access token against the existing canonical Admin
         // identity model before rendering the operational shell.
         if (path === '/api/v1/admin/auth/session' && method === 'GET') {
-          const dbAdmin = await adminDb.getById(adminId).catch(() => null);
-          const admin = (dbAdmin && dbAdmin.isActive)
-            ? dbAdmin
-            : Array.from(dbAdminUsersStore.values()).find((candidate) => candidate.id === adminId && candidate.isActive);
-          if (!admin) {
+          let admin: any = null;
+          try {
+            admin = await adminDb.getById(adminId);
+          } catch {
+            return {
+              statusCode: 500,
+              body: {
+                success: false,
+                error: { code: 'DATABASE_QUERY_FAILED', message: 'تعذر التحقق من جلسة الإدارة' },
+                timestamp,
+              },
+            };
+          }
+          if (!admin || !admin.isActive) {
             return {
               statusCode: 401,
               body: {

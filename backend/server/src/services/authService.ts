@@ -94,6 +94,10 @@ export const dbDisputesStore = new Map<string, any>();
 export const dbOwnerVerificationDocsStore = new Map<string, any[]>();
 export const dbPropertyVerificationDocsStore = new Map<string, any[]>();
 
+// R1.4: Valid runtime-generated 60-character bcrypt hash for uniform timing.
+// Generated once in memory at startup; not a credential and never committed as a static hash.
+export const TIMING_DECOY_HASH = bcrypt.hashSync('sola_auth_timing_decoy_not_a_credential', 10);
+
 
 export class AuthService {
   private smsProvider: ISmsProvider;
@@ -677,7 +681,7 @@ export class AuthService {
   async adminLogin(
     email: string,
     password_raw: string,
-    options?: { mockAdmin?: AdminUserRecord; clientIp?: string }
+    options?: { clientIp?: string }
   ): Promise<{
     tokens: AuthSessionTokens;
     admin: AdminRecord;
@@ -687,39 +691,45 @@ export class AuthService {
     }
 
     const normalizedEmail = email.toLowerCase().trim();
-    const throttleKey = `admin_login:${normalizedEmail}`;
+    const clientIp = (options?.clientIp || '127.0.0.1').trim();
+    const ipKey = `admin_login_ip:${clientIp}`;
+    const accountKey = `admin_login_acc:${clientIp}:${normalizedEmail}`;
 
     // R1.8: Bounded persistent abuse throttling check via audit_logs
-    const failedAttempts = await auditLogDb.countRecentFailedLogins(throttleKey, 15);
-    if (failedAttempts >= 5) {
+    // Checks both IP-level rate and compound IP+Account rate to prevent trivial global account lockout
+    const [ipFailures, accFailures] = await Promise.all([
+      auditLogDb.countRecentFailedLogins(ipKey, 15),
+      auditLogDb.countRecentFailedLogins(accountKey, 15),
+    ]);
+
+    if (ipFailures >= 5 || accFailures >= 5) {
       throw new Error('ADMIN_LOGIN_THROTTLED');
     }
 
-    // R1.3: Retrieve canonical admin identity
-    let adminRecord: AdminUserRecord | null = options?.mockAdmin ?? null;
-    if (!adminRecord) {
-      adminRecord = await adminDb.getByEmail(normalizedEmail).catch(() => null);
-    }
-    if (!adminRecord && dbAdminUsersStore.has(normalizedEmail)) {
-      const mem = dbAdminUsersStore.get(normalizedEmail) as any;
-      if (mem?.passwordHash) {
-        adminRecord = mem;
-      }
-    }
+    // R1.3: Retrieve canonical admin identity strictly from canonical persistence boundary
+    const adminRecord = await adminDb.getByEmail(normalizedEmail);
 
     const recordFailureAndThrow = async () => {
-      await auditLogDb.record({
-        entityType: 'ADMIN_AUTH',
-        action: 'ADMIN_LOGIN_FAILED',
-        actorRole: 'ADMIN',
-        payload: { key: throttleKey, email: normalizedEmail, ip: options?.clientIp },
-      });
+      await Promise.all([
+        auditLogDb.record({
+          entityType: 'ADMIN_AUTH',
+          action: 'ADMIN_LOGIN_FAILED',
+          actorRole: 'ADMIN',
+          payload: { key: ipKey, email: normalizedEmail, ip: clientIp },
+        }),
+        auditLogDb.record({
+          entityType: 'ADMIN_AUTH',
+          action: 'ADMIN_LOGIN_FAILED',
+          actorRole: 'ADMIN',
+          payload: { key: accountKey, email: normalizedEmail, ip: clientIp },
+        }),
+      ]);
       throw new Error('INVALID_ADMIN_CREDENTIALS');
     };
 
     if (!adminRecord || !adminRecord.isActive || !adminRecord.passwordHash) {
-      // Fake bcrypt comparison to protect against timing attacks & user enumeration
-      await bcrypt.compare(password_raw, '$2b$10$abcdefghijklmnopqrstuvABCDEFGH1234567890123456789012').catch(() => false);
+      // Genuine 10-round bcrypt comparison with valid decoy hash to ensure uniform timing
+      await bcrypt.compare(password_raw, TIMING_DECOY_HASH).catch(() => false);
       await recordFailureAndThrow();
     }
 
@@ -738,10 +748,11 @@ export class AuthService {
     // Log successful authentication event
     await auditLogDb.record({
       entityType: 'ADMIN_AUTH',
+      entityId: adminRecord!.id,
       action: 'ADMIN_LOGIN_SUCCESS',
       actorId: adminRecord!.id,
       actorRole: 'ADMIN',
-      payload: { email: normalizedEmail, ip: options?.clientIp },
+      payload: { email: normalizedEmail, ip: clientIp },
     });
 
     // R1.7: Issue access token with admin_version: 2

@@ -2550,11 +2550,12 @@ async function queryViaSupabaseRest(text: string, params: any[] | undefined, url
     return { rows: mapped, command: 'DELETE', rowCount: 1, oid: 0, fields: [] };
   }
 
-  // 18A. SELECT admin_users by email (R1 Canonical Authentication)
+  // 18A. SELECT admin_users by email (R1 Canonical Authentication - Exact Normalized Equality)
   if (lowerSql.includes('from admin_users') && (lowerSql.includes('lower(email) = $1') || lowerSql.includes('email = $1'))) {
-    const email = params?.[0];
+    const rawEmail = String(params?.[0] || '');
+    const normalizedEmail = rawEmail.toLowerCase().trim();
     const res = await fetch(
-      `${url}/rest/v1/admin_users?email=ilike.${encodeURIComponent(email)}&select=id,email,password_hash,full_name,role,is_active,created_at&limit=1`,
+      `${url}/rest/v1/admin_users?email=eq.${encodeURIComponent(normalizedEmail)}&select=id,email,password_hash,full_name,role,is_active,created_at&limit=1`,
       { headers }
     );
     if (!res.ok) {
@@ -2562,7 +2563,9 @@ async function queryViaSupabaseRest(text: string, params: any[] | undefined, url
     }
     const raw: any = await res.json().catch(() => []);
     const rows: any[] = Array.isArray(raw) ? raw : [];
-    const mapped = rows.map((r: any) => ({
+    // Strict post-fetch exact string equality to guarantee zero wildcard match leakage
+    const exactRows = rows.filter((r: any) => String(r.email || '').toLowerCase().trim() === normalizedEmail);
+    const mapped = exactRows.map((r: any) => ({
       id: r.id,
       email: r.email,
       passwordHash: r.password_hash,
@@ -2622,10 +2625,10 @@ async function queryViaSupabaseRest(text: string, params: any[] | undefined, url
   if (lowerSql.startsWith('insert into audit_logs')) {
     const id = params?.[0] || crypto.randomUUID();
     const entityType = params?.[1];
-    const entityId = params?.[2] || null;
+    const entityId = params?.[2] || '00000000-0000-0000-0000-000000000000';
     const action = params?.[3];
-    const actorId = params?.[4] || null;
-    const actorRole = params?.[5] || null;
+    const actorId = params?.[4] || '00000000-0000-0000-0000-000000000000';
+    const actorRole = params?.[5] || 'UNKNOWN';
     const payload = safeParse(params?.[6], {});
     const nowIso = new Date().toISOString();
 
@@ -2652,25 +2655,33 @@ async function queryViaSupabaseRest(text: string, params: any[] | undefined, url
     return { rows: arr, command: 'INSERT', rowCount: arr.length, oid: 0, fields: [] };
   }
 
-  // 18E. SELECT COUNT(*) FROM audit_logs ... failed logins
+  // 18E. SELECT COUNT(*) FROM audit_logs ... failed logins (filtered at data source)
   if (lowerSql.includes('from audit_logs') && lowerSql.includes('count(')) {
     const minutes = parseInt(params?.[0] || '15', 10);
-    const key = params?.[1];
+    const key = String(params?.[1] || '');
     const sinceIso = new Date(Date.now() - minutes * 60 * 1000).toISOString();
     const res = await fetch(
-      `${url}/rest/v1/audit_logs?entity_type=eq.ADMIN_AUTH&action=eq.ADMIN_LOGIN_FAILED&created_at=gte.${encodeURIComponent(sinceIso)}&select=id,payload`,
-      { headers }
+      `${url}/rest/v1/audit_logs?entity_type=eq.ADMIN_AUTH&action=eq.ADMIN_LOGIN_FAILED&payload->>key=eq.${encodeURIComponent(key)}&created_at=gte.${encodeURIComponent(sinceIso)}&select=id`,
+      {
+        headers: {
+          ...headers,
+          'Prefer': 'count=exact',
+        },
+      }
     );
     if (!res.ok) {
-      return { rows: [{ count: 0 }], command: 'SELECT', rowCount: 1, oid: 0, fields: [] };
+      throw new Error(`REST_AUDIT_LOGS_COUNT_FAILED: HTTP ${res.status}`);
     }
-    const raw: any = await res.json().catch(() => []);
-    const arr: any[] = Array.isArray(raw) ? raw : [];
-    const matched = arr.filter((log: any) => {
-      const p = typeof log.payload === 'string' ? safeParse(log.payload, {}) : (log.payload || {});
-      return p?.key === key;
-    });
-    return { rows: [{ count: matched.length }], command: 'SELECT', rowCount: 1, oid: 0, fields: [] };
+    const countHeader = res.headers.get('content-range');
+    let totalCount = 0;
+    if (countHeader && countHeader.includes('/')) {
+      const parts = countHeader.split('/');
+      totalCount = parseInt(parts[1] || '0', 10);
+    } else {
+      const raw: any = await res.json().catch(() => []);
+      totalCount = Array.isArray(raw) ? raw.length : 0;
+    }
+    return { rows: [{ count: totalCount }], command: 'SELECT', rowCount: 1, oid: 0, fields: [] };
   }
 
   return null;

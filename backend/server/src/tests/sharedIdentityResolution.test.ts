@@ -6,7 +6,7 @@
 
 import { ExpressServerApp } from '../app.js';
 import { AuthService, dbUsersStore, dbOwnersStore, type UserRecord, type OwnerRecord } from '../services/authService.js';
-import { userDb, ownerDb } from '../services/dbRepository.js';
+import { userDb, ownerDb, adminDb } from '../services/dbRepository.js';
 import { normalizePhoneNumber } from '../utils/phoneNormalizer.js';
 import { verifyAccessToken } from '../services/jwtService.js';
 import bcrypt from 'bcryptjs';
@@ -281,24 +281,33 @@ export async function runSharedIdentityResolutionSuite(): Promise<{ total: numbe
   try {
     const testAdminPassword = 'TestAdminPassword123!Secure';
     const testAdminHash = bcrypt.hashSync(testAdminPassword, 8);
-    const adminLoginRes = await authService.adminLogin('admin@sola.com', testAdminPassword, {
-      mockAdmin: {
-        id: '00000000-0000-0000-0000-000000000001',
-        email: 'admin@sola.com',
-        passwordHash: testAdminHash,
-        fullName: 'مسئول منصة صولا',
-        role: 'ADMIN',
-        isActive: true,
-      },
-    });
-    const adminJwt = verifyAccessToken(adminLoginRes.tokens.accessToken);
-    const isAdminRole = adminJwt.role === 'ROLE_ADMIN';
-    const adminBlockedOnOwner = (await app.handleHttpRequest('GET', '/api/v1/owner/properties', { authorization: `Bearer ${adminLoginRes.tokens.accessToken}` })).statusCode === 403;
-    results.push({
-      name: 'AUTH-02B1 [12]: Admin authentication isolated in admin_users, signs ROLE_ADMIN, blocked on Owner routes',
-      passed: isAdminRole && adminBlockedOnOwner,
-      error: !isAdminRole ? `Expected ROLE_ADMIN, got ${adminJwt.role}` : (!adminBlockedOnOwner ? 'Admin not blocked on owner route' : undefined),
-    });
+    const originalGetByEmail = adminDb.getByEmail;
+    adminDb.getByEmail = async (email: string) => {
+      if (email.toLowerCase().trim() === 'admin@sola.com') {
+        return {
+          id: '00000000-0000-0000-0000-000000000001',
+          email: 'admin@sola.com',
+          passwordHash: testAdminHash,
+          fullName: 'مسئول منصة صولا',
+          role: 'ADMIN',
+          isActive: true,
+        };
+      }
+      return null;
+    };
+    try {
+      const adminLoginRes = await authService.adminLogin('admin@sola.com', testAdminPassword);
+      const adminJwt = verifyAccessToken(adminLoginRes.tokens.accessToken);
+      const isAdminRole = adminJwt.role === 'ROLE_ADMIN';
+      const adminBlockedOnOwner = (await app.handleHttpRequest('GET', '/api/v1/owner/properties', { authorization: `Bearer ${adminLoginRes.tokens.accessToken}` })).statusCode === 403;
+      results.push({
+        name: 'AUTH-02B1 [12]: Admin authentication isolated in admin_users, signs ROLE_ADMIN, blocked on Owner routes',
+        passed: isAdminRole && adminBlockedOnOwner,
+        error: !isAdminRole ? `Expected ROLE_ADMIN, got ${adminJwt.role}` : (!adminBlockedOnOwner ? 'Admin not blocked on owner route' : undefined),
+      });
+    } finally {
+      adminDb.getByEmail = originalGetByEmail;
+    }
   } catch (err: any) {
     results.push({ name: 'AUTH-02B1 [12]: Admin Authentication Isolation', passed: false, error: err.message });
   }

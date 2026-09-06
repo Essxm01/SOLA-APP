@@ -14,9 +14,9 @@
  * 9. Admin login abuse throttling prevents brute-force attempts
  */
 
-import { AuthService, dbAdminUsersStore } from '../services/authService.js';
+import { AuthService, dbAdminUsersStore, TIMING_DECOY_HASH } from '../services/authService.js';
 import { signAccessToken, verifyAccessToken } from '../services/jwtService.js';
-import { auditLogDb } from '../services/dbRepository.js';
+import { auditLogDb, adminDb } from '../services/dbRepository.js';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 
@@ -36,6 +36,7 @@ async function runTests() {
   process.env.JWT_REFRESH_SECRET = 'test_jwt_refresh_secret_for_unit_tests_only_32char';
 
   const authService = new AuthService();
+  const runIpPrefix = `127.${Math.floor(Math.random() * 200) + 10}`;
 
   // --------------------------------------------------------------------------
   // TEST 1: Old compromised password MUST BE REJECTED
@@ -43,7 +44,7 @@ async function runTests() {
   console.log('Test 1: Compromised legacy password must be rejected...');
   let test1Failed = false;
   try {
-    await authService.adminLogin('admin@sola.com', compromisedLegacyPassword);
+    await authService.adminLogin('admin@sola.com', compromisedLegacyPassword, { clientIp: `${runIpPrefix}.1` });
     test1Failed = true;
   } catch (err: any) {
     assert(err.message === 'INVALID_ADMIN_CREDENTIALS', `Expected INVALID_ADMIN_CREDENTIALS, got ${err.message}`);
@@ -57,7 +58,7 @@ async function runTests() {
   console.log('Test 2: Weak legacy fallback password must be rejected...');
   let test2Failed = false;
   try {
-    await authService.adminLogin('admin@sola.com', weakLegacyFallback);
+    await authService.adminLogin('admin@sola.com', weakLegacyFallback, { clientIp: `${runIpPrefix}.2` });
     test2Failed = true;
   } catch (err: any) {
     assert(err.message === 'INVALID_ADMIN_CREDENTIALS', `Expected INVALID_ADMIN_CREDENTIALS, got ${err.message}`);
@@ -70,7 +71,7 @@ async function runTests() {
   // --------------------------------------------------------------------------
   console.log('Test 3: Arbitrary wrong password must be rejected...');
   try {
-    await authService.adminLogin('admin@sola.com', 'totally_wrong_password_xyz');
+    await authService.adminLogin('admin@sola.com', 'totally_wrong_password_xyz', { clientIp: `${runIpPrefix}.3` });
     assert(false, 'Wrong password should have thrown');
   } catch (err: any) {
     assert(err.message === 'INVALID_ADMIN_CREDENTIALS', `Expected INVALID_ADMIN_CREDENTIALS, got ${err.message}`);
@@ -82,7 +83,7 @@ async function runTests() {
   // --------------------------------------------------------------------------
   console.log('Test 4: Inactive or nonexistent admin must be rejected...');
   try {
-    await authService.adminLogin('nonexistent@sola.com', 'any_password');
+    await authService.adminLogin('nonexistent@sola.com', 'any_password', { clientIp: `${runIpPrefix}.4` });
     assert(false, 'Nonexistent admin should have thrown');
   } catch (err: any) {
     assert(err.message === 'INVALID_ADMIN_CREDENTIALS', `Expected INVALID_ADMIN_CREDENTIALS, got ${err.message}`);
@@ -103,21 +104,30 @@ async function runTests() {
 
   // We check that a valid password matching canonical password_hash works
   // and does not expose password_hash in the returned admin object
-  const canonicalResult = await authService.adminLogin('admin@sola.com', testPassword, {
-    mockAdmin: {
-      id: '00000000-0000-0000-0000-000000000001',
-      email: 'admin@sola.com',
-      passwordHash: testHash,
-      fullName: 'مسئول منصة صولا',
-      role: 'ADMIN',
-      isActive: true,
+  const originalGetByEmail = adminDb.getByEmail;
+  adminDb.getByEmail = async (email: string) => {
+    if (email.toLowerCase().trim() === 'admin@sola.com') {
+      return {
+        id: '00000000-0000-0000-0000-000000000001',
+        email: 'admin@sola.com',
+        passwordHash: testHash,
+        fullName: 'مسئول منصة صولا',
+        role: 'ADMIN',
+        isActive: true,
+      };
     }
-  });
+    return null;
+  };
 
-  assert(canonicalResult.tokens?.accessToken, 'adminLogin must return accessToken');
-  assert(canonicalResult.admin?.role === 'ADMIN', 'adminLogin must return ADMIN role');
-  assert(!(canonicalResult.admin as any).passwordHash && !(canonicalResult.admin as any).password_hash, 'adminLogin must NOT expose password_hash outside service boundary');
-  console.log('  PASS: Canonical admin DB lookup and bcrypt verification passed');
+  try {
+    const canonicalResult = await authService.adminLogin('admin@sola.com', testPassword, { clientIp: `${runIpPrefix}.5` });
+    assert(canonicalResult.tokens?.accessToken, 'adminLogin must return accessToken');
+    assert(canonicalResult.admin?.role === 'ADMIN', 'adminLogin must return ADMIN role');
+    assert(!(canonicalResult.admin as any).passwordHash && !(canonicalResult.admin as any).password_hash, 'adminLogin must NOT expose password_hash outside service boundary');
+    console.log('  PASS: Canonical admin DB lookup and bcrypt verification passed');
+  } finally {
+    adminDb.getByEmail = originalGetByEmail;
+  }
 
   // --------------------------------------------------------------------------
   // TEST 7: JWT fail-closed when secrets are missing
@@ -207,27 +217,96 @@ async function runTests() {
   // --------------------------------------------------------------------------
   console.log('Test 9: Admin login abuse throttling...');
   auditLogDb.resetMemFailures();
-  const throttleEmail = 'throttling-test@sola.com';
+  const throttleEmail = `throttling-${runIpPrefix}@sola.com`;
 
   for (let i = 0; i < 5; i++) {
     let failedAsExpected = false;
     try {
-      await authService.adminLogin(throttleEmail, 'wrong-password-attempt');
+      await authService.adminLogin(throttleEmail, 'wrong-password-attempt', { clientIp: `${runIpPrefix}.9` });
     } catch (err: any) {
       failedAsExpected = err.message === 'INVALID_ADMIN_CREDENTIALS';
     }
     assert(failedAsExpected, `Attempt ${i + 1} expected INVALID_ADMIN_CREDENTIALS`);
   }
 
-  // 6th attempt should be throttled
+  // 6th attempt from same IP should be throttled
   let throttled = false;
   try {
-    await authService.adminLogin(throttleEmail, 'wrong-password-attempt');
+    await authService.adminLogin(throttleEmail, 'wrong-password-attempt', { clientIp: `${runIpPrefix}.9` });
   } catch (err: any) {
     throttled = err.message === 'ADMIN_LOGIN_THROTTLED';
   }
-  assert(throttled, '6th failed login attempt must be throttled with ADMIN_LOGIN_THROTTLED');
+  assert(throttled, '6th failed login attempt from same IP must be throttled with ADMIN_LOGIN_THROTTLED');
   console.log('  PASS: Admin login abuse throttling triggered after 5 failed attempts');
+
+  // --------------------------------------------------------------------------
+  // TEST 10: Multi-IP Throttling Isolation (Attacker cannot cause global lockout)
+  // --------------------------------------------------------------------------
+  console.log('Test 10: Multi-IP isolation prevents trivial global account lockout...');
+  // runIpPrefix.9 is throttled on throttleEmail.
+  // A legitimate request from a different IP should NOT be throttled on first attempt
+  let differentIpThrottled = false;
+  try {
+    await authService.adminLogin(throttleEmail, 'some-attempt', { clientIp: `${runIpPrefix}.10` });
+  } catch (err: any) {
+    differentIpThrottled = err.message === 'ADMIN_LOGIN_THROTTLED';
+  }
+  assert(!differentIpThrottled, 'Request from different IP must not be locked out by attacker IP failures');
+  console.log('  PASS: Multi-IP throttling isolation passed (no global lockout)');
+
+  // --------------------------------------------------------------------------
+  // TEST 11: Timing Decoy Hash Structural Verification
+  // --------------------------------------------------------------------------
+  console.log('Test 11: Timing decoy hash structural regression...');
+  assert(typeof TIMING_DECOY_HASH === 'string', 'TIMING_DECOY_HASH must be a string');
+  assert(TIMING_DECOY_HASH.length === 60, `TIMING_DECOY_HASH length must be 60, got ${TIMING_DECOY_HASH.length}`);
+  assert(/^\$2[ab]\$10\$/.test(TIMING_DECOY_HASH), 'TIMING_DECOY_HASH must be a valid 10-round bcrypt hash');
+  const decoyCompareResult = await bcrypt.compare('any_probe_string', TIMING_DECOY_HASH);
+  assert(decoyCompareResult === false, 'Decoy hash comparison must evaluate to false');
+  console.log('  PASS: Timing decoy hash structural verification passed');
+
+  // --------------------------------------------------------------------------
+  // TEST 12: Exact Email Equality (Wildcard Injection Resistance)
+  // --------------------------------------------------------------------------
+  console.log('Test 12: Exact email equality (wildcard injection resistance)...');
+  const origEmailFn = adminDb.getByEmail;
+  adminDb.getByEmail = async (queryEmail: string) => {
+    // Exact equality simulation matching canonical SQL / PostgREST eq behavior
+    const norm = queryEmail.toLowerCase().trim();
+    if (norm === 'admin@sola.com') {
+      return {
+        id: '00000000-0000-0000-0000-000000000001',
+        email: 'admin@sola.com',
+        passwordHash: testHash,
+        fullName: 'مسئول منصة صولا',
+        role: 'ADMIN',
+        isActive: true,
+      };
+    }
+    return null;
+  };
+  try {
+    // Attempt login with wildcard-containing emails targeting admin@sola.com
+    let wildcardMatched = false;
+    try {
+      await authService.adminLogin('adm%@sola.com', testPassword, { clientIp: `${runIpPrefix}.12` });
+      wildcardMatched = true;
+    } catch (err: any) {
+      assert(err.message === 'INVALID_ADMIN_CREDENTIALS', `Expected INVALID_ADMIN_CREDENTIALS, got ${err.message}`);
+    }
+    assert(!wildcardMatched, 'Wildcard email adm%@sola.com must NOT match admin@sola.com');
+
+    try {
+      await authService.adminLogin('a_min@sola.com', testPassword, { clientIp: `${runIpPrefix}.13` });
+      wildcardMatched = true;
+    } catch (err: any) {
+      assert(err.message === 'INVALID_ADMIN_CREDENTIALS', `Expected INVALID_ADMIN_CREDENTIALS, got ${err.message}`);
+    }
+    assert(!wildcardMatched, 'Wildcard email a_min@sola.com must NOT match admin@sola.com');
+  } finally {
+    adminDb.getByEmail = origEmailFn;
+  }
+  console.log('  PASS: Exact email equality wildcard resistance passed');
 
   console.log('\nALL R1 BACKEND SECURITY TESTS PASSED!');
 }

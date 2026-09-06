@@ -5,6 +5,7 @@
  */
 
 import { queryDb } from './dbClient.js';
+import { isProductionDatabase } from '../utils/testDbGuard.js';
 import { GLOBAL_MIN_STAY_NIGHTS, GLOBAL_MAX_STAY_NIGHTS, BLOCKING_BOOKING_STATUSES } from '../constants/bookingRules.js';
 import { PublicPropertySearchFilters, validatePublicPropertyBaseRow } from '../contracts/publicProperty.js';
 
@@ -1687,38 +1688,61 @@ export const auditLogDb = {
     actorRole?: string | null;
     payload?: Record<string, any>;
   }): Promise<void> {
+    const now = Date.now();
     if (entry.entityType === 'ADMIN_AUTH' && entry.action === 'ADMIN_LOGIN_FAILED' && entry.payload?.key) {
-      this._memFailures.push({ key: entry.payload.key, timestamp: Date.now() });
+      // Prune entries older than 15 minutes and cap isolate memory to 500 records
+      const cutoff = now - 15 * 60 * 1000;
+      this._memFailures = this._memFailures.filter(f => f.timestamp >= cutoff);
+      this._memFailures.push({ key: entry.payload.key, timestamp: now });
+      if (this._memFailures.length > 500) {
+        this._memFailures = this._memFailures.slice(-500);
+      }
     }
-    await queryDb(
-      `INSERT INTO audit_logs (id, entity_type, entity_id, action, actor_id, actor_role, payload, created_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())`,
-      [
-        crypto.randomUUID(),
-        entry.entityType,
-        entry.entityId || null,
-        entry.action,
-        entry.actorId || null,
-        entry.actorRole || null,
-        JSON.stringify(entry.payload || {})
-      ]
-    ).catch(() => {});
+
+    try {
+      await queryDb(
+        `INSERT INTO audit_logs (id, entity_type, entity_id, action, actor_id, actor_role, payload, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())`,
+        [
+          crypto.randomUUID(),
+          entry.entityType,
+          entry.entityId || '00000000-0000-0000-0000-000000000000',
+          entry.action,
+          entry.actorId || '00000000-0000-0000-0000-000000000000',
+          entry.actorRole || 'UNKNOWN',
+          JSON.stringify(entry.payload || {})
+        ]
+      );
+    } catch (err: any) {
+      if (isProductionDatabase()) {
+        throw new Error(`AUDIT_LOG_PERSISTENCE_FAILED: ${err.message}`);
+      }
+    }
   },
 
   async countRecentFailedLogins(key: string, windowMinutes: number = 15): Promise<number> {
-    const cutoff = Date.now() - windowMinutes * 60 * 1000;
-    const memCount = this._memFailures.filter(f => f.key === key && f.timestamp >= cutoff).length;
+    const now = Date.now();
+    const cutoff = now - windowMinutes * 60 * 1000;
+    this._memFailures = this._memFailures.filter(f => f.timestamp >= cutoff);
+    const memCount = this._memFailures.filter(f => f.key === key).length;
 
-    const res = await queryDb(
-      `SELECT COUNT(*) AS count
-       FROM audit_logs
-       WHERE entity_type = 'ADMIN_AUTH'
-         AND action = 'ADMIN_LOGIN_FAILED'
-         AND created_at > NOW() - ($1 || ' minutes')::interval
-         AND payload->>'key' = $2`,
-      [String(windowMinutes), key]
-    ).catch(() => ({ rows: [{ count: 0 }] }));
-    const dbCount = parseInt(res.rows[0]?.count || '0', 10);
+    let dbCount = 0;
+    try {
+      const res = await queryDb(
+        `SELECT COUNT(*) AS count
+         FROM audit_logs
+         WHERE entity_type = 'ADMIN_AUTH'
+           AND action = 'ADMIN_LOGIN_FAILED'
+           AND created_at > NOW() - ($1 || ' minutes')::interval
+           AND payload->>'key' = $2`,
+        [String(windowMinutes), key]
+      );
+      dbCount = parseInt(res.rows[0]?.count || '0', 10);
+    } catch (err: any) {
+      if (isProductionDatabase()) {
+        throw new Error(`THROTTLE_PERSISTENCE_CHECK_FAILED: ${err.message}`);
+      }
+    }
     return Math.max(memCount, dbCount);
   },
 

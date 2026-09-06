@@ -145,9 +145,9 @@ export class AuthController {
     }
   }
 
-  async adminLogin(email: string, password_raw: string): Promise<ApiSuccessResponse<any> | ApiErrorResponse> {
+  async adminLogin(email: string, password_raw: string, clientIp?: string): Promise<ApiSuccessResponse<any> | ApiErrorResponse> {
     try {
-      const result = await this.authService.adminLogin(email, password_raw);
+      const result = await this.authService.adminLogin(email, password_raw, { clientIp });
       return {
         success: true,
         data: result,

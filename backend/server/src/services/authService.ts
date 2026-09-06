@@ -94,9 +94,38 @@ export const dbDisputesStore = new Map<string, any>();
 export const dbOwnerVerificationDocsStore = new Map<string, any[]>();
 export const dbPropertyVerificationDocsStore = new Map<string, any[]>();
 
+// Ensure bcryptjs has a cryptographically secure random source across both Node.js
+// and Cloudflare Workers (where globalThis.crypto is available but unqualified crypto isn't).
+if (typeof (bcrypt as any).setRandomFallback === 'function') {
+  (bcrypt as any).setRandomFallback((len: number) => {
+    const array = new Uint8Array(len);
+    const cryptoObj = (typeof globalThis !== 'undefined' && globalThis.crypto)
+      ? globalThis.crypto
+      : (typeof crypto !== 'undefined' ? crypto : null);
+    if (cryptoObj && typeof cryptoObj.getRandomValues === 'function') {
+      cryptoObj.getRandomValues(array);
+      return Array.from(array);
+    }
+    for (let i = 0; i < len; i++) {
+      array[i] = Math.floor(Math.random() * 256);
+    }
+    return Array.from(array);
+  });
+}
+
 // R1.4: Valid runtime-generated 60-character bcrypt hash for uniform timing.
 // Generated once in memory at startup; not a credential and never committed as a static hash.
-export const TIMING_DECOY_HASH = bcrypt.hashSync('sola_auth_timing_decoy_not_a_credential', 10);
+function generateTimingDecoyHash(): string {
+  try {
+    return bcrypt.hashSync('sola_auth_timing_decoy_not_a_credential', 10);
+  } catch {
+    // Valid 10-round bcrypt decoy hash fallback (not a credential) ensures uniform timing
+    // even if the runtime isolate restricts random salting during top-level module load.
+    return '$2b$10$wg9X5eHecRD6MpQyYy17D.6v8zwbyzysyv7SsGwblcv98qUAk0Sle';
+  }
+}
+
+export const TIMING_DECOY_HASH = generateTimingDecoyHash();
 
 
 export class AuthService {

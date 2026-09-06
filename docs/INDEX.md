@@ -22,8 +22,11 @@ Read these selectively after the default recovery sequence. They govern planning
 | Document | Read when | Usually skip when |
 | --- | --- | --- |
 | [codex/KONFRM_MASTER_RULES.md](./codex/KONFRM_MASTER_RULES.md) | Every approved execution task; source conflicts; phase authority | Never skip before implementation; it is part of the mandatory core refresh |
-| [codex/KONFRM_FOUNDER_OPERATING_CONTEXT.md](./codex/KONFRM_FOUNDER_OPERATING_CONTEXT.md) | Founder working style, agent delegation, stop conditions, or executive priorities | Pure isolated unit test fixes with defined specs |
-| [../KONFRM_EXECUTION_DEPENDENCY_ORDER.md](../KONFRM_EXECUTION_DEPENDENCY_ORDER.md) | Macro phase sequencing, dependency prerequisites, or Phase 3 closure gates | Working inside an already-approved micro task |
+| [codex/KONFRM_FOUNDER_OPERATING_CONTEXT.md](./codex/KONFRM_FOUNDER_OPERATING_CONTEXT.md) | Founder delegation envelope, resource model, Phase 4–7 authority, or executive operating boundaries | Pure isolated unit test fixes with defined specs |
+| [codex/KONFRM_FOUNDER_OPERATING_PROFILE.md](./codex/KONFRM_FOUNDER_OPERATING_PROFILE.md) | Day-to-day communication style, prompt construction, agent routing, risk overrides, or Founder interaction preferences | Deep technical implementation with all interaction constraints already loaded |
+| [codex/KONFRM_FOUNDER_DEEP_OPERATING_PROFILE.md](./codex/KONFRM_FOUNDER_DEEP_OPERATING_PROFILE.md) | New AI onboarding, Founder work-style recovery, communication calibration, UX collaboration, decision behavior, or repeated agent-friction analysis | Ordinary bounded execution after the concise operating profile is already understood |
+| [../KONFRM_EXECUTION_DEPENDENCY_ORDER.md](../KONFRM_EXECUTION_DEPENDENCY_ORDER.md) | Macro phase sequencing, dependency prerequisites, or phase-order questions | Working inside an already-approved micro task |
+| [../tasks/POST_PHASE_7_DEFERRED_CLOSURE.md](../tasks/POST_PHASE_7_DEFERRED_CLOSURE.md) | Phase 4–7 work, Phase 7 closure, pre-Phase-8 gate, deferred R2–R5, or Admin password-reset dependency | Tasks unrelated to Phase 4–8 sequencing |
 | [codex/KONFRM_CURRENT_REALITY.md](./codex/KONFRM_CURRENT_REALITY.md) | Assessing whether a feature is actually verified, partial, or only historically claimed | A local change with fresh direct evidence |
 | [codex/KONFRM_EXECUTION_MAP.md](./codex/KONFRM_EXECUTION_MAP.md) | Inspecting detailed 75 micro-execution boundaries and validation gates | Completing an already-approved narrow task |
 | [codex/KONFRM_COMPLETION_MATRIX.md](./codex/KONFRM_COMPLETION_MATRIX.md) | Checking cross-app readiness, dependencies, or acceptance gaps | Isolated documentation-only work |
@@ -40,6 +43,7 @@ Read these selectively after the default recovery sequence. They govern planning
 - [`../DESIGN_SYSTEM/`](../DESIGN_SYSTEM/) is the detailed visual and product-experience authority; read its router before UI work.
 - [`../backend/database/migrations/`](../backend/database/migrations/) is migration history and is the technical source for database changes.
 - [`../tasks/CURRENT_TASK.md`](../tasks/CURRENT_TASK.md) is the one active execution contract, not permanent knowledge.
+- [`../tasks/POST_PHASE_7_DEFERRED_CLOSURE.md`](../tasks/POST_PHASE_7_DEFERRED_CLOSURE.md) is the mandatory post-Phase-7/pre-Phase-8 return gate created by explicit Founder sequencing override.
 
 ## Historical/reference material
 

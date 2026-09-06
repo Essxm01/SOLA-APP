@@ -1626,3 +1626,103 @@ export const favoriteDb = {
     );
   },
 };
+
+// ----------------------------------------------------------------------------
+// 15. ADMIN USERS REPOSITORY (R1 Canonical Authentication)
+// ----------------------------------------------------------------------------
+export interface AdminUserRecord {
+  id: string;
+  email: string;
+  passwordHash: string;
+  fullName: string;
+  role: 'SUPER_ADMIN' | 'ADMIN' | 'FINANCE_ADMIN';
+  isActive: boolean;
+  createdAt?: string;
+}
+
+export const adminDb = {
+  async getByEmail(email: string): Promise<AdminUserRecord | null> {
+    const normalizedEmail = email.toLowerCase().trim();
+    const res = await queryDb(
+      `SELECT id, email, password_hash AS "passwordHash", full_name AS "fullName", role, is_active AS "isActive", created_at AS "createdAt"
+       FROM admin_users
+       WHERE LOWER(email) = $1
+       LIMIT 1`,
+      [normalizedEmail]
+    );
+    return res.rows[0] || null;
+  },
+
+  async getById(id: string): Promise<AdminUserRecord | null> {
+    const res = await queryDb(
+      `SELECT id, email, password_hash AS "passwordHash", full_name AS "fullName", role, is_active AS "isActive", created_at AS "createdAt"
+       FROM admin_users
+       WHERE id = $1
+       LIMIT 1`,
+      [id]
+    );
+    return res.rows[0] || null;
+  },
+
+  async updatePasswordHash(id: string, newPasswordHash: string): Promise<boolean> {
+    const res = await queryDb(
+      `UPDATE admin_users SET password_hash = $2 WHERE id = $1 RETURNING id`,
+      [id, newPasswordHash]
+    );
+    return (res.rowCount || 0) > 0;
+  }
+};
+
+// ----------------------------------------------------------------------------
+// 16. AUDIT LOGS REPOSITORY (R1 Abuse Protection & Persistent Throttling)
+// ----------------------------------------------------------------------------
+export const auditLogDb = {
+  _memFailures: [] as Array<{ key: string; timestamp: number }>,
+
+  async record(entry: {
+    entityType: string;
+    entityId?: string | null;
+    action: string;
+    actorId?: string | null;
+    actorRole?: string | null;
+    payload?: Record<string, any>;
+  }): Promise<void> {
+    if (entry.entityType === 'ADMIN_AUTH' && entry.action === 'ADMIN_LOGIN_FAILED' && entry.payload?.key) {
+      this._memFailures.push({ key: entry.payload.key, timestamp: Date.now() });
+    }
+    await queryDb(
+      `INSERT INTO audit_logs (id, entity_type, entity_id, action, actor_id, actor_role, payload, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())`,
+      [
+        crypto.randomUUID(),
+        entry.entityType,
+        entry.entityId || null,
+        entry.action,
+        entry.actorId || null,
+        entry.actorRole || null,
+        JSON.stringify(entry.payload || {})
+      ]
+    ).catch(() => {});
+  },
+
+  async countRecentFailedLogins(key: string, windowMinutes: number = 15): Promise<number> {
+    const cutoff = Date.now() - windowMinutes * 60 * 1000;
+    const memCount = this._memFailures.filter(f => f.key === key && f.timestamp >= cutoff).length;
+
+    const res = await queryDb(
+      `SELECT COUNT(*) AS count
+       FROM audit_logs
+       WHERE entity_type = 'ADMIN_AUTH'
+         AND action = 'ADMIN_LOGIN_FAILED'
+         AND created_at > NOW() - ($1 || ' minutes')::interval
+         AND payload->>'key' = $2`,
+      [String(windowMinutes), key]
+    ).catch(() => ({ rows: [{ count: 0 }] }));
+    const dbCount = parseInt(res.rows[0]?.count || '0', 10);
+    return Math.max(memCount, dbCount);
+  },
+
+  resetMemFailures(): void {
+    this._memFailures = [];
+  }
+};

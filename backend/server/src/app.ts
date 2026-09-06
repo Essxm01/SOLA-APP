@@ -12,7 +12,7 @@ import { calculateBookingFinancials, validatePayoutRequest, roundHalfEvenInCents
 import { verifyJwtToken, requireRole } from './middleware/auth.js';
 import { applyCorsHeaders } from './middleware/cors.js';
 import { dbUsersStore, dbOwnersStore, dbAdminUsersStore, dbNotificationsStore, dbOwnerVerificationDocsStore, dbPropertyVerificationDocsStore, dbPropertiesStore, dbBookingsStore, dbPayoutRequestsStore, dbDisputesStore } from './services/authService.js';
-import { userDb, ownerDb, propertyDb, bookingDb, conversationDb, messageDb, isBookingChatEligible, payoutDb, disputeDb, notificationDb, imageDb, uploadIntentDb, adminStatsDb, walletDb, propertyAvailabilityDb, getUnifiedUnavailableBlocks, favoriteDb } from './services/dbRepository.js';
+import { userDb, ownerDb, propertyDb, bookingDb, conversationDb, messageDb, isBookingChatEligible, payoutDb, disputeDb, notificationDb, imageDb, uploadIntentDb, adminStatsDb, walletDb, propertyAvailabilityDb, getUnifiedUnavailableBlocks, favoriteDb, adminDb } from './services/dbRepository.js';
 import { paymentTxDb, PaymentService, PaymobGateway, verifyPaymobHmacSha512, getPaymentMode } from './services/paymentService.js';
 import { createStorageProvider, IObjectStorageProvider, verifyMagicBytes, computeSha256 } from './services/storageProvider.js';
 import { GLOBAL_MIN_STAY_NIGHTS, GLOBAL_MAX_STAY_NIGHTS, hasDateRangeOverlap, validateStayLength } from './constants/bookingRules.js';
@@ -273,7 +273,8 @@ export class ExpressServerApp {
 
       if (path === '/api/v1/admin/auth/login' && method === 'POST') {
         const response = await this.authController.adminLogin(bodyPayload?.email, bodyPayload?.password);
-        return { statusCode: response.success ? 200 : 401, body: response };
+        const statusCode = response.success ? 200 : (response.error?.code === 'ADMIN_LOGIN_THROTTLED' ? 429 : 401);
+        return { statusCode, body: response };
       }
 
       // ----------------------------------------------------------------------
@@ -1757,7 +1758,10 @@ export class ExpressServerApp {
         // persisted access token against the existing canonical Admin
         // identity model before rendering the operational shell.
         if (path === '/api/v1/admin/auth/session' && method === 'GET') {
-          const admin = Array.from(dbAdminUsersStore.values()).find((candidate) => candidate.id === adminId && candidate.isActive);
+          const dbAdmin = await adminDb.getById(adminId).catch(() => null);
+          const admin = (dbAdmin && dbAdmin.isActive)
+            ? dbAdmin
+            : Array.from(dbAdminUsersStore.values()).find((candidate) => candidate.id === adminId && candidate.isActive);
           if (!admin) {
             return {
               statusCode: 401,

@@ -9,6 +9,7 @@ import { AuthService, dbUsersStore, dbOwnersStore, type UserRecord, type OwnerRe
 import { userDb, ownerDb } from '../services/dbRepository.js';
 import { normalizePhoneNumber } from '../utils/phoneNormalizer.js';
 import { verifyAccessToken } from '../services/jwtService.js';
+import bcrypt from 'bcryptjs';
 import type { TestResult } from './authSecurity.test.js';
 
 export async function runSharedIdentityResolutionSuite(): Promise<{ total: number; passed: number; failed: number; results: TestResult[] }> {
@@ -278,7 +279,18 @@ export async function runSharedIdentityResolutionSuite(): Promise<{ total: numbe
   // TEST 12: Admin Authentication Remains Fully Isolated
   // --------------------------------------------------------------------------
   try {
-    const adminLoginRes = await authService.adminLogin('admin@sola.com', 'AdminPassword2026!');
+    const testAdminPassword = 'TestAdminPassword123!Secure';
+    const testAdminHash = bcrypt.hashSync(testAdminPassword, 8);
+    const adminLoginRes = await authService.adminLogin('admin@sola.com', testAdminPassword, {
+      mockAdmin: {
+        id: '00000000-0000-0000-0000-000000000001',
+        email: 'admin@sola.com',
+        passwordHash: testAdminHash,
+        fullName: 'مسئول منصة صولا',
+        role: 'ADMIN',
+        isActive: true,
+      },
+    });
     const adminJwt = verifyAccessToken(adminLoginRes.tokens.accessToken);
     const isAdminRole = adminJwt.role === 'ROLE_ADMIN';
     const adminBlockedOnOwner = (await app.handleHttpRequest('GET', '/api/v1/owner/properties', { authorization: `Bearer ${adminLoginRes.tokens.accessToken}` })).statusCode === 403;

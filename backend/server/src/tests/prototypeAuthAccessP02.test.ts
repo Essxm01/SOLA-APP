@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { ExpressServerApp } from '../app.js';
 import { verifyAccessToken, signAccessToken } from '../services/jwtService.js';
-import { bookingDb, ownerDb } from '../services/dbRepository.js';
+import { bookingDb, ownerDb, adminDb } from '../services/dbRepository.js';
 
 async function run() {
   const app = new ExpressServerApp();
@@ -22,10 +22,17 @@ async function run() {
   assert.equal((await app.handleHttpRequest('GET', '/api/v1/admin/auth/session')).statusCode, 401, 'Admin routes must reject missing credentials');
   assert.equal((await app.handleHttpRequest('GET', '/api/v1/admin/auth/session', { authorization: `Bearer ${ownerToken}` })).statusCode, 403, 'Owner role must not access Admin session validation');
   assert.equal((await app.handleHttpRequest('GET', '/api/v1/owner/profile', { authorization: `Bearer ${customerToken}` })).statusCode, 403, 'Customer role must not access Owner profile');
-  assert.equal((await app.handleHttpRequest('GET', '/api/v1/admin/auth/session', { authorization: `Bearer ${adminToken}` })).statusCode, 200, 'a signed canonical Admin token must validate');
-
+  const originalAdmin = adminDb.getById;
   const originalOwner = ownerDb.getById;
   const originalBookings = bookingDb.getByCustomerId;
+  (adminDb as any).getById = async (id: string) => id === '00000000-0000-0000-0000-000000000001' ? {
+    id: '00000000-0000-0000-0000-000000000001',
+    email: 'admin@sola.com',
+    passwordHash: '$2b$10$abcdefghijklmnopqrstuvABCDEFGH1234567890123456789012',
+    fullName: 'مسئول منصة صولا',
+    role: 'ADMIN',
+    isActive: true,
+  } : null;
   (ownerDb as any).getById = async (id: string) => id === ownerId ? {
     id: ownerId,
     phoneNumber: '+201013154939',
@@ -43,9 +50,11 @@ async function run() {
     return [];
   };
   try {
+    assert.equal((await app.handleHttpRequest('GET', '/api/v1/admin/auth/session', { authorization: `Bearer ${adminToken}` })).statusCode, 200, 'a signed canonical Admin token must validate');
     assert.equal((await app.handleHttpRequest('GET', '/api/v1/owner/profile', { authorization: `Bearer ${ownerToken}` })).statusCode, 200, 'a signed Owner token must resolve only its canonical Owner profile');
     assert.equal((await app.handleHttpRequest('GET', '/api/v1/customer/bookings', { authorization: `Bearer ${customerToken}` })).statusCode, 200, 'Customer bookings must use the verified JWT subject rather than a client identity');
   } finally {
+    (adminDb as any).getById = originalAdmin;
     (ownerDb as any).getById = originalOwner;
     (bookingDb as any).getByCustomerId = originalBookings;
   }

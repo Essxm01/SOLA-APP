@@ -154,11 +154,20 @@ export class AuthController {
         timestamp: new Date().toISOString(),
       };
     } catch (err: any) {
+      const rawCode = err.message || 'INVALID_ADMIN_CREDENTIALS';
+      const code = rawCode === 'ADMIN_LOGIN_THROTTLED'
+        ? 'ADMIN_LOGIN_THROTTLED'
+        : (rawCode === 'MISSING_EMAIL_OR_PASSWORD' ? 'MISSING_EMAIL_OR_PASSWORD' : 'INVALID_ADMIN_CREDENTIALS');
+      const message = code === 'ADMIN_LOGIN_THROTTLED'
+        ? 'تم تجاوز الحد المسموح لمحاولات تسجيل الدخول. يرجى الانتظار 15 دقيقة.'
+        : (code === 'MISSING_EMAIL_OR_PASSWORD'
+          ? 'يرجى إدخال البريد الإلكتروني وكلمة المرور'
+          : 'اسم المستخدم أو كلمة المرور غير صحيحة');
       return {
         success: false,
         error: {
-          code: err.message || 'INVALID_ADMIN_CREDENTIALS',
-          message: 'اسم المستخدم أو كلمة المرور غير صحيحة',
+          code,
+          message,
         },
         timestamp: new Date().toISOString(),
       };

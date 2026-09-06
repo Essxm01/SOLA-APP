@@ -8,6 +8,7 @@ import { AuthService } from '../services/authService.js';
 import { verifyAccessToken, verifyRefreshToken } from '../services/jwtService.js';
 import { ExpressServerApp } from '../app.js';
 import { dbUsersStore, dbOwnersStore } from '../services/authService.js';
+import bcrypt from 'bcryptjs';
 import type { TestResult } from './authSecurity.test.js';
 
 export async function runAuth02b2ReliabilitySuite(): Promise<{ total: number; passed: number; failed: number; results: TestResult[] }> {
@@ -224,7 +225,18 @@ export async function runAuth02b2ReliabilitySuite(): Promise<{ total: number; pa
   // Test 8: Admin Authentication remains completely isolated in admin_users / signs ROLE_ADMIN
   try {
     const authService = new AuthService();
-    const adminResult = await authService.adminLogin('admin@sola.com', 'AdminPassword2026!');
+    const testAdminPassword = 'TestAdminPassword123!Secure';
+    const testAdminHash = bcrypt.hashSync(testAdminPassword, 8);
+    const adminResult = await authService.adminLogin('admin@sola.com', testAdminPassword, {
+      mockAdmin: {
+        id: '00000000-0000-0000-0000-000000000001',
+        email: 'admin@sola.com',
+        passwordHash: testAdminHash,
+        fullName: 'مسئول منصة صولا',
+        role: 'ADMIN',
+        isActive: true,
+      },
+    });
     const decoded = verifyAccessToken(adminResult.tokens.accessToken);
 
     const pass = decoded.role === 'ROLE_ADMIN' && adminResult.admin.email === 'admin@sola.com';

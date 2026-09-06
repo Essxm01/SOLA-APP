@@ -462,6 +462,7 @@ async function run() {
         currency: 'EGP',
         images: ['https://storage.sola.eg/p1.jpg'],
         amenities: ['pool'],
+        houseRules: {},
       },
     }),
     testUrl
@@ -503,6 +504,10 @@ async function run() {
     { label: 'negative basePricePerNight', patch: { basePricePerNight: -100 } },
     { label: 'missing basePricePerNight', patch: { basePricePerNight: undefined } },
     { label: 'wrong currency', patch: { currency: 'USD' } },
+    { label: 'missing currency', patch: { currency: undefined } },
+    { label: 'null currency', patch: { currency: null } },
+    { label: 'missing houseRules', patch: { houseRules: undefined } },
+    { label: 'null houseRules', patch: { houseRules: null } },
     { label: 'images not array', patch: { images: 'not-an-array' } },
     { label: 'images containing empty string', patch: { images: [''] } },
     { label: 'images containing non-string', patch: { images: [123] } },

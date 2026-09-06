@@ -148,9 +148,10 @@ export function validateCustomerPropertyDetail(raw: any, expectedId?: string): C
     throw new Error('MALFORMED_CANONICAL_PROPERTY_DETAIL: basePricePerNight must be a positive number');
   }
 
-  if (raw.currency !== undefined && raw.currency !== 'EGP') {
-    throw new Error(`MALFORMED_CANONICAL_PROPERTY_DETAIL: currency must be "EGP", received "${raw.currency}"`);
+  if (raw.currency !== 'EGP') {
+    throw new Error(`MALFORMED_CANONICAL_PROPERTY_DETAIL: currency is required and must be "EGP", received "${raw.currency}"`);
   }
+  const currency: 'EGP' = 'EGP';
 
   if (!Array.isArray(raw.images)) {
     throw new Error('MALFORMED_CANONICAL_PROPERTY_DETAIL: images must be an array');
@@ -206,13 +207,10 @@ export function validateCustomerPropertyDetail(raw: any, expectedId?: string): C
     throw new Error(`MALFORMED_CANONICAL_PROPERTY_DETAIL: amenity at index ${idx} must be a non-empty string`);
   });
 
-  let houseRules: Record<string, unknown> = {};
-  if (raw.houseRules !== undefined && raw.houseRules !== null) {
-    if (typeof raw.houseRules !== 'object' || Array.isArray(raw.houseRules)) {
-      throw new Error('MALFORMED_CANONICAL_PROPERTY_DETAIL: houseRules must be an object');
-    }
-    houseRules = raw.houseRules;
+  if (raw.houseRules === undefined || raw.houseRules === null || typeof raw.houseRules !== 'object' || Array.isArray(raw.houseRules)) {
+    throw new Error('MALFORMED_CANONICAL_PROPERTY_DETAIL: houseRules is required and must be a non-array object');
   }
+  const houseRules: Record<string, unknown> = raw.houseRules;
 
   return {
     id,
@@ -226,7 +224,7 @@ export function validateCustomerPropertyDetail(raw: any, expectedId?: string): C
     bathrooms,
     maxGuests,
     basePricePerNight,
-    currency: 'EGP',
+    currency,
     images,
     bedsCount,
     areaSqM,

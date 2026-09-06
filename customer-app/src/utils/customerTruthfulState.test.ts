@@ -548,6 +548,134 @@ async function run() {
   assert(!modalSource.includes('شاطئ خاص بالقرية') || !modalSource.includes('حمام سباحة خاص / مشترك'), 'PropertyDetailModal must NOT contain hardcoded static amenities list');
   assert(modalSource.includes('fetchCanonicalPropertyDetail') || modalSource.includes('/customer/properties/'), 'PropertyDetailModal must fetch canonical property detail endpoint');
 
+  // 5. Customer 3.11 Phase 3 detail regression suite (Bridge review 5123705494)
+  const {
+    resolveDetailGalleryImages,
+    resolveEffectiveMaxGuests,
+    clampGuests,
+    getRenderableHouseRules,
+    resolvePropertyType,
+  } = await import('./customerTruthfulState.js');
+
+  // 5a. Canonical images: [] does NOT fall back to stale Explore images after detail success
+  const staleExploreImages = ['https://storage.sola.eg/stale-explore-1.jpg', 'https://storage.sola.eg/stale-explore-2.jpg'];
+  const imagesAfterDetailEmpty = resolveDetailGalleryImages([], staleExploreImages, true);
+  assert(
+    imagesAfterDetailEmpty.length === 0,
+    'Canonical images: [] must NOT fall back to stale Explore images after detail success'
+  );
+
+  const imagesBeforeDetailLoaded = resolveDetailGalleryImages(undefined, staleExploreImages, false);
+  assert(
+    imagesBeforeDetailLoaded.length === 2 && imagesBeforeDetailLoaded[0] === staleExploreImages[0],
+    'Explore images may be used as opening context only before detail success'
+  );
+
+  const imagesAfterDetailPopulated = resolveDetailGalleryImages(['https://storage.sola.eg/canonical-1.jpg'], staleExploreImages, true);
+  assert(
+    imagesAfterDetailPopulated.length === 1 && imagesAfterDetailPopulated[0] === 'https://storage.sola.eg/canonical-1.jpg',
+    'Canonical images must be authoritative after detail success'
+  );
+
+  // 5b. Canonical additionalRules / specialInstructions render
+  const rulesWithAdditional = getRenderableHouseRules({
+    additionalRules: 'ممنوع الموسيقى الصاخبة بعد 10 مساء',
+  });
+  assert(
+    rulesWithAdditional.hasRenderableRules === true &&
+    rulesWithAdditional.additionalRules === 'ممنوع الموسيقى الصاخبة بعد 10 مساء',
+    'Canonical additionalRules must be recognized as renderable'
+  );
+
+  const rulesWithSpecial = getRenderableHouseRules({
+    specialInstructions: 'تسليم المفاتيح مع الحارس',
+  });
+  assert(
+    rulesWithSpecial.hasRenderableRules === true &&
+    rulesWithSpecial.additionalRules === 'تسليم المفاتيح مع الحارس',
+    'Canonical specialInstructions must be recognized as renderable'
+  );
+
+  // 5c. No empty House Rules section when the object has only unsupported/unrendered keys
+  const emptyRules = getRenderableHouseRules({});
+  assert(emptyRules.hasRenderableRules === false, 'Empty houseRules must NOT be renderable');
+
+  const unsupportedRulesOnly = getRenderableHouseRules({
+    minStay: 2,
+    maxStay: 30,
+    arbitraryUnrenderedField: 'test',
+  });
+  assert(
+    unsupportedRulesOnly.hasRenderableRules === false,
+    'Object with only unrendered keys must NOT show an empty rules section'
+  );
+
+  const mixedRules = getRenderableHouseRules({
+    smokingAllowed: false,
+    petsAllowed: true,
+    minStay: 2,
+  });
+  assert(
+    mixedRules.hasRenderableRules === true &&
+    mixedRules.smokingAllowed === false &&
+    mixedRules.petsAllowed === true,
+    'Supported boolean rules must be preserved and renderable'
+  );
+
+  // 5d. Canonical maxGuests drives GuestSelector and clamps prior guest count downward when needed
+  const effectiveMaxBefore = resolveEffectiveMaxGuests(undefined, 8, false);
+  assert(effectiveMaxBefore === 8, 'Opening context uses Explore maxGuests before detail success');
+
+  const effectiveMaxAfter = resolveEffectiveMaxGuests(4, 8, true);
+  assert(effectiveMaxAfter === 4, 'Canonical detail maxGuests drives effectiveMaxGuests after success');
+
+  const clampedLower = clampGuests(6, effectiveMaxAfter);
+  assert(clampedLower === 4, 'Guest count higher than canonical maxGuests must be clamped downward');
+
+  const clampedWithin = clampGuests(3, effectiveMaxAfter);
+  assert(clampedWithin === 3, 'Guest count within canonical maxGuests must be preserved');
+
+  const clampedMin = clampGuests(0, effectiveMaxAfter);
+  assert(clampedMin === 1, 'Guest count lower than 1 must be clamped to minimum 1');
+
+  // 5e. Canonical unitType / propertyType is rendered in Detail
+  const typeBefore = resolvePropertyType(null, { unitType: 'CHALET', propertyType: 'CHALET' });
+  assert(typeBefore === 'شاليه ساحلي', 'Explore unitType is used before detail success');
+
+  const typeAfterCanonical = resolvePropertyType(
+    { unitType: 'VILLA', propertyType: 'VILLA' } as any,
+    { unitType: 'CHALET', propertyType: 'CHALET' }
+  );
+  assert(typeAfterCanonical === 'فيلا فاخرة', 'Canonical detail propertyType is authoritative after success');
+
+  const typeAfterPropertyTypeNull = resolvePropertyType(
+    { unitType: 'APARTMENT', propertyType: null } as any,
+    { unitType: 'CHALET', propertyType: 'CHALET' }
+  );
+  assert(typeAfterPropertyTypeNull === 'شقة مصيفية', 'Canonical unitType is used when propertyType is null');
+
+  // 5f. Static modal guards: ensure PropertyDetailModal binds canonical identity and adheres to contract
+  assert(
+    !modalSource.includes('detail?.images && detail.images.length > 0 ? detail.images : property.images'),
+    'PropertyDetailModal must NOT fall back to property.images when detail.images is empty array'
+  );
+  assert(
+    modalSource.includes('resolveDetailGalleryImages'),
+    'PropertyDetailModal must use resolveDetailGalleryImages'
+  );
+  assert(
+    modalSource.includes('resolveEffectiveMaxGuests') && modalSource.includes('clampGuests'),
+    'PropertyDetailModal must use resolveEffectiveMaxGuests and clampGuests'
+  );
+  assert(
+    modalSource.includes('getRenderableHouseRules'),
+    'PropertyDetailModal must use getRenderableHouseRules'
+  );
+  assert(
+    modalSource.includes('resolvePropertyType'),
+    'PropertyDetailModal must use resolvePropertyType'
+  );
+
   console.log('CUSTOMER-TRUTHFUL-STATE-01 focused client state tests passed');
 }
 

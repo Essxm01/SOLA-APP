@@ -261,3 +261,198 @@ export async function fetchCanonicalPropertyDetail(
   const detail = validateCustomerPropertyDetail(payload.data, propertyId);
   return { kind: 'success', data: detail };
 }
+
+/**
+ * Resolves gallery images truthfully.
+ * Once canonical detail has loaded (isDetailLoaded: true), detail.images is authoritative
+ * even when empty ([]), and must NEVER fall back to stale Explore images.
+ * Explore images are only used as opening context before detail loads.
+ */
+export function resolveDetailGalleryImages(
+  detailImages: string[] | undefined | null,
+  exploreImages: (string | { fileUrl?: string })[] | undefined | null,
+  isDetailLoaded: boolean,
+): string[] {
+  if (isDetailLoaded) {
+    if (Array.isArray(detailImages)) {
+      return detailImages
+        .map((img) => (typeof img === 'string' ? img : (img as any)?.fileUrl || ''))
+        .filter(Boolean);
+    }
+    return [];
+  }
+
+  if (Array.isArray(exploreImages) && exploreImages.length > 0) {
+    return exploreImages
+      .map((img) => (typeof img === 'string' ? img : (img as any)?.fileUrl || ''))
+      .filter(Boolean);
+  }
+
+  return [];
+}
+
+/**
+ * Resolves authoritative max guests.
+ * After canonical detail loads, detail.maxGuests is authoritative.
+ * Before detail loads, exploreMaxGuests is used as opening context (or 1 fallback).
+ */
+export function resolveEffectiveMaxGuests(
+  detailMaxGuests: number | undefined | null,
+  exploreMaxGuests: number | undefined | null,
+  isDetailLoaded: boolean,
+): number {
+  if (isDetailLoaded && typeof detailMaxGuests === 'number' && Number.isFinite(detailMaxGuests) && detailMaxGuests > 0) {
+    return Math.floor(detailMaxGuests);
+  }
+  if (typeof exploreMaxGuests === 'number' && Number.isFinite(exploreMaxGuests) && exploreMaxGuests > 0) {
+    return Math.floor(exploreMaxGuests);
+  }
+  return 1;
+}
+
+/**
+ * Clamps selected guest count to never exceed effective max guests.
+ */
+export function clampGuests(currentGuests: number, effectiveMaxGuests: number): number {
+  const minGuests = 1;
+  const max = Math.max(minGuests, Math.floor(effectiveMaxGuests));
+  const guests = Math.floor(currentGuests);
+  return Math.min(Math.max(minGuests, guests), max);
+}
+
+export interface RenderableHouseRules {
+  hasRenderableRules: boolean;
+  smokingAllowed?: boolean;
+  partiesAllowed?: boolean;
+  petsAllowed?: boolean;
+  childrenAllowed?: boolean;
+  checkInTime?: string;
+  checkOutTime?: string;
+  additionalRules?: string;
+}
+
+/**
+ * Extracts renderable house rules from canonical houseRules record.
+ * Avoids rendering an empty house rules section when no supported rule value is renderable.
+ * Honors persisted canonical keys: additionalRules, specialInstructions, customRules,
+ * smokingAllowed, partiesAllowed, petsAllowed, childrenAllowed, checkInTime, checkOutTime.
+ */
+export function getRenderableHouseRules(
+  houseRules: Record<string, unknown> | undefined | null,
+): RenderableHouseRules {
+  if (!houseRules || typeof houseRules !== 'object' || Array.isArray(houseRules)) {
+    return { hasRenderableRules: false };
+  }
+
+  let smokingAllowed: boolean | undefined;
+  if (typeof houseRules.smokingAllowed === 'boolean') {
+    smokingAllowed = houseRules.smokingAllowed;
+  }
+
+  let partiesAllowed: boolean | undefined;
+  if (typeof houseRules.partiesAllowed === 'boolean') {
+    partiesAllowed = houseRules.partiesAllowed;
+  }
+
+  let petsAllowed: boolean | undefined;
+  if (typeof houseRules.petsAllowed === 'boolean') {
+    petsAllowed = houseRules.petsAllowed;
+  }
+
+  let childrenAllowed: boolean | undefined;
+  if (typeof houseRules.childrenAllowed === 'boolean') {
+    childrenAllowed = houseRules.childrenAllowed;
+  }
+
+  let checkInTime: string | undefined;
+  if (typeof houseRules.checkInTime === 'string' && houseRules.checkInTime.trim() !== '') {
+    checkInTime = houseRules.checkInTime.trim();
+  }
+
+  let checkOutTime: string | undefined;
+  if (typeof houseRules.checkOutTime === 'string' && houseRules.checkOutTime.trim() !== '') {
+    checkOutTime = houseRules.checkOutTime.trim();
+  }
+
+  // Free-form additional rules / special instructions (as serialized by owner wizard)
+  let additionalRules: string | undefined;
+  if (typeof houseRules.additionalRules === 'string' && houseRules.additionalRules.trim() !== '') {
+    additionalRules = houseRules.additionalRules.trim();
+  } else if (typeof houseRules.specialInstructions === 'string' && houseRules.specialInstructions.trim() !== '') {
+    additionalRules = houseRules.specialInstructions.trim();
+  } else if (typeof houseRules.customRules === 'string' && houseRules.customRules.trim() !== '') {
+    additionalRules = houseRules.customRules.trim();
+  }
+
+  const hasRenderableRules = Boolean(
+    smokingAllowed !== undefined ||
+    partiesAllowed !== undefined ||
+    petsAllowed !== undefined ||
+    childrenAllowed !== undefined ||
+    checkInTime !== undefined ||
+    checkOutTime !== undefined ||
+    additionalRules !== undefined
+  );
+
+  return {
+    hasRenderableRules,
+    smokingAllowed,
+    partiesAllowed,
+    petsAllowed,
+    childrenAllowed,
+    checkInTime,
+    checkOutTime,
+    additionalRules,
+  };
+}
+
+/**
+ * Formats canonical unit/property type in Arabic truthfully without fabrication.
+ */
+export function formatPropertyTypeDisplay(type?: string | null): string {
+  if (!type || typeof type !== 'string' || type.trim() === '') return 'وحدة ساحلية';
+  const normalized = type.trim().toUpperCase();
+  switch (normalized) {
+    case 'VILLA':
+    case 'فيلا':
+      return 'فيلا فاخرة';
+    case 'CHALET':
+    case 'شاليه':
+      return 'شاليه ساحلي';
+    case 'APARTMENT':
+    case 'شقة':
+      return 'شقة مصيفية';
+    case 'STUDIO':
+    case 'استوديو':
+      return 'استوديو';
+    case 'TWIN_HOUSE':
+    case 'توين هاوس':
+      return 'توين هاوس';
+    case 'TOWNHOUSE':
+    case 'تاون هاوس':
+      return 'تاون هاوس';
+    case 'DUPLEX':
+    case 'دوبلكس':
+      return 'دوبلكس';
+    case 'PENTHOUSE':
+    case 'بنتهاوس':
+      return 'بنتهاوس';
+    default:
+      return type.trim();
+  }
+}
+
+/**
+ * Resolves authoritative property type label.
+ * After detail success, canonical detail (propertyType || unitType) is authoritative.
+ * Before detail success, explore context is used.
+ */
+export function resolvePropertyType(
+  detail: { propertyType?: string | null; unitType?: string } | null,
+  exploreProperty: { propertyType?: string | null; unitType?: string },
+): string {
+  const rawType = detail !== null
+    ? (detail.propertyType || detail.unitType)
+    : (exploreProperty.propertyType || exploreProperty.unitType);
+  return formatPropertyTypeDisplay(rawType);
+}

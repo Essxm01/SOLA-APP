@@ -442,6 +442,98 @@ async function run() {
   );
   assert(detail500.kind === 'error', '500 property detail must yield error kind');
 
+  // 3b. Valid canonical detail with empty string address must succeed (preserve valid address: '')
+  const emptyAddressDetailSuccess = await fetchCanonicalPropertyDetail(
+    testDetailPropId,
+    undefined,
+    async () => jsonResponse({
+      success: true,
+      data: {
+        id: testDetailPropId,
+        title: 'شاليه مراسي',
+        unitType: 'CHALET',
+        address: '',
+        resortName: 'مراسي',
+        region: 'الساحل الشمالي',
+        bedrooms: 2,
+        bathrooms: 2,
+        maxGuests: 4,
+        basePricePerNight: 5000,
+        currency: 'EGP',
+        images: ['https://storage.sola.eg/p1.jpg'],
+        amenities: ['pool'],
+      },
+    }),
+    testUrl
+  );
+  assert(emptyAddressDetailSuccess.kind === 'success' && emptyAddressDetailSuccess.data.address === '', 'Valid detail with empty address must succeed and preserve empty address');
+
+  // 3c. Malformed success payloads must reject strictly (fail-closed, no coercion or fabrication)
+  const validBase = {
+    id: testDetailPropId,
+    title: 'شاليه بورتو مارينا',
+    unitType: 'CHALET',
+    address: 'بورتو مارينا',
+    bedrooms: 2,
+    bathrooms: 1,
+    maxGuests: 4,
+    basePricePerNight: 4000,
+    currency: 'EGP',
+    images: ['https://storage.sola.eg/img1.jpg'],
+    amenities: ['wifi'],
+    houseRules: {},
+  };
+
+  const malformedPayloads = [
+    { label: 'missing title', patch: { title: undefined } },
+    { label: 'empty title', patch: { title: '   ' } },
+    { label: 'non-string title', patch: { title: 123 } },
+    { label: 'missing unitType', patch: { unitType: undefined } },
+    { label: 'empty unitType', patch: { unitType: '   ' } },
+    { label: 'non-string unitType', patch: { unitType: true } },
+    { label: 'non-string address null', patch: { address: null } },
+    { label: 'non-string address number', patch: { address: 12345 } },
+    { label: 'negative bedrooms', patch: { bedrooms: -1 } },
+    { label: 'missing bedrooms', patch: { bedrooms: undefined } },
+    { label: 'negative bathrooms', patch: { bathrooms: -1 } },
+    { label: 'missing bathrooms', patch: { bathrooms: undefined } },
+    { label: 'zero maxGuests', patch: { maxGuests: 0 } },
+    { label: 'missing maxGuests', patch: { maxGuests: undefined } },
+    { label: 'zero basePricePerNight', patch: { basePricePerNight: 0 } },
+    { label: 'negative basePricePerNight', patch: { basePricePerNight: -100 } },
+    { label: 'missing basePricePerNight', patch: { basePricePerNight: undefined } },
+    { label: 'wrong currency', patch: { currency: 'USD' } },
+    { label: 'images not array', patch: { images: 'not-an-array' } },
+    { label: 'images containing empty string', patch: { images: [''] } },
+    { label: 'images containing non-string', patch: { images: [123] } },
+    { label: 'amenities not array', patch: { amenities: 'wifi,pool' } },
+    { label: 'amenities containing empty string', patch: { amenities: [''] } },
+    { label: 'amenities containing non-string', patch: { amenities: [null] } },
+    { label: 'houseRules as array', patch: { houseRules: [1, 2] } },
+    { label: 'houseRules as string', patch: { houseRules: 'no smoking' } },
+    { label: 'negative bedsCount', patch: { bedsCount: -1 } },
+    { label: 'negative areaSqM', patch: { areaSqM: -50 } },
+    { label: 'non-string description', patch: { description: 1234 } },
+  ];
+
+  for (const { label, patch } of malformedPayloads) {
+    let thrown = false;
+    try {
+      await fetchCanonicalPropertyDetail(
+        testDetailPropId,
+        undefined,
+        async () => jsonResponse({
+          success: true,
+          data: { ...validBase, ...patch },
+        }),
+        testUrl
+      );
+    } catch {
+      thrown = true;
+    }
+    assert(thrown, `fetchCanonicalPropertyDetail must reject malformed detail payload: ${label}`);
+  }
+
   // 4. UI guards: PropertyDetailModal must NOT contain hardcoded fake description or static amenities
   // @ts-ignore
   const { readFileSync } = await import('node:fs');

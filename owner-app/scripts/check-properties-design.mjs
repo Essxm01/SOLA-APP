@@ -15,5 +15,11 @@ if (!source.includes('revalidateProperties')) {
 if (!source.includes('visibilitychange') && !source.includes('focus')) {
   throw new Error('PropertiesFoundationView must listen for visibility/focus to revalidate external state');
 }
+if (source.includes('.catch(() => {})')) {
+  throw new Error('PropertiesFoundationView must not swallow revalidation errors silently');
+}
+if (!source.includes('revalidationError')) {
+  throw new Error('PropertiesFoundationView must manage and display revalidationError state');
+}
 
 console.log('Properties Hub design and revalidation guards passed.');

@@ -356,6 +356,101 @@ async function run() {
   }
   assert(malformedSummaryThrew, 'fetchCustomerAccountSummary must throw on malformed data payload');
 
+  // Task 3.11: Customer Canonical Property Detail Tests
+  const { fetchCanonicalPropertyDetail } = await import('./customerTruthfulState.js');
+  const testDetailPropId = 'e0000000-0000-4000-8000-000000000099';
+
+  // 1. Success case: Returns canonical detail fields
+  const detailSuccess = await fetchCanonicalPropertyDetail(
+    testDetailPropId,
+    undefined,
+    async () => jsonResponse({
+      success: true,
+      data: {
+        id: testDetailPropId,
+        title: 'شاليه بورتو مارينا الفاخر',
+        unitType: 'CHALET',
+        propertyType: 'CHALET',
+        address: 'بورتو مارينا - العلمين',
+        region: 'العلمين',
+        resortName: 'بورتو مارينا',
+        bedrooms: 3,
+        bathrooms: 2,
+        maxGuests: 6,
+        basePricePerNight: 8500,
+        currency: 'EGP',
+        images: ['https://storage.sola.eg/p99-1.jpg'],
+        bedsCount: 4,
+        areaSqM: 145,
+        description: 'شاليه دور أول يطل مباشرة على مارينا اليخوت، تشطيب كامل متميز ومفروش بالكامل.',
+        amenities: ['pool', 'wifi', 'sea_view'],
+        houseRules: { quietHours: true },
+      },
+    }),
+    testUrl
+  );
+  assert(detailSuccess.kind === 'success', 'fetchCanonicalPropertyDetail must succeed with valid data');
+  assert(detailSuccess.data.id === testDetailPropId, 'detail ID must match requested property ID');
+  assert(detailSuccess.data.description === 'شاليه دور أول يطل مباشرة على مارينا اليخوت، تشطيب كامل متميز ومفروش بالكامل.', 'canonical description must match');
+  assert(detailSuccess.data.amenities.length === 3 && detailSuccess.data.amenities[0] === 'pool', 'canonical amenities must match');
+  assert(detailSuccess.data.bedsCount === 4, 'canonical bedsCount must match');
+  assert(detailSuccess.data.areaSqM === 145, 'canonical areaSqM must match');
+
+  // 2. Mismatched ID rejection: Prevents spoofed/wrong property detail
+  let mismatchDetailThrew = false;
+  try {
+    await fetchCanonicalPropertyDetail(
+      testDetailPropId,
+      undefined,
+      async () => jsonResponse({
+        success: true,
+        data: {
+          id: 'completely-different-id',
+          title: 'Different',
+          unitType: 'CHALET',
+          address: 'Addr',
+          bedrooms: 1,
+          bathrooms: 1,
+          maxGuests: 2,
+          basePricePerNight: 1000,
+          currency: 'EGP',
+          images: [],
+          amenities: [],
+        },
+      }),
+      testUrl
+    );
+  } catch {
+    mismatchDetailThrew = true;
+  }
+  assert(mismatchDetailThrew, 'fetchCanonicalPropertyDetail must reject mismatched property ID in response');
+
+  // 3. HTTP 404 / 500 error cases return truthful error kind
+  const detail404 = await fetchCanonicalPropertyDetail(
+    testDetailPropId,
+    undefined,
+    async () => jsonResponse({ success: false, error: { message: 'Property not found' } }, 404),
+    testUrl
+  );
+  assert(detail404.kind === 'error', '404 property detail must yield error kind');
+
+  const detail500 = await fetchCanonicalPropertyDetail(
+    testDetailPropId,
+    undefined,
+    async () => jsonResponse({ success: false }, 500),
+    testUrl
+  );
+  assert(detail500.kind === 'error', '500 property detail must yield error kind');
+
+  // 4. UI guards: PropertyDetailModal must NOT contain hardcoded fake description or static amenities
+  // @ts-ignore
+  const { readFileSync } = await import('node:fs');
+  const modalSource = readFileSync(new URL('../components/PropertyDetailModal.tsx', import.meta.url), 'utf8');
+
+  assert(!modalSource.includes('إقامة ساحلية فاخرة تضمن لك أعلى مستويات الراحة'), 'PropertyDetailModal must NOT contain hardcoded placeholder description');
+  assert(!modalSource.includes('شاطئ خاص بالقرية') || !modalSource.includes('حمام سباحة خاص / مشترك'), 'PropertyDetailModal must NOT contain hardcoded static amenities list');
+  assert(modalSource.includes('fetchCanonicalPropertyDetail') || modalSource.includes('/customer/properties/'), 'PropertyDetailModal must fetch canonical property detail endpoint');
+
   console.log('CUSTOMER-TRUTHFUL-STATE-01 focused client state tests passed');
 }
 

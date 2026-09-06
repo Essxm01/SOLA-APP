@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Building2, ChevronLeft, MapPin, Plus, SlidersHorizontal } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import type { Property } from '../../types';
@@ -28,7 +28,7 @@ const money = (amount: number, currency = 'EGP') =>
   `${new Intl.NumberFormat('ar-EG').format(amount)} ${currency === 'EGP' || currency === 'ج.م' ? 'ج.م' : currency}`;
 
 export const PropertiesFoundationView: React.FC = () => {
-  const { properties, isLoading, error, refreshData, propertyViewMode, openAddPropertyWizard, openPropertyDetails, setDailyPricing } = useApp();
+  const { properties, isLoading, error, refreshData, revalidateProperties, propertyViewMode, openAddPropertyWizard, openPropertyDetails, setDailyPricing } = useApp();
   const [filter, setFilter] = useState<OwnerPropertyFilter>('all');
   const [pricing, setPricing] = useState<Property | null>(null);
   const [date, setDate] = useState('');
@@ -36,6 +36,23 @@ export const PropertiesFoundationView: React.FC = () => {
   const [message, setMessage] = useState('');
   const [saving, setSaving] = useState(false);
   const list = useMemo(() => getOwnerPropertyCollections(properties, filter), [properties, filter]);
+
+  useEffect(() => {
+    void revalidateProperties().catch(() => {});
+
+    const handleVisibilityOrFocus = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+        void revalidateProperties().catch(() => {});
+      }
+    };
+
+    window.addEventListener('focus', handleVisibilityOrFocus);
+    document.addEventListener('visibilitychange', handleVisibilityOrFocus);
+    return () => {
+      window.removeEventListener('focus', handleVisibilityOrFocus);
+      document.removeEventListener('visibilitychange', handleVisibilityOrFocus);
+    };
+  }, [revalidateProperties]);
 
   if (propertyViewMode === 'wizard') return <AddPropertyWizard />;
   if (isLoading) return <div className="flex flex-col gap-3 p-4"><div className="h-16 animate-pulse rounded-2xl bg-[var(--konfrm-surface-secondary)]" /><div className="h-32 animate-pulse rounded-2xl bg-[var(--konfrm-surface-secondary)]" /></div>;

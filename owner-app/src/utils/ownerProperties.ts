@@ -35,3 +35,32 @@ export const getPropertyStatusPresentation = (property: Property) =>
     ? { label: 'تحتاج تعديلات', tone: 'bg-rose-50 text-rose-800 border-rose-200' }
     : propertyStatusPresentation[property.status];
 export const ownerPropertyFilterCount = (properties: Property[], filter: OwnerPropertyFilter) => getOwnerPropertyCollections(properties, filter).length;
+
+export interface OwnerPropertyMetrics {
+  totalPropertiesCount: number;
+  publishedPropertiesCount: number;
+  draftPropertiesCount: number;
+  pausedPropertiesCount: number;
+  underReviewPropertiesCount: number;
+}
+
+export const derivePropertyMetrics = (properties: Property[]): OwnerPropertyMetrics => {
+  const valid = Array.isArray(properties) ? properties : [];
+  return {
+    totalPropertiesCount: valid.length,
+    publishedPropertiesCount: valid.filter((p) => p.status === 'PUBLISHED').length,
+    draftPropertiesCount: valid.filter((p) => p.status === 'DRAFT').length,
+    pausedPropertiesCount: valid.filter((p) => p.status === 'PAUSED').length,
+    underReviewPropertiesCount: valid.filter((p) => p.status === 'PENDING_REVIEW').length,
+  };
+};
+
+export const revalidateOwnerProperties = async (
+  fetchProperties: () => Promise<Property[]>
+): Promise<Property[]> => {
+  const result = await fetchProperties();
+  if (!Array.isArray(result)) {
+    throw new Error('MALFORMED_OWNER_PROPERTIES_RESPONSE: Expected array of properties');
+  }
+  return result;
+};

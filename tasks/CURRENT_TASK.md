@@ -1,16 +1,17 @@
-# Phase 3 — Owner → Admin → Renter Vertical Slice
+# Phase 3 Closure → Phase 4 Entry Authorization
 
-TASK_ID: PHASE_3
-ROADMAP_PHASE: PHASE_3
-STAGE: LIVE_CLOSED
-EXECUTOR: Antigravity + Bridge
-IMPLEMENTATION_PR: #19
-IMPLEMENTATION_CANDIDATE_SHA: 92d1ee56dbf13415f7e52b38c7266ab7ea03d75f
-MERGED_MAIN_SHA: 9ef59f64008db16df0386ac92c5d64bfc8c73b58
-MAIN_CI_RUN: 34007323794
-TASK_CONTRACT: tasks/PHASE_3_VERTICAL_SLICE_CLOSURE.md
+TASK_ID: PHASE_3_TO_PHASE_4_HANDOFF
+ROADMAP_PHASE: PHASE_4_ENTRY
+STAGE: FOUNDER_AUTHORIZED
+EXECUTOR: Founder + Bridge + UI/UX Design Lab / LAP
+PHASE_3_IMPLEMENTATION_PR: #19
+PHASE_3_IMPLEMENTATION_CANDIDATE_SHA: 92d1ee56dbf13415f7e52b38c7266ab7ea03d75f
+PHASE_3_MERGED_MAIN_SHA: 9ef59f64008db16df0386ac92c5d64bfc8c73b58
+PHASE_3_MAIN_CI_RUN: 34007323794
+PHASE_3_TASK_CONTRACT: tasks/PHASE_3_VERTICAL_SLICE_CLOSURE.md
+DEFERRED_CLOSURE_GATE: tasks/POST_PHASE_7_DEFERRED_CLOSURE.md
 
-## Closure verdict
+## Phase 3 closure verdict
 
 `PHASE_3_LIVE_CLOSED`
 
@@ -34,7 +35,7 @@ Verified flow:
 
 The disposable QA property was archived afterwards through the standard Owner API.
 
-## Implementation outcomes
+## Phase 3 implementation outcomes
 
 ### Task 3.9 — Owner external-state revalidation
 
@@ -58,10 +59,10 @@ Closed.
 - Canonical unit/property type, description, amenities, images, and persisted house-rule content are rendered truthfully.
 - Loading/error/retry states remain explicit.
 
-## Publication evidence
+## Phase 3 publication evidence
 
 - PR #19 merged into `main`.
-- Main SHA: `9ef59f64008db16df0386ac92c5d64bfc8c73b58`.
+- Phase 3 main SHA: `9ef59f64008db16df0386ac92c5d64bfc8c73b58`.
 - Main CI run `34007323794`: `completed / success`.
 - Owner, Customer, Admin, and Backend validation jobs succeeded.
 - Cloudflare Worker deployment step succeeded.
@@ -75,8 +76,35 @@ Closed.
 - No architecture change.
 - No broad Phase 4–7 UI redesign was introduced into Phase 3.
 
-## Next gate
+---
+
+# Founder Phase 4 Entry Decision — 2026-09-06
+
+The previous next gate was:
 
 `STOP_BEFORE_PHASE_4`
 
-Do not begin Phase 4 automatically. Phase 4 is the dedicated UI/UX program and begins only when the Founder resumes work with the UI/UX Design Lab / LAP collaboration.
+That stop was intentionally waiting for explicit Founder continuation and UI/UX Design Lab / LAP entry.
+
+The Founder has now explicitly resumed the program and authorized Phase 4 entry.
+
+Current gate:
+
+`PHASE_4_ENTRY_AUTHORIZED`
+
+Meaning:
+
+- Phase 4 may begin.
+- LAP formally joins the Phase 4–7 design program.
+- Bridge remains responsible for protecting architecture/business/finance rules and translating approved design into safe implementation packages.
+- R2–R5 from the Pre-Phase-4 remediation plan are **deferred, not closed**.
+- Their mandatory return point is after Phase 7 and before Phase 8.
+- The canonical deferred closure contract is `tasks/POST_PHASE_7_DEFERRED_CLOSURE.md`.
+
+Do not re-block Phase 4 merely because older remediation text required R5 before Phase 4; the Founder explicitly changed the execution timing while preserving the deferred obligations.
+
+## Immediate next work
+
+Begin the Phase 4 Unified Design System / UI/UX Design Lab × Bridge kickoff under the approved design operating contract.
+
+Do not automatically implement new functional/business capabilities discovered by design. Record them as dependencies/deferred opportunities unless the Founder explicitly pulls them forward.

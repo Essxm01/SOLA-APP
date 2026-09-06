@@ -11,8 +11,8 @@ export interface AdminLoginProps {
 }
 
 export function AdminLogin({ onLoginSuccess }: AdminLoginProps) {
-  const [email, setEmail] = useState<string>('admin@sola.com');
-  const [password, setPassword] = useState<string>('AdminPassword2026!');
+  const [email, setEmail] = useState<string>('');
+  const [password, setPassword] = useState<string>('');
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -64,7 +64,7 @@ export function AdminLogin({ onLoginSuccess }: AdminLoginProps) {
             <Input
               type="email"
               label="البريد الإلكتروني:"
-              placeholder="admin@sola.com"
+              placeholder="name@example.com"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               icon={<Mail className="w-4 h-4 text-slate-400" />}

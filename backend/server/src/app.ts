@@ -12,7 +12,7 @@ import { calculateBookingFinancials, validatePayoutRequest, roundHalfEvenInCents
 import { verifyJwtToken, requireRole } from './middleware/auth.js';
 import { applyCorsHeaders } from './middleware/cors.js';
 import { dbUsersStore, dbOwnersStore, dbAdminUsersStore, dbNotificationsStore, dbOwnerVerificationDocsStore, dbPropertyVerificationDocsStore, dbPropertiesStore, dbBookingsStore, dbPayoutRequestsStore, dbDisputesStore } from './services/authService.js';
-import { userDb, ownerDb, propertyDb, bookingDb, conversationDb, messageDb, isBookingChatEligible, payoutDb, disputeDb, notificationDb, imageDb, uploadIntentDb, adminStatsDb, walletDb, propertyAvailabilityDb, getUnifiedUnavailableBlocks, favoriteDb } from './services/dbRepository.js';
+import { userDb, ownerDb, propertyDb, bookingDb, conversationDb, messageDb, isBookingChatEligible, payoutDb, disputeDb, notificationDb, imageDb, uploadIntentDb, adminStatsDb, walletDb, propertyAvailabilityDb, getUnifiedUnavailableBlocks, favoriteDb, adminDb } from './services/dbRepository.js';
 import { paymentTxDb, PaymentService, PaymobGateway, verifyPaymobHmacSha512, getPaymentMode } from './services/paymentService.js';
 import { createStorageProvider, IObjectStorageProvider, verifyMagicBytes, computeSha256 } from './services/storageProvider.js';
 import { GLOBAL_MIN_STAY_NIGHTS, GLOBAL_MAX_STAY_NIGHTS, hasDateRangeOverlap, validateStayLength } from './constants/bookingRules.js';
@@ -272,8 +272,27 @@ export class ExpressServerApp {
       }
 
       if (path === '/api/v1/admin/auth/login' && method === 'POST') {
-        const response = await this.authController.adminLogin(bodyPayload?.email, bodyPayload?.password);
-        return { statusCode: response.success ? 200 : 401, body: response };
+        // Authoritative platform client IP: rely exclusively on platform-controlled cf-connecting-ip.
+        // Never derive throttle identity from spoofable forwarding headers (x-forwarded-for / x-real-ip).
+        // If cf-connecting-ip is absent, fail to a conservative non-user-controlled 'unknown' bucket.
+        const cfConnectingIp = headers['cf-connecting-ip'];
+        const clientIp = (typeof cfConnectingIp === 'string' && cfConnectingIp.trim().length > 0)
+          ? cfConnectingIp.trim()
+          : 'unknown';
+        const response = await this.authController.adminLogin(bodyPayload?.email, bodyPayload?.password, clientIp);
+        let statusCode = 200;
+        if (!response.success) {
+          if (response.error?.code === 'ADMIN_LOGIN_THROTTLED') {
+            statusCode = 429;
+          } else if (response.error?.code === 'MISSING_EMAIL_OR_PASSWORD') {
+            statusCode = 400;
+          } else if (response.error?.code === 'ADMIN_AUTH_UNAVAILABLE') {
+            statusCode = 503;
+          } else {
+            statusCode = 401;
+          }
+        }
+        return { statusCode, body: response };
       }
 
       // ----------------------------------------------------------------------
@@ -1757,8 +1776,20 @@ export class ExpressServerApp {
         // persisted access token against the existing canonical Admin
         // identity model before rendering the operational shell.
         if (path === '/api/v1/admin/auth/session' && method === 'GET') {
-          const admin = Array.from(dbAdminUsersStore.values()).find((candidate) => candidate.id === adminId && candidate.isActive);
-          if (!admin) {
+          let admin: any = null;
+          try {
+            admin = await adminDb.getById(adminId);
+          } catch {
+            return {
+              statusCode: 500,
+              body: {
+                success: false,
+                error: { code: 'DATABASE_QUERY_FAILED', message: 'تعذر التحقق من جلسة الإدارة' },
+                timestamp,
+              },
+            };
+          }
+          if (!admin || !admin.isActive) {
             return {
               statusCode: 401,
               body: {

@@ -33,17 +33,20 @@
     "test:p2-1-public-api": "npx tsx server/src/tests/p21PublicApiContract.test.ts",
     "test:p2-2-renter-api": "npx tsx server/src/tests/p22RenterApiContract.test.ts",
     "test:p2-3-owner-api": "npx tsx server/src/tests/p23OwnerApiContract.test.ts",
+    "test:r1-admin-security": "npx tsx server/src/tests/adminAuthSecurityR1.test.ts",
     "check": "npx tsc --noEmit"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.112.3",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/pg": "^8.21.0",
+    "bcryptjs": "^3.0.3",
     "dotenv": "^16.4.7",
     "jsonwebtoken": "^9.0.3",
     "pg": "^8.23.0"
   },
   "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
     "@types/node": "^24.13.3",
     "tsx": "^4.20.0",
     "typescript": "~6.0.2",

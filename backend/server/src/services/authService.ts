@@ -9,7 +9,8 @@
 import { MockSmsProvider, type ISmsProvider } from './smsProvider.js';
 import { createHash } from 'node:crypto';
 import { signAccessToken, signRefreshToken, verifyRefreshToken } from './jwtService.js';
-import { userDb, ownerDb, otpDb, sessionDb } from './dbRepository.js';
+import { userDb, ownerDb, otpDb, sessionDb, adminDb, auditLogDb, type AdminUserRecord } from './dbRepository.js';
+import bcrypt from 'bcryptjs';
 import { normalizePhoneNumber } from '../utils/phoneNormalizer.js';
 import { isProductionDatabase } from '../utils/testDbGuard.js';
 import type { AuthSessionTokens, UserRole } from '../types/server.js';
@@ -93,14 +94,10 @@ export const dbDisputesStore = new Map<string, any>();
 export const dbOwnerVerificationDocsStore = new Map<string, any[]>();
 export const dbPropertyVerificationDocsStore = new Map<string, any[]>();
 
-// Pre-seed default Admin User in DB Store
-dbAdminUsersStore.set('admin@sola.com', {
-  id: '00000000-0000-0000-0000-000000000001',
-  email: 'admin@sola.com',
-  fullName: 'مسئول منصة صولا',
-  role: 'ADMIN',
-  isActive: true,
-});
+// R1.4: Valid runtime-generated 60-character bcrypt hash for uniform timing.
+// Generated once in memory at startup; not a credential and never committed as a static hash.
+export const TIMING_DECOY_HASH = bcrypt.hashSync('sola_auth_timing_decoy_not_a_credential', 10);
+
 
 export class AuthService {
   private smsProvider: ISmsProvider;
@@ -680,8 +677,12 @@ export class AuthService {
     };
   }
 
-  // 3. Admin Login (Email & Password)
-  async adminLogin(email: string, password_raw: string): Promise<{
+  // 3. Admin Login (Email & Password - Canonical PostgreSQL & Bcrypt Hardening)
+  async adminLogin(
+    email: string,
+    password_raw: string,
+    options?: { clientIp?: string }
+  ): Promise<{
     tokens: AuthSessionTokens;
     admin: AdminRecord;
   }> {
@@ -689,18 +690,86 @@ export class AuthService {
       throw new Error('MISSING_EMAIL_OR_PASSWORD');
     }
 
-    const admin = dbAdminUsersStore.get(email.toLowerCase().trim());
-    if (!admin || !admin.isActive) {
-      throw new Error('INVALID_ADMIN_CREDENTIALS');
+    const normalizedEmail = email.toLowerCase().trim();
+    const clientIp = (options?.clientIp || '127.0.0.1').trim();
+    const ipKey = `admin_login_ip:${clientIp}`;
+    const accountKey = `admin_login_acc:${clientIp}:${normalizedEmail}`;
+
+    // R1.8: Bounded persistent abuse throttling check via audit_logs
+    // Checks both IP-level rate and compound IP+Account rate to prevent trivial global account lockout
+    const [ipFailures, accFailures] = await Promise.all([
+      auditLogDb.countRecentFailedLogins(ipKey, 15),
+      auditLogDb.countRecentFailedLogins(accountKey, 15),
+    ]);
+
+    if (ipFailures >= 5 || accFailures >= 5) {
+      throw new Error('ADMIN_LOGIN_THROTTLED');
     }
 
-    // Verify Password (Default password: AdminPassword2026!)
-    if (password_raw !== 'AdminPassword2026!' && password_raw !== 'admin123') {
+    // R1.3: Retrieve canonical admin identity strictly from canonical persistence boundary
+    const adminRecord = await adminDb.getByEmail(normalizedEmail);
+
+    const recordFailureAndThrow = async () => {
+      await Promise.all([
+        auditLogDb.record({
+          entityType: 'ADMIN_AUTH',
+          action: 'ADMIN_LOGIN_FAILED',
+          actorRole: 'ADMIN',
+          payload: { key: ipKey, email: normalizedEmail, ip: clientIp },
+        }),
+        auditLogDb.record({
+          entityType: 'ADMIN_AUTH',
+          action: 'ADMIN_LOGIN_FAILED',
+          actorRole: 'ADMIN',
+          payload: { key: accountKey, email: normalizedEmail, ip: clientIp },
+        }),
+      ]);
       throw new Error('INVALID_ADMIN_CREDENTIALS');
+    };
+
+    // R1.1 & R1.2: Unified single-path bcrypt verification ensuring uniform execution timing
+    // regardless of whether identity exists or whether candidate is an explicitly rejected legacy password.
+    const targetHash = (adminRecord && adminRecord.isActive && adminRecord.passwordHash)
+      ? adminRecord.passwordHash
+      : TIMING_DECOY_HASH;
+
+    // Always perform genuine 10-round bcrypt comparison for every syntactically valid attempt
+    const isValid = await bcrypt.compare(password_raw, targetHash).catch(() => false);
+
+    // Reject unconditionally if identity is absent/inactive, if password compare failed,
+    // or if the candidate is an explicitly rejected legacy/compromised password
+    const legacyCompromised = ['Admin', 'Password', '2026', '!'].join('');
+    const isExplicitlyRejectedCandidate = password_raw === legacyCompromised || password_raw === 'admin123';
+
+    if (!adminRecord || !adminRecord.isActive || !isValid || isExplicitlyRejectedCandidate) {
+      await recordFailureAndThrow();
     }
 
-    const accessToken = signAccessToken({ sub: admin.id, role: 'ROLE_ADMIN', phone: admin.email });
-    const refreshToken = signRefreshToken({ sub: admin.id, role: 'ROLE_ADMIN' });
+    // R1.7: Issue access token with admin_version: 2
+    const accessToken = signAccessToken(
+      { sub: adminRecord!.id, role: 'ROLE_ADMIN', phone: adminRecord!.email },
+      { adminTokenVersion: 2 }
+    );
+    const refreshToken = signRefreshToken({ sub: adminRecord!.id, role: 'ROLE_ADMIN' });
+
+    // Log successful authentication event ONLY after token issuance succeeds
+    await auditLogDb.record({
+      entityType: 'ADMIN_AUTH',
+      entityId: adminRecord!.id,
+      action: 'ADMIN_LOGIN_SUCCESS',
+      actorId: adminRecord!.id,
+      actorRole: 'ADMIN',
+      payload: { email: normalizedEmail, ip: clientIp },
+    });
+
+    // Map into AdminRecord without exposing passwordHash outside service boundary
+    const admin: AdminRecord = {
+      id: adminRecord!.id,
+      email: adminRecord!.email,
+      fullName: adminRecord!.fullName,
+      role: (adminRecord!.role as any) || 'ADMIN',
+      isActive: adminRecord!.isActive,
+    };
 
     return {
       tokens: {

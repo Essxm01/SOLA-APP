@@ -58,6 +58,7 @@ jobs:
         run: |
           cd admin-app
           npm ci || npm install
+          npm run test:login-security
           npm run test:property-review
           npm run build
 
@@ -120,6 +121,9 @@ jobs:
           npm ci || npm install
           npm run check
       - name: Run critical Owner registration and identity tests
+        env:
+          JWT_ACCESS_SECRET: test_ci_jwt_access_secret_only_for_unit_tests_32ch
+          JWT_REFRESH_SECRET: test_ci_jwt_refresh_secret_only_for_unit_tests_32ch
         run: |
           cd backend
           npm run test:owner-registration-kyc-01
@@ -142,6 +146,7 @@ jobs:
           npm run test:p2-2-renter-api
           npm run test:auth-p02
           npm run test:p2-3-owner-api
+          npm run test:r1-admin-security
       - name: Deploy to Cloudflare Workers
         if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
         uses: cloudflare/wrangler-action@v3

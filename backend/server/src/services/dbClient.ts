@@ -2550,6 +2550,140 @@ async function queryViaSupabaseRest(text: string, params: any[] | undefined, url
     return { rows: mapped, command: 'DELETE', rowCount: 1, oid: 0, fields: [] };
   }
 
+  // 18A. SELECT admin_users by email (R1 Canonical Authentication - Exact Normalized Equality)
+  if (lowerSql.includes('from admin_users') && (lowerSql.includes('lower(email) = $1') || lowerSql.includes('email = $1'))) {
+    const rawEmail = String(params?.[0] || '');
+    const normalizedEmail = rawEmail.toLowerCase().trim();
+    const res = await fetch(
+      `${url}/rest/v1/admin_users?email=eq.${encodeURIComponent(normalizedEmail)}&select=id,email,password_hash,full_name,role,is_active,created_at&limit=1`,
+      { headers }
+    );
+    if (!res.ok) {
+      throw new Error(`REST_ADMIN_USERS_BY_EMAIL_FAILED: HTTP ${res.status}`);
+    }
+    const raw: any = await res.json().catch(() => []);
+    const rows: any[] = Array.isArray(raw) ? raw : [];
+    // Strict post-fetch exact string equality to guarantee zero wildcard match leakage
+    const exactRows = rows.filter((r: any) => String(r.email || '').toLowerCase().trim() === normalizedEmail);
+    const mapped = exactRows.map((r: any) => ({
+      id: r.id,
+      email: r.email,
+      passwordHash: r.password_hash,
+      fullName: r.full_name,
+      role: r.role,
+      isActive: r.is_active,
+      createdAt: r.created_at,
+    }));
+    return { rows: mapped, command: 'SELECT', rowCount: mapped.length, oid: 0, fields: [] };
+  }
+
+  // 18B. SELECT admin_users by id (R1 Canonical Authentication)
+  if (lowerSql.includes('from admin_users') && lowerSql.includes('where id = $1')) {
+    const id = params?.[0];
+    const res = await fetch(
+      `${url}/rest/v1/admin_users?id=eq.${encodeURIComponent(id)}&select=id,email,password_hash,full_name,role,is_active,created_at&limit=1`,
+      { headers }
+    );
+    if (!res.ok) {
+      throw new Error(`REST_ADMIN_USERS_BY_ID_FAILED: HTTP ${res.status}`);
+    }
+    const raw: any = await res.json().catch(() => []);
+    const rows: any[] = Array.isArray(raw) ? raw : [];
+    const mapped = rows.map((r: any) => ({
+      id: r.id,
+      email: r.email,
+      passwordHash: r.password_hash,
+      fullName: r.full_name,
+      role: r.role,
+      isActive: r.is_active,
+      createdAt: r.created_at,
+    }));
+    return { rows: mapped, command: 'SELECT', rowCount: mapped.length, oid: 0, fields: [] };
+  }
+
+  // 18C. UPDATE admin_users SET password_hash = $2 WHERE id = $1
+  if (lowerSql.startsWith('update admin_users') && lowerSql.includes('password_hash')) {
+    const id = params?.[0];
+    const newHash = params?.[1];
+    const res = await fetch(
+      `${url}/rest/v1/admin_users?id=eq.${encodeURIComponent(id)}`,
+      {
+        method: 'PATCH',
+        headers: { ...headers, 'Prefer': 'return=representation' },
+        body: JSON.stringify({ password_hash: newHash }),
+      }
+    );
+    if (!res.ok) {
+      throw new Error(`REST_ADMIN_USERS_UPDATE_HASH_FAILED: HTTP ${res.status}`);
+    }
+    const raw: any = await res.json().catch(() => []);
+    const rows: any[] = Array.isArray(raw) ? raw : [];
+    return { rows, command: 'UPDATE', rowCount: rows.length, oid: 0, fields: [] };
+  }
+
+  // 18D. INSERT INTO audit_logs (R1 Abuse Protection Logging)
+  if (lowerSql.startsWith('insert into audit_logs')) {
+    const id = params?.[0] || crypto.randomUUID();
+    const entityType = params?.[1];
+    const entityId = params?.[2] || '00000000-0000-0000-0000-000000000000';
+    const action = params?.[3];
+    const actorId = params?.[4] || '00000000-0000-0000-0000-000000000000';
+    const actorRole = params?.[5] || 'UNKNOWN';
+    const payload = safeParse(params?.[6], {});
+    const nowIso = new Date().toISOString();
+
+    const insertRes = await fetch(`${url}/rest/v1/audit_logs`, {
+      method: 'POST',
+      headers: { ...headers, 'Prefer': 'return=representation' },
+      body: JSON.stringify({
+        id,
+        entity_type: entityType,
+        entity_id: entityId,
+        action,
+        actor_id: actorId,
+        actor_role: actorRole,
+        payload,
+        created_at: nowIso,
+      }),
+    });
+    if (!insertRes.ok) {
+      const errBody = await insertRes.text().catch(() => '');
+      throw new Error(`REST_AUDIT_LOGS_INSERT_FAILED: HTTP ${insertRes.status} — ${errBody.slice(0, 200)}`);
+    }
+    const raw: any = await insertRes.json().catch(() => []);
+    const arr = Array.isArray(raw) ? raw : (raw && raw.id ? [raw] : []);
+    return { rows: arr, command: 'INSERT', rowCount: arr.length, oid: 0, fields: [] };
+  }
+
+  // 18E. SELECT COUNT(*) FROM audit_logs ... failed logins (filtered at data source)
+  if (lowerSql.includes('from audit_logs') && lowerSql.includes('count(')) {
+    const minutes = parseInt(params?.[0] || '15', 10);
+    const key = String(params?.[1] || '');
+    const sinceIso = new Date(Date.now() - minutes * 60 * 1000).toISOString();
+    const res = await fetch(
+      `${url}/rest/v1/audit_logs?entity_type=eq.ADMIN_AUTH&action=eq.ADMIN_LOGIN_FAILED&payload->>key=eq.${encodeURIComponent(key)}&created_at=gte.${encodeURIComponent(sinceIso)}&select=id`,
+      {
+        headers: {
+          ...headers,
+          'Prefer': 'count=exact',
+        },
+      }
+    );
+    if (!res.ok) {
+      throw new Error(`REST_AUDIT_LOGS_COUNT_FAILED: HTTP ${res.status}`);
+    }
+    const countHeader = res.headers.get('content-range');
+    let totalCount = 0;
+    if (countHeader && countHeader.includes('/')) {
+      const parts = countHeader.split('/');
+      totalCount = parseInt(parts[1] || '0', 10);
+    } else {
+      const raw: any = await res.json().catch(() => []);
+      totalCount = Array.isArray(raw) ? raw.length : 0;
+    }
+    return { rows: [{ count: totalCount }], command: 'SELECT', rowCount: 1, oid: 0, fields: [] };
+  }
+
   return null;
 }
 

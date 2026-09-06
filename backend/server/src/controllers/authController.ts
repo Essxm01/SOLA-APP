@@ -145,20 +145,39 @@ export class AuthController {
     }
   }
 
-  async adminLogin(email: string, password_raw: string): Promise<ApiSuccessResponse<any> | ApiErrorResponse> {
+  async adminLogin(email: string, password_raw: string, clientIp?: string): Promise<ApiSuccessResponse<any> | ApiErrorResponse> {
     try {
-      const result = await this.authService.adminLogin(email, password_raw);
+      const result = await this.authService.adminLogin(email, password_raw, { clientIp });
       return {
         success: true,
         data: result,
         timestamp: new Date().toISOString(),
       };
     } catch (err: any) {
+      const rawCode = err.message || '';
+      let code = 'INVALID_ADMIN_CREDENTIALS';
+      let message = 'اسم المستخدم أو كلمة المرور غير صحيحة';
+
+      if (rawCode === 'MISSING_EMAIL_OR_PASSWORD') {
+        code = 'MISSING_EMAIL_OR_PASSWORD';
+        message = 'يرجى إدخال البريد الإلكتروني وكلمة المرور';
+      } else if (rawCode === 'ADMIN_LOGIN_THROTTLED') {
+        code = 'ADMIN_LOGIN_THROTTLED';
+        message = 'تم تجاوز الحد المسموح لمحاولات تسجيل الدخول. يرجى الانتظار 15 دقيقة.';
+      } else if (rawCode === 'INVALID_ADMIN_CREDENTIALS') {
+        code = 'INVALID_ADMIN_CREDENTIALS';
+        message = 'اسم المستخدم أو كلمة المرور غير صحيحة';
+      } else {
+        // Infrastructure / Configuration / Persistence / DB failure -> ADMIN_AUTH_UNAVAILABLE
+        code = 'ADMIN_AUTH_UNAVAILABLE';
+        message = 'خدمة التحقق من هوية المسؤول غير متاحة حالياً. يرجى المحاولة لاحقاً.';
+      }
+
       return {
         success: false,
         error: {
-          code: err.message || 'INVALID_ADMIN_CREDENTIALS',
-          message: 'اسم المستخدم أو كلمة المرور غير صحيحة',
+          code,
+          message,
         },
         timestamp: new Date().toISOString(),
       };

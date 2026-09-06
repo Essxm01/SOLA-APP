@@ -727,21 +727,21 @@ export class AuthService {
       throw new Error('INVALID_ADMIN_CREDENTIALS');
     };
 
-    if (!adminRecord || !adminRecord.isActive || !adminRecord.passwordHash) {
-      // Genuine 10-round bcrypt comparison with valid decoy hash to ensure uniform timing
-      await bcrypt.compare(password_raw, TIMING_DECOY_HASH).catch(() => false);
-      await recordFailureAndThrow();
-    }
+    // R1.1 & R1.2: Unified single-path bcrypt verification ensuring uniform execution timing
+    // regardless of whether identity exists or whether candidate is an explicitly rejected legacy password.
+    const targetHash = (adminRecord && adminRecord.isActive && adminRecord.passwordHash)
+      ? adminRecord.passwordHash
+      : TIMING_DECOY_HASH;
 
-    // R1.2: Reject known compromised / legacy passwords unconditionally
+    // Always perform genuine 10-round bcrypt comparison for every syntactically valid attempt
+    const isValid = await bcrypt.compare(password_raw, targetHash).catch(() => false);
+
+    // Reject unconditionally if identity is absent/inactive, if password compare failed,
+    // or if the candidate is an explicitly rejected legacy/compromised password
     const legacyCompromised = ['Admin', 'Password', '2026', '!'].join('');
-    if (password_raw === legacyCompromised || password_raw === 'admin123') {
-      await recordFailureAndThrow();
-    }
+    const isExplicitlyRejectedCandidate = password_raw === legacyCompromised || password_raw === 'admin123';
 
-    // Verify password against canonical bcrypt hash
-    const isValid = await bcrypt.compare(password_raw, adminRecord!.passwordHash);
-    if (!isValid) {
+    if (!adminRecord || !adminRecord.isActive || !isValid || isExplicitlyRejectedCandidate) {
       await recordFailureAndThrow();
     }
 

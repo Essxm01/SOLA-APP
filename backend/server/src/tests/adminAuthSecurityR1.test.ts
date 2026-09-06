@@ -542,6 +542,67 @@ async function runTests() {
     }
   }
 
+  // --------------------------------------------------------------------------
+  // TEST 17: Timing Uniformity & Bcrypt Verification Non-Bypass for Legacy Candidates
+  // --------------------------------------------------------------------------
+  console.log('Test 17: Timing uniformity & bcrypt verification non-bypass for legacy candidates...');
+  const origCompare = bcrypt.compare;
+  const compareCalls: Array<{ data: string; encrypted: string }> = [];
+  (bcrypt as any).compare = async (data: string, encrypted: string) => {
+    compareCalls.push({ data, encrypted });
+    return origCompare(data, encrypted);
+  };
+
+  try {
+    // 1. Existing Admin with compromised legacy candidate
+    compareCalls.length = 0;
+    try {
+      await authService.adminLogin('admin@sola.com', compromisedLegacyPassword, { clientIp: `${runIpPrefix}.17a` });
+    } catch (err: any) {
+      assert(err.message === 'INVALID_ADMIN_CREDENTIALS', 'Expected INVALID_ADMIN_CREDENTIALS');
+    }
+    assert(compareCalls.length === 1, 'bcrypt.compare MUST be called for existing admin with compromised candidate');
+    assert(compareCalls[0].data === compromisedLegacyPassword, 'Candidate password must be passed to bcrypt.compare');
+    assert(compareCalls[0].encrypted === defaultAdminHash, 'Active admin stored hash must be used for bcrypt.compare');
+
+    // 2. Existing Admin with weak legacy fallback ('admin123')
+    compareCalls.length = 0;
+    try {
+      await authService.adminLogin('admin@sola.com', weakLegacyFallback, { clientIp: `${runIpPrefix}.17b` });
+    } catch (err: any) {
+      assert(err.message === 'INVALID_ADMIN_CREDENTIALS', 'Expected INVALID_ADMIN_CREDENTIALS');
+    }
+    assert(compareCalls.length === 1, 'bcrypt.compare MUST be called for existing admin with weak fallback candidate');
+    assert(compareCalls[0].data === weakLegacyFallback, 'Candidate fallback password must be passed to bcrypt.compare');
+    assert(compareCalls[0].encrypted === defaultAdminHash, 'Active admin stored hash must be used for bcrypt.compare');
+
+    // 3. Nonexistent Admin with compromised legacy candidate
+    compareCalls.length = 0;
+    try {
+      await authService.adminLogin('nonexistent@sola.com', compromisedLegacyPassword, { clientIp: `${runIpPrefix}.17c` });
+    } catch (err: any) {
+      assert(err.message === 'INVALID_ADMIN_CREDENTIALS', 'Expected INVALID_ADMIN_CREDENTIALS');
+    }
+    assert(compareCalls.length === 1, 'bcrypt.compare MUST be called for nonexistent admin with compromised candidate');
+    assert(compareCalls[0].data === compromisedLegacyPassword, 'Candidate password must be passed to bcrypt.compare');
+    assert(compareCalls[0].encrypted === TIMING_DECOY_HASH, 'Decoy hash must be used when admin is absent');
+
+    // 4. Nonexistent Admin with weak legacy fallback ('admin123')
+    compareCalls.length = 0;
+    try {
+      await authService.adminLogin('nonexistent@sola.com', weakLegacyFallback, { clientIp: `${runIpPrefix}.17d` });
+    } catch (err: any) {
+      assert(err.message === 'INVALID_ADMIN_CREDENTIALS', 'Expected INVALID_ADMIN_CREDENTIALS');
+    }
+    assert(compareCalls.length === 1, 'bcrypt.compare MUST be called for nonexistent admin with weak fallback candidate');
+    assert(compareCalls[0].data === weakLegacyFallback, 'Candidate fallback password must be passed to bcrypt.compare');
+    assert(compareCalls[0].encrypted === TIMING_DECOY_HASH, 'Decoy hash must be used when admin is absent');
+
+    console.log('  PASS: Timing uniformity verified — legacy candidates execute unified bcrypt verification');
+  } finally {
+    (bcrypt as any).compare = origCompare;
+  }
+
   console.log('\nALL R1 BACKEND SECURITY TESTS PASSED!');
 }
 

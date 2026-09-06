@@ -1,727 +1,432 @@
-# PRE-PHASE-4 MASTER AUDIT — Phase 0 → Phase 3
+# PRE-PHASE-4 MASTER AUDIT — V2 INTERACTION-HARDENED
 
 **Status:** APPROVED_FOR_AUDIT  
 **Approved by Founder:** 2026-09-06  
 **Audit type:** Comprehensive read-only forensic audit + remediation planning  
 **Primary reviewer:** ZCode  
-**Scope:** Entire repository, completed Phase 0–3 work, current live architecture/evidence, security posture, code quality, data integrity, cross-app truth, CI/test evidence, documentation drift, and operational hygiene  
 **Implementation authority:** NONE during this audit  
-**Founder gate:** REQUIRED before any remediation changes are made
+**Founder gate:** REQUIRED before any remediation changes are made  
+**Current contract version:** V2 — Interactive Action Audit hardened
 
 ---
 
-## 1. Objective
+## 0. Binding base contract
 
-Before Phase 4 begins, perform the strongest practical independent audit of everything implemented, changed, verified, deployed, or relied upon from the first project task through the end of Phase 3.
+This V2 contract preserves and incorporates the complete V1 audit contract by exact immutable reference:
 
-The purpose is not to rubber-stamp the current state and not to reward green CI. The purpose is to determine whether KONFRM is genuinely ready to enter the dedicated Phase 4 UI/UX program without carrying hidden correctness, security, architecture, persistence, business-rule, cross-app, or maintainability defects from earlier phases.
+- Repository: `Essxm01/SOLA-APP`
+- V1 commit: `f88afd06e9a502e86ff159b7c62498b88f805e4e`
+- V1 path: `tasks/PRE_PHASE_4_MASTER_AUDIT.md`
 
-The audit must answer:
+At the beginning of the audit, read the V1 contract from that exact commit, then read this current V2 contract from the exact audited `main` SHA.
 
-1. Did Phase 0–3 implementation actually satisfy the governing product/business/architecture rules?
-2. Are security and privacy boundaries correct and fail-closed?
-3. Is canonical data really canonical across Customer, Owner, Admin, Backend, PostgreSQL, Storage, Worker, and deployed surfaces?
-4. Are booking, availability, finance, identity, property, KYC, media, wallet, and Admin flows internally consistent and protected from edge cases/races?
-5. Are tests meaningful and actually executed, rather than merely producing a green CI status?
-6. Is the codebase safe and maintainable enough to build Phase 4 UI/UX on top of it without redesigning around broken foundations?
-7. What must be fixed before Phase 4, what may be deferred, and what must not be changed because it is intentional product/architecture behavior?
+**Every requirement, prohibition, audit domain, finding format, severity rule, Stage B rule, final-report requirement, and stop condition in V1 remains mandatory unless this V2 explicitly strengthens or overrides it.**
 
-Absolute software certainty is impossible. Do not claim “100% bug-free” or “100% secure.” Instead provide evidence-based confidence and explicitly state residual risk.
+Where V1 and V2 differ, the stricter V2 requirement wins.
 
----
+This wrapper exists to harden the audit after live Founder observations proved that flow-level, API-level, and CI-level verification alone did not detect all user-facing runtime and interaction defects.
 
-## 2. HARD AUDIT MODE — NO MUTATIONS
-
-This task is **Stage A + Stage B only**.
-
-### Stage A — Read-only forensic audit
-
-You may:
-
-- read all repository files and Git history;
-- inspect PRs, commits, diffs, branches, CI workflows, logs, task reports, migrations, and current code;
-- run static analysis, tests, typechecks, builds, dependency/security scanners, and local read-only probes after confirming they do not mutate live systems;
-- run read-only database queries and read-only live/API requests where access exists;
-- inspect deployed frontend/backend revision evidence;
-- inspect public/storage objects without modifying them;
-- create temporary local audit scripts or artifacts outside tracked source, provided they are removed before completion and `git status` returns clean.
-
-You MUST NOT:
-
-- edit product code;
-- refactor or reformat source files;
-- create migrations;
-- change DB rows, schemas, grants, RLS, RPCs, triggers, functions, extensions, or Storage objects;
-- create/delete/update production data;
-- approve/reject/archive/create bookings/properties/KYC records for audit purposes;
-- deploy anything;
-- change Cloudflare/Supabase/GitHub configuration;
-- merge or open implementation PRs;
-- rotate credentials yourself;
-- run historical/destructive scripts merely because they exist.
-
-If a tool normally writes state, do not use it unless a verified dry-run/read-only mode exists.
-
-### Stage B — Remediation plan only
-
-After findings are complete, produce an ordered remediation plan. Do not implement it.
-
-STOP after Stage B and await Founder/Bridge approval.
+Absolute software certainty is impossible. Do not claim “100% bug-free” or “100% secure.” The required standard is exhaustive evidence over the currently reachable product surface, explicit residual-risk disclosure, and zero unresolved known blockers before Phase 4.
 
 ---
 
-## 3. Mandatory onboarding and authority recovery
+## 1. New Founder-confirmed defects — mandatory starting evidence
 
-At the start, record:
+The audit MUST begin with these defects recorded as known live observations, not as hypothetical examples.
 
-- current branch;
-- exact HEAD SHA;
-- exact `origin/main` SHA;
-- repository cleanliness;
-- audit timestamp;
-- available external access (GitHub/Supabase/Cloudflare/live URLs) without printing secrets.
+### `KNOWN-UI-OWNER-001` — Owner Financial Analytics runtime crash
 
-Read the mandatory core in this order:
+Founder live observation on 2026-09-06:
 
-1. `AGENTS.md`
-2. `docs/INDEX.md`
-3. `docs/CURRENT_STATE.md`
-4. `tasks/CURRENT_TASK.md`
-5. `docs/codex/KONFRM_MASTER_RULES.md`
-6. this contract
+- App: Owner App
+- Surface: Wallet / financial area
+- User action: press `التحليلات المالية`
+- Observed result: Runtime Render Error screen
+- Observed error text: `Cannot read properties of undefined (reading 'totalBookingsCount')`
 
-Because this is a cross-system audit, also read at minimum:
+Required audit treatment:
 
-- `KONFRM_CODEX_MASTER_OPERATING_PROMPT.md`
-- `KONFRM_MASTER_PROJECT_CONTEXT.md`
-- `KONFRM_EXECUTION_DEPENDENCY_ORDER.md`
-- `خطة عمل التطبيق.txt`
-- `docs/PROJECT.md`
-- `docs/ARCHITECTURE.md`
-- `docs/DATABASE.md`
-- `docs/BUSINESS_RULES.md`
-- `docs/INTEGRATIONS.md`
-- `docs/DECISIONS.md`
-- `docs/CONTEXT_ROUTER.md`
-- `docs/codex/KONFRM_CURRENT_REALITY.md`
-- `docs/codex/KONFRM_COMPLETION_MATRIX.md`
-- `docs/codex/KONFRM_EXECUTION_MAP.md`
-- `docs/codex/KONFRM_RESCUE_BACKLOG.md`
-- `docs/codex/KONFRM_QUALITY_GATES.md`
-- `docs/codex/KONFRM_CROSS_APP_MATRIX.md`
-- `docs/codex/KONFRM_DECISION_CONFLICTS.md`
-- `docs/codex/KONFRM_DOCUMENT_RECONCILIATION.md`
-- `docs/codex/P1_1_SCHEMA_RLS_BASELINE_REPORT.md`
+1. reproduce or statically trace the exact reachable code path without mutating live state;
+2. identify the canonical root cause, including the undefined object/property source and why prior tests did not catch it;
+3. identify all other surfaces that consume the same data shape or helper and could fail similarly;
+4. determine whether the defect is Worker/API-shape drift, frontend state/defaulting, contract validation, stale mock/type drift, or another cause;
+5. define the exact regression test(s) needed after remediation.
 
-Then selectively inspect all Phase 0–3 task contracts, closure reports, relevant PRs/commits, migrations, and source code required to verify claims.
+This is a **Pre-Phase-4 blocker until fixed and regression-verified**.
 
-Do not assume any document is current merely because it exists. Treat Git history, current code, migrations, current DB/live evidence, and higher-authority Founder decisions as separate evidence classes and reconcile conflicts explicitly.
+### `KNOWN-UI-ADMIN-001` — Admin notifications dead interaction
+
+Founder live observation on 2026-09-06:
+
+- App: Admin App
+- Surface: top/header notification bell
+- User action: press the visible notification bell
+- Observed result: no navigation, panel, modal, feedback, disabled explanation, or other observable response
+
+Required audit treatment:
+
+1. determine whether the element is intended to be interactive under current approved scope;
+2. trace its event handler, route, feature state, and any conditional logic;
+3. distinguish a missing implementation from a broken binding, blocked route, swallowed error, disabled feature presented as active, or decorative element incorrectly styled as interactive;
+4. inspect equivalent notification affordances in Owner and Customer where present;
+5. define the exact regression test(s) needed after remediation.
+
+If the bell is currently presented to users as actionable, this is a **Pre-Phase-4 blocker until it either performs the intended action or is truthfully represented as non-actionable/disabled according to approved product scope**.
+
+Do not downgrade either known defect merely because CI/build is green.
 
 ---
 
-## 4. Current Founder decisions that must not be silently reversed
+## 2. Mandatory Interactive Action Audit — all three apps
 
-Treat the current governing rules in `docs/codex/KONFRM_MASTER_RULES.md` as mandatory unless a newer explicit Founder decision exists.
+V1 Section 11 is strengthened by this section.
 
-Pay particular attention to these invariants:
+The audit MUST create a complete inventory of the currently visible and reachable interactive surface in:
 
-- same human may be Customer + Owner; Owner capability is never automatic at login;
-- KYC = National ID front + National ID back + fresh/live face image + Admin review; no fake biometric/liveness claim;
-- public Property requires `PUBLISHED + VERIFIED`;
-- property `address = ''` is valid and must not hide an otherwise eligible public property;
-- stay length = 2–30 nights;
-- `PENDING_OWNER_APPROVAL` does not block availability;
-- `APPROVED_PENDING_PAYMENT` and `CONFIRMED` do block availability;
-- quote is not a hold;
-- booking flow is Owner approval before payment/confirmation;
-- deposit = actual first-night price;
-- KONFRM commission = 20% of deposit only;
-- Owner net deposit = 80%; no commission on remaining balance;
-- Customer must not see internal financial split;
-- wallet/ledger truth is persisted canonical data, never reconstructed or defaulted to zero on DB error;
-- chat remains in-app; no phone/contact leakage;
-- reviews occur only after `COMPLETED` where applicable;
-- Supabase PostgreSQL/Storage is canonical;
-- the Worker SQL-to-REST/RPC adapter is intentionally narrow and strict;
-- major Phase 4–7 redesign must not be backported into this audit as a “cleanup.”
+- `customer-app/`
+- `owner-app/`
+- `admin-app/`
 
-Latest Founder data-hygiene decision: property `f817ca19-1738-4ba5-93b3-afd3dc2d9a08` (`شقة ٣٢`) is intentionally preserved. Do not classify its continued existence alone as an audit defect.
+The goal is not a visual redesign. The goal is to prove that every currently exposed interaction is truthful, reachable, non-crashing, non-dead, and consistent with the current product scope.
 
----
+### 2.1 What counts as an interactive action
 
-## 5. Phase 0–3 historical coverage ledger
+Inventory every currently visible or conditionally reachable user-action affordance, including at minimum:
 
-Build a complete ledger of completed work from the first task through Phase 3 using the macro roadmap, execution map, Git history, task contracts, reports, PRs, migrations, and current implementation.
+- primary/secondary/tertiary buttons;
+- icon buttons;
+- header actions and notification bells;
+- bottom/top navigation items;
+- tabs and segmented controls;
+- chips and filters;
+- search actions;
+- cards with click/tap behavior;
+- text links;
+- menu items;
+- dropdowns/selectors;
+- accordions/expanders;
+- pagination/load-more controls;
+- back/close/dismiss controls;
+- modal/drawer/sheet actions;
+- retry/reload actions;
+- form submit/cancel/save actions;
+- date/guest/property selectors;
+- booking actions;
+- Owner property-management actions;
+- wallet/payment/payout actions;
+- Admin review/KYC/financial/dispute actions;
+- any element styled or semantically presented as clickable/tappable;
+- keyboard-triggerable actions where applicable.
 
-For every material task/subtask, record:
+Do not count purely decorative elements unless their styling/semantics falsely imply clickability.
 
-- task/phase ID;
-- original objective;
-- authoritative contract/spec;
-- implementation PR/commit(s);
-- affected apps/systems;
-- migration/RPC impact, if any;
-- test evidence;
-- CI evidence;
-- live evidence where required;
-- current implementation status: `PROVEN`, `PARTIAL`, `STALE_EVIDENCE`, `CONFLICT`, or `NOT_VERIFIED`;
-- whether a current finding invalidates any previous closure claim.
+### 2.2 Required inventory fields
 
-Do not treat a historical “PASS” report as current truth without checking the surviving code and relevant live/canonical state.
+Assign every action a stable audit ID and record:
 
----
+- app: `CUSTOMER | OWNER | ADMIN`;
+- route/screen/surface;
+- visible label, icon, or accessible name;
+- action type;
+- preconditions/state required for it to appear;
+- expected behavior from current code/spec/product authority;
+- actual browser behavior;
+- resulting route/modal/state change;
+- console errors/warnings caused by the action;
+- page errors / uncaught exceptions;
+- unhandled promise rejections;
+- network request(s), status, and failure semantics where relevant;
+- whether the action mutates server/live state;
+- verification mode used;
+- verdict.
 
-## 6. Cybersecurity audit — comprehensive
+Allowed verdicts:
 
-Audit the system against the relevant OWASP Web/API threat classes and actual KONFRM architecture. Evidence must be tied to exact routes/files/config/migrations where possible.
+- `PASS`
+- `FAIL_RUNTIME`
+- `FAIL_DEAD_ACTION`
+- `FAIL_WRONG_DESTINATION`
+- `FAIL_SILENT_ERROR`
+- `FAIL_CONTRACT_OR_DATA`
+- `FAIL_MISLEADING_AFFORDANCE`
+- `NOT_SAFELY_LIVE_EXECUTED`
+- `INTENTIONALLY_DISABLED_AND_TRUTHFUL`
+- `NOT_APPLICABLE`
 
-### 6.1 Authentication and sessions
-
-Review:
-
-- login/OTP/prototype-auth behavior;
-- session creation, validation, refresh, expiry, revocation, logout, reuse, and persistence;
-- JWT signing/verification, algorithm/claim validation, issuer/audience if applicable;
-- token storage in all three frontends;
-- session fixation/replay risks;
-- role bootstrap and surface restrictions;
-- prototype shortcuts that could accidentally become public production bypasses.
-
-### 6.2 Authorization / IDOR / role isolation
-
-For Customer, Owner, Admin, and shared-human identities verify:
-
-- every protected route enforces role and canonical identity server-side;
-- Owner cannot operate on another Owner’s property, media, booking, wallet, KYC, or availability;
-- Customer cannot access another Customer’s private data;
-- Admin-only actions cannot be invoked by Customer/Owner tokens;
-- client-provided IDs never override canonical ownership;
-- list endpoints and detail endpoints have equivalent privacy boundaries;
-- authorization does not depend on hidden UI buttons.
-
-Explicitly inspect for BOLA/IDOR and mass-assignment risk.
-
-### 6.3 Input, injection, parser, and output safety
-
-Review:
-
-- SQL/REST/RPC adapter query construction and matcher collisions;
-- SQL injection or unsafe dynamic filters;
-- JSON/body validation;
-- UUID/date/status/amount validation;
-- XSS/HTML injection in user-supplied property text, messages, reviews, names, Admin rendering, and any rich-text-like surface;
-- URL/open-redirect risks;
-- command/path injection in maintenance scripts;
-- unsafe parsing/deserialization;
-- response DTO allowlists and accidental private-field leakage.
-
-### 6.4 CORS, CSRF, browser and transport boundaries
-
-Review:
-
-- CORS origin/method/header policy;
-- credential behavior;
-- CSRF exposure if cookies or implicit credentials are used anywhere;
-- security headers where controlled by the app/platform;
-- mixed-content/insecure endpoint use;
-- source maps/debug endpoints or internal diagnostics exposed publicly.
-
-### 6.5 Secrets and credentials
-
-Scan current tracked files **and Git history** for:
-
-- API keys;
-- OAuth/PAT tokens;
-- Supabase service-role/anon keys where inappropriate;
-- passwords/admin credentials;
-- private URLs containing credentials;
-- `.env`/debug/log artifacts;
-- hardcoded fallback credentials or fake-token fallbacks.
-
-Known operational history includes credentials/tokens having appeared in agent console output. Treat any still-valid exposed credential as compromised.
-
-**Never print secret values in the report.** Report only secret type, location/evidence, whether it appears active, and required rotation/removal action using redacted fingerprints if necessary.
-
-### 6.6 Storage / media / KYC privacy
-
-Audit:
-
-- public `property-media` vs private identity/KYC buckets;
-- presigned upload authorization and object-key ownership;
-- MIME, size, extension, object validation;
-- upload intent commit integrity/idempotency;
-- orphaned object/DB-record behavior;
-- arbitrary object overwrite/cross-owner access;
-- KYC object privacy and Admin-only access;
-- whether public URLs can expose private identity evidence;
-- image/media rendering failure semantics.
-
-### 6.7 Abuse, enumeration, rate limiting, and operational exposure
-
-Identify practical risks around:
-
-- OTP/request endpoints;
-- auth/login enumeration;
-- expensive public search/detail endpoints;
-- repeated booking/approval/payment actions;
-- Admin endpoints;
-- upload/presigned URL generation;
-- brute force/replay/rate-limit absence.
-
-Do not invent a new product policy; report gaps and recommended controls.
+Every non-`PASS` verdict requires explanation and a finding when it represents a defect.
 
 ---
 
-## 7. Database, migrations, RLS, RPC, and persistence audit
+## 3. Browser-level execution is mandatory
 
-Review the entire retained migration chain and compare it to current live DB metadata where read access exists.
+Static inspection alone is insufficient for the interactive-action gate.
 
-Verify:
+Where current access allows it, use real browser-level execution against the deployed application or an exact-revision local build. Suitable methods include Playwright, Chrome DevTools Protocol, or equivalent browser automation.
 
-- schema/migration drift;
-- missing or historically-applied-but-untracked migrations;
-- constraints, FK integrity, uniqueness, exclusion constraints, indexes;
-- status/domain consistency;
-- RLS enablement/policies and service-role assumptions;
-- grants and RPC execute privileges;
-- `SECURITY DEFINER` / `SECURITY INVOKER` correctness, search paths, and privilege boundaries;
-- transaction boundaries and atomicity;
-- idempotency of critical mutations;
-- concurrency safeguards/advisory locks;
-- DB errors fail honestly rather than becoming empty success/zero values;
-- orphaned rows or impossible states;
-- timestamps/defaults/null semantics;
-- schema fields used differently by Node path vs Worker path.
+For safe non-mutating actions, actually exercise the action and observe the result.
 
-Explicitly revisit known baseline debt documented in `P1_1_SCHEMA_RLS_BASELINE_REPORT.md`; distinguish accepted historical drift from current exploitable/functional risk.
+At minimum, browser telemetry must capture where technically possible:
 
-No DB mutation is permitted during this audit.
+- page/runtime errors;
+- `console.error`;
+- uncaught exceptions;
+- unhandled promise rejections;
+- failed or unexpectedly rejected network calls;
+- broken route transitions;
+- DOM disappearance/crash/error-boundary transitions;
+- loading states that never settle;
+- actions that produce no observable outcome.
 
----
+A source file containing an `onClick` is **not evidence that the action works**.
 
-## 8. Backend / Worker / API contract audit
+A green build is **not evidence that the action works**.
 
-Audit Node and Cloudflare Worker execution paths, repositories, controllers/contracts, and the narrow SQL compatibility adapter.
-
-Verify:
-
-- Node and Worker produce equivalent business behavior where both are supported;
-- strict adapter matcher ordering cannot route a query to the wrong operation;
-- DTOs/allowlists prevent field leakage;
-- malformed DB/PostgREST responses fail closed;
-- not-found vs forbidden vs DB-failure semantics are truthful;
-- error codes/statuses are stable and meaningful;
-- external service failures are not converted to fabricated success;
-- routes are not duplicated with divergent authorization/business rules;
-- unsafe legacy/prototype endpoints are not reachable or relied upon unexpectedly;
-- API versioning/base URLs/environment resolution are consistent.
-
-Identify dead/legacy routes and scripts, but do not remove them during Stage A/B.
+A successful API request is **not evidence that the resulting screen renders**.
 
 ---
 
-## 9. Business-rule audit — current behavior vs authority
+## 4. Production-safety rule for interaction testing
 
-Independently verify current code, DB constraints, API contracts, and tests against every relevant confirmed business invariant.
+The V1 no-mutation rule remains absolute.
 
-### Properties
+Do NOT click a live action when the action would create, update, delete, approve, reject, archive, pay, submit, book, upload, send, or otherwise mutate live/production state unless a verified non-mutating mode exists.
 
-Review lifecycle, Owner ownership, submit/review/approve/reject/archive/restore semantics, `PUBLISHED + VERIFIED`, valid empty address, media linkage, public search/detail equality, and Owner/Admin/Customer propagation.
+For such actions:
 
-### Booking and availability
+1. inventory them anyway;
+2. inspect implementation, authorization, tests, and contracts;
+3. execute them only in a proven isolated/local/test environment that cannot mutate production;
+4. if safe execution is not available, mark `NOT_SAFELY_LIVE_EXECUTED` rather than fabricating evidence;
+5. state the residual risk and required post-remediation/safe-environment verification.
 
-Review:
-
-- 2–30 night validation;
-- date arithmetic/timezone boundaries;
-- pending non-blocking semantics;
-- approved-pending-payment and confirmed blocking semantics;
-- quote not creating a hold;
-- manual block vs booking overlap;
-- cross-table concurrency protection;
-- Owner approve/reject race behavior;
-- duplicate requests/idempotency;
-- stale availability between quote and mutation;
-- truthful conflict handling.
-
-### Finance / payment / wallet
-
-Review:
-
-- first-night deposit derivation;
-- 20%/80% split;
-- remaining balance calculation;
-- persisted/server summary authority;
-- Customer privacy of internal split;
-- prototype payment state transitions;
-- double-finalization/idempotency;
-- wallet Pending/Available movement;
-- immutable ledger semantics;
-- DB error not converted to zero balance;
-- payout currently unavailable behavior and no fake success.
-
-Do not redefine currently-open cancellation/refund or remaining-balance policies.
-
-### Identity / Owner capability / KYC
-
-Review same-UUID dual-role behavior, explicit Owner registration, Owner capability checks, KYC completeness and review lifecycle, and storage privacy.
-
-### Messaging/privacy and other implemented domains
-
-Review any Phase 0–3 messaging, notifications, favorites, payment history, disputes, or adjacent functionality that is present enough to create privacy/security/canonical-state risk, while distinguishing deferred roadmap functionality from defects.
+No production mutation may be justified by the desire to reach “100% click coverage.”
 
 ---
 
-## 10. Cross-app truth audit
+## 5. Mandatory interaction state matrix
 
-For shared entities/states, compare Customer App, Owner App, Admin App, backend contracts, and database fields.
+For each app, inspect representative reachable states, not only the happy-path home screen.
 
-Look for:
+Where safely reachable, cover:
 
-- duplicate local truth;
-- hardcoded business data;
-- fake success/fallbacks;
-- stale state requiring browser reload/re-auth;
-- inconsistent enums/mappings;
-- list/detail disagreement;
-- role-specific privacy leakage;
-- frontend reconstruction of server-authoritative money/status;
-- cached older responses overwriting newer canonical state;
-- loading/error/empty states that visually masquerade as real data.
+- authenticated normal state;
+- unauthenticated/public state where applicable;
+- populated-data state;
+- empty state;
+- loading state;
+- explicit API/error state;
+- retry state;
+- modal/drawer open/close state;
+- relevant role-specific tabs/filters;
+- responsive viewport appropriate to the role: mobile-first Customer/Owner and desktop Admin.
 
-Re-validate the Phase 3 Owner → Admin → Customer property slice at code-contract level and against available live read-only evidence. Do not create new production records during this audit.
-
----
-
-## 11. Frontend and UI implementation quality before Phase 4
-
-This is **not** a Phase 4 redesign audit. Do not score old UI for visual polish that is intentionally scheduled for Phase 4–7.
-
-Audit only foundation-level UI risks that could contaminate Phase 4 work:
-
-- inaccessible/broken critical flows;
-- incorrect role navigation;
-- impossible states;
-- data truth/fallback problems;
-- crashes/runtime errors;
-- Arabic/RTL bugs that alter meaning or action safety;
-- broken image/media handling;
-- unhandled loading/error/retry states;
-- dangerous disabled/enabled action logic;
-- client-side business-rule duplication;
-- component/state architecture that creates correctness bugs.
-
-Separate `FOUNDATION_DEFECT` from `PHASE_4_DESIGN_DEBT`.
+The audit is not required to redesign spacing/colors/visual polish before Phase 4, but interaction correctness, action visibility, truthful disabled states, crash safety, and route correctness are foundation requirements.
 
 ---
 
-## 12. Code quality and maintainability audit
+## 6. Dead-action and misleading-affordance rules
 
-Review all app/backend code for defects and future-risk hotspots, not aesthetics.
+Treat an action as `FAIL_DEAD_ACTION` when an element presented as actionable receives activation but produces no intended result and no truthful user feedback.
 
-Identify:
+Examples include:
 
-- duplicate implementations of the same domain rule;
-- dead/unreachable code;
-- stale mocks/fakes/placeholders;
-- hardcoded IDs/statuses/prices/financial values;
-- swallowed exceptions and empty catches;
-- broad catch-and-default behavior;
-- unsafe casts / weak runtime validation;
-- giant multi-responsibility files/functions;
-- circular/tangled dependencies;
-- inconsistent naming/types/contracts;
-- brittle string matching;
-- race conditions and stale closures;
-- uncontrolled async work;
-- memory/event-listener leaks;
-- code paths that differ silently between apps;
-- copy/paste route/DTO drift;
-- debug scripts capable of destructive live operations;
-- generated/build files accidentally tracked;
-- comments/TODOs that reveal unresolved correctness or security debt.
+- no navigation when navigation is expected;
+- no modal/panel when one is expected;
+- handler missing or never bound;
+- event swallowed;
+- runtime exception prevents completion;
+- promise rejection is swallowed;
+- feature is unavailable but the control is visually active with no explanation.
 
-For every refactor candidate, state whether it is:
+Treat an element as `FAIL_MISLEADING_AFFORDANCE` when it visually/semantically invites interaction while current approved behavior is intentionally unavailable and this is not communicated truthfully.
 
-- correctness/security necessary before Phase 4;
-- safe maintainability improvement but non-blocking;
-- risky/unnecessary churn that should be left alone.
-
-Do not refactor during this audit.
+Do not “fix” this in Stage A/B. Diagnose and plan only.
 
 ---
 
-## 13. Dependency and supply-chain audit
+## 7. Runtime-crash sweep
 
-For every Node workspace/app/backend:
+Across all three applications, specifically search for:
 
-- inspect `package.json` and lockfiles;
-- detect unused or suspicious dependencies where evidence supports it;
-- review dependency versions with known vulnerability tooling if available;
-- distinguish production vs dev-only vulnerability impact;
-- inspect install/build scripts for unsafe behavior;
-- review GitHub Actions third-party actions/version pinning;
-- inspect Node runtime/version consistency;
-- identify abandoned/deprecated critical dependencies;
-- flag lockfile drift or non-reproducible install risk.
+- property access on optional/undefined API objects;
+- stale mock/type assumptions;
+- route components that assume data is always loaded;
+- unsafe destructuring;
+- array indexing without guards where canonical empty state is valid;
+- error boundaries masking repeatable defects;
+- state shape drift between API/client/context/components;
+- Node-vs-Worker response-shape differences reaching UI;
+- partial data objects created by list-to-detail transitions;
+- race conditions causing older/empty data to overwrite new data;
+- undefined nested analytics/dashboard/wallet aggregates;
+- code paths with empty catch blocks or catch-and-ignore behavior.
 
-Do not upgrade packages during Stage A/B.
-
----
-
-## 14. Tests, CI, and evidence integrity audit
-
-Do not equate “green” with “covered.”
-
-For each critical domain, determine:
-
-- what test file asserts it;
-- whether the test can fail for the actual defect;
-- whether it is included in the normal CI command;
-- whether mocks hide Worker/DB/live incompatibility;
-- whether assertions are strong enough;
-- whether concurrency/error/privacy cases are covered;
-- whether tests accidentally mutate production or depend on shared live QA accounts;
-- whether flaky/time-sensitive tests exist;
-- whether frontend build/typecheck actually runs in CI;
-- whether migrations/contracts have executable regression coverage;
-- whether deployment occurs from the exact reviewed SHA.
-
-Create a `CRITICAL COVERAGE MATRIX` for at minimum:
-
-- authentication/session;
-- role/IDOR;
-- Owner registration/KYC;
-- property/media lifecycle;
-- public visibility/search/detail;
-- booking lifecycle;
-- availability/concurrency;
-- finance/payment finalization;
-- wallet/ledger;
-- Customer privacy;
-- Phase 3 cross-app propagation.
-
-Mark each `STRONG`, `PARTIAL`, or `MISSING` with evidence.
+Correlate runtime findings across apps; do not report the same root cause as many unrelated findings unless impacts are materially distinct.
 
 ---
 
-## 15. Live deployment and operational audit
+## 8. Test/CI audit amendment
 
-Using read-only evidence only, inspect:
+V1 Section 14 is strengthened.
 
-- current Worker/API health and deployed revision relationship to main;
-- Customer/Owner/Admin deployed asset/revision evidence where accessible;
-- environment/base-URL correctness;
-- obvious stale frontend deployment mismatch;
-- production error/debug exposure;
-- live DB/schema alignment with repository assumptions;
-- QA/test residue that creates user-facing contamination;
-- archived vs active QA data;
-- broken public media/object references;
-- unsafe operational scripts or manual procedures.
+In addition to the V1 Critical Coverage Matrix, create an `INTERACTION REGRESSION COVERAGE MATRIX` covering all currently reachable screens/actions by app.
 
-Known recent Phase 3 media verification used a valid photographic JPEG and passed actual browser raster decode across Admin, Owner, Customer Explore, and Customer Detail; do not reopen that finding without contrary evidence.
+For each critical action, state whether automated coverage proves:
 
-Recent hygiene work archived confirmed QA contamination. The Founder explicitly chose to retain `شقة ٣٢` as noted above.
+- action can be activated;
+- expected navigation/state transition occurs;
+- rendered destination does not throw;
+- required data shape is validated;
+- API error produces a truthful user state;
+- no silent failure occurs;
+- the test is actually included in normal CI.
 
----
+Rate coverage:
 
-## 16. Documentation / governance consistency audit
+- `STRONG`
+- `PARTIAL`
+- `MISSING`
 
-Compare current implementation/live evidence with:
-
-- `docs/CURRENT_STATE.md`;
-- `tasks/CURRENT_TASK.md`;
-- current reality/completion matrix/execution map/rescue backlog;
-- architecture/database/business/integration docs;
-- task contracts and closure reports.
-
-Flag:
-
-- stale SHAs;
-- stale phase/task status;
-- closed findings still documented as open;
-- open risks hidden by “closed” wording;
-- contradictory rules;
-- historical documents masquerading as authority;
-- missing evidence references.
-
-Documentation drift is a finding, but distinguish it from product-code defects.
+The audit must explain why the two Founder-discovered defects escaped prior validation.
 
 ---
 
-## 17. Security-specific adversarial questions
+## 9. Completion criteria for the interactive-action gate
 
-Attempt to answer, with evidence, at least the following:
+A `READY_FOR_PHASE_4` or `READY_FOR_PHASE_4_WITH_DEFERRED_NONBLOCKERS` verdict is forbidden unless all of the following are true:
 
-1. Can a Customer token invoke any Owner/Admin mutation?
-2. Can an Owner operate on another Owner’s resource by replacing an ID?
-3. Can a non-Admin approve property/KYC or access protected Admin data?
-4. Can private KYC objects be fetched anonymously or through guessed URLs?
-5. Can a malformed DB response create a false success or fake zero/value?
-6. Can a pending booking accidentally block dates?
-7. Can two concurrent booking/manual-block mutations violate availability?
-8. Can payment/deposit finalization run twice and double-credit state?
-9. Can client-provided money/status/owner values override server truth?
-10. Can Customer responses leak phone, private KYC, internal commission split, wallet, or unrelated account fields?
-11. Can stale frontend requests overwrite newer canonical state?
-12. Can invalid media be committed as if it were user-visible-valid, and if so is that currently a product/security issue or only test-payload validation debt?
-13. Are any prototype login/fallback credentials reachable in a way that would be unacceptable for current public exposure?
-14. Are any secrets present in tracked files/history or deploy logs?
-15. Can a destructive historical QA/script command be run accidentally against production without an explicit guard?
+1. 100% of currently inventoried visible/reachable action affordances have an audit verdict.
+2. There are **zero unresolved known runtime crashes** in current reachable user flows.
+3. There are **zero unresolved confirmed dead actions** presented as usable.
+4. There are **zero unresolved misleading active affordances** for unavailable functionality unless an explicit higher-authority product decision permits the exact presentation.
+5. Every `NOT_SAFELY_LIVE_EXECUTED` mutation action has code/contract/test evidence and its residual verification requirement is explicitly recorded.
+6. `KNOWN-UI-OWNER-001` and `KNOWN-UI-ADMIN-001` have root-cause findings and approved remediation entries.
+7. Browser-level telemetry was used for safe reachable interactions where access permits it.
+8. The audit reports the exact count of inventoried actions per app and exact pass/fail/unverified totals.
 
-Do not perform harmful exploitation against production. Use static analysis, safe negative requests, existing tests, and read-only evidence.
+An incomplete action inventory is itself a **Pre-Phase-4 verification blocker**, not evidence of cleanliness.
+
+This requirement means exhaustive review of the currently discoverable product surface. It does not justify a claim that future/unreachable software defects are mathematically impossible.
 
 ---
 
-## 18. Finding format — mandatory
+## 10. Severity/blocker amendment
 
-Every unique finding must have a stable ID such as `P4A-SEC-001`, `P4A-DB-001`, etc.
+V1 severity definitions remain in force, with these additions:
 
-For each finding provide:
-
-- **ID**
-- **Severity:** `CRITICAL | HIGH | MEDIUM | LOW | INFO`
-- **Category**
-- **Pre-Phase-4 blocker:** `YES | NO | NEEDS_FOUNDER_DECISION`
-- **Confidence:** `HIGH | MEDIUM | LOW`
-- **Evidence:** exact file/line, route, migration, test, CI run, read-only query/live observation, or commit/PR reference
-- **Observed behavior**
-- **Expected governing behavior**
-- **Root cause**
-- **Impact / exploitability / affected roles**
-- **Affected systems/apps**
-- **Required remediation**
-- **Risk of remediation**
-- **Recommended executor:** `ZCode | Antigravity | Bridge/UI Lab | Founder decision`
-- **Verification required after fix**
-- **Related/duplicate findings**
-
-Do not duplicate the same root cause across many superficial symptoms; link symptoms to one canonical finding where appropriate.
+- A reproducible runtime crash caused by an ordinary current user action is always a **Pre-Phase-4 blocker**, even if severity is `MEDIUM` rather than `HIGH` for business impact.
+- A confirmed dead action presented as active is a **Pre-Phase-4 blocker** when it belongs to current reachable product functionality or core navigation.
+- A defect may not be downgraded because the feature is “not heavily used” if the current UI exposes it as functional.
+- Missing automated regression for a confirmed runtime/dead-action defect must be included in remediation before closure.
+- Cosmetic Phase 4 design debt remains non-blocking unless it causes incorrect interaction, inaccessible critical behavior, misleading state, or functional failure.
 
 ---
 
-## 19. Severity and blocker rules
+## 11. Stage B remediation amendment
 
-Use these definitions:
+The V1 Stage B plan must explicitly separate:
 
-### CRITICAL
+1. known runtime/dead-action blockers;
+2. newly discovered interaction blockers;
+3. shared root-cause fixes affecting multiple screens;
+4. missing regression tests that allowed defects to escape;
+5. safe non-blocking interaction cleanup;
+6. Phase 4 visual/UX debt that must **not** be mixed into foundation repairs.
 
-Likely exploitable auth/privacy/financial compromise, destructive integrity failure, secret exposure with meaningful active access, or a defect capable of materially corrupting canonical production state.
+Do not propose a broad frontend refactor merely because many actions were inspected.
 
-**Always blocks Phase 4.**
+For each blocker, the remediation plan must identify:
 
-### HIGH
-
-Major security boundary failure, canonical business-rule violation, cross-account data risk, booking/finance/concurrency defect, or systemic correctness issue with realistic impact.
-
-**Normally blocks Phase 4.**
-
-### MEDIUM
-
-Real defect or maintainability/testing weakness with bounded impact, meaningful but non-immediate security hardening gap, or foundation issue likely to create Phase 4 regressions.
-
-Block only when it affects a Phase 4 foundation or makes verification unreliable.
-
-### LOW
-
-Minor correctness, maintainability, observability, consistency, or hygiene issue with limited risk.
-
-Usually non-blocking.
-
-### INFO
-
-Intentional limitation, accepted prototype constraint, or improvement opportunity that is not currently a defect.
-
-Never inflate severity to force cleanup.
+- exact root cause;
+- smallest safe fix boundary;
+- affected files/apps/API contracts;
+- whether backend/DB/business rules must remain untouched;
+- tests to add first;
+- regression scope across the three apps;
+- live verification required after merge;
+- rollback risk.
 
 ---
 
-## 20. False-positive controls
+## 12. Required final report amendment
 
-Before reporting a finding:
+The V1 `PRE_PHASE_4_MASTER_AUDIT_REPORT` remains mandatory and must additionally include, before the final remediation plan:
 
-1. verify the code path is reachable/current;
-2. check for a newer Founder decision or approved override;
-3. check server/database enforcement before assuming UI enforcement is the only guard;
-4. distinguish prototype limitation from accidental weakness;
-5. distinguish stale docs from live implementation failure;
-6. reproduce logically or with a safe test when practical;
-7. search existing tests/issues/reports for prior intentional rationale;
-8. clearly mark uncertainty rather than inventing intent.
+### A. `KNOWN FOUNDER DEFECTS`
 
-A code smell without demonstrated risk belongs in maintainability/refactor candidates, not automatically in HIGH/MEDIUM findings.
+For each of the two known defects:
+
+- reproduced/traced status;
+- finding ID;
+- root cause;
+- severity;
+- blocker status;
+- affected sibling surfaces;
+- missing prior test/gate that allowed escape;
+- remediation summary;
+- regression requirement.
+
+### B. `INTERACTIVE ACTION INVENTORY SUMMARY`
+
+Report exact counts for Customer, Owner, and Admin:
+
+- total inventoried;
+- `PASS`;
+- each failure category;
+- `NOT_SAFELY_LIVE_EXECUTED`;
+- intentional truthful disabled actions.
+
+### C. `INTERACTIVE ACTION FAILURE TABLE`
+
+List every failed action with:
+
+- action audit ID;
+- app/screen;
+- label/icon;
+- actual behavior;
+- runtime/console/network evidence;
+- canonical finding ID;
+- blocker status.
+
+### D. `BROWSER RUNTIME / CONSOLE / NETWORK MATRIX`
+
+Summarize browser-level errors by app and route/screen.
+
+### E. `INTERACTION REGRESSION COVERAGE MATRIX`
+
+Show `STRONG | PARTIAL | MISSING` for critical actions and whether the relevant tests run in CI.
+
+### F. `UNEXECUTED MUTATING ACTIONS / RESIDUAL RISK`
+
+List actions that could not safely be executed because the audit is read-only, what evidence was used instead, and what safe verification remains required.
 
 ---
 
-## 21. Stage B — remediation plan
+## 13. Final verdict override
 
-After Stage A, create a single ordered remediation plan grouped as:
+The V1 final verdict vocabulary remains:
 
-1. `BLOCKER / CRITICAL`
-2. `HIGH — MUST FIX BEFORE PHASE 4`
-3. `MEDIUM — PRE-PHASE-4 FOUNDATION`
-4. `SAFE TO DEFER AFTER PHASE 4 ENTRY`
-5. `CODE QUALITY / CLEANUP ONLY`
-6. `NEEDS FOUNDER DECISION`
-7. `DO NOT CHANGE / INTENTIONAL`
+- `READY_FOR_PHASE_4`
+- `READY_FOR_PHASE_4_WITH_DEFERRED_NONBLOCKERS`
+- `NOT_READY_FOR_PHASE_4`
+- `NEEDS_FOUNDER_DECISION`
 
-For every proposed remediation state:
+But the first two are **not permitted** while either known Founder defect remains unresolved, while any current runtime/dead-action blocker remains unresolved, or while the action inventory is materially incomplete.
 
-- dependency order;
-- recommended implementation owner;
-- whether DB/migration/RPC/security-sensitive work is involved;
-- likely changed paths/systems;
-- required regression tests;
-- live verification requirement;
-- rollback/risk considerations;
-- whether it can be safely batched or must be isolated.
-
-Do not produce one giant “refactor everything” task. Separate risky semantic fixes from mechanical cleanup.
-
----
-
-## 22. Required final report
-
-Return one `PRE_PHASE_4_MASTER_AUDIT_REPORT` containing these sections in order:
-
-1. **Audit identity** — repository, exact audited main SHA, timestamp, tool/access limitations.
-2. **Executive verdict** — one of:
-   - `READY_FOR_PHASE_4`
-   - `READY_FOR_PHASE_4_WITH_DEFERRED_NONBLOCKERS`
-   - `NOT_READY_FOR_PHASE_4`
-   - `NEEDS_FOUNDER_DECISION`
-3. **Residual confidence statement** — what was and was not possible to prove.
-4. **Phase 0–3 coverage ledger**.
-5. **Critical/High findings first**.
-6. **All remaining findings table**.
-7. **Cybersecurity posture summary**.
-8. **Database/RLS/RPC/migration posture summary**.
-9. **Business-rule compliance matrix**.
-10. **Cross-app truth matrix**.
-11. **Critical test/CI coverage matrix**.
-12. **Live/deployment/data-hygiene findings**.
-13. **Code-quality/refactor candidates** separated from defects.
-14. **Documentation/governance drift**.
-15. **Stage B remediation plan in dependency order**.
-16. **Explicit list of areas verified clean** — do not only report problems.
-17. **Open Founder decisions, if any**.
-18. **Exact next gate recommendation**.
-
-Finish with exactly one of:
+Finish with the V1 exact terminal marker:
 
 - `PRE_PHASE_4_AUDIT_CLEAN`
 - `PRE_PHASE_4_REMEDIATION_REQUIRED`
 - `PRE_PHASE_4_FOUNDER_DECISION_REQUIRED`
 
-Do not claim Phase 4 may begin merely because no obvious defect was found. The verdict must be evidence-based against this entire contract.
-
 ---
 
-## 23. Mandatory stop condition
+## 14. Mandatory stop condition
 
-After returning Stage A findings + Stage B plan:
+The V1 stop condition remains absolute.
+
+After Stage A findings and Stage B remediation plan:
 
 **STOP.**
 
-Do not fix, commit, migrate, deploy, clean up, or reorganize anything until the Founder/Bridge explicitly approves a remediation scope.
+Do not fix, commit, refactor, migrate, deploy, clean up, change UI behavior, or mutate live state until Founder/Bridge explicitly approves the remediation scope.

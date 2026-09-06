@@ -17,7 +17,8 @@ export function isProductionDatabase(): boolean {
                          dbUrl.includes('aws-1-eu-west-1');
 
   const isProductionNodeEnv = nodeEnv === 'production';
-  const isRemoteNonTest = !dbUrl.includes('127.0.0.1') && 
+  const isRemoteNonTest = Boolean(dbUrl) && 
+                          !dbUrl.includes('127.0.0.1') && 
                           !dbUrl.includes('localhost') && 
                           !dbUrl.includes('sola_test_db');
 

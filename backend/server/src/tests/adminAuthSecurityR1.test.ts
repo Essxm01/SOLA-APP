@@ -38,6 +38,35 @@ async function runTests() {
   const authService = new AuthService();
   const runIpPrefix = `127.${Math.floor(Math.random() * 200) + 10}`;
 
+  // R1 Repository Boundary Mock: Unit tests mock adminDb directly rather than using production bypasses
+  const defaultAdminHash = bcrypt.hashSync('AnyInitialValidPassword#2026', 10);
+  adminDb.getByEmail = async (email: string) => {
+    if (email.toLowerCase().trim() === 'admin@sola.com') {
+      return {
+        id: '00000000-0000-0000-0000-000000000001',
+        email: 'admin@sola.com',
+        passwordHash: defaultAdminHash,
+        fullName: 'مسئول منصة صولا',
+        role: 'ADMIN',
+        isActive: true,
+      };
+    }
+    return null;
+  };
+  adminDb.getById = async (id: string) => {
+    if (id === '00000000-0000-0000-0000-000000000001') {
+      return {
+        id: '00000000-0000-0000-0000-000000000001',
+        email: 'admin@sola.com',
+        passwordHash: defaultAdminHash,
+        fullName: 'مسئول منصة صولا',
+        role: 'ADMIN',
+        isActive: true,
+      };
+    }
+    return null;
+  };
+
   // --------------------------------------------------------------------------
   // TEST 1: Old compromised password MUST BE REJECTED
   // --------------------------------------------------------------------------

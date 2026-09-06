@@ -745,7 +745,14 @@ export class AuthService {
       await recordFailureAndThrow();
     }
 
-    // Log successful authentication event
+    // R1.7: Issue access token with admin_version: 2
+    const accessToken = signAccessToken(
+      { sub: adminRecord!.id, role: 'ROLE_ADMIN', phone: adminRecord!.email },
+      { adminTokenVersion: 2 }
+    );
+    const refreshToken = signRefreshToken({ sub: adminRecord!.id, role: 'ROLE_ADMIN' });
+
+    // Log successful authentication event ONLY after token issuance succeeds
     await auditLogDb.record({
       entityType: 'ADMIN_AUTH',
       entityId: adminRecord!.id,
@@ -754,13 +761,6 @@ export class AuthService {
       actorRole: 'ADMIN',
       payload: { email: normalizedEmail, ip: clientIp },
     });
-
-    // R1.7: Issue access token with admin_version: 2
-    const accessToken = signAccessToken(
-      { sub: adminRecord!.id, role: 'ROLE_ADMIN', phone: adminRecord!.email },
-      { adminTokenVersion: 2 }
-    );
-    const refreshToken = signRefreshToken({ sub: adminRecord!.id, role: 'ROLE_ADMIN' });
 
     // Map into AdminRecord without exposing passwordHash outside service boundary
     const admin: AdminRecord = {

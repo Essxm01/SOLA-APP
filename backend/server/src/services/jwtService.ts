@@ -17,6 +17,9 @@ export function getJwtAccessSecret(): string {
   if (!secret || secret.trim() === '') {
     throw new Error('MISSING_JWT_ACCESS_SECRET: JWT_ACCESS_SECRET binding is required and must fail closed when missing.');
   }
+  if (Buffer.byteLength(secret, 'utf8') < 32) {
+    throw new Error('INSUFFICIENT_JWT_ACCESS_SECRET_LENGTH: JWT_ACCESS_SECRET must be at least 32 bytes.');
+  }
   return secret;
 }
 
@@ -24,6 +27,9 @@ export function getJwtRefreshSecret(): string {
   const secret = process.env.JWT_REFRESH_SECRET;
   if (!secret || secret.trim() === '') {
     throw new Error('MISSING_JWT_REFRESH_SECRET: JWT_REFRESH_SECRET binding is required and must fail closed when missing.');
+  }
+  if (Buffer.byteLength(secret, 'utf8') < 32) {
+    throw new Error('INSUFFICIENT_JWT_REFRESH_SECRET_LENGTH: JWT_REFRESH_SECRET must be at least 32 bytes.');
   }
   return secret;
 }

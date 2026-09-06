@@ -154,15 +154,25 @@ export class AuthController {
         timestamp: new Date().toISOString(),
       };
     } catch (err: any) {
-      const rawCode = err.message || 'INVALID_ADMIN_CREDENTIALS';
-      const code = rawCode === 'ADMIN_LOGIN_THROTTLED'
-        ? 'ADMIN_LOGIN_THROTTLED'
-        : (rawCode === 'MISSING_EMAIL_OR_PASSWORD' ? 'MISSING_EMAIL_OR_PASSWORD' : 'INVALID_ADMIN_CREDENTIALS');
-      const message = code === 'ADMIN_LOGIN_THROTTLED'
-        ? 'تم تجاوز الحد المسموح لمحاولات تسجيل الدخول. يرجى الانتظار 15 دقيقة.'
-        : (code === 'MISSING_EMAIL_OR_PASSWORD'
-          ? 'يرجى إدخال البريد الإلكتروني وكلمة المرور'
-          : 'اسم المستخدم أو كلمة المرور غير صحيحة');
+      const rawCode = err.message || '';
+      let code = 'INVALID_ADMIN_CREDENTIALS';
+      let message = 'اسم المستخدم أو كلمة المرور غير صحيحة';
+
+      if (rawCode === 'MISSING_EMAIL_OR_PASSWORD') {
+        code = 'MISSING_EMAIL_OR_PASSWORD';
+        message = 'يرجى إدخال البريد الإلكتروني وكلمة المرور';
+      } else if (rawCode === 'ADMIN_LOGIN_THROTTLED') {
+        code = 'ADMIN_LOGIN_THROTTLED';
+        message = 'تم تجاوز الحد المسموح لمحاولات تسجيل الدخول. يرجى الانتظار 15 دقيقة.';
+      } else if (rawCode === 'INVALID_ADMIN_CREDENTIALS') {
+        code = 'INVALID_ADMIN_CREDENTIALS';
+        message = 'اسم المستخدم أو كلمة المرور غير صحيحة';
+      } else {
+        // Infrastructure / Configuration / Persistence / DB failure -> ADMIN_AUTH_UNAVAILABLE
+        code = 'ADMIN_AUTH_UNAVAILABLE';
+        message = 'خدمة التحقق من هوية المسؤول غير متاحة حالياً. يرجى المحاولة لاحقاً.';
+      }
+
       return {
         success: false,
         error: {

@@ -14,9 +14,12 @@
  * 9. Admin login abuse throttling prevents brute-force attempts
  */
 
+import fs from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { AuthService, dbAdminUsersStore, TIMING_DECOY_HASH } from '../services/authService.js';
-import { signAccessToken, verifyAccessToken } from '../services/jwtService.js';
+import { signAccessToken, verifyAccessToken, getJwtAccessSecret, getJwtRefreshSecret } from '../services/jwtService.js';
 import { auditLogDb, adminDb } from '../services/dbRepository.js';
+import { ExpressServerApp } from '../app.js';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 
@@ -37,6 +40,9 @@ async function runTests() {
 
   const authService = new AuthService();
   const runIpPrefix = `127.${Math.floor(Math.random() * 200) + 10}`;
+
+  // Preserve real adapter implementation before applying suite-level mock
+  const realAdminDbGetByEmail = adminDb.getByEmail;
 
   // R1 Repository Boundary Mock: Unit tests mock adminDb directly rather than using production bypasses
   const defaultAdminHash = bcrypt.hashSync('AnyInitialValidPassword#2026', 10);
@@ -159,9 +165,9 @@ async function runTests() {
   }
 
   // --------------------------------------------------------------------------
-  // TEST 7: JWT fail-closed when secrets are missing
+  // TEST 7: JWT fail-closed and minimum 32-byte secret length validation
   // --------------------------------------------------------------------------
-  console.log('Test 7: JWT secret fail-closed hardening...');
+  console.log('Test 7: JWT secret fail-closed hardening and minimum 32-byte length...');
   delete process.env.JWT_ACCESS_SECRET;
   delete process.env.JWT_REFRESH_SECRET;
 
@@ -181,10 +187,32 @@ async function runTests() {
   }
   assert(verifyFailedClosed, 'FAIL-CLOSED: verifyAccessToken must fail closed when JWT_ACCESS_SECRET is missing');
 
-  // Restore test secrets
+  // Insufficient length (< 32 bytes) rejection
+  process.env.JWT_ACCESS_SECRET = 'too_short_access_secret';
+  let shortAccessSecretRejected = false;
+  try {
+    getJwtAccessSecret();
+  } catch (err: any) {
+    shortAccessSecretRejected = err.message.includes('INSUFFICIENT_JWT_ACCESS_SECRET_LENGTH');
+  }
+  assert(shortAccessSecretRejected, 'getJwtAccessSecret must throw INSUFFICIENT_JWT_ACCESS_SECRET_LENGTH when < 32 bytes');
+
+  process.env.JWT_ACCESS_SECRET = 'test_jwt_access_secret_for_unit_tests_only_32char';
+  process.env.JWT_REFRESH_SECRET = 'too_short_refresh_secret';
+  let shortRefreshSecretRejected = false;
+  try {
+    getJwtRefreshSecret();
+  } catch (err: any) {
+    shortRefreshSecretRejected = err.message.includes('INSUFFICIENT_JWT_REFRESH_SECRET_LENGTH');
+  }
+  assert(shortRefreshSecretRejected, 'getJwtRefreshSecret must throw INSUFFICIENT_JWT_REFRESH_SECRET_LENGTH when < 32 bytes');
+
+  // Restore test secrets (both >= 32 bytes)
   process.env.JWT_ACCESS_SECRET = 'test_jwt_access_secret_for_unit_tests_only_32char';
   process.env.JWT_REFRESH_SECRET = 'test_jwt_refresh_secret_for_unit_tests_only_32char';
-  console.log('  PASS: JWT fail-closed verification passed');
+  assert(getJwtAccessSecret() === process.env.JWT_ACCESS_SECRET, 'Valid 32-char access secret must be accepted');
+  assert(getJwtRefreshSecret() === process.env.JWT_REFRESH_SECRET, 'Valid 32-char refresh secret must be accepted');
+  console.log('  PASS: JWT fail-closed and >=32-byte secret length validation passed');
 
   // --------------------------------------------------------------------------
   // TEST 8: Old admin access tokens invalidated without breaking Customer/Owner
@@ -336,6 +364,183 @@ async function runTests() {
     adminDb.getByEmail = origEmailFn;
   }
   console.log('  PASS: Exact email equality wildcard resistance passed');
+
+  // --------------------------------------------------------------------------
+  // TEST 13: Migration 030 Audit Logs Failed Login Index Contract
+  // --------------------------------------------------------------------------
+  console.log('Test 13: Migration 030 audit logs failed login index contract...');
+  const migrationUrl = new URL('../../../database/migrations/030_audit_logs_admin_throttle_index.sql', import.meta.url);
+  const migrationPath = fileURLToPath(migrationUrl);
+  assert(fs.existsSync(migrationPath), `Migration 030 file must exist at ${migrationPath}`);
+  const migrationSql = fs.readFileSync(migrationPath, 'utf8');
+  assert(migrationSql.includes('idx_audit_logs_admin_failed_login'), 'Migration 030 must define idx_audit_logs_admin_failed_login');
+  assert(migrationSql.includes('(payload->>\'key\'), created_at DESC') || migrationSql.includes('(payload->>\'key\')'), 'Migration 030 must index (payload->>\'key\') and created_at DESC');
+  assert(migrationSql.includes("WHERE entity_type = 'ADMIN_AUTH' AND action = 'ADMIN_LOGIN_FAILED'"), 'Migration 030 must specify partial index filter');
+  assert(migrationSql.includes('030_audit_logs_admin_throttle_index.sql'), 'Migration 030 must record version into schema_migrations');
+  assert(migrationSql.includes('BEGIN;') && migrationSql.includes('COMMIT;'), 'Migration 030 must be wrapped in a transaction');
+  console.log('  PASS: Migration 030 contract verified');
+
+  // --------------------------------------------------------------------------
+  // TEST 14: Spoofed Forwarding Header Rejection (Cloudflare Worker Security Boundary)
+  // --------------------------------------------------------------------------
+  console.log('Test 14: Forwarding header spoofing resistance (rely exclusively on cf-connecting-ip)...');
+  const serverApp = new ExpressServerApp();
+  auditLogDb.resetMemFailures();
+
+  // Isolate throttle counting in unit tests to in-memory tracking to avoid cross-run DB pollution on static 'unknown'
+  const origCountRecent = auditLogDb.countRecentFailedLogins.bind(auditLogDb);
+  auditLogDb.countRecentFailedLogins = async (key: string, windowMinutes: number = 15) => {
+    const now = Date.now();
+    const cutoff = now - windowMinutes * 60 * 1000;
+    auditLogDb._memFailures = auditLogDb._memFailures.filter(f => f.timestamp >= cutoff);
+    return auditLogDb._memFailures.filter(f => f.key === key).length;
+  };
+
+  try {
+    const spoofTargetEmail = `spoof-${runIpPrefix}@sola.com`;
+
+    // Case A: Attacker supplies spoofed x-forwarded-for without cf-connecting-ip
+    // Send 5 failed attempts with rotating spoofed x-forwarded-for headers.
+    // Because cf-connecting-ip is missing, all attempts MUST map to the conservative 'unknown' bucket,
+    // preventing attacker from evading IP throttling.
+    for (let i = 1; i <= 5; i++) {
+      const res = await serverApp.handleHttpRequest('POST', '/api/v1/admin/auth/login', {
+        'x-forwarded-for': `198.51.100.${i}`,
+        'x-real-ip': `203.0.113.${i}`,
+      }, { email: spoofTargetEmail, password: 'wrong-password' });
+      assert(res.statusCode === 401, `Attempt ${i} should be 401, got ${res.statusCode}: ${JSON.stringify(res.body)}`);
+      assert(res.body.error?.code === 'INVALID_ADMIN_CREDENTIALS', 'Expected INVALID_ADMIN_CREDENTIALS');
+    }
+
+    // 6th attempt with yet another x-forwarded-for MUST be throttled (429) because all mapped to 'unknown'
+    const throttledRes = await serverApp.handleHttpRequest('POST', '/api/v1/admin/auth/login', {
+      'x-forwarded-for': '198.51.100.99',
+    }, { email: spoofTargetEmail, password: 'wrong-password' });
+    assert(throttledRes.statusCode === 429, `Expected 429 when cf-connecting-ip is absent, got ${throttledRes.statusCode}`);
+    assert(throttledRes.body.error?.code === 'ADMIN_LOGIN_THROTTLED', 'Attacker rotating x-forwarded-for must NOT bypass throttle');
+
+    // Case B: When cf-connecting-ip is provided, it is strictly used regardless of x-forwarded-for
+    const cfIp = `192.0.2.${Math.floor(Math.random() * 200) + 10}`;
+    const cfRes = await serverApp.handleHttpRequest('POST', '/api/v1/admin/auth/login', {
+      'cf-connecting-ip': cfIp,
+      'x-forwarded-for': '10.0.0.1', // Spoofed header must be ignored
+    }, { email: `cf-${runIpPrefix}@sola.com`, password: 'wrong-password' });
+    assert(cfRes.statusCode === 401, 'Request with valid cf-connecting-ip should evaluate correctly');
+    console.log('  PASS: Spoofed forwarding header rejection verified');
+  } finally {
+    auditLogDb.countRecentFailedLogins = origCountRecent;
+  }
+
+  // --------------------------------------------------------------------------
+  // TEST 15: Infrastructure Failure Mapping (503 ADMIN_AUTH_UNAVAILABLE) & Audit Ordering
+  // --------------------------------------------------------------------------
+  console.log('Test 15: Infrastructure failure mapping to 503 and audit log ordering...');
+  const savedAccessSecret = process.env.JWT_ACCESS_SECRET;
+  
+  // Set short JWT secret (<32 bytes) so signAccessToken throws during login
+  process.env.JWT_ACCESS_SECRET = 'short_secret';
+
+  let auditRecordCalledWithSuccess = false;
+  const originalAuditRecord = auditLogDb.record;
+  auditLogDb.record = async (params: any) => {
+    if (params.action === 'ADMIN_LOGIN_SUCCESS') {
+      auditRecordCalledWithSuccess = true;
+    }
+    return originalAuditRecord(params);
+  };
+
+  try {
+    const res = await serverApp.handleHttpRequest('POST', '/api/v1/admin/auth/login', {
+      'cf-connecting-ip': `${runIpPrefix}.15`,
+    }, { email: 'admin@sola.com', password: 'AnyInitialValidPassword#2026' });
+
+    assert(res.statusCode === 503, `Expected status 503 on auth infrastructure failure, got ${res.statusCode}`);
+    assert(res.body.error?.code === 'ADMIN_AUTH_UNAVAILABLE', `Expected error code ADMIN_AUTH_UNAVAILABLE, got ${res.body.error?.code}`);
+    assert(res.body.error?.message === 'خدمة التحقق من هوية المسؤول غير متاحة حالياً. يرجى المحاولة لاحقاً.', 'Expected Arabic unavailable message');
+    assert(!auditRecordCalledWithSuccess, 'CRITICAL: ADMIN_LOGIN_SUCCESS must NOT be logged if token issuance failed!');
+    console.log('  PASS: Infrastructure failure mapped to 503 and audit logged only after token issuance');
+  } finally {
+    process.env.JWT_ACCESS_SECRET = savedAccessSecret;
+    auditLogDb.record = originalAuditRecord;
+  }
+
+  // --------------------------------------------------------------------------
+  // TEST 16: Actual Supabase REST Adapter Contract (Exact 'eq' Verification)
+  // --------------------------------------------------------------------------
+  console.log('Test 16: Actual Supabase REST adapter exact "eq" contract test...');
+  const originalFetch = globalThis.fetch;
+  const originalSupabaseUrl = process.env.SUPABASE_URL;
+  const originalSupabaseKey = process.env.SUPABASE_SECRET_KEY;
+
+  process.env.SUPABASE_URL = 'https://unit-test-project.supabase.co';
+  process.env.SUPABASE_SECRET_KEY = 'test_service_role_key_for_adapter_contract';
+
+  let capturedFetchUrl = '';
+
+  try {
+    // Intercept fetch to verify queryViaSupabaseRest 18A URL generation
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      capturedFetchUrl = typeof input === 'string' ? input : input.toString();
+
+      const mockAdminRecord = [{
+        id: '00000000-0000-0000-0000-000000000001',
+        email: 'admin@sola.com',
+        password_hash: defaultAdminHash,
+        full_name: 'مسئول منصة صولا',
+        role: 'ADMIN',
+        is_active: true,
+        created_at: new Date().toISOString(),
+      }];
+      return new Response(JSON.stringify(mockAdminRecord), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }) as any;
+
+    // Use real unmocked adminDb.getByEmail to exercise queryViaSupabaseRest branch 18A
+    const adminRecord = await realAdminDbGetByEmail('admin@sola.com');
+    assert(adminRecord !== null, 'realAdminDbGetByEmail should return admin record');
+    assert(adminRecord?.email === 'admin@sola.com', 'Returned email should match');
+
+    // Verify REST query URL structure: MUST use eq, MUST NOT use ilike
+    assert(capturedFetchUrl.includes('/rest/v1/admin_users?'), `Expected REST URL for admin_users, got: ${capturedFetchUrl}`);
+    assert(capturedFetchUrl.includes('email=eq.admin%40sola.com'), `REST URL must use exact eq filter, got: ${capturedFetchUrl}`);
+    assert(!capturedFetchUrl.includes('ilike'), `REST URL must NEVER use ilike for admin email query, got: ${capturedFetchUrl}`);
+
+    // Verify post-fetch filter rejects wildcard leakage:
+    globalThis.fetch = (async (input: RequestInfo | URL): Promise<Response> => {
+      capturedFetchUrl = typeof input === 'string' ? input : input.toString();
+      const leakedRecord = [{
+        id: '00000000-0000-0000-0000-000000000002',
+        email: 'admin_leaked@sola.com',
+        password_hash: defaultAdminHash,
+        full_name: 'Unintended Match',
+        role: 'ADMIN',
+        is_active: true,
+      }];
+      return new Response(JSON.stringify(leakedRecord), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }) as any;
+
+    const leakedResult = await realAdminDbGetByEmail('admin@sola.com');
+    assert(leakedResult === null, 'Post-fetch filter must discard mismatched/leaked email and return null');
+
+    console.log('  PASS: Actual Supabase REST adapter contract verified (exact eq, no ilike, post-filter rejection)');
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalSupabaseUrl !== undefined) {
+      process.env.SUPABASE_URL = originalSupabaseUrl;
+    } else {
+      delete process.env.SUPABASE_URL;
+    }
+    if (originalSupabaseKey !== undefined) {
+      process.env.SUPABASE_SECRET_KEY = originalSupabaseKey;
+    } else {
+      delete process.env.SUPABASE_SECRET_KEY;
+    }
+  }
 
   console.log('\nALL R1 BACKEND SECURITY TESTS PASSED!');
 }

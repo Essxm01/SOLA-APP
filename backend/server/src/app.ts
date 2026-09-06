@@ -272,15 +272,26 @@ export class ExpressServerApp {
       }
 
       if (path === '/api/v1/admin/auth/login' && method === 'POST') {
-        const rawIp = String(
-          headers['cf-connecting-ip'] ||
-          headers['x-real-ip'] ||
-          headers['x-forwarded-for']?.split(',')[0] ||
-          '127.0.0.1'
-        ).trim();
-        const clientIp = rawIp || '127.0.0.1';
+        // Authoritative platform client IP: rely exclusively on platform-controlled cf-connecting-ip.
+        // Never derive throttle identity from spoofable forwarding headers (x-forwarded-for / x-real-ip).
+        // If cf-connecting-ip is absent, fail to a conservative non-user-controlled 'unknown' bucket.
+        const cfConnectingIp = headers['cf-connecting-ip'];
+        const clientIp = (typeof cfConnectingIp === 'string' && cfConnectingIp.trim().length > 0)
+          ? cfConnectingIp.trim()
+          : 'unknown';
         const response = await this.authController.adminLogin(bodyPayload?.email, bodyPayload?.password, clientIp);
-        const statusCode = response.success ? 200 : (response.error?.code === 'ADMIN_LOGIN_THROTTLED' ? 429 : 401);
+        let statusCode = 200;
+        if (!response.success) {
+          if (response.error?.code === 'ADMIN_LOGIN_THROTTLED') {
+            statusCode = 429;
+          } else if (response.error?.code === 'MISSING_EMAIL_OR_PASSWORD') {
+            statusCode = 400;
+          } else if (response.error?.code === 'ADMIN_AUTH_UNAVAILABLE') {
+            statusCode = 503;
+          } else {
+            statusCode = 401;
+          }
+        }
         return { statusCode, body: response };
       }
 

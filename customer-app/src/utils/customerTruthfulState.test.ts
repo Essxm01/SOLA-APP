@@ -356,6 +356,397 @@ async function run() {
   }
   assert(malformedSummaryThrew, 'fetchCustomerAccountSummary must throw on malformed data payload');
 
+  // Task 3.11: Customer Canonical Property Detail Tests
+  const { fetchCanonicalPropertyDetail } = await import('./customerTruthfulState.js');
+  const testDetailPropId = 'e0000000-0000-4000-8000-000000000099';
+
+  // 1. Success case: Returns canonical detail fields
+  const detailSuccess = await fetchCanonicalPropertyDetail(
+    testDetailPropId,
+    undefined,
+    async () => jsonResponse({
+      success: true,
+      data: {
+        id: testDetailPropId,
+        title: 'شاليه بورتو مارينا الفاخر',
+        unitType: 'CHALET',
+        propertyType: 'CHALET',
+        address: 'بورتو مارينا - العلمين',
+        region: 'العلمين',
+        resortName: 'بورتو مارينا',
+        bedrooms: 3,
+        bathrooms: 2,
+        maxGuests: 6,
+        basePricePerNight: 8500,
+        currency: 'EGP',
+        images: ['https://storage.sola.eg/p99-1.jpg'],
+        bedsCount: 4,
+        areaSqM: 145,
+        description: 'شاليه دور أول يطل مباشرة على مارينا اليخوت، تشطيب كامل متميز ومفروش بالكامل.',
+        amenities: ['pool', 'wifi', 'sea_view'],
+        houseRules: { quietHours: true },
+      },
+    }),
+    testUrl
+  );
+  assert(detailSuccess.kind === 'success', 'fetchCanonicalPropertyDetail must succeed with valid data');
+  assert(detailSuccess.data.id === testDetailPropId, 'detail ID must match requested property ID');
+  assert(detailSuccess.data.description === 'شاليه دور أول يطل مباشرة على مارينا اليخوت، تشطيب كامل متميز ومفروش بالكامل.', 'canonical description must match');
+  assert(detailSuccess.data.amenities.length === 3 && detailSuccess.data.amenities[0] === 'pool', 'canonical amenities must match');
+  assert(detailSuccess.data.bedsCount === 4, 'canonical bedsCount must match');
+  assert(detailSuccess.data.areaSqM === 145, 'canonical areaSqM must match');
+
+  // 2. Mismatched ID rejection: Prevents spoofed/wrong property detail
+  let mismatchDetailThrew = false;
+  try {
+    await fetchCanonicalPropertyDetail(
+      testDetailPropId,
+      undefined,
+      async () => jsonResponse({
+        success: true,
+        data: {
+          id: 'completely-different-id',
+          title: 'Different',
+          unitType: 'CHALET',
+          address: 'Addr',
+          bedrooms: 1,
+          bathrooms: 1,
+          maxGuests: 2,
+          basePricePerNight: 1000,
+          currency: 'EGP',
+          images: [],
+          amenities: [],
+        },
+      }),
+      testUrl
+    );
+  } catch {
+    mismatchDetailThrew = true;
+  }
+  assert(mismatchDetailThrew, 'fetchCanonicalPropertyDetail must reject mismatched property ID in response');
+
+  // 3. HTTP 404 / 500 error cases return truthful error kind
+  const detail404 = await fetchCanonicalPropertyDetail(
+    testDetailPropId,
+    undefined,
+    async () => jsonResponse({ success: false, error: { message: 'Property not found' } }, 404),
+    testUrl
+  );
+  assert(detail404.kind === 'error', '404 property detail must yield error kind');
+
+  const detail500 = await fetchCanonicalPropertyDetail(
+    testDetailPropId,
+    undefined,
+    async () => jsonResponse({ success: false }, 500),
+    testUrl
+  );
+  assert(detail500.kind === 'error', '500 property detail must yield error kind');
+
+  // 3b. Valid canonical detail with empty string address must succeed (preserve valid address: '')
+  const emptyAddressDetailSuccess = await fetchCanonicalPropertyDetail(
+    testDetailPropId,
+    undefined,
+    async () => jsonResponse({
+      success: true,
+      data: {
+        id: testDetailPropId,
+        title: 'شاليه مراسي',
+        unitType: 'CHALET',
+        address: '',
+        resortName: 'مراسي',
+        region: 'الساحل الشمالي',
+        bedrooms: 2,
+        bathrooms: 2,
+        maxGuests: 4,
+        basePricePerNight: 5000,
+        currency: 'EGP',
+        images: ['https://storage.sola.eg/p1.jpg'],
+        amenities: ['pool'],
+        houseRules: {},
+      },
+    }),
+    testUrl
+  );
+  assert(emptyAddressDetailSuccess.kind === 'success' && emptyAddressDetailSuccess.data.address === '', 'Valid detail with empty address must succeed and preserve empty address');
+
+  // 3c. Malformed success payloads must reject strictly (fail-closed, no coercion or fabrication)
+  const validBase = {
+    id: testDetailPropId,
+    title: 'شاليه بورتو مارينا',
+    unitType: 'CHALET',
+    address: 'بورتو مارينا',
+    bedrooms: 2,
+    bathrooms: 1,
+    maxGuests: 4,
+    basePricePerNight: 4000,
+    currency: 'EGP',
+    images: ['https://storage.sola.eg/img1.jpg'],
+    amenities: ['wifi'],
+    houseRules: {},
+  };
+
+  const malformedPayloads = [
+    { label: 'missing title', patch: { title: undefined } },
+    { label: 'empty title', patch: { title: '   ' } },
+    { label: 'non-string title', patch: { title: 123 } },
+    { label: 'missing unitType', patch: { unitType: undefined } },
+    { label: 'empty unitType', patch: { unitType: '   ' } },
+    { label: 'non-string unitType', patch: { unitType: true } },
+    { label: 'non-string address null', patch: { address: null } },
+    { label: 'non-string address number', patch: { address: 12345 } },
+    { label: 'negative bedrooms', patch: { bedrooms: -1 } },
+    { label: 'missing bedrooms', patch: { bedrooms: undefined } },
+    { label: 'negative bathrooms', patch: { bathrooms: -1 } },
+    { label: 'missing bathrooms', patch: { bathrooms: undefined } },
+    { label: 'zero maxGuests', patch: { maxGuests: 0 } },
+    { label: 'missing maxGuests', patch: { maxGuests: undefined } },
+    { label: 'zero basePricePerNight', patch: { basePricePerNight: 0 } },
+    { label: 'negative basePricePerNight', patch: { basePricePerNight: -100 } },
+    { label: 'missing basePricePerNight', patch: { basePricePerNight: undefined } },
+    { label: 'wrong currency', patch: { currency: 'USD' } },
+    { label: 'missing currency', patch: { currency: undefined } },
+    { label: 'null currency', patch: { currency: null } },
+    { label: 'missing houseRules', patch: { houseRules: undefined } },
+    { label: 'null houseRules', patch: { houseRules: null } },
+    { label: 'images not array', patch: { images: 'not-an-array' } },
+    { label: 'images containing empty string', patch: { images: [''] } },
+    { label: 'images containing non-string', patch: { images: [123] } },
+    { label: 'amenities not array', patch: { amenities: 'wifi,pool' } },
+    { label: 'amenities containing empty string', patch: { amenities: [''] } },
+    { label: 'amenities containing non-string', patch: { amenities: [null] } },
+    { label: 'houseRules as array', patch: { houseRules: [1, 2] } },
+    { label: 'houseRules as string', patch: { houseRules: 'no smoking' } },
+    { label: 'negative bedsCount', patch: { bedsCount: -1 } },
+    { label: 'negative areaSqM', patch: { areaSqM: -50 } },
+    { label: 'non-string description', patch: { description: 1234 } },
+  ];
+
+  for (const { label, patch } of malformedPayloads) {
+    let thrown = false;
+    try {
+      await fetchCanonicalPropertyDetail(
+        testDetailPropId,
+        undefined,
+        async () => jsonResponse({
+          success: true,
+          data: { ...validBase, ...patch },
+        }),
+        testUrl
+      );
+    } catch {
+      thrown = true;
+    }
+    assert(thrown, `fetchCanonicalPropertyDetail must reject malformed detail payload: ${label}`);
+  }
+
+  // 4. UI guards: PropertyDetailModal must NOT contain hardcoded fake description or static amenities
+  // @ts-ignore
+  const { readFileSync } = await import('node:fs');
+  const modalSource = readFileSync(new URL('../components/PropertyDetailModal.tsx', import.meta.url), 'utf8');
+
+  assert(!modalSource.includes('إقامة ساحلية فاخرة تضمن لك أعلى مستويات الراحة'), 'PropertyDetailModal must NOT contain hardcoded placeholder description');
+  assert(!modalSource.includes('شاطئ خاص بالقرية') || !modalSource.includes('حمام سباحة خاص / مشترك'), 'PropertyDetailModal must NOT contain hardcoded static amenities list');
+  assert(modalSource.includes('fetchCanonicalPropertyDetail') || modalSource.includes('/customer/properties/'), 'PropertyDetailModal must fetch canonical property detail endpoint');
+
+  // 5. Customer 3.11 Phase 3 detail regression suite (Bridge review 5123705494)
+  const {
+    resolveDetailGalleryImages,
+    resolveEffectiveMaxGuests,
+    clampGuests,
+    getRenderableHouseRules,
+    resolvePropertyType,
+    resolvePropertyLocation,
+  } = await import('./customerTruthfulState.js');
+
+  // 5a. Canonical images: [] does NOT fall back to stale Explore images after detail success
+  const staleExploreImages = ['https://storage.sola.eg/stale-explore-1.jpg', 'https://storage.sola.eg/stale-explore-2.jpg'];
+  const imagesAfterDetailEmpty = resolveDetailGalleryImages([], staleExploreImages, true);
+  assert(
+    imagesAfterDetailEmpty.length === 0,
+    'Canonical images: [] must NOT fall back to stale Explore images after detail success'
+  );
+
+  const imagesBeforeDetailLoaded = resolveDetailGalleryImages(undefined, staleExploreImages, false);
+  assert(
+    imagesBeforeDetailLoaded.length === 2 && imagesBeforeDetailLoaded[0] === staleExploreImages[0],
+    'Explore images may be used as opening context only before detail success'
+  );
+
+  const imagesAfterDetailPopulated = resolveDetailGalleryImages(['https://storage.sola.eg/canonical-1.jpg'], staleExploreImages, true);
+  assert(
+    imagesAfterDetailPopulated.length === 1 && imagesAfterDetailPopulated[0] === 'https://storage.sola.eg/canonical-1.jpg',
+    'Canonical images must be authoritative after detail success'
+  );
+
+  // 5b. Canonical additionalRules / specialInstructions render
+  const rulesWithAdditional = getRenderableHouseRules({
+    additionalRules: 'ممنوع الموسيقى الصاخبة بعد 10 مساء',
+  });
+  assert(
+    rulesWithAdditional.hasRenderableRules === true &&
+    rulesWithAdditional.additionalRules === 'ممنوع الموسيقى الصاخبة بعد 10 مساء',
+    'Canonical additionalRules must be recognized as renderable'
+  );
+
+  const rulesWithSpecial = getRenderableHouseRules({
+    specialInstructions: 'تسليم المفاتيح مع الحارس',
+  });
+  assert(
+    rulesWithSpecial.hasRenderableRules === true &&
+    rulesWithSpecial.additionalRules === 'تسليم المفاتيح مع الحارس',
+    'Canonical specialInstructions must be recognized as renderable'
+  );
+
+  // 5c. No empty House Rules section when the object has only unsupported/unrendered keys
+  const emptyRules = getRenderableHouseRules({});
+  assert(emptyRules.hasRenderableRules === false, 'Empty houseRules must NOT be renderable');
+
+  const unsupportedRulesOnly = getRenderableHouseRules({
+    minStay: 2,
+    maxStay: 30,
+    arbitraryUnrenderedField: 'test',
+  });
+  assert(
+    unsupportedRulesOnly.hasRenderableRules === false,
+    'Object with only unrendered keys must NOT show an empty rules section'
+  );
+
+  const mixedRules = getRenderableHouseRules({
+    smokingAllowed: false,
+    petsAllowed: true,
+    minStay: 2,
+  });
+  assert(
+    mixedRules.hasRenderableRules === true &&
+    mixedRules.smokingAllowed === false &&
+    mixedRules.petsAllowed === true,
+    'Supported boolean rules must be preserved and renderable'
+  );
+
+  // 5d. Canonical maxGuests drives GuestSelector and clamps prior guest count downward when needed
+  const effectiveMaxBefore = resolveEffectiveMaxGuests(undefined, 8, false);
+  assert(effectiveMaxBefore === 8, 'Opening context uses Explore maxGuests before detail success');
+
+  const effectiveMaxAfter = resolveEffectiveMaxGuests(4, 8, true);
+  assert(effectiveMaxAfter === 4, 'Canonical detail maxGuests drives effectiveMaxGuests after success');
+
+  const clampedLower = clampGuests(6, effectiveMaxAfter);
+  assert(clampedLower === 4, 'Guest count higher than canonical maxGuests must be clamped downward');
+
+  const clampedWithin = clampGuests(3, effectiveMaxAfter);
+  assert(clampedWithin === 3, 'Guest count within canonical maxGuests must be preserved');
+
+  const clampedMin = clampGuests(0, effectiveMaxAfter);
+  assert(clampedMin === 1, 'Guest count lower than 1 must be clamped to minimum 1');
+
+  // 5e. Canonical unitType / propertyType is rendered in Detail
+  const typeBefore = resolvePropertyType(null, { unitType: 'CHALET', propertyType: 'CHALET' });
+  assert(typeBefore === 'شاليه ساحلي', 'Explore unitType is used before detail success');
+
+  const typeAfterCanonical = resolvePropertyType(
+    { unitType: 'VILLA', propertyType: 'VILLA' } as any,
+    { unitType: 'CHALET', propertyType: 'CHALET' }
+  );
+  assert(typeAfterCanonical === 'فيلا فاخرة', 'Canonical detail propertyType is authoritative after success');
+
+  const typeAfterPropertyTypeNull = resolvePropertyType(
+    { unitType: 'APARTMENT', propertyType: null } as any,
+    { unitType: 'CHALET', propertyType: 'CHALET' }
+  );
+  assert(typeAfterPropertyTypeNull === 'شقة مصيفية', 'Canonical unitType is used when propertyType is null');
+
+  // 5f. Static modal guards: ensure PropertyDetailModal binds canonical identity and adheres to contract
+  assert(
+    !modalSource.includes('detail?.images && detail.images.length > 0 ? detail.images : property.images'),
+    'PropertyDetailModal must NOT fall back to property.images when detail.images is empty array'
+  );
+  assert(
+    modalSource.includes('resolveDetailGalleryImages'),
+    'PropertyDetailModal must use resolveDetailGalleryImages'
+  );
+  assert(
+    modalSource.includes('resolveEffectiveMaxGuests') && modalSource.includes('clampGuests'),
+    'PropertyDetailModal must use resolveEffectiveMaxGuests and clampGuests'
+  );
+  assert(
+    modalSource.includes('getRenderableHouseRules'),
+    'PropertyDetailModal must use getRenderableHouseRules'
+  );
+  assert(
+    modalSource.includes('resolvePropertyType'),
+    'PropertyDetailModal must use resolvePropertyType'
+  );
+
+  // 5g. Authoritative Property Location (Bridge review 5123829532 Blocker 1)
+  // When detail is loaded:
+  // - Address non-empty: returns address
+  const locDetailWithAddress = resolvePropertyLocation(
+    { address: 'فيلا 12 شارع النخيل', resortName: 'مراسي', region: 'الساحل الشمالي' },
+    { address: 'قديم', resortName: 'قديم', region: 'قديم' }
+  );
+  assert(locDetailWithAddress === 'فيلا 12 شارع النخيل', 'Canonical detail address must be returned when present');
+
+  // - Address empty string, resort + region present: returns "${resortName} - ${region}"
+  const locDetailResortRegion = resolvePropertyLocation(
+    { address: '', resortName: 'مراسي', region: 'سيدي عبد الرحمن' },
+    { address: 'explore address', resortName: 'explore resort', region: 'explore region' }
+  );
+  assert(locDetailResortRegion === 'مراسي - سيدي عبد الرحمن', 'Canonical resort and region must format as resort - region');
+
+  // - Address empty string, resort only: returns resort
+  const locDetailResortOnly = resolvePropertyLocation(
+    { address: '  ', resortName: 'هاسيندا باي', region: null },
+    { address: 'explore address', resortName: 'explore resort', region: 'explore region' }
+  );
+  assert(locDetailResortOnly === 'هاسيندا باي', 'Canonical resort only must be returned when address and region are empty');
+
+  // - Address empty string, region only: returns region
+  const locDetailRegionOnly = resolvePropertyLocation(
+    { address: '', resortName: null, region: 'الجونة' },
+    { address: 'explore address', resortName: 'explore resort', region: 'explore region' }
+  );
+  assert(locDetailRegionOnly === 'الجونة', 'Canonical region only must be returned when address and resort are empty');
+
+  // - Address empty string, resort and region null: returns 'الموقع غير محدد'
+  // CRITICAL: Must NEVER fall back to exploreProperty fields or fabricated geography after detail load
+  const locDetailAllEmpty = resolvePropertyLocation(
+    { address: '', resortName: null, region: null },
+    { address: 'explore address', resortName: 'explore resort', region: 'explore region', locationName: 'explore loc' }
+  );
+  assert(
+    locDetailAllEmpty === 'الموقع غير محدد',
+    'Canonical detail with empty address/resort/region must return الموقع غير محدد and NOT fall back to explore fields'
+  );
+
+  // Before detail load (detail === null): Explore context used as opening context
+  const locBeforeDetailWithExploreAddress = resolvePropertyLocation(
+    null,
+    { address: 'عنوان تجريبي', resortName: 'قرية سياحية', region: 'الساحل' }
+  );
+  assert(locBeforeDetailWithExploreAddress === 'عنوان تجريبي', 'Explore address used before detail load');
+
+  const locBeforeDetailExploreResort = resolvePropertyLocation(
+    null,
+    { address: '', resortName: 'أمواج', region: 'الساحل الشمالي' }
+  );
+  assert(locBeforeDetailExploreResort === 'أمواج - الساحل الشمالي', 'Explore resort and region formatted before detail load');
+
+  const locBeforeDetailEmptyExplore = resolvePropertyLocation(
+    null,
+    { address: '', resortName: '', region: '', locationName: '' }
+  );
+  assert(locBeforeDetailEmptyExplore === 'الموقع غير محدد', 'Empty explore fields before detail load returns الموقع غير محدد');
+
+  // Static modal guards for location authoritativeness
+  assert(
+    modalSource.includes('resolvePropertyLocation'),
+    'PropertyDetailModal must use resolvePropertyLocation'
+  );
+  assert(
+    !modalSource.includes("'الساحل الشمالي'"),
+    'PropertyDetailModal must NOT contain fallback to الساحل الشمالي'
+  );
+
   console.log('CUSTOMER-TRUTHFUL-STATE-01 focused client state tests passed');
 }
 

@@ -1,5 +1,5 @@
-import React, { useMemo, useState } from 'react';
-import { Building2, ChevronLeft, MapPin, Plus, SlidersHorizontal } from 'lucide-react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { AlertCircle, Building2, ChevronLeft, MapPin, Plus, RefreshCw, SlidersHorizontal } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import type { Property } from '../../types';
 import { Button } from '../ui/Button';
@@ -28,14 +28,53 @@ const money = (amount: number, currency = 'EGP') =>
   `${new Intl.NumberFormat('ar-EG').format(amount)} ${currency === 'EGP' || currency === 'ج.م' ? 'ج.م' : currency}`;
 
 export const PropertiesFoundationView: React.FC = () => {
-  const { properties, isLoading, error, refreshData, propertyViewMode, openAddPropertyWizard, openPropertyDetails, setDailyPricing } = useApp();
+  const { properties, isLoading, error, refreshData, revalidateProperties, propertyViewMode, openAddPropertyWizard, openPropertyDetails, setDailyPricing } = useApp();
   const [filter, setFilter] = useState<OwnerPropertyFilter>('all');
   const [pricing, setPricing] = useState<Property | null>(null);
   const [date, setDate] = useState('');
   const [price, setPrice] = useState('');
   const [message, setMessage] = useState('');
   const [saving, setSaving] = useState(false);
+  const [revalidationError, setRevalidationError] = useState<string | null>(null);
+  const [isRevalidating, setIsRevalidating] = useState<boolean>(false);
+  const revalidationGenerationRef = useRef<number>(0);
   const list = useMemo(() => getOwnerPropertyCollections(properties, filter), [properties, filter]);
+
+  const handleRevalidate = useCallback(async () => {
+    const generation = ++revalidationGenerationRef.current;
+    setIsRevalidating(true);
+    try {
+      await revalidateProperties();
+      if (generation === revalidationGenerationRef.current) {
+        setRevalidationError(null);
+      }
+    } catch {
+      if (generation === revalidationGenerationRef.current) {
+        setRevalidationError('تعذر تحديث حالة الوحدات مع الخادم. قد تكون البيانات المعروضة غير محدثة.');
+      }
+    } finally {
+      if (generation === revalidationGenerationRef.current) {
+        setIsRevalidating(false);
+      }
+    }
+  }, [revalidateProperties]);
+
+  useEffect(() => {
+    void handleRevalidate();
+
+    const handleVisibilityOrFocus = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+        void handleRevalidate();
+      }
+    };
+
+    window.addEventListener('focus', handleVisibilityOrFocus);
+    document.addEventListener('visibilitychange', handleVisibilityOrFocus);
+    return () => {
+      window.removeEventListener('focus', handleVisibilityOrFocus);
+      document.removeEventListener('visibilitychange', handleVisibilityOrFocus);
+    };
+  }, [handleRevalidate]);
 
   if (propertyViewMode === 'wizard') return <AddPropertyWizard />;
   if (isLoading) return <div className="flex flex-col gap-3 p-4"><div className="h-16 animate-pulse rounded-2xl bg-[var(--konfrm-surface-secondary)]" /><div className="h-32 animate-pulse rounded-2xl bg-[var(--konfrm-surface-secondary)]" /></div>;
@@ -69,6 +108,31 @@ export const PropertiesFoundationView: React.FC = () => {
       <div><h1 className="text-[22px] font-extrabold text-[var(--konfrm-text-primary)]">وحداتك</h1><p className="mt-1 text-sm text-[var(--konfrm-text-secondary)]">تابع وحداتك وحالتها وإدارتها من مكان واحد.</p></div>
       <Button size="sm" icon={<Plus size={16} />} onClick={() => openAddPropertyWizard()}>إضافة وحدة</Button>
     </header>
+    {revalidationError && (
+      <div
+        role="alert"
+        className="flex items-center justify-between gap-3 rounded-[var(--konfrm-radius-control)] border p-3 text-xs font-bold"
+        style={{
+          borderColor: 'var(--konfrm-semantic-warning-border)',
+          background: 'var(--konfrm-semantic-warning-background)',
+          color: 'var(--konfrm-semantic-warning-text)',
+        }}
+      >
+        <div className="flex items-center gap-2 min-w-0">
+          <AlertCircle size={16} className="shrink-0" />
+          <span className="truncate">{revalidationError}</span>
+        </div>
+        <button
+          type="button"
+          disabled={isRevalidating}
+          onClick={() => void handleRevalidate()}
+          className="inline-flex items-center gap-1 shrink-0 font-bold underline cursor-pointer disabled:opacity-50"
+        >
+          <RefreshCw size={12} className={isRevalidating ? 'animate-spin' : ''} />
+          {isRevalidating ? 'جاري التحديث...' : 'إعادة المحاولة'}
+        </button>
+      </div>
+    )}
     {properties.length === 0 ? <section className="rounded-[var(--konfrm-radius-card)] border border-[var(--konfrm-border-default)] bg-[var(--konfrm-surface-primary)] p-5 text-center"><Building2 className="mx-auto text-[var(--konfrm-text-muted)]" size={32} /><h2 className="mt-3 text-lg font-extrabold">ابدأ بإضافة أول وحدة</h2><p className="mt-2 text-sm leading-6 text-[var(--konfrm-text-secondary)]">أضف بيانات وحدتك وأرسلها للمراجعة لتصبح جاهزة للظهور للمستأجرين.</p><Button fullWidth className="mt-4" onClick={() => openAddPropertyWizard()}>إضافة وحدة</Button></section> : <>
       <nav className="flex gap-2 overflow-x-auto" aria-label="تصفية الوحدات">
         {filters.filter((item) => item.id === 'all' || ownerPropertyFilterCount(properties, item.id) > 0).map((item) => <button key={item.id} type="button" onClick={() => setFilter(item.id)} className="min-h-11 shrink-0 rounded-full border px-3 text-[13px] font-bold" style={{ borderColor: filter === item.id ? 'var(--konfrm-border-focus)' : 'var(--konfrm-border-default)', background: filter === item.id ? 'var(--konfrm-interaction-selected)' : 'var(--konfrm-surface-primary)', color: filter === item.id ? 'var(--konfrm-color-primary)' : 'var(--konfrm-text-secondary)' }}>{item.label} <span className="text-[var(--konfrm-text-muted)]">{ownerPropertyFilterCount(properties, item.id)}</span></button>)}

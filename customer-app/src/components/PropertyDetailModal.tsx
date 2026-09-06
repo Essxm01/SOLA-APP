@@ -22,6 +22,16 @@ import { AvailabilityCalendar, BlockedRange } from './AvailabilityCalendar';
 import { GuestSelector } from './GuestSelector';
 import { getApiUrl } from '../utils/api';
 import {
+  fetchCanonicalPropertyDetail,
+  type CustomerPropertyDetail,
+  resolveDetailGalleryImages,
+  resolveEffectiveMaxGuests,
+  clampGuests,
+  getRenderableHouseRules,
+  resolvePropertyType,
+  resolvePropertyLocation,
+} from '../utils/customerTruthfulState';
+import {
   ChevronRight,
   ChevronLeft,
   MapPin,
@@ -37,6 +47,27 @@ import {
   RefreshCw,
   Clock,
 } from 'lucide-react';
+
+const AMENITY_LABELS: Record<string, string> = {
+  pool: 'حمام سباحة',
+  private_pool: 'حمام سباحة خاص',
+  sea_view: 'إطلالة مباشرة على البحر',
+  central_ac: 'تكييف مركزي',
+  ac: 'تكييف',
+  wifi: 'إنترنت واي فاي',
+  kitchen: 'مطبخ مجهز بالكامل',
+  garage: 'جراج للسيارات',
+  smart_tv: 'شاشة سمارت',
+  garden: 'حديقة خاصة وتراس',
+  bbq: 'منطقة شواء BBQ',
+  private_beach: 'شاطئ خاص بالقرية',
+  security: 'أمن وحراسة 24/7',
+};
+
+function formatAmenity(amenity: string): string {
+  const normalized = amenity.trim().toLowerCase();
+  return AMENITY_LABELS[normalized] || amenity;
+}
 
 interface PropertyDetailModalProps {
   property: CustomerPropertyItem;
@@ -77,20 +108,81 @@ export const PropertyDetailModal: React.FC<PropertyDetailModalProps> = ({
   isFavorite = false,
   onToggleFavorite,
 }) => {
+  // Canonical Detail State
+  const [detail, setDetail] = useState<CustomerPropertyDetail | null>(null);
+  const [detailLoading, setDetailLoading] = useState<boolean>(true);
+  const [detailError, setDetailError] = useState<string | null>(null);
+
+  const fetchDetail = useCallback(async () => {
+    setDetailLoading(true);
+    setDetailError(null);
+    const token = authToken || localStorage.getItem('sola_customer_access_token');
+    const headers: Record<string, string> = {};
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    try {
+      const result = await fetchCanonicalPropertyDetail(property.id, { headers });
+      if (result.kind === 'success') {
+        setDetail(result.data);
+      } else if (result.kind === 'unauthorized') {
+        setDetailError('انتهت صلاحية الجلسة أو يلزم تسجيل الدخول لعرض تفاصيل الوحدة.');
+      } else {
+        setDetailError(result.message || 'تعذر تحميل تفاصيل الوحدة من الخادم');
+      }
+    } catch (err: any) {
+      setDetailError(err?.message || 'تعذر الاتصال بالخدمة لتحميل بيانات الوحدة');
+    } finally {
+      setDetailLoading(false);
+    }
+  }, [authToken, property.id]);
+
+  useEffect(() => {
+    fetchDetail();
+  }, [fetchDetail]);
+
   // Booking Selection State
   const [checkIn, setCheckIn] = useState<string | null>(restoredBookingIntent?.checkIn || null);
   const [checkOut, setCheckOut] = useState<string | null>(restoredBookingIntent?.checkOut || null);
   const [guests, setGuests] = useState<number>(restoredBookingIntent?.guests || 1);
 
-  // Gallery State
-  const images = useMemo(() => {
-    if (property.images && Array.isArray(property.images) && property.images.length > 0) {
-      return property.images.map((img: any) => (typeof img === 'string' ? img : img?.fileUrl || '')).filter(Boolean);
+  const isDetailLoaded = detail !== null;
+
+  // Authoritative Max Guests & Guest Clamping
+  const effectiveMaxGuests = useMemo(() => {
+    return resolveEffectiveMaxGuests(detail?.maxGuests, property.maxGuests, isDetailLoaded);
+  }, [detail?.maxGuests, property.maxGuests, isDetailLoaded]);
+
+  // Clamp selected guests downward if canonical detail arrives with a lower maxGuests
+  useEffect(() => {
+    if (isDetailLoaded) {
+      setGuests((prev) => clampGuests(prev, effectiveMaxGuests));
     }
-    return [];
-  }, [property.images]);
+  }, [isDetailLoaded, effectiveMaxGuests]);
+
+  // Gallery State: Authoritative detail.images when detail loaded, exploreImages only before detail loads
+  const images = useMemo(() => {
+    return resolveDetailGalleryImages(detail?.images, property.images, isDetailLoaded);
+  }, [detail?.images, property.images, isDetailLoaded]);
 
   const [activeImageIndex, setActiveImageIndex] = useState<number>(0);
+  const safeImageIndex = images.length > 0 ? Math.min(activeImageIndex, images.length - 1) : 0;
+
+  // Authoritative Property Type label
+  const propertyTypeLabel = useMemo(() => {
+    return resolvePropertyType(detail, property);
+  }, [detail, property]);
+
+  // Authoritative Property Location label
+  const propertyLocation = useMemo(() => {
+    return resolvePropertyLocation(detail, property);
+  }, [detail, property]);
+
+  // Renderable House Rules
+  const renderableRules = useMemo(() => {
+    return getRenderableHouseRules(detail?.houseRules);
+  }, [detail?.houseRules]);
 
   // Description expand toggle
   const [descriptionExpanded, setDescriptionExpanded] = useState<boolean>(false);
@@ -221,7 +313,7 @@ export const PropertyDetailModal: React.FC<PropertyDetailModalProps> = ({
     }
 
     if (!authToken) {
-      onRequireAuth({ propertyId: property.id, checkIn, checkOut, guests });
+      onRequireAuth({ propertyId: property.id, checkIn, checkOut, guests: clampGuests(guests, effectiveMaxGuests) });
       return;
     }
 
@@ -234,7 +326,7 @@ export const PropertyDetailModal: React.FC<PropertyDetailModalProps> = ({
     setIsSubmittingBooking(true);
     setBookingSubmitError(null);
     try {
-      await onInitiateBooking(property, checkIn, checkOut, guests);
+      await onInitiateBooking(property, checkIn, checkOut, clampGuests(guests, effectiveMaxGuests));
       setShowReviewSheet(false);
     } catch (err: any) {
       setBookingSubmitError(err?.message || 'تعذر إرسال طلب الحجز. لم يتم إنشاء أي طلب.');
@@ -253,18 +345,8 @@ export const PropertyDetailModal: React.FC<PropertyDetailModalProps> = ({
     return Math.max(0, Math.round((d2.getTime() - d1.getTime()) / 86400000));
   }, [checkIn, checkOut]);
 
-  const nightlyPrice = property.basePricePerNight || 0;
+  const nightlyPrice = detail?.basePricePerNight || property.basePricePerNight || 0;
   const estimatedTotal = quote ? quote.totalStay : nightlyPrice * localNights;
-
-  // Real amenities list (fallback to standard coastal features if not specified)
-  const amenitiesList = [
-    'شاطئ خاص بالقرية',
-    'حمام سباحة خاص / مشترك',
-    'تكييف central بجميع الغرف',
-    'إنترنت واي فاي عالي السرعة',
-    'أثاث ومفروشات جديدة',
-    'مطبخ مجهز بالكامل',
-  ];
 
   return (
     <div className="fixed inset-0 z-50 bg-[#F5F7FA] flex justify-center selection:bg-blue-100" dir="rtl">
@@ -274,8 +356,8 @@ export const PropertyDetailModal: React.FC<PropertyDetailModalProps> = ({
         <div className="relative w-full h-72 bg-slate-900 shrink-0">
           {images.length > 0 ? (
             <img
-              src={images[activeImageIndex]}
-              alt={property.title}
+              src={images[safeImageIndex]}
+              alt={detail?.title || property.title}
               className="w-full h-full object-cover transition-opacity duration-300"
             />
           ) : (
@@ -318,7 +400,7 @@ export const PropertyDetailModal: React.FC<PropertyDetailModalProps> = ({
 
             {images.length > 1 && (
               <div className="bg-black/60 backdrop-blur-md text-white text-[10px] font-bold px-2.5 py-0.5 rounded-full dir-ltr">
-                {activeImageIndex + 1} / {images.length}
+                {safeImageIndex + 1} / {images.length}
               </div>
             )}
           </div>
@@ -351,13 +433,18 @@ export const PropertyDetailModal: React.FC<PropertyDetailModalProps> = ({
 
           {/* ── SECTION 2: PROPERTY IDENTITY ── */}
           <div className="space-y-1.5">
-            <div className="flex items-center gap-1.5 text-xs font-bold text-[#0059FF]">
-              <MapPin className="w-3.5 h-3.5 shrink-0" />
-              <span>{property.address || property.resortName || property.region || 'الساحل الشمالي'}</span>
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-1.5 text-xs font-bold text-[#0059FF] min-w-0">
+                <MapPin className="w-3.5 h-3.5 shrink-0" />
+                <span className="truncate">{propertyLocation}</span>
+              </div>
+              <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-blue-50 text-[#0059FF] border border-blue-100 shrink-0">
+                {propertyTypeLabel}
+              </span>
             </div>
 
             <h1 className="text-base font-black text-slate-900 leading-snug">
-              {property.title}
+              {detail?.title || property.title}
             </h1>
           </div>
 
@@ -367,60 +454,162 @@ export const PropertyDetailModal: React.FC<PropertyDetailModalProps> = ({
               <span className="text-[10px] font-bold text-slate-400 block">السعة القصوى</span>
               <div className="flex items-center justify-center gap-1 text-xs font-black text-slate-800 mt-0.5">
                 <Users className="w-3.5 h-3.5 text-[#0059FF]" />
-                <span>{property.maxGuests} أفراد</span>
+                <span>{effectiveMaxGuests} أفراد</span>
               </div>
             </div>
             <div>
               <span className="text-[10px] font-bold text-slate-400 block">عدد الغرف</span>
               <div className="flex items-center justify-center gap-1 text-xs font-black text-slate-800 mt-0.5">
                 <Bed className="w-3.5 h-3.5 text-[#0059FF]" />
-                <span>{property.bedrooms} غرف</span>
+                <span>{(detail?.bedrooms ?? property.bedrooms)} غرف</span>
               </div>
             </div>
             <div>
               <span className="text-[10px] font-bold text-slate-400 block">الحمامات</span>
               <div className="flex items-center justify-center gap-1 text-xs font-black text-slate-800 mt-0.5">
                 <Bath className="w-3.5 h-3.5 text-[#0059FF]" />
-                <span>{property.bathrooms} حمام</span>
+                <span>{(detail?.bathrooms ?? property.bathrooms)} حمام</span>
               </div>
             </div>
           </div>
 
-          {/* ── SECTION 4: DESCRIPTION ── */}
-          <div className="space-y-1.5">
-            <h3 className="text-xs font-black text-slate-900">عن هذه الإقامة</h3>
-            <p className="text-xs text-slate-600 font-medium leading-relaxed">
-              إقامة ساحلية فاخرة تضمن لك أعلى مستويات الراحة والخصوصية في أرقى شواطئ الساحل الشمالي. الوحدة مجهزة بالكامل ومفروشة بفرش فندقي حديث.
-              {descriptionExpanded && (
-                <span className="block mt-1">
-                  تتميز الوحدة بقربها من الشاطئ وحمام السباحة، مع توفر جميع الخدمات الأساسية والترفيهية لضمان إجازة صيفية استثنائية لك ولعائلتك.
-                </span>
-              )}
-            </p>
-            <button
-              type="button"
-              onClick={() => setDescriptionExpanded((prev) => !prev)}
-              className="text-xs font-black text-[#0059FF] hover:underline pt-0.5"
-            >
-              {descriptionExpanded ? 'عرض أقل' : 'عرض المزيد'}
-            </button>
-          </div>
-
-          {/* ── SECTION 5: AMENITIES ── */}
-          <div className="space-y-2">
-            <h3 className="text-xs font-black text-slate-900">المميزات والخدمات</h3>
-            <div className="grid grid-cols-2 gap-2">
-              {amenitiesList.map((item, idx) => (
-                <div
-                  key={idx}
-                  className="flex items-center gap-2 p-2.5 bg-slate-50 rounded-xl text-[11px] font-bold text-slate-700 border border-slate-100"
-                >
-                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
-                  <span className="truncate">{item}</span>
+          {((detail?.bedsCount !== undefined && detail?.bedsCount !== null) || (detail?.areaSqM !== undefined && detail?.areaSqM !== null)) && (
+            <div className="grid grid-cols-2 gap-2 p-2.5 bg-slate-50/70 rounded-xl border border-slate-200/60 text-center">
+              {detail.bedsCount !== undefined && detail.bedsCount !== null && (
+                <div className="flex items-center justify-center gap-1.5 text-xs text-slate-700 font-bold">
+                  <span className="text-slate-400 text-[11px]">الأسرّة:</span>
+                  <span className="font-black text-slate-900">{detail.bedsCount}</span>
                 </div>
-              ))}
+              )}
+              {detail.areaSqM !== undefined && detail.areaSqM !== null && (
+                <div className="flex items-center justify-center gap-1.5 text-xs text-slate-700 font-bold">
+                  <span className="text-slate-400 text-[11px]">المساحة:</span>
+                  <span className="font-black text-slate-900">{detail.areaSqM} م²</span>
+                </div>
+              )}
             </div>
-          </div>
+          )}
+
+          {/* ── DETAIL-DEPENDENT CONTENT: DESCRIPTION & AMENITIES ── */}
+          {detailLoading ? (
+            <div className="p-6 bg-slate-50 rounded-2xl border border-slate-200/70 flex flex-col items-center justify-center text-center space-y-2">
+              <Loader2 className="w-5 h-5 animate-spin text-[#0059FF]" />
+              <span className="text-xs font-bold text-slate-500">جاري تحميل تفاصيل ومميزات الوحدة...</span>
+            </div>
+          ) : detailError ? (
+            <div className="p-4 bg-rose-50/80 rounded-2xl border border-rose-200 text-center space-y-2">
+              <AlertCircle className="w-5 h-5 text-rose-500 mx-auto" />
+              <p className="text-xs font-bold text-rose-800">{detailError}</p>
+              <button
+                type="button"
+                onClick={fetchDetail}
+                className="px-3.5 py-1.5 bg-white text-rose-600 border border-rose-200 rounded-xl text-xs font-black inline-flex items-center gap-1 hover:bg-rose-50 transition-all active:scale-95"
+              >
+                <RefreshCw className="w-3 h-3" />
+                <span>إعادة المحاولة</span>
+              </button>
+            </div>
+          ) : (
+            <>
+              {/* ── SECTION 4: DESCRIPTION ── */}
+              <div className="space-y-1.5">
+                <h3 className="text-xs font-black text-slate-900">عن هذه الإقامة</h3>
+                {detail?.description ? (
+                  <div>
+                    <p className="text-xs text-slate-600 font-medium leading-relaxed whitespace-pre-line">
+                      {descriptionExpanded || detail.description.length <= 160
+                        ? detail.description
+                        : `${detail.description.slice(0, 160)}...`}
+                    </p>
+                    {detail.description.length > 160 && (
+                      <button
+                        type="button"
+                        onClick={() => setDescriptionExpanded((prev) => !prev)}
+                        className="text-xs font-black text-[#0059FF] hover:underline pt-0.5"
+                      >
+                        {descriptionExpanded ? 'عرض أقل' : 'عرض المزيد'}
+                      </button>
+                    )}
+                  </div>
+                ) : (
+                  <p className="text-xs text-slate-500 font-medium">لم يقم المالك بإضافة وصف مكتوب لهذه الوحدة بعد.</p>
+                )}
+              </div>
+
+              {/* ── SECTION 5: AMENITIES ── */}
+              <div className="space-y-2">
+                <h3 className="text-xs font-black text-slate-900">المميزات والخدمات</h3>
+                {detail?.amenities && detail.amenities.length > 0 ? (
+                  <div className="grid grid-cols-2 gap-2">
+                    {detail.amenities.map((item, idx) => (
+                      <div
+                        key={idx}
+                        className="flex items-center gap-2 p-2.5 bg-slate-50 rounded-xl text-[11px] font-bold text-slate-700 border border-slate-100"
+                      >
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                        <span className="truncate">{formatAmenity(item)}</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-xs text-slate-500 font-medium">لم يتم تحديد مرافق إضافية لهذه الوحدة.</p>
+                )}
+              </div>
+
+              {/* House Rules if present and renderable */}
+              {renderableRules.hasRenderableRules && (
+                <div className="space-y-2 pt-2 border-t border-slate-100">
+                  <h3 className="text-xs font-black text-slate-900">قواعد الإقامة</h3>
+                  <div className="space-y-1.5 text-xs text-slate-600 font-medium">
+                    {renderableRules.smokingAllowed !== undefined && (
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-slate-700">التدخين:</span>
+                        <span>{renderableRules.smokingAllowed ? 'مسموح' : 'غير مسموح داخل الوحدة'}</span>
+                      </div>
+                    )}
+                    {renderableRules.partiesAllowed !== undefined && (
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-slate-700">الحفلات والفعاليات:</span>
+                        <span>{renderableRules.partiesAllowed ? 'مسموح' : 'غير مسموح'}</span>
+                      </div>
+                    )}
+                    {renderableRules.petsAllowed !== undefined && (
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-slate-700">الحيوانات الأليفة:</span>
+                        <span>{renderableRules.petsAllowed ? 'مسموح' : 'غير مسموح'}</span>
+                      </div>
+                    )}
+                    {renderableRules.childrenAllowed !== undefined && (
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-slate-700">استقبال الأطفال:</span>
+                        <span>{renderableRules.childrenAllowed ? 'مناسب للأطفال' : 'غير مناسب للأطفال'}</span>
+                      </div>
+                    )}
+                    {renderableRules.checkInTime && (
+                      <div className="flex items-center gap-2">
+                        <Clock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                        <span className="font-bold text-slate-700">تسجيل الوصول:</span>
+                        <span>{renderableRules.checkInTime}</span>
+                      </div>
+                    )}
+                    {renderableRules.checkOutTime && (
+                      <div className="flex items-center gap-2">
+                        <Clock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                        <span className="font-bold text-slate-700">تسجيل المغادرة:</span>
+                        <span>{renderableRules.checkOutTime}</span>
+                      </div>
+                    )}
+                    {renderableRules.additionalRules && (
+                      <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-100 mt-1">
+                        <span className="font-bold text-slate-700 block mb-0.5">تعليمات إضافية من المالك:</span>
+                        <p className="text-xs text-slate-600 leading-relaxed whitespace-pre-line">{renderableRules.additionalRules}</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
 
           {/* ── SECTION 6: INLINE AVAILABILITY CALENDAR ── */}
           <div className="space-y-2.5 pt-2 border-t border-slate-100">
@@ -464,8 +653,8 @@ export const PropertyDetailModal: React.FC<PropertyDetailModalProps> = ({
             <h3 className="text-xs font-black text-slate-900">عدد الأفراد</h3>
             <GuestSelector
               guests={guests}
-              maxGuests={property.maxGuests || 6}
-              onChange={setGuests}
+              maxGuests={effectiveMaxGuests}
+              onChange={(newGuests) => setGuests(clampGuests(newGuests, effectiveMaxGuests))}
             />
           </div>
 

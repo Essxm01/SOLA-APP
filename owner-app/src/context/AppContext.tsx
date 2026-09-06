@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import type {
   Property,
   Booking,
@@ -28,6 +28,7 @@ import type {
 import { mockRepository } from '../services/mockRepository';
 import { repositoryFactory } from '../services/repositoryFactory';
 import { getOwnerDraftStorageKey } from '../utils/ownerIdentity';
+import { derivePropertyMetrics, createPropertyRevalidationTracker } from '../utils/ownerProperties';
 import {
   createEmptyPropertyWizardDraft,
   hydratePropertyToWizard,
@@ -90,6 +91,7 @@ interface AppContextType {
   getPropertyAuditLogs: (propertyId: string) => Promise<PropertyAuditLog[]>;
   openAddPropertyWizard: (initialData?: Property) => void;
   openPropertyDetails: (propertyId: string) => void;
+  revalidateProperties: () => Promise<Property[]>;
 
   // Phase 3A: Calendar & Availability
   calendarPropertyId: string | null;
@@ -505,6 +507,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode; ownerId: string 
   useEffect(() => {
     if (currentDraft) saveResumableNewDraft(localStorage, ownerDraftStorageKey, currentDraft);
   }, [currentDraft, ownerDraftStorageKey]);
+
+  const propertyRevalidationTracker = useMemo(() => createPropertyRevalidationTracker(), []);
+
+  const revalidateProperties = useCallback(async (): Promise<Property[]> => {
+    const repo = repositoryFactory;
+    const fetcher = repo.useMockMode
+      ? () => mockRepository.getProperties(isEmptyDashboard)
+      : () => repo.property.getProperties();
+
+    const { properties } = await propertyRevalidationTracker.execute(fetcher, (freshProperties) => {
+      setProperties(freshProperties);
+      const derived = derivePropertyMetrics(freshProperties);
+      setMetrics((previous) => ({
+        ...previous,
+        ...derived,
+      }));
+    });
+    return properties;
+  }, [isEmptyDashboard, propertyRevalidationTracker]);
 
   const createOrUpdateProperty = async (
     data: Partial<Property>,
@@ -1217,6 +1238,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; ownerId: string 
         getPropertyAuditLogs,
         openAddPropertyWizard,
         openPropertyDetails,
+        revalidateProperties,
 
         // Phase 3A
         calendarPropertyId,

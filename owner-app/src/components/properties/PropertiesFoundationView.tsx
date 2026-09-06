@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AlertCircle, Building2, ChevronLeft, MapPin, Plus, RefreshCw, SlidersHorizontal } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import type { Property } from '../../types';
@@ -37,17 +37,25 @@ export const PropertiesFoundationView: React.FC = () => {
   const [saving, setSaving] = useState(false);
   const [revalidationError, setRevalidationError] = useState<string | null>(null);
   const [isRevalidating, setIsRevalidating] = useState<boolean>(false);
+  const revalidationGenerationRef = useRef<number>(0);
   const list = useMemo(() => getOwnerPropertyCollections(properties, filter), [properties, filter]);
 
   const handleRevalidate = useCallback(async () => {
+    const generation = ++revalidationGenerationRef.current;
     setIsRevalidating(true);
     try {
       await revalidateProperties();
-      setRevalidationError(null);
+      if (generation === revalidationGenerationRef.current) {
+        setRevalidationError(null);
+      }
     } catch {
-      setRevalidationError('تعذر تحديث حالة الوحدات مع الخادم. قد تكون البيانات المعروضة غير محدثة.');
+      if (generation === revalidationGenerationRef.current) {
+        setRevalidationError('تعذر تحديث حالة الوحدات مع الخادم. قد تكون البيانات المعروضة غير محدثة.');
+      }
     } finally {
-      setIsRevalidating(false);
+      if (generation === revalidationGenerationRef.current) {
+        setIsRevalidating(false);
+      }
     }
   }, [revalidateProperties]);
 

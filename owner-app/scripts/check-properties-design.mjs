@@ -21,5 +21,11 @@ if (source.includes('.catch(() => {})')) {
 if (!source.includes('revalidationError')) {
   throw new Error('PropertiesFoundationView must manage and display revalidationError state');
 }
+if (!appContextSource.includes('createPropertyRevalidationTracker')) {
+  throw new Error('AppContext must use createPropertyRevalidationTracker to guard against out-of-order responses');
+}
+if (!source.includes('revalidationGenerationRef')) {
+  throw new Error('PropertiesFoundationView must use revalidationGenerationRef to guard against out-of-order revalidation race conditions');
+}
 
 console.log('Properties Hub design and revalidation guards passed.');

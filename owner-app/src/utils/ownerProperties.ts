@@ -11,6 +11,7 @@ export const isRejectedProperty = (property: Pick<Property, 'status' | 'verifica
 
 export const isPropertyActionRequired = (property: Pick<Property, 'status' | 'verificationStatus'>) =>
   property.status === 'DRAFT' || isRejectedProperty(property);
+
 export const propertyStatusPresentation: Record<PropertyStatus, { label: string; tone: string }> = {
   DRAFT: { label: 'مسودة', tone: 'bg-slate-100 text-slate-700 border-slate-200' },
   PENDING_REVIEW: { label: 'قيد المراجعة', tone: 'bg-amber-50 text-amber-800 border-amber-200' },
@@ -19,12 +20,14 @@ export const propertyStatusPresentation: Record<PropertyStatus, { label: string;
   SUSPENDED: { label: 'موقوفة', tone: 'bg-rose-50 text-rose-800 border-rose-200' },
   ARCHIVED: { label: 'مؤرشفة', tone: 'bg-slate-100 text-slate-600 border-slate-200' },
 };
+
 export const primaryPropertyAction = (property: Property) => {
   if (isRejectedProperty(property)) return 'مراجعة التعديلات';
   if (property.status === 'DRAFT') return 'استكمال الوحدة';
   if (property.status === 'PUBLISHED') return 'إدارة الوحدة';
   return 'عرض التفاصيل';
 };
+
 export const getOwnerPropertyCollections = (properties: Property[], filter: OwnerPropertyFilter) => {
   const matching = properties.filter((property) => filter === 'all' || (filter === 'action' && isPropertyActionRequired(property)) || (filter === 'published' && property.status === 'PUBLISHED') || (filter === 'review' && property.status === 'PENDING_REVIEW') || (filter === 'drafts' && property.status === 'DRAFT' && !isRejectedProperty(property)) || (filter === 'other' && ['PAUSED', 'SUSPENDED', 'ARCHIVED'].includes(property.status)));
   return matching.sort((a, b) => (isRejectedProperty(a) ? 0 : statusOrder[a.status]) - (isRejectedProperty(b) ? 0 : statusOrder[b.status]) || String(b.updatedAt).localeCompare(String(a.updatedAt)));
@@ -34,6 +37,7 @@ export const getPropertyStatusPresentation = (property: Property) =>
   isRejectedProperty(property)
     ? { label: 'تحتاج تعديلات', tone: 'bg-rose-50 text-rose-800 border-rose-200' }
     : propertyStatusPresentation[property.status];
+
 export const ownerPropertyFilterCount = (properties: Property[], filter: OwnerPropertyFilter) => getOwnerPropertyCollections(properties, filter).length;
 
 export interface OwnerPropertyMetrics {
@@ -64,3 +68,35 @@ export const revalidateOwnerProperties = async (
   }
   return result;
 };
+
+export interface PropertyRevalidationCommitResult {
+  properties: Property[];
+  isLatest: boolean;
+  generation: number;
+}
+
+/**
+ * Generation-tracked revalidation controller to protect against out-of-order responses.
+ * When multiple overlapping requests occur (e.g. mount, focus, visibilitychange),
+ * only the latest request generation is allowed to commit its result to state/metrics.
+ * Stale responses that resolve out of order are superseded and discarded.
+ */
+export function createPropertyRevalidationTracker() {
+  let activeGeneration = 0;
+
+  return {
+    async execute(
+      fetcher: () => Promise<Property[]>,
+      onCommit?: (properties: Property[], generation: number) => void,
+    ): Promise<PropertyRevalidationCommitResult> {
+      const generation = ++activeGeneration;
+      const properties = await revalidateOwnerProperties(fetcher);
+      const isLatest = generation === activeGeneration;
+      if (isLatest && onCommit) {
+        onCommit(properties, generation);
+      }
+      return { properties, isLatest, generation };
+    },
+    getCurrentGeneration: () => activeGeneration,
+  };
+}

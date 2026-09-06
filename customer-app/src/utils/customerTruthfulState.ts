@@ -456,3 +456,42 @@ export function resolvePropertyType(
     : (exploreProperty.propertyType || exploreProperty.unitType);
   return formatPropertyTypeDisplay(rawType);
 }
+
+/**
+ * Resolves authoritative property location string.
+ * After detail success, canonical detail fields (address, resortName, region) are authoritative.
+ * If all are empty/unspecified, returns 'الموقع غير محدد'.
+ * Never falls back to Explore fields or fabricated geography after detail load.
+ * Before detail load, Explore location fields are used as opening context.
+ */
+export function resolvePropertyLocation(
+  detail: { address?: string | null; resortName?: string | null; region?: string | null } | null,
+  exploreProperty: { address?: string | null; resortName?: string | null; region?: string | null; locationName?: string | null },
+): string {
+  if (detail !== null) {
+    const address = typeof detail.address === 'string' ? detail.address.trim() : '';
+    if (address !== '') return address;
+
+    const resort = typeof detail.resortName === 'string' ? detail.resortName.trim() : '';
+    const region = typeof detail.region === 'string' ? detail.region.trim() : '';
+    if (resort && region) return `${resort} - ${region}`;
+    if (resort) return resort;
+    if (region) return region;
+
+    return 'الموقع غير محدد';
+  }
+
+  const exploreAddress = typeof exploreProperty.address === 'string' ? exploreProperty.address.trim() : '';
+  if (exploreAddress !== '') return exploreAddress;
+
+  const exploreResort = typeof exploreProperty.resortName === 'string' ? exploreProperty.resortName.trim() : '';
+  const exploreRegion = typeof exploreProperty.region === 'string' ? exploreProperty.region.trim() : '';
+  if (exploreResort && exploreRegion) return `${exploreResort} - ${exploreRegion}`;
+  if (exploreResort) return exploreResort;
+  if (exploreRegion) return exploreRegion;
+
+  const exploreLoc = typeof exploreProperty.locationName === 'string' ? exploreProperty.locationName.trim() : '';
+  if (exploreLoc !== '') return exploreLoc;
+
+  return 'الموقع غير محدد';
+}

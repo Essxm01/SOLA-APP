@@ -555,6 +555,7 @@ async function run() {
     clampGuests,
     getRenderableHouseRules,
     resolvePropertyType,
+    resolvePropertyLocation,
   } = await import('./customerTruthfulState.js');
 
   // 5a. Canonical images: [] does NOT fall back to stale Explore images after detail success
@@ -674,6 +675,76 @@ async function run() {
   assert(
     modalSource.includes('resolvePropertyType'),
     'PropertyDetailModal must use resolvePropertyType'
+  );
+
+  // 5g. Authoritative Property Location (Bridge review 5123829532 Blocker 1)
+  // When detail is loaded:
+  // - Address non-empty: returns address
+  const locDetailWithAddress = resolvePropertyLocation(
+    { address: 'فيلا 12 شارع النخيل', resortName: 'مراسي', region: 'الساحل الشمالي' },
+    { address: 'قديم', resortName: 'قديم', region: 'قديم' }
+  );
+  assert(locDetailWithAddress === 'فيلا 12 شارع النخيل', 'Canonical detail address must be returned when present');
+
+  // - Address empty string, resort + region present: returns "${resortName} - ${region}"
+  const locDetailResortRegion = resolvePropertyLocation(
+    { address: '', resortName: 'مراسي', region: 'سيدي عبد الرحمن' },
+    { address: 'explore address', resortName: 'explore resort', region: 'explore region' }
+  );
+  assert(locDetailResortRegion === 'مراسي - سيدي عبد الرحمن', 'Canonical resort and region must format as resort - region');
+
+  // - Address empty string, resort only: returns resort
+  const locDetailResortOnly = resolvePropertyLocation(
+    { address: '  ', resortName: 'هاسيندا باي', region: null },
+    { address: 'explore address', resortName: 'explore resort', region: 'explore region' }
+  );
+  assert(locDetailResortOnly === 'هاسيندا باي', 'Canonical resort only must be returned when address and region are empty');
+
+  // - Address empty string, region only: returns region
+  const locDetailRegionOnly = resolvePropertyLocation(
+    { address: '', resortName: null, region: 'الجونة' },
+    { address: 'explore address', resortName: 'explore resort', region: 'explore region' }
+  );
+  assert(locDetailRegionOnly === 'الجونة', 'Canonical region only must be returned when address and resort are empty');
+
+  // - Address empty string, resort and region null: returns 'الموقع غير محدد'
+  // CRITICAL: Must NEVER fall back to exploreProperty fields or fabricated geography after detail load
+  const locDetailAllEmpty = resolvePropertyLocation(
+    { address: '', resortName: null, region: null },
+    { address: 'explore address', resortName: 'explore resort', region: 'explore region', locationName: 'explore loc' }
+  );
+  assert(
+    locDetailAllEmpty === 'الموقع غير محدد',
+    'Canonical detail with empty address/resort/region must return الموقع غير محدد and NOT fall back to explore fields'
+  );
+
+  // Before detail load (detail === null): Explore context used as opening context
+  const locBeforeDetailWithExploreAddress = resolvePropertyLocation(
+    null,
+    { address: 'عنوان تجريبي', resortName: 'قرية سياحية', region: 'الساحل' }
+  );
+  assert(locBeforeDetailWithExploreAddress === 'عنوان تجريبي', 'Explore address used before detail load');
+
+  const locBeforeDetailExploreResort = resolvePropertyLocation(
+    null,
+    { address: '', resortName: 'أمواج', region: 'الساحل الشمالي' }
+  );
+  assert(locBeforeDetailExploreResort === 'أمواج - الساحل الشمالي', 'Explore resort and region formatted before detail load');
+
+  const locBeforeDetailEmptyExplore = resolvePropertyLocation(
+    null,
+    { address: '', resortName: '', region: '', locationName: '' }
+  );
+  assert(locBeforeDetailEmptyExplore === 'الموقع غير محدد', 'Empty explore fields before detail load returns الموقع غير محدد');
+
+  // Static modal guards for location authoritativeness
+  assert(
+    modalSource.includes('resolvePropertyLocation'),
+    'PropertyDetailModal must use resolvePropertyLocation'
+  );
+  assert(
+    !modalSource.includes("'الساحل الشمالي'"),
+    'PropertyDetailModal must NOT contain fallback to الساحل الشمالي'
   );
 
   console.log('CUSTOMER-TRUTHFUL-STATE-01 focused client state tests passed');

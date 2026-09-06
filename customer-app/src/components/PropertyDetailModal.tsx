@@ -29,6 +29,7 @@ import {
   clampGuests,
   getRenderableHouseRules,
   resolvePropertyType,
+  resolvePropertyLocation,
 } from '../utils/customerTruthfulState';
 import {
   ChevronRight,
@@ -171,6 +172,11 @@ export const PropertyDetailModal: React.FC<PropertyDetailModalProps> = ({
   // Authoritative Property Type label
   const propertyTypeLabel = useMemo(() => {
     return resolvePropertyType(detail, property);
+  }, [detail, property]);
+
+  // Authoritative Property Location label
+  const propertyLocation = useMemo(() => {
+    return resolvePropertyLocation(detail, property);
   }, [detail, property]);
 
   // Renderable House Rules
@@ -430,7 +436,7 @@ export const PropertyDetailModal: React.FC<PropertyDetailModalProps> = ({
             <div className="flex items-center justify-between gap-2">
               <div className="flex items-center gap-1.5 text-xs font-bold text-[#0059FF] min-w-0">
                 <MapPin className="w-3.5 h-3.5 shrink-0" />
-                <span className="truncate">{detail?.address || detail?.resortName || detail?.region || property.address || property.resortName || property.region || 'الساحل الشمالي'}</span>
+                <span className="truncate">{propertyLocation}</span>
               </div>
               <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-blue-50 text-[#0059FF] border border-blue-100 shrink-0">
                 {propertyTypeLabel}

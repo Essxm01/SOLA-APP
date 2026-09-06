@@ -1,6 +1,7 @@
 import {
   derivePropertyMetrics,
   revalidateOwnerProperties,
+  createPropertyRevalidationTracker,
 } from './ownerProperties.js';
 import type { Property } from '../types';
 
@@ -94,6 +95,44 @@ async function run() {
     assert(err.message.includes('MALFORMED_OWNER_PROPERTIES_RESPONSE'), 'Must throw on malformed response');
   }
   assert(malformedThrew, 'Malformed response must reject');
+
+  // Scenario 4: Out-of-order revalidation race condition (Blocker 2)
+  const tracker = createPropertyRevalidationTracker();
+  let committedState: Property[] = initialList;
+  const commitHandler = (fresh: Property[]) => {
+    committedState = fresh;
+  };
+
+  let resolveRequest1: (value: Property[]) => void;
+  const promise1 = new Promise<Property[]>((resolve) => {
+    resolveRequest1 = resolve;
+  });
+
+  let resolveRequest2: (value: Property[]) => void;
+  const promise2 = new Promise<Property[]>((resolve) => {
+    resolveRequest2 = resolve;
+  });
+
+  const exec1Promise = tracker.execute(() => promise1, commitHandler);
+  const exec2Promise = tracker.execute(() => promise2, commitHandler);
+
+  assert(tracker.getCurrentGeneration() === 2, 'Tracker generation must be 2 after launching request 2');
+
+  // Controlled resolution: Resolve Request 2 (newer post-approval) first
+  resolveRequest2!([approvedProp]);
+  const res2 = await exec2Promise;
+
+  assert(res2.isLatest === true, 'Request 2 must be marked as latest');
+  assert(res2.generation === 2, 'Request 2 generation must be 2');
+  assert(committedState[0].status === 'PUBLISHED', 'Committed state must be updated to PUBLISHED');
+
+  // Now resolve Request 1 (older pre-approval) second
+  resolveRequest1!([initialProp]);
+  const res1 = await exec1Promise;
+
+  assert(res1.isLatest === false, 'Stale Request 1 must NOT be marked as latest');
+  assert(res1.generation === 1, 'Request 1 generation must be 1');
+  assert(committedState[0].status === 'PUBLISHED', 'Stale response 1 must NOT overwrite newer state (status must remain PUBLISHED)');
 
   console.log('✅ OWNER 3.9 Revalidation Tests PASSED');
 }

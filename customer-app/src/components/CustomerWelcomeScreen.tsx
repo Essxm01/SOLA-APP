@@ -75,11 +75,14 @@ export const CustomerWelcomeScreen: React.FC<CustomerWelcomeScreenProps> = ({
 
         {/* Logo lockup */}
         <div className="px-6 pt-5 flex items-center gap-2.5">
-          <svg width="30" height="30" viewBox="0 0 88 88" fill="none" aria-hidden="true">
-            <rect x="6" y="6" width="76" height="76" rx="22" fill="#0059FF" />
-            <path d="M26 45.5 38.5 58 62 32" stroke="#FFFFFF" strokeWidth="7" strokeLinecap="round" strokeLinejoin="round" />
-            <circle cx="62" cy="26" r="5.5" fill="#FFD700" />
-          </svg>
+          <img
+            src="/konfrm-mark.svg"
+            alt=""
+            aria-hidden="true"
+            width="30"
+            height="30"
+            className="w-[30px] h-[30px] object-contain"
+          />
           <span className="text-lg font-extrabold text-[#0F172A]">KONFRM</span>
           <span className="text-sm font-bold text-[#64748B]">كونفرم</span>
         </div>

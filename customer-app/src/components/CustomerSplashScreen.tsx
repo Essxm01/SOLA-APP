@@ -33,29 +33,15 @@ export const CustomerSplashScreen: React.FC<{ onFinished: () => void }> = ({ onF
         leaving ? 'customer-splash-leaving' : ''
       }`}
     >
-      {/* Brand mark with restrained yellow signature accent */}
+      {/* Canonical KONFRM brand mark */}
       <div className="customer-splash-logo relative flex items-center justify-center mb-5">
-        <svg
+        <img
+          src="/konfrm-mark.svg"
+          alt="KONFRM"
           width="88"
           height="88"
-          viewBox="0 0 88 88"
-          fill="none"
-          xmlns="http://www.w3.org/2000/svg"
-          aria-hidden="true"
-        >
-          {/* Rounded brand tile */}
-          <rect x="6" y="6" width="76" height="76" rx="22" fill="#0059FF" />
-          {/* Stylized coastal check — KONFRM confirmation mark */}
-          <path
-            d="M26 45.5 38.5 58 62 32"
-            stroke="#FFFFFF"
-            strokeWidth="7"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-          {/* Single yellow signature accent */}
-          <circle cx="62" cy="26" r="5.5" fill="#FFD700" />
-        </svg>
+          className="w-[88px] h-[88px] object-contain"
+        />
       </div>
 
       {/* Wordmark */}

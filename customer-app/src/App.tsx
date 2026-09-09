@@ -11,6 +11,9 @@ import type { BookingDetails } from './components/CustomerCheckoutModal';
 import { BookingSuccessModal } from './components/BookingSuccessModal';
 import { BookingDetailModal, type CustomerBookingRecord } from './components/BookingDetailModal';
 import { CustomerBottomNav, CustomerTabType } from './components/CustomerBottomNav';
+import { CustomerSplashScreen } from './components/CustomerSplashScreen';
+import { CustomerWelcomeScreen } from './components/CustomerWelcomeScreen';
+import { hasSeenCustomerEntry, markCustomerEntrySeen } from './utils/customerEntryState';
 import { LoadingStateView, EmptyStateView, ErrorStateView } from './components/StateViews';
 import { getApiUrl } from './utils/api';
 import { fetchCanonicalCollection } from './utils/customerTruthfulState';
@@ -76,6 +79,11 @@ export function App() {
 
   // Navigation & Modals
   const [activeTab, setActiveTab] = useState<CustomerTabType>('EXPLORE');
+  // First-entry UX gate (Phase 5 / C1): device-side only, fully independent
+  // from canonical auth/session state. Returning users skip both surfaces.
+  const [entryPhase, setEntryPhase] = useState<'SPLASH' | 'WELCOME' | 'APP'>(() =>
+    hasSeenCustomerEntry() ? 'APP' : 'SPLASH'
+  );
   const [selectedProperty, setSelectedProperty] = useState<CustomerPropertyItem | null>(null);
   const [showAuthModal, setShowAuthModal] = useState<boolean>(false);
   const [showSupportModal, setShowSupportModal] = useState<boolean>(false);
@@ -441,6 +449,13 @@ export function App() {
 
     setShowAuthModal(false);
 
+    // First-entry completion: any explicit exit (incl. a successful login or
+    // account creation from Welcome) marks the entry seen for future launches.
+    if (entryPhase === 'WELCOME') {
+      markCustomerEntrySeen();
+      setEntryPhase('APP');
+    }
+
     // Context Preservation: Return to exact same property & dates post-login
     if (interceptedContext) {
       const targetProp = properties.find((p) => p.id === interceptedContext.propertyId) || selectedProperty;
@@ -512,6 +527,55 @@ export function App() {
     setSelectedProperty(null);
     setShowSuccessModal(true);
   };
+
+  // ===== First-entry gate (Phase 5 / C1) =====
+  // The shell's data effects (session restore + Explore fetch) already run on
+  // mount above; the Splash transition is a fixed timer and never depends on
+  // their outcome. Cancelling the auth modal simply re-reveals Welcome without
+  // touching the entry flag.
+  if (entryPhase === 'SPLASH') {
+    return (
+      <CustomerSplashScreen
+        onFinished={() => setEntryPhase(hasSeenCustomerEntry() ? 'APP' : 'WELCOME')}
+      />
+    );
+  }
+
+  if (entryPhase === 'WELCOME') {
+    const exitEntry = () => {
+      markCustomerEntrySeen();
+      setEntryPhase('APP');
+    };
+    // Login / Create Account are ALSO explicit Welcome exits: the marker is
+    // persisted at handoff time, so cancelling auth (or closing the app
+    // before finishing it) must never replay Splash/Welcome on a future
+    // launch. The Welcome surface itself stays mounted for this runtime so
+    // cancellation can return visually; handleAuthSuccess later completes
+    // the transition into the shell.
+    const handoffToAuthFromWelcome = () => {
+      markCustomerEntrySeen();
+      setShowAuthModal(true);
+    };
+    return (
+      <>
+        <CustomerWelcomeScreen
+          onGuestBrowse={exitEntry}
+          onLogin={handoffToAuthFromWelcome}
+          onCreateAccount={handoffToAuthFromWelcome}
+        />
+        {/* Auth handoff uses the CURRENT prototype auth modal; C1 does not
+            redesign authentication. Cancel simply returns to Welcome without
+            touching the entry flag. */}
+        {showAuthModal && (
+          <CustomerAuthModal
+            onClose={() => setShowAuthModal(false)}
+            onSuccess={handleAuthSuccess}
+            interceptedContext={interceptedContext}
+          />
+        )}
+      </>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[#F5F7FA] flex justify-center selection:bg-blue-100">

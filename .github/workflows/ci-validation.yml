@@ -100,6 +100,7 @@ jobs:
           cd customer-app
           npm ci || npm install
           npm run test:truthful-state
+          npm run test:entry-state
           npm run build
 
   # ----------------------------------------------------------------------------

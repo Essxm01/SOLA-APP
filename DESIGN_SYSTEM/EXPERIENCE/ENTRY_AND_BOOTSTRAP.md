@@ -33,3 +33,7 @@ Returning Owner: with a valid Owner session, open Owner Home directly; without o
 Admin does not use the Customer/Owner first-run Splash or onboarding model. Entry remains **validated Login/Session → operational workspace**, with real bootstrap/loading states only where work is pending. See `UX-ENTRY-02` and `ADMIN-TRUTHFUL-STATE-01`.
 
 This records policy only; it does not change existing Splash/onboarding code.
+
+### Customer C1 update (2026-09-09) — superseded onboarding model
+
+The Founder-approved **Customer Master UX PRD v2** supersedes the "approximately three swipeable onboarding screens" model above for the Customer app: first entry is now **Splash → ONE Welcome/Guest-Entry screen → Explore**. The single Welcome screen is not a carousel, keeps Guest Browse obvious, and hands Create/Login to the existing prototype auth. First-entry completion is a device-side flag (`konfrm_customer_entry_seen_v1`) fully independent from canonical auth state; logout never resets it. Owner entry policy is unchanged. Historical text above is preserved for audit.

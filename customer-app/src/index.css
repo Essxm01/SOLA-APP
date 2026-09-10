@@ -127,3 +127,59 @@ body {
 .animate-fade-in {
   animation: fadeIn 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
+
+/* ===== Customer entry surfaces (Phase 5 / C1) ===== */
+
+/* Splash: restrained logo entrance + whole-screen exit fade.
+   Duration is fixed/deterministic; the visual transition never depends on
+   Explore/session data. */
+.customer-splash-logo {
+  opacity: 0;
+  animation: customerSplashRise 0.45s cubic-bezier(0.16, 1, 0.3, 1) 0.08s forwards;
+}
+
+.customer-splash-fade {
+  animation: customerSplashAppear 0.2s ease-out forwards;
+}
+
+.customer-splash-leaving {
+  animation: customerSplashLeave 0.18s ease-in forwards;
+}
+
+@keyframes customerSplashRise {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes customerSplashAppear {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes customerSplashLeave {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+/* Welcome: one quiet stagger for the action block. */
+.customer-welcome-stagger {
+  opacity: 0;
+  animation: customerWelcomeIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) 0.1s forwards;
+}
+
+@keyframes customerWelcomeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Reduced motion: keep the SAME deterministic timing, remove all movement. */
+@media (prefers-reduced-motion: reduce) {
+  .customer-splash-logo,
+  .customer-splash-fade,
+  .customer-splash-leaving,
+  .customer-welcome-stagger {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+}

@@ -40,37 +40,14 @@ export const CustomerWelcomeScreen: React.FC<CustomerWelcomeScreenProps> = ({
           </button>
         </div>
 
-        {/* Editorial brand artwork — restrained KONFRM coastal abstraction.
-            Deliberately NOT a property photograph: no fake listing media. */}
+        {/* Editorial hospitality visual — licensed KONFRM welcome hero */}
         <div className="w-full h-[47vh] max-h-[48vh] min-h-[300px] shrink-0 px-4">
-          <svg
-            viewBox="0 0 360 270"
-            className="w-full h-full"
-            preserveAspectRatio="xMidYMid slice"
-            xmlns="http://www.w3.org/2000/svg"
+          <img
+            src="/welcome-hero.jpg"
+            alt=""
             aria-hidden="true"
-          >
-            <rect width="360" height="270" rx="24" fill="#EAF1FF" />
-            {/* sun — the single yellow signature accent */}
-            <circle cx="292" cy="64" r="30" fill="#FFD700" />
-            <circle cx="292" cy="64" r="30" fill="none" stroke="#0059FF" strokeOpacity="0.25" strokeWidth="2" />
-            {/* horizon + sea */}
-            <rect x="0" y="120" width="360" height="150" fill="#0059FF" fillOpacity="0.08" />
-            <path d="M0 150 Q 45 138 90 150 T 180 150 T 270 150 T 360 150 V270 H0 Z" fill="#0059FF" fillOpacity="0.16" />
-            <path d="M0 180 Q 45 168 90 180 T 180 180 T 270 180 T 360 180 V270 H0 Z" fill="#0059FF" fillOpacity="0.26" />
-            <path d="M0 214 Q 45 202 90 214 T 180 214 T 270 214 T 360 214 V270 H0 Z" fill="#0059FF" fillOpacity="0.4" />
-            {/* coastline umbrella — hospitality without a fake property */}
-            <g>
-              <path d="M96 196 a44 44 0 0 1 88 0 Z" fill="#FFFFFF" />
-              <path d="M96 196 a44 44 0 0 1 44 -44 v44 Z" fill="#0059FF" fillOpacity="0.85" />
-              <path d="M140 196 a44 44 0 0 1 44 0 Z" fill="#FFFFFF" />
-              <rect x="138" y="196" width="4" height="42" rx="2" fill="#0F172A" fillOpacity="0.7" />
-              <rect x="86" y="236" width="108" height="6" rx="3" fill="#FFFFFF" fillOpacity="0.8" />
-            </g>
-            {/* small blue boat accent */}
-            <path d="M246 224 q10 12 24 0 z" fill="#0059FF" />
-            <rect x="255" y="210" width="3" height="14" rx="1.5" fill="#0059FF" />
-          </svg>
+            className="w-full h-full object-cover rounded-3xl"
+          />
         </div>
 
         {/* Logo lockup */}

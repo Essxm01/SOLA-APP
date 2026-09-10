@@ -53,7 +53,7 @@ export const CustomerWelcomeScreen: React.FC<CustomerWelcomeScreenProps> = ({
         <div
           className="w-full px-4 shrink min-h-[140px] flex items-center justify-center overflow-hidden"
           style={{
-            height: 'clamp(160px, 34dvh, 360px)',
+            height: 'clamp(140px, 32dvh, 360px)',
           }}
         >
           <img
@@ -85,7 +85,7 @@ export const CustomerWelcomeScreen: React.FC<CustomerWelcomeScreenProps> = ({
             <h1 className="text-[20px] sm:text-[24px] leading-snug font-extrabold text-[#0F172A]">
               اكتشف إقامتك المثالية على الساحل
             </h1>
-            <p className="mt-1 sm:mt-1.5 text-[13.5px] sm:text-[15px] leading-relaxed font-medium text-[#475569]">
+            <p className="mt-1 sm:mt-1.5 text-[14px] leading-[1.65] font-medium text-[#475569]">
               أسعار حقيقية وتواريخ متاحة بوضوح، وطلب حجز يروح للمالك الأول قبل أي دفع.
               تقدر تتصفح دلوقتي كضيف — والحساب يشتغل وقت ما تحتاجه.
             </p>
@@ -93,7 +93,7 @@ export const CustomerWelcomeScreen: React.FC<CustomerWelcomeScreenProps> = ({
         </div>
 
         {/* Bottom actions — all >=44px, prioritized for immediate reachability */}
-        <div className="px-5 pt-2.5 pb-3 sm:pt-4 sm:pb-4 flex flex-col gap-2 sm:gap-2.5 customer-welcome-stagger shrink-0">
+        <div className="px-5 pt-2 pb-5 sm:pt-3 sm:pb-6 flex flex-col gap-2 sm:gap-2.5 customer-welcome-stagger shrink-0">
           <button
             onClick={onCreateAccount}
             className="w-full min-h-[48px] sm:min-h-[52px] rounded-2xl bg-[#0059FF] text-white text-[15px] sm:text-base font-extrabold

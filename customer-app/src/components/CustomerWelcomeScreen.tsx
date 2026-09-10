@@ -93,7 +93,7 @@ export const CustomerWelcomeScreen: React.FC<CustomerWelcomeScreenProps> = ({
         </div>
 
         {/* Bottom actions — all >=44px, prioritized for immediate reachability */}
-        <div className="px-5 pt-2 pb-5 sm:pt-3 sm:pb-6 flex flex-col gap-2 sm:gap-2.5 customer-welcome-stagger shrink-0">
+        <div className="px-5 pt-2 pb-6 sm:pt-3 flex flex-col gap-2 sm:gap-2.5 customer-welcome-stagger shrink-0">
           <button
             onClick={onCreateAccount}
             className="w-full min-h-[48px] sm:min-h-[52px] rounded-2xl bg-[#0059FF] text-white text-[15px] sm:text-base font-extrabold

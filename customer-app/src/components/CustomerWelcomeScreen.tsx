@@ -51,9 +51,9 @@ export const CustomerWelcomeScreen: React.FC<CustomerWelcomeScreenProps> = ({
             Flexible bounded container: adapts smoothly from 360x640 up to 430x932
             without pushing CTAs below the viewport fold. */}
         <div
-          className="w-full px-4 shrink min-h-[140px] flex items-center justify-center overflow-hidden"
+          className="w-full px-4 shrink min-h-[120px] flex items-center justify-center overflow-hidden"
           style={{
-            height: 'clamp(140px, 32dvh, 360px)',
+            height: 'clamp(130px, 29dvh, 360px)',
           }}
         >
           <img
@@ -67,7 +67,7 @@ export const CustomerWelcomeScreen: React.FC<CustomerWelcomeScreenProps> = ({
         {/* Middle content: Brand mark + headline + truthful copy */}
         <div className="shrink-0 flex flex-col justify-center">
           {/* Logo lockup */}
-          <div className="px-5 pt-2 sm:pt-3 flex items-center gap-2">
+          <div className="px-5 pt-1.5 sm:pt-3 flex items-center gap-2">
             <img
               src="/konfrm-mark.svg"
               alt=""
@@ -81,7 +81,7 @@ export const CustomerWelcomeScreen: React.FC<CustomerWelcomeScreenProps> = ({
           </div>
 
           {/* Headline + support copy */}
-          <div className="px-5 pt-1.5 sm:pt-2">
+          <div className="px-5 pt-1 sm:pt-2">
             <h1 className="text-[20px] sm:text-[24px] leading-snug font-extrabold text-[#0F172A]">
               اكتشف إقامتك المثالية على الساحل
             </h1>

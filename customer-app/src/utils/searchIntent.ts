@@ -33,6 +33,59 @@ export interface PublicSearchFilters {
   maxPrice?: number;
 }
 
+// Canonical property type label mapping (Customer-facing Arabic only — never expose backend enums).
+export const CANONICAL_PROPERTY_TYPE_LABELS: Record<string, string> = {
+  CHALET: 'شاليه',
+  VILLA: 'فيلا',
+  APARTMENT: 'شقة مصيفية',
+  STUDIO: 'استوديو',
+  HOTEL_ROOM: 'غرفة فندقية',
+  OTHER: 'أخرى',
+};
+
+export function getPropertyTypeLabel(unitType?: string | null): string {
+  if (!unitType) return '';
+  const trimmed = unitType.trim();
+  const upper = trimmed.toUpperCase();
+  return CANONICAL_PROPERTY_TYPE_LABELS[upper] || trimmed;
+}
+
+const ARABIC_MONTHS = [
+  'يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو',
+  'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر',
+];
+
+export function formatArabicDate(iso: string): string {
+  if (!isRealCalendarDate(iso)) return iso;
+  const [year, monthStr, dayStr] = iso.split('-');
+  const monthIndex = parseInt(monthStr, 10) - 1;
+  const day = parseInt(dayStr, 10);
+  const monthName = ARABIC_MONTHS[monthIndex] || monthStr;
+  return `${day} ${monthName} ${year}`;
+}
+
+export function formatArabicDateShort(iso: string): string {
+  if (!isRealCalendarDate(iso)) return iso;
+  const [, monthStr, dayStr] = iso.split('-');
+  const monthIndex = parseInt(monthStr, 10) - 1;
+  const day = parseInt(dayStr, 10);
+  const monthName = ARABIC_MONTHS[monthIndex] || monthStr;
+  return `${day} ${monthName}`;
+}
+
+export function formatArabicStayRange(checkIn: string, checkOut: string): string {
+  if (!checkIn || !checkOut) return '';
+  if (!isRealCalendarDate(checkIn) || !isRealCalendarDate(checkOut)) {
+    return `${checkIn} ← ${checkOut}`;
+  }
+  const [y1] = checkIn.split('-');
+  const [y2] = checkOut.split('-');
+  if (y1 === y2) {
+    return `${formatArabicDateShort(checkIn)} ← ${formatArabicDate(checkOut)}`;
+  }
+  return `${formatArabicDate(checkIn)} ← ${formatArabicDate(checkOut)}`;
+}
+
 const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
 function isRealCalendarDate(iso: string): boolean {

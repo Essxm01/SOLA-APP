@@ -11,6 +11,11 @@ import {
   toPublicSearchFilters,
   nightsBetween,
   EMPTY_SEARCH_INTENT,
+  CANONICAL_PROPERTY_TYPE_LABELS,
+  getPropertyTypeLabel,
+  formatArabicDate,
+  formatArabicDateShort,
+  formatArabicStayRange,
   type SearchIntent,
 } from './searchIntent.js';
 
@@ -110,6 +115,48 @@ assertEqual(validateStayRange(D('2026-12-20'), D('2026-12-20')).ok, false, 'same
     const f = toPublicSearchFilters({ ...EMPTY_SEARCH_INTENT, totalGuests: guests });
     assertEqual(f.totalGuests, guests, `guests=${guests} must not be capped by the client`);
   }
+}
+
+// 12. Canonical property type mapping: all 6 backend enums mapped to customer Arabic.
+//     Never expose raw backend enums to the customer.
+{
+  assertEqual(CANONICAL_PROPERTY_TYPE_LABELS.CHALET, 'شاليه', 'CHALET label');
+  assertEqual(CANONICAL_PROPERTY_TYPE_LABELS.VILLA, 'فيلا', 'VILLA label');
+  assertEqual(CANONICAL_PROPERTY_TYPE_LABELS.APARTMENT, 'شقة مصيفية', 'APARTMENT label');
+  assertEqual(CANONICAL_PROPERTY_TYPE_LABELS.STUDIO, 'استوديو', 'STUDIO label');
+  assertEqual(CANONICAL_PROPERTY_TYPE_LABELS.HOTEL_ROOM, 'غرفة فندقية', 'HOTEL_ROOM label');
+  assertEqual(CANONICAL_PROPERTY_TYPE_LABELS.OTHER, 'أخرى', 'OTHER label');
+
+  assertEqual(getPropertyTypeLabel('CHALET'), 'شاليه', 'getPropertyTypeLabel uppercase');
+  assertEqual(getPropertyTypeLabel('chalet'), 'شاليه', 'getPropertyTypeLabel lowercase');
+  assertEqual(getPropertyTypeLabel('VILLA'), 'فيلا', 'getPropertyTypeLabel VILLA');
+  assertEqual(getPropertyTypeLabel('APARTMENT'), 'شقة مصيفية', 'getPropertyTypeLabel APARTMENT');
+  assertEqual(getPropertyTypeLabel('STUDIO'), 'استوديو', 'getPropertyTypeLabel STUDIO');
+  assertEqual(getPropertyTypeLabel('HOTEL_ROOM'), 'غرفة فندقية', 'getPropertyTypeLabel HOTEL_ROOM');
+  assertEqual(getPropertyTypeLabel('OTHER'), 'أخرى', 'getPropertyTypeLabel OTHER');
+  assertEqual(getPropertyTypeLabel('شاليه'), 'شاليه', 'getPropertyTypeLabel preserves existing Arabic');
+  assertEqual(getPropertyTypeLabel(''), '', 'getPropertyTypeLabel handles empty');
+}
+
+// 13. Max price is unbounded: no arbitrary 40k cap. High values pass through faithfully.
+{
+  for (const price of [50000, 100000, 1000000]) {
+    const f = toPublicSearchFilters({
+      ...EMPTY_SEARCH_INTENT,
+      maxPrice: price,
+      maxPriceTouched: true,
+    });
+    assertEqual(f.maxPrice, price, `maxPrice=${price} must pass without arbitrary ceiling`);
+  }
+}
+
+// 14. Arabic date UX helpers format correctly and cleanly.
+{
+  assertEqual(formatArabicDate('2026-12-20'), '20 ديسمبر 2026', 'formatArabicDate full date');
+  assertEqual(formatArabicDateShort('2026-12-20'), '20 ديسمبر', 'formatArabicDateShort day month');
+  assertEqual(formatArabicStayRange('2026-12-20', '2026-12-22'), '20 ديسمبر ← 22 ديسمبر 2026', 'formatArabicStayRange same year');
+  assertEqual(formatArabicStayRange('2026-12-30', '2027-01-02'), '30 ديسمبر 2026 ← 2 يناير 2027', 'formatArabicStayRange cross year');
+  assertEqual(formatArabicStayRange('', ''), '', 'formatArabicStayRange empty');
 }
 
 console.log('Customer search intent contract tests passed');

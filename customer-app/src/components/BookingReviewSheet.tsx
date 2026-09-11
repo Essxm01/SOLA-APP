@@ -13,6 +13,7 @@
 import React from 'react';
 import { CustomerPropertyItem } from './PropertyCard';
 import { X, Calendar, Users, ShieldCheck, ArrowRight, CheckCircle2, Clock } from 'lucide-react';
+import { formatArabicStayRange } from '../utils/searchIntent';
 
 interface BookingReviewSheetProps {
   property: CustomerPropertyItem;
@@ -62,7 +63,7 @@ export const BookingReviewSheet: React.FC<BookingReviewSheetProps> = ({
             <button
               type="button"
               onClick={onEditDetails}
-              className="p-1.5 -mr-1.5 text-slate-400 hover:text-slate-700 active:scale-95 transition-all"
+              className="min-w-[44px] min-h-[44px] -mr-2 text-slate-400 hover:text-slate-700 active:scale-95 transition-all flex items-center justify-center focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0059FF]/40 rounded-xl"
               aria-label="تعديل التفاصيل"
             >
               <ArrowRight className="w-5 h-5" />
@@ -72,10 +73,12 @@ export const BookingReviewSheet: React.FC<BookingReviewSheetProps> = ({
           <button
             type="button"
             onClick={onClose}
-            className="w-7 h-7 bg-slate-100 hover:bg-slate-200 text-slate-500 rounded-full flex items-center justify-center transition-all"
+            className="min-w-[44px] min-h-[44px] flex items-center justify-center transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0059FF]/40 rounded-full"
             aria-label="إغلاق"
           >
-            <X className="w-4 h-4" />
+            <span className="w-7 h-7 bg-slate-100 hover:bg-slate-200 text-slate-500 rounded-full flex items-center justify-center transition-all">
+              <X className="w-4 h-4" />
+            </span>
           </button>
         </div>
 
@@ -115,8 +118,8 @@ export const BookingReviewSheet: React.FC<BookingReviewSheetProps> = ({
               <Calendar className="w-3.5 h-3.5 text-[#0059FF]" />
               <span>تواريخ الإقامة ({nights} ليالي)</span>
             </span>
-            <div className="text-slate-900 font-black text-[11px] dir-ltr text-right">
-              {checkIn} ← {checkOut}
+            <div className="text-slate-900 font-black text-[11px] text-right">
+              {formatArabicStayRange(checkIn, checkOut) || `${checkIn} ← ${checkOut}`}
             </div>
           </div>
 
@@ -207,7 +210,7 @@ export const BookingReviewSheet: React.FC<BookingReviewSheetProps> = ({
           <button
             type="button"
             onClick={onEditDetails}
-            className="w-full py-2.5 bg-slate-50 hover:bg-slate-100 text-slate-600 font-black text-xs rounded-xl transition-all"
+            className="w-full min-h-[44px] py-2.5 bg-slate-50 hover:bg-slate-100 text-slate-600 font-black text-xs rounded-xl transition-all flex items-center justify-center focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0059FF]/40"
           >
             تعديل التواريخ والتفاصيل
           </button>

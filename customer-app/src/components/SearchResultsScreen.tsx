@@ -2,7 +2,11 @@ import React from 'react';
 import { ArrowRight, MapPin, Calendar, Users, Home, Search } from 'lucide-react';
 import { PropertyCard, CustomerPropertyItem } from './PropertyCard';
 import { LoadingStateView, EmptyStateView, ErrorStateView } from './StateViews';
-import type { SearchIntent } from '../utils/searchIntent';
+import {
+  type SearchIntent,
+  getPropertyTypeLabel,
+  formatArabicStayRange,
+} from '../utils/searchIntent';
 
 // KONFRM Customer Search Results — Screen 05 (Phase 5 / C2).
 //
@@ -29,13 +33,13 @@ const intentChips = (intent: SearchIntent): Array<{ icon: 'pin' | 'cal' | 'users
   const chips: Array<{ icon: 'pin' | 'cal' | 'users' | 'home' | 'price'; text: string }> = [];
   if (intent.destination.trim() !== '') chips.push({ icon: 'pin', text: intent.destination.trim() });
   if (intent.checkIn !== '' && intent.checkOut !== '') {
-    chips.push({ icon: 'cal', text: `بحثك: ${intent.checkIn} ← ${intent.checkOut}` });
+    chips.push({ icon: 'cal', text: `بحثك: ${formatArabicStayRange(intent.checkIn, intent.checkOut)}` });
   }
   if (intent.totalGuests > 1) {
     chips.push({ icon: 'users', text: `${intent.totalGuests} أفراد` });
   }
   if (intent.unitType !== '' && intent.unitType !== 'ALL') {
-    chips.push({ icon: 'home', text: intent.unitType });
+    chips.push({ icon: 'home', text: getPropertyTypeLabel(intent.unitType) });
   }
   if (intent.maxPriceTouched && intent.maxPrice > 0) {
     chips.push({ icon: 'price', text: `حتى ${intent.maxPrice.toLocaleString()} ج.م` });
@@ -120,7 +124,7 @@ export const SearchResultsScreen: React.FC<SearchResultsScreenProps> = ({
           {loadState === 'EMPTY' && (
             <EmptyStateView
               title="لا توجد نتائج مطابقة لبحثك"
-              description="جرّب توسيع نطاق البحث: عدّل الوجهة أو التواريخ أو أزل بعض الفلاتر."
+              description="جرّب توسيع نطاق البحث: عدّل الوجهة أو نوع الوحدة أو عدد الأفراد أو ارفع سقف السعر."
               onReset={onEditSearch}
             />
           )}
@@ -128,7 +132,7 @@ export const SearchResultsScreen: React.FC<SearchResultsScreenProps> = ({
           {loadState === 'LOADED' && items.length === 0 && (
             <EmptyStateView
               title="لا توجد نتائج مطابقة لبحثك"
-              description="جرّب توسيع نطاق البحث: عدّل الوجهة أو التواريخ أو أزل بعض الفلاتر."
+              description="جرّب توسيع نطاق البحث: عدّل الوجهة أو نوع الوحدة أو عدد الأفراد أو ارفع سقف السعر."
               onReset={onEditSearch}
             />
           )}

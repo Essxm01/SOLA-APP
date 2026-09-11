@@ -1,5 +1,6 @@
 import React from 'react';
 import { MapPin, Users, Bed, Bath, ShieldCheck, Heart } from 'lucide-react';
+import { getPropertyTypeLabel } from '../utils/searchIntent';
 
 export interface CustomerPropertyItem {
   id: string;
@@ -32,22 +33,7 @@ export const PropertyCard: React.FC<PropertyCardProps> = ({
 }) => {
   const rawFirst = property.images && property.images.length > 0 ? property.images[0] : null;
   const coverImage = typeof rawFirst === 'string' ? rawFirst : (rawFirst as any)?.fileUrl || null;
-
-  const translateType = (type?: string) => {
-    switch (type?.toUpperCase()) {
-      case 'VILLA':
-      case 'فيلا':
-        return 'فيلا فاخرة';
-      case 'CHALET':
-      case 'شاليه':
-        return 'شاليه ساحلي';
-      case 'APARTMENT':
-      case 'شقة':
-        return 'شقة مصيفية';
-      default:
-        return property.unitType || 'وحدة ساحلية';
-    }
-  };
+  const unitTypeLabel = getPropertyTypeLabel(property.propertyType || property.unitType) || 'وحدة ساحلية';
 
   return (
     <div
@@ -75,24 +61,30 @@ export const PropertyCard: React.FC<PropertyCardProps> = ({
           <span>إقامة موثقة</span>
         </div>
 
-        {/* Favorite Button */}
+        {/* Favorite Button (>=44px touch target with compact visual indicator) */}
         <button
+          type="button"
           onClick={(e) => {
             e.stopPropagation();
             if (onToggleFavorite) onToggleFavorite(property.id, e);
           }}
-          className={`absolute top-3 left-3 w-8 h-8 rounded-full flex items-center justify-center backdrop-blur-md transition-all ${
-            isFavorite
-              ? 'bg-rose-500 text-white shadow-md'
-              : 'bg-white/80 text-slate-700 hover:bg-white'
-          }`}
+          aria-label={isFavorite ? 'إزالة من المفضلة' : 'إضافة إلى المفضلة'}
+          className="absolute top-1.5 left-1.5 min-w-[44px] min-h-[44px] flex items-center justify-center rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0059FF]/40"
         >
-          <Heart className={`w-4 h-4 ${isFavorite ? 'fill-white' : ''}`} />
+          <span
+            className={`w-8 h-8 rounded-full flex items-center justify-center backdrop-blur-md transition-all ${
+              isFavorite
+                ? 'bg-rose-500 text-white shadow-md'
+                : 'bg-white/80 text-slate-700 hover:bg-white'
+            }`}
+          >
+            <Heart className={`w-4 h-4 ${isFavorite ? 'fill-white' : ''}`} />
+          </span>
         </button>
 
-        {/* Unit Type Pill */}
+        {/* Unit Type Pill (canonical Arabic label — never exposes backend enum) */}
         <div className="absolute bottom-3 right-3 bg-slate-900/80 backdrop-blur-md text-white font-extrabold text-[10px] px-2.5 py-1 rounded-lg">
-          {translateType(property.propertyType || property.unitType)}
+          {unitTypeLabel}
         </div>
       </div>
 

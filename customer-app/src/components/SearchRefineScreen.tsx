@@ -11,21 +11,22 @@ import { ArrowRight, MapPin, Calendar, Users, Home } from 'lucide-react';
 import {
   validateStayRange,
   nightsBetween,
+  CANONICAL_PROPERTY_TYPE_LABELS,
+  formatArabicDate,
   type SearchIntent,
 } from '../utils/searchIntent';
 
 // Canonical property types — the exact set the backend accepts for property
-// creation (backend/server/src/app.ts propertyTypes set): CHALET, VILLA,
-// APARTMENT, STUDIO, HOTEL_ROOM, OTHER. Arabic customer labels only; no
-// backend enum language is shown to the customer.
+// creation: CHALET, VILLA, APARTMENT, STUDIO, HOTEL_ROOM, OTHER.
+// Customer Arabic labels only; no backend enum language is shown to the customer.
 const UNIT_TYPES: Array<{ id: string; label: string }> = [
   { id: 'ALL', label: 'الكل' },
-  { id: 'CHALET', label: 'شاليه' },
-  { id: 'VILLA', label: 'فيلا' },
-  { id: 'APARTMENT', label: 'شقة مصيفية' },
-  { id: 'STUDIO', label: 'استوديو' },
-  { id: 'HOTEL_ROOM', label: 'غرفة فندقية' },
-  { id: 'OTHER', label: 'أخرى' },
+  { id: 'CHALET', label: CANONICAL_PROPERTY_TYPE_LABELS.CHALET },
+  { id: 'VILLA', label: CANONICAL_PROPERTY_TYPE_LABELS.VILLA },
+  { id: 'APARTMENT', label: CANONICAL_PROPERTY_TYPE_LABELS.APARTMENT },
+  { id: 'STUDIO', label: CANONICAL_PROPERTY_TYPE_LABELS.STUDIO },
+  { id: 'HOTEL_ROOM', label: CANONICAL_PROPERTY_TYPE_LABELS.HOTEL_ROOM },
+  { id: 'OTHER', label: CANONICAL_PROPERTY_TYPE_LABELS.OTHER },
 ];
 
 const ERROR_COPY: Record<string, string> = {
@@ -101,32 +102,64 @@ export const SearchRefineScreen: React.FC<SearchRefineScreenProps> = ({
 
           {/* Dates */}
           <section>
-            <div className="flex items-center gap-1.5 text-[13px] font-black text-[#0F172A] mb-1.5">
-              <Calendar className="w-4 h-4 text-[#0059FF]" />
-              <span>تواريخ الإقامة (اختياري)</span>
+            <div className="flex items-center justify-between mb-1.5">
+              <div className="flex items-center gap-1.5 text-[13px] font-black text-[#0F172A]">
+                <Calendar className="w-4 h-4 text-[#0059FF]" />
+                <span>تواريخ الإقامة (اختياري)</span>
+              </div>
+              {(checkIn !== '' || checkOut !== '') && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCheckIn('');
+                    setCheckOut('');
+                  }}
+                  className="min-h-[44px] px-2 text-xs font-extrabold text-rose-600 hover:text-rose-700 flex items-center justify-center transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-500/40 rounded-lg"
+                >
+                  مسح التواريخ
+                </button>
+              )}
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label htmlFor="c2-checkin" className="block text-[11px] font-bold text-[#64748B] mb-1">الوصول</label>
-                <input
-                  id="c2-checkin"
-                  type="date"
-                  min={today}
-                  value={checkIn}
-                  onChange={(e) => setCheckIn(e.target.value)}
-                  className="w-full min-h-[48px] p-2.5 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl text-sm font-bold text-[#0F172A] focus:outline-none focus:border-[#0059FF]"
-                />
+                <div className="relative rounded-xl has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-[#0059FF]">
+                  <div className="w-full min-h-[48px] p-2.5 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl flex items-center justify-between pointer-events-none text-xs font-bold">
+                    <span className={checkIn ? 'text-[#0F172A]' : 'text-[#94A3B8]'}>
+                      {checkIn ? formatArabicDate(checkIn) : 'حدد تاريخ الوصول'}
+                    </span>
+                    <Calendar className="w-4 h-4 text-[#64748B] shrink-0" />
+                  </div>
+                  <input
+                    id="c2-checkin"
+                    type="date"
+                    min={today}
+                    value={checkIn}
+                    onChange={(e) => setCheckIn(e.target.value)}
+                    aria-label="تاريخ الوصول"
+                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer text-base"
+                  />
+                </div>
               </div>
               <div>
                 <label htmlFor="c2-checkout" className="block text-[11px] font-bold text-[#64748B] mb-1">المغادرة</label>
-                <input
-                  id="c2-checkout"
-                  type="date"
-                  min={checkIn || today}
-                  value={checkOut}
-                  onChange={(e) => setCheckOut(e.target.value)}
-                  className="w-full min-h-[48px] p-2.5 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl text-sm font-bold text-[#0F172A] focus:outline-none focus:border-[#0059FF]"
-                />
+                <div className="relative rounded-xl has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-[#0059FF]">
+                  <div className="w-full min-h-[48px] p-2.5 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl flex items-center justify-between pointer-events-none text-xs font-bold">
+                    <span className={checkOut ? 'text-[#0F172A]' : 'text-[#94A3B8]'}>
+                      {checkOut ? formatArabicDate(checkOut) : 'حدد تاريخ المغادرة'}
+                    </span>
+                    <Calendar className="w-4 h-4 text-[#64748B] shrink-0" />
+                  </div>
+                  <input
+                    id="c2-checkout"
+                    type="date"
+                    min={checkIn || today}
+                    value={checkOut}
+                    onChange={(e) => setCheckOut(e.target.value)}
+                    aria-label="تاريخ المغادرة"
+                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer text-base"
+                  />
+                </div>
               </div>
             </div>
             {/* Nights + validation */}
@@ -191,25 +224,61 @@ export const SearchRefineScreen: React.FC<SearchRefineScreenProps> = ({
             </div>
           </section>
 
-          {/* Max price — supported filter; only applied when touched */}
+          {/* Max price — optional numeric price-ceiling field without arbitrary cap */}
           <section>
-            <div className="flex justify-between text-[13px] font-black mb-1">
-              <span className="text-[#0F172A]">الحد الأقصى للسعر في الليلة</span>
-              <span className="text-[#0059FF]">{maxPriceTouched && maxPrice > 0 ? `${maxPrice.toLocaleString()} ج.م` : 'بدون حد'}</span>
+            <div className="flex justify-between items-center text-[13px] font-black mb-1.5">
+              <label htmlFor="c2-maxprice" className="text-[#0F172A]">الحد الأقصى للسعر في الليلة</label>
+              {maxPriceTouched && maxPrice > 0 ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMaxPrice(0);
+                    setMaxPriceTouched(false);
+                  }}
+                  className="min-h-[44px] px-2 text-xs font-extrabold text-rose-600 hover:text-rose-700 flex items-center justify-center transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-500/40 rounded-lg"
+                >
+                  إلغاء الحد (بدون حد)
+                </button>
+              ) : (
+                <span className="text-xs font-bold text-[#64748B]">بدون حد</span>
+              )}
             </div>
-            <input
-              type="range"
-              min={1000}
-              max={40000}
-              step={500}
-              value={maxPrice || 40000}
-              onChange={(e) => { setMaxPrice(Number(e.target.value)); setMaxPriceTouched(true); }}
-              aria-label="الحد الأقصى للسعر في الليلة"
-              className="w-full accent-[#0059FF]"
-            />
-            {!maxPriceTouched && (
-              <p className="text-[11px] font-bold text-[#64748B] mt-1">بدون حد أقصى — حرّك الشريط لتحديد سقف للسعر.</p>
-            )}
+            <div className="relative flex items-center">
+              <input
+                id="c2-maxprice"
+                type="number"
+                min={1}
+                step={100}
+                inputMode="numeric"
+                value={maxPriceTouched && maxPrice > 0 ? maxPrice : ''}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  if (val === '') {
+                    setMaxPrice(0);
+                    setMaxPriceTouched(false);
+                  } else {
+                    const parsed = parseInt(val, 10);
+                    if (!Number.isNaN(parsed) && parsed > 0) {
+                      setMaxPrice(parsed);
+                      setMaxPriceTouched(true);
+                    } else if (!Number.isNaN(parsed) && parsed <= 0) {
+                      setMaxPrice(0);
+                      setMaxPriceTouched(false);
+                    }
+                  }
+                }}
+                placeholder="بدون حد أقصى — اكتب سقف السعر"
+                className="w-full min-h-[50px] p-3 pl-16 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl text-sm font-bold text-[#0F172A] focus:outline-none focus:border-[#0059FF] focus:ring-2 focus:ring-[#0059FF]/15 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+              />
+              <span className="absolute left-3.5 text-xs font-extrabold text-[#64748B] pointer-events-none">
+                ج.م / ليلة
+              </span>
+            </div>
+            <p className="text-[11px] font-bold text-[#64748B] mt-1.5">
+              {maxPriceTouched && maxPrice > 0
+                ? `سيتم عرض الوحدات التي لا يتجاوز سعرها ${maxPrice.toLocaleString('ar-EG')} ج.م في الليلة.`
+                : 'اتركه فارغاً لعرض كل الأسعار، أو حدد سقفاً مناسباً لميزانيتك.'}
+            </p>
           </section>
         </div>
 

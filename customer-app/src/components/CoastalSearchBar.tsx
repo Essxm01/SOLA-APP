@@ -7,7 +7,7 @@ import { Search, SlidersHorizontal } from 'lucide-react';
 // the old in-place sheet with hardcoded default dates was replaced. Date
 // intent summary only appears once the user has set dates in Search & Refine.
 
-import { type SearchIntent } from '../utils/searchIntent';
+import { type SearchIntent, formatArabicStayRange } from '../utils/searchIntent';
 
 export interface SearchFilterState {
   destination: string;
@@ -40,7 +40,7 @@ export const CoastalSearchBar: React.FC<CoastalSearchBarProps> = ({
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-black text-slate-900">هتصيف فين؟ 🏖️</h1>
-          <p className="text-xs text-slate-500 font-bold">احجز شاليهك المباشر في أرق شواطئ الساحل</p>
+          <p className="text-xs text-slate-500 font-bold">اكتشف إقامتك المناسبة على الساحل بأسعار واضحة وتأكيد يبدأ بموافقة المالك</p>
         </div>
       </div>
 
@@ -60,7 +60,7 @@ export const CoastalSearchBar: React.FC<CoastalSearchBarProps> = ({
             </span>
             <span className="text-[10px] text-slate-400 font-bold">
               {intent.checkIn !== '' && intent.checkOut !== ''
-                ? `${intent.checkIn} ← ${intent.checkOut}`
+                ? formatArabicStayRange(intent.checkIn, intent.checkOut)
                 : 'أضف تواريخ لبحثك — اختياري'}{' '}
                 • {intent.totalGuests} أفراد
             </span>
@@ -79,7 +79,7 @@ export const CoastalSearchBar: React.FC<CoastalSearchBarProps> = ({
             <button
               key={dest}
               onClick={() => onSelectDestinationChip(dest)}
-              className={`px-3.5 py-1.5 rounded-xl text-xs font-extrabold transition-all whitespace-nowrap min-h-[36px] ${
+              className={`px-3.5 py-1.5 rounded-xl text-xs font-extrabold transition-all whitespace-nowrap min-h-[44px] flex items-center justify-center ${
                 isActive
                   ? 'bg-[#0059FF] text-white shadow-xs'
                   : 'bg-slate-100 text-slate-600 hover:bg-slate-200'

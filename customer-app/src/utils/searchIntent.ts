@@ -8,27 +8,33 @@
 
 export interface SearchIntent {
   destination: string;
+  destinations: string[];
   checkIn: string; // '' = not set (never defaults to a fixed past date)
   checkOut: string;
   totalGuests: number;
   unitType: string; // 'ALL' | canonical unit type
+  unitTypes: string[];
   maxPrice: number; // 0 = no ceiling (untouched ceiling values are never sent)
   maxPriceTouched: boolean;
 }
 
 export const EMPTY_SEARCH_INTENT: SearchIntent = {
   destination: '',
+  destinations: [],
   checkIn: '',
   checkOut: '',
   totalGuests: 1,
   unitType: 'ALL',
+  unitTypes: [],
   maxPrice: 0,
   maxPriceTouched: false,
 };
 
 export interface PublicSearchFilters {
   destination?: string;
+  destinations?: string[];
   unitType?: string;
+  unitTypes?: string[];
   totalGuests?: number;
   maxPrice?: number;
 }
@@ -48,6 +54,73 @@ export function getPropertyTypeLabel(unitType?: string | null): string {
   const trimmed = unitType.trim();
   const upper = trimmed.toUpperCase();
   return CANONICAL_PROPERTY_TYPE_LABELS[upper] || trimmed;
+}
+
+export function getLocalTodayISO(): string {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+export function computePriceSliderCeiling(maxPrice: number): number {
+  if (!Number.isFinite(maxPrice) || maxPrice <= 0) {
+    return 30000;
+  }
+  return (Math.floor(maxPrice / 1000) + 1) * 1000;
+}
+
+export interface FilterMetadata {
+  availableDestinations: string[];
+  availableUnitTypes: { value: string; label: string }[];
+  maxInventoryPrice: number;
+  priceCeiling: number;
+}
+
+export function extractFilterMetadata(properties: any[]): FilterMetadata {
+  const destSet = new Set<string>();
+  const typeSet = new Set<string>();
+  let maxPrice = 0;
+
+  if (Array.isArray(properties)) {
+    for (const p of properties) {
+      if (!p) continue;
+      if (typeof p.resortName === 'string' && p.resortName.trim()) {
+        destSet.add(p.resortName.trim());
+      }
+      if (typeof p.region === 'string' && p.region.trim()) {
+        destSet.add(p.region.trim());
+      }
+      if (typeof p.unitType === 'string' && p.unitType.trim()) {
+        const ut = p.unitType.trim().toUpperCase();
+        if (ut && ut !== 'ALL') {
+          typeSet.add(ut);
+        }
+      }
+      const price = Number(p.basePricePerNight ?? p.pricePerNight ?? 0);
+      if (Number.isFinite(price) && price > maxPrice) {
+        maxPrice = price;
+      }
+    }
+  }
+
+  const availableDestinations = Array.from(destSet).sort((a, b) => a.localeCompare(b, 'ar'));
+  const availableUnitTypes = Array.from(typeSet)
+    .sort()
+    .map(val => ({
+      value: val,
+      label: getPropertyTypeLabel(val),
+    }));
+
+  const priceCeiling = computePriceSliderCeiling(maxPrice);
+
+  return {
+    availableDestinations,
+    availableUnitTypes,
+    maxInventoryPrice: maxPrice,
+    priceCeiling,
+  };
 }
 
 const ARABIC_MONTHS = [
@@ -114,13 +187,13 @@ export interface StayRangeResult {
 }
 
 // Validates user search-intent dates. Absent dates are valid (open search).
-// todayISO may be injected for deterministic tests; defaults to real today (UTC).
+// todayISO may be injected for deterministic tests; defaults to device local date.
 export function validateStayRange(
   checkIn: string,
   checkOut: string,
   todayISO?: string
 ): StayRangeResult {
-  const today = todayISO ?? new Date().toISOString().slice(0, 10);
+  const today = todayISO ?? getLocalTodayISO();
 
   if (checkIn === '' && checkOut === '') {
     return { ok: true, nights: null };
@@ -152,13 +225,30 @@ export function validateStayRange(
 export function toPublicSearchFilters(intent: SearchIntent): PublicSearchFilters {
   const filters: PublicSearchFilters = {};
 
-  const destination = intent.destination.trim();
-  if (destination !== '') {
-    filters.destination = destination;
+  const dests = Array.isArray(intent.destinations)
+    ? intent.destinations.map(d => d.trim()).filter(Boolean)
+    : [];
+  if (dests.length > 0) {
+    filters.destinations = dests;
+    filters.destination = dests[0];
+  } else if (intent.destination && intent.destination.trim() !== '') {
+    const trimmed = intent.destination.trim();
+    filters.destination = trimmed;
+    filters.destinations = [trimmed];
   }
-  if (intent.unitType !== '' && intent.unitType !== 'ALL') {
-    filters.unitType = intent.unitType;
+
+  const types = Array.isArray(intent.unitTypes)
+    ? intent.unitTypes.map(t => t.trim().toUpperCase()).filter(t => t !== '' && t !== 'ALL')
+    : [];
+  if (types.length > 0) {
+    filters.unitTypes = types;
+    filters.unitType = types[0];
+  } else if (intent.unitType && intent.unitType.trim() !== '' && intent.unitType.trim() !== 'ALL') {
+    const trimmed = intent.unitType.trim().toUpperCase();
+    filters.unitType = trimmed;
+    filters.unitTypes = [trimmed];
   }
+
   if (Number.isInteger(intent.totalGuests) && intent.totalGuests > 1) {
     // Key matches buildPublicPropertySearchPath's input contract (totalGuests).
     filters.totalGuests = intent.totalGuests;

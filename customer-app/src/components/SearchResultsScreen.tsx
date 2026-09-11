@@ -1,5 +1,5 @@
 import React from 'react';
-import { ArrowRight, MapPin, Calendar, Users, Home, Search } from 'lucide-react';
+import { ArrowRight, MapPin, Calendar, Users, Home, Search, X } from 'lucide-react';
 import { PropertyCard, CustomerPropertyItem } from './PropertyCard';
 import { LoadingStateView, EmptyStateView, ErrorStateView } from './StateViews';
 import {
@@ -21,6 +21,8 @@ export interface SearchResultsScreenProps {
   items: CustomerPropertyItem[];
   loadState: ResultsLoadState;
   errorMessage: string | null;
+  favoritesActionError?: string | null;
+  onDismissFavoritesError?: () => void;
   onRetry: () => void;
   onEditSearch: () => void;
   onBackToExplore: () => void;
@@ -31,18 +33,34 @@ export interface SearchResultsScreenProps {
 
 const intentChips = (intent: SearchIntent): Array<{ icon: 'pin' | 'cal' | 'users' | 'home' | 'price'; text: string }> => {
   const chips: Array<{ icon: 'pin' | 'cal' | 'users' | 'home' | 'price'; text: string }> = [];
-  if (intent.destination.trim() !== '') chips.push({ icon: 'pin', text: intent.destination.trim() });
+
+  const dests = Array.isArray(intent.destinations) && intent.destinations.length > 0
+    ? intent.destinations
+    : (intent.destination && intent.destination.trim() !== '' ? [intent.destination.trim()] : []);
+  if (dests.length === 1) {
+    chips.push({ icon: 'pin', text: dests[0] });
+  } else if (dests.length > 1) {
+    chips.push({ icon: 'pin', text: `${dests[0]} + ${dests.length - 1}` });
+  }
+
   if (intent.checkIn !== '' && intent.checkOut !== '') {
     chips.push({ icon: 'cal', text: `بحثك: ${formatArabicStayRange(intent.checkIn, intent.checkOut)}` });
   }
   if (intent.totalGuests > 1) {
     chips.push({ icon: 'users', text: `${intent.totalGuests} أفراد` });
   }
-  if (intent.unitType !== '' && intent.unitType !== 'ALL') {
-    chips.push({ icon: 'home', text: getPropertyTypeLabel(intent.unitType) });
+
+  const types = Array.isArray(intent.unitTypes) && intent.unitTypes.length > 0
+    ? intent.unitTypes.filter(t => t !== 'ALL')
+    : (intent.unitType && intent.unitType !== 'ALL' ? [intent.unitType] : []);
+  if (types.length === 1) {
+    chips.push({ icon: 'home', text: getPropertyTypeLabel(types[0]) });
+  } else if (types.length > 1) {
+    chips.push({ icon: 'home', text: `${types.length} أنواع وحدات` });
   }
+
   if (intent.maxPriceTouched && intent.maxPrice > 0) {
-    chips.push({ icon: 'price', text: `حتى ${intent.maxPrice.toLocaleString()} ج.م` });
+    chips.push({ icon: 'price', text: `حتى ${intent.maxPrice.toLocaleString('ar-EG')} ج.م` });
   }
   return chips;
 };
@@ -62,6 +80,8 @@ export const SearchResultsScreen: React.FC<SearchResultsScreenProps> = ({
   items,
   loadState,
   errorMessage,
+  favoritesActionError,
+  onDismissFavoritesError,
   onRetry,
   onEditSearch,
   onBackToExplore,
@@ -72,7 +92,7 @@ export const SearchResultsScreen: React.FC<SearchResultsScreenProps> = ({
   const chips = intentChips(intent);
 
   return (
-    <div dir="rtl" className="fixed inset-0 z-[70] bg-white overflow-y-auto">
+    <div dir="rtl" className="fixed inset-0 z-[45] bg-white overflow-y-auto">
       <div className="w-full max-w-md mx-auto pb-24">
         {/* Header */}
         <div className="sticky top-0 bg-white/95 backdrop-blur-md border-b border-slate-100 px-4 py-3 flex items-center gap-3 z-10">
@@ -107,6 +127,23 @@ export const SearchResultsScreen: React.FC<SearchResultsScreenProps> = ({
               تعديل
             </button>
           </div>
+
+          {/* Immediate visible favorite failure banner */}
+          {favoritesActionError && (
+            <div className="mb-3 p-3 bg-rose-50 border border-rose-200 rounded-xl flex items-center justify-between text-xs font-bold text-rose-700 animate-in fade-in">
+              <span>{favoritesActionError}</span>
+              {onDismissFavoritesError && (
+                <button
+                  type="button"
+                  onClick={onDismissFavoritesError}
+                  aria-label="إغلاق التنبيه"
+                  className="min-h-[36px] min-w-[36px] flex items-center justify-center text-rose-500 hover:text-rose-700 rounded-lg"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+          )}
 
           {/* States */}
           {loadState === 'LOADING' && (

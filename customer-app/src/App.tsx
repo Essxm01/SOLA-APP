@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { CustomerHeader } from './components/CustomerHeader';
 import { CoastalSearchBar } from './components/CoastalSearchBar';
 import { PropertyCard, CustomerPropertyItem } from './components/PropertyCard';
@@ -23,6 +23,7 @@ import { SearchResultsScreen, type ResultsLoadState } from './components/SearchR
 import {
   EMPTY_SEARCH_INTENT,
   toPublicSearchFilters,
+  extractFilterMetadata,
   type SearchIntent,
   type PublicSearchFilters,
 } from './utils/searchIntent';
@@ -100,6 +101,8 @@ export function App() {
   const [searchResults, setSearchResults] = useState<CustomerPropertyItem[]>([]);
   const [resultsLoadState, setResultsLoadState] = useState<ResultsLoadState>('LOADING');
   const [resultsErrorMessage, setResultsErrorMessage] = useState<string | null>(null);
+  const searchRequestIdRef = useRef<number>(0);
+  const filterMetadata = useMemo(() => extractFilterMetadata(properties), [properties]);
   const [showAuthModal, setShowAuthModal] = useState<boolean>(false);
   const [showSupportModal, setShowSupportModal] = useState<boolean>(false);
   const [showWalletModal, setShowWalletModal] = useState<boolean>(false);
@@ -165,12 +168,15 @@ export function App() {
 
   // C2 Screen 05: canonical search execution from the Search & Refine intent.
   // Dates are intent-only and are never sent to the public search API.
+  // searchRequestIdRef ensures newer requests always win and stale responses are ignored.
   const fetchSearchResults = async (intent: SearchIntent) => {
+    const requestId = ++searchRequestIdRef.current;
     setResultsLoadState('LOADING');
     setResultsErrorMessage(null);
     try {
       const path = buildPublicPropertySearchPath(toPublicSearchFilters(intent));
       const result = await fetchCanonicalCollection<CustomerPropertyItem>(path);
+      if (requestId !== searchRequestIdRef.current) return;
       if (result.kind === 'success') {
         setSearchResults(result.data);
         setResultsLoadState(result.data.length === 0 ? 'EMPTY' : 'LOADED');
@@ -181,6 +187,7 @@ export function App() {
         : result.message);
       setResultsLoadState('ERROR');
     } catch (err: any) {
+      if (requestId !== searchRequestIdRef.current) return;
       setResultsErrorMessage(err?.message || 'تعذر تحميل نتائج البحث. حاول مرة أخرى.');
       setResultsLoadState('ERROR');
     }
@@ -190,6 +197,12 @@ export function App() {
     setSearchIntent(intent);
     setDiscoveryView('RESULTS');
     void fetchSearchResults(intent);
+  };
+
+  const handleBackToExplore = () => {
+    setDiscoveryView('EXPLORE');
+    setSearchIntent(EMPTY_SEARCH_INTENT);
+    setActiveDestination('الكل');
   };
 
   // Fetch Real Customer Profile (AUTH-03 & P2.2)
@@ -624,6 +637,7 @@ export function App() {
         {discoveryView === 'SEARCH_REFINE' && (
           <SearchRefineScreen
             initialIntent={searchIntent}
+            filterMetadata={filterMetadata}
             onApply={handleSearchApply}
             onClose={() => setDiscoveryView('EXPLORE')}
           />
@@ -634,9 +648,11 @@ export function App() {
             items={searchResults}
             loadState={resultsLoadState}
             errorMessage={resultsErrorMessage}
+            favoritesActionError={favoritesActionError}
+            onDismissFavoritesError={() => setFavoritesActionError(null)}
             onRetry={() => void fetchSearchResults(searchIntent)}
             onEditSearch={() => setDiscoveryView('SEARCH_REFINE')}
-            onBackToExplore={() => setDiscoveryView('EXPLORE')}
+            onBackToExplore={handleBackToExplore}
             onSelectProperty={(id) => {
               const item = searchResults.find((p) => p.id === id);
               if (item) setSelectedProperty(item);

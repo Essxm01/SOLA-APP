@@ -13,7 +13,9 @@ const filters = parsePublicPropertySearchFilters(
 );
 assert.deepEqual(filters, {
   destination: 'مراسي',
+  destinations: ['مراسي'],
   unitType: 'CHALET',
+  unitTypes: ['CHALET'],
   guests: 4,
   maxPrice: 25000,
 });
@@ -24,7 +26,31 @@ const trimmed = parsePublicPropertySearchFilters(
 );
 assert.deepEqual(trimmed, {
   destination: 'مراسي',
+  destinations: ['مراسي'],
   unitType: 'CHALET',
+  unitTypes: ['CHALET'],
+});
+
+// Multi-value destination & unitType support (repeated parameters)
+const multiRepeated = parsePublicPropertySearchFilters(
+  new URLSearchParams('destination=مراسي&destination=هاسيندا&unitType=CHALET&unitType=VILLA')
+);
+assert.deepEqual(multiRepeated, {
+  destination: 'مراسي',
+  destinations: ['مراسي', 'هاسيندا'],
+  unitType: 'CHALET',
+  unitTypes: ['CHALET', 'VILLA'],
+});
+
+// Multi-value destination & unitType support (comma-separated or destinations/unitTypes param)
+const multiComma = parsePublicPropertySearchFilters(
+  new URLSearchParams('destinations=مراسي,الجونة&unitTypes=CHALET,APARTMENT')
+);
+assert.deepEqual(multiComma, {
+  destination: 'مراسي',
+  destinations: ['مراسي', 'الجونة'],
+  unitType: 'CHALET',
+  unitTypes: ['CHALET', 'APARTMENT'],
 });
 
 // Empty / blank values are omitted
@@ -307,6 +333,31 @@ try {
     guests: 6, // p1 only has 4
   });
   assert.deepEqual(combinedZero, []);
+
+  // Multi-destination: OR within group
+  const multiDest = await propertyDb.searchPublic({ destinations: ['مراسي', 'الجونة'] });
+  assert.deepEqual(multiDest.map(p => p.id), ['p1', 'p3'], 'multi-destination should match properties in either destination (OR)');
+
+  // Multi-unitType: OR within group
+  const multiType = await propertyDb.searchPublic({ unitTypes: ['CHALET', 'VILLA'] });
+  assert.deepEqual(multiType.map(p => p.id), ['p1', 'p2'], 'multi-unitType should match properties of either unitType (OR)');
+
+  // Multi-destination + Multi-unitType + Guests + MaxPrice: AND across groups
+  const multiCombined = await propertyDb.searchPublic({
+    destinations: ['الساحل', 'الجونة'],
+    unitTypes: ['CHALET', 'APARTMENT'],
+    guests: 2,
+    maxPrice: 8000,
+  });
+  assert.deepEqual(multiCombined.map(p => p.id), ['p1', 'p3'], 'combined multi-destination and multi-unitType with guests and price');
+
+  const multiCombinedNarrow = await propertyDb.searchPublic({
+    destinations: ['الساحل', 'الجونة'],
+    unitTypes: ['CHALET'],
+    guests: 2,
+    maxPrice: 8000,
+  });
+  assert.deepEqual(multiCombinedNarrow.map(p => p.id), ['p1'], 'narrow multi-filter');
 
   // Finding 1: Malformed source rows must fail closed before any filtering
   const badRows = [

@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { ArrowRight, MapPin, Calendar, Users, Home } from 'lucide-react';
+import { MultiSelectDropdown, type MultiSelectOption } from './MultiSelectDropdown';
 
 // KONFRM Customer Search & Refine — Screen 04 (Phase 5 / C2).
 //
@@ -13,21 +14,10 @@ import {
   nightsBetween,
   CANONICAL_PROPERTY_TYPE_LABELS,
   formatArabicDate,
+  getLocalTodayISO,
   type SearchIntent,
+  type FilterMetadata,
 } from '../utils/searchIntent';
-
-// Canonical property types — the exact set the backend accepts for property
-// creation: CHALET, VILLA, APARTMENT, STUDIO, HOTEL_ROOM, OTHER.
-// Customer Arabic labels only; no backend enum language is shown to the customer.
-const UNIT_TYPES: Array<{ id: string; label: string }> = [
-  { id: 'ALL', label: 'الكل' },
-  { id: 'CHALET', label: CANONICAL_PROPERTY_TYPE_LABELS.CHALET },
-  { id: 'VILLA', label: CANONICAL_PROPERTY_TYPE_LABELS.VILLA },
-  { id: 'APARTMENT', label: CANONICAL_PROPERTY_TYPE_LABELS.APARTMENT },
-  { id: 'STUDIO', label: CANONICAL_PROPERTY_TYPE_LABELS.STUDIO },
-  { id: 'HOTEL_ROOM', label: CANONICAL_PROPERTY_TYPE_LABELS.HOTEL_ROOM },
-  { id: 'OTHER', label: CANONICAL_PROPERTY_TYPE_LABELS.OTHER },
-];
 
 const ERROR_COPY: Record<string, string> = {
   SEARCH_DATES_INCOMPLETE: 'أكمل تاريخي الوصول والمغادرة أو امسحهما معًا.',
@@ -40,32 +30,89 @@ const ERROR_COPY: Record<string, string> = {
 
 export interface SearchRefineScreenProps {
   initialIntent: SearchIntent;
+  filterMetadata?: FilterMetadata;
   onApply: (intent: SearchIntent) => void;
   onClose: () => void;
 }
 
 export const SearchRefineScreen: React.FC<SearchRefineScreenProps> = ({
   initialIntent,
+  filterMetadata,
   onApply,
   onClose,
 }) => {
-  const [destination, setDestination] = useState(initialIntent.destination);
+  const [destinations, setDestinations] = useState<string[]>(
+    initialIntent.destinations && initialIntent.destinations.length > 0
+      ? initialIntent.destinations
+      : initialIntent.destination
+      ? [initialIntent.destination]
+      : []
+  );
+  const [unitTypes, setUnitTypes] = useState<string[]>(
+    initialIntent.unitTypes && initialIntent.unitTypes.length > 0
+      ? initialIntent.unitTypes
+      : initialIntent.unitType && initialIntent.unitType !== 'ALL'
+      ? [initialIntent.unitType]
+      : []
+  );
   const [checkIn, setCheckIn] = useState(initialIntent.checkIn);
   const [checkOut, setCheckOut] = useState(initialIntent.checkOut);
   const [totalGuests, setTotalGuests] = useState(initialIntent.totalGuests);
-  const [unitType, setUnitType] = useState(initialIntent.unitType);
   const [maxPrice, setMaxPrice] = useState(initialIntent.maxPrice);
   const [maxPriceTouched, setMaxPriceTouched] = useState(initialIntent.maxPriceTouched);
 
-  const today = useMemo(() => new Date().toISOString().slice(0, 10), []);
+  const today = useMemo(() => getLocalTodayISO(), []);
   const range = validateStayRange(checkIn, checkOut, today);
   const nights = nightsBetween(checkIn, checkOut);
   const datesValid = range.ok;
   const canApply = datesValid;
 
+  const priceCeiling = filterMetadata?.priceCeiling ?? 50000;
+  const sliderValue = maxPriceTouched && maxPrice > 0 ? maxPrice : priceCeiling;
+
+  const destinationOptions: MultiSelectOption[] = useMemo(() => {
+    const list = filterMetadata?.availableDestinations ?? [];
+    return list.map((d) => ({ id: d, label: d }));
+  }, [filterMetadata?.availableDestinations]);
+
+  const unitTypeOptions: MultiSelectOption[] = useMemo(() => {
+    const list = filterMetadata?.availableUnitTypes ?? [];
+    if (list.length > 0) {
+      return list.map((t) => ({ id: t.value, label: t.label }));
+    }
+    return [
+      { id: 'CHALET', label: CANONICAL_PROPERTY_TYPE_LABELS.CHALET },
+      { id: 'VILLA', label: CANONICAL_PROPERTY_TYPE_LABELS.VILLA },
+      { id: 'APARTMENT', label: CANONICAL_PROPERTY_TYPE_LABELS.APARTMENT },
+      { id: 'STUDIO', label: CANONICAL_PROPERTY_TYPE_LABELS.STUDIO },
+      { id: 'HOTEL_ROOM', label: CANONICAL_PROPERTY_TYPE_LABELS.HOTEL_ROOM },
+      { id: 'OTHER', label: CANONICAL_PROPERTY_TYPE_LABELS.OTHER },
+    ];
+  }, [filterMetadata?.availableUnitTypes]);
+
+  const handleSliderChange = (newVal: number) => {
+    if (newVal >= priceCeiling) {
+      setMaxPrice(0);
+      setMaxPriceTouched(false);
+    } else {
+      setMaxPrice(newVal);
+      setMaxPriceTouched(true);
+    }
+  };
+
   const apply = () => {
     if (!canApply) return;
-    onApply({ destination: destination.trim(), checkIn, checkOut, totalGuests, unitType, maxPrice, maxPriceTouched });
+    onApply({
+      destination: destinations.length > 0 ? destinations[0] : '',
+      destinations,
+      checkIn,
+      checkOut,
+      totalGuests,
+      unitType: unitTypes.length > 0 ? unitTypes[0] : 'ALL',
+      unitTypes,
+      maxPrice,
+      maxPriceTouched,
+    });
   };
 
   return (
@@ -84,26 +131,26 @@ export const SearchRefineScreen: React.FC<SearchRefineScreenProps> = ({
         </div>
 
         <div className="px-4 pt-4 space-y-6">
-          {/* Destination */}
+          {/* Destination Multi-Select */}
           <section>
-            <label htmlFor="c2-destination" className="flex items-center gap-1.5 text-[13px] font-black text-[#0F172A] mb-1.5">
-              <MapPin className="w-4 h-4 text-[#0059FF]" />
-              <span>الوجهة أو القرية</span>
-            </label>
-            <input
-              id="c2-destination"
-              type="text"
-              value={destination}
-              onChange={(e) => setDestination(e.target.value)}
-              placeholder="مثال: مراسي، رأس الحكمة، هاسيندا..."
-              className="w-full min-h-[50px] p-3 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl text-sm font-bold text-[#0F172A] focus:outline-none focus:border-[#0059FF] focus:ring-2 focus:ring-[#0059FF]/15"
+            <MultiSelectDropdown
+              id="c2-destinations"
+              label="الوجهة أو القرية"
+              icon={<MapPin className="w-4 h-4 text-[#0059FF]" />}
+              options={destinationOptions}
+              selected={destinations}
+              onChange={setDestinations}
+              placeholder="اختر الوجهات..."
+              emptySummary="كل الوجهات (اختياري)"
+              clearLabel="مسح الوجهات"
+              searchPlaceholder="ابحث عن قرية أو منطقة..."
             />
           </section>
 
           {/* Dates */}
           <section>
             <div className="flex items-center justify-between mb-1.5">
-              <div className="flex items-center gap-1.5 text-[13px] font-black text-[#0F172A]">
+              <div className="flex items-center gap-1.5 text-[13px] font-bold text-[#0F172A]">
                 <Calendar className="w-4 h-4 text-[#0059FF]" />
                 <span>تواريخ الإقامة (اختياري)</span>
               </div>
@@ -114,7 +161,7 @@ export const SearchRefineScreen: React.FC<SearchRefineScreenProps> = ({
                     setCheckIn('');
                     setCheckOut('');
                   }}
-                  className="min-h-[44px] px-2 text-xs font-extrabold text-rose-600 hover:text-rose-700 flex items-center justify-center transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-500/40 rounded-lg"
+                  className="min-h-[44px] px-2 text-xs font-bold text-rose-600 hover:text-rose-700 flex items-center justify-center transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-500/40 rounded-lg"
                 >
                   مسح التواريخ
                 </button>
@@ -124,7 +171,7 @@ export const SearchRefineScreen: React.FC<SearchRefineScreenProps> = ({
               <div>
                 <label htmlFor="c2-checkin" className="block text-[11px] font-bold text-[#64748B] mb-1">الوصول</label>
                 <div className="relative rounded-xl has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-[#0059FF]">
-                  <div className="w-full min-h-[48px] p-2.5 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl flex items-center justify-between pointer-events-none text-xs font-bold">
+                  <div className="w-full min-h-[50px] p-2.5 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl flex items-center justify-between pointer-events-none text-xs font-bold">
                     <span className={checkIn ? 'text-[#0F172A]' : 'text-[#94A3B8]'}>
                       {checkIn ? formatArabicDate(checkIn) : 'حدد تاريخ الوصول'}
                     </span>
@@ -144,7 +191,7 @@ export const SearchRefineScreen: React.FC<SearchRefineScreenProps> = ({
               <div>
                 <label htmlFor="c2-checkout" className="block text-[11px] font-bold text-[#64748B] mb-1">المغادرة</label>
                 <div className="relative rounded-xl has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-[#0059FF]">
-                  <div className="w-full min-h-[48px] p-2.5 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl flex items-center justify-between pointer-events-none text-xs font-bold">
+                  <div className="w-full min-h-[50px] p-2.5 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl flex items-center justify-between pointer-events-none text-xs font-bold">
                     <span className={checkOut ? 'text-[#0F172A]' : 'text-[#94A3B8]'}>
                       {checkOut ? formatArabicDate(checkOut) : 'حدد تاريخ المغادرة'}
                     </span>
@@ -174,60 +221,59 @@ export const SearchRefineScreen: React.FC<SearchRefineScreenProps> = ({
 
           {/* Guests stepper */}
           <section>
-            <div className="flex items-center gap-1.5 text-[13px] font-black text-[#0F172A] mb-1.5">
+            <div className="flex items-center gap-1.5 text-[13px] font-bold text-[#0F172A] mb-1.5">
               <Users className="w-4 h-4 text-[#0059FF]" />
               <span>عدد الأفراد</span>
             </div>
-            <div className="flex items-center gap-3">
-              <button
-                onClick={() => setTotalGuests((g) => Math.max(1, g - 1))}
-                disabled={totalGuests <= 1}
-                aria-label="تقليل عدد الأفراد"
-                className="min-h-[44px] min-w-[44px] rounded-xl bg-[#F1F5F9] text-[#0F172A] text-lg font-black disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-200 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0059FF]/40"
-              >
-                −
-              </button>
-              <span className="min-w-[64px] text-center text-base font-black text-[#0F172A]" aria-live="polite">
-                {totalGuests} {totalGuests === 1 ? 'فرد' : 'أفراد'}
-              </span>
-              <button
-                onClick={() => setTotalGuests((g) => g + 1)}
-                aria-label="زيادة عدد الأفراد"
-                className="min-h-[44px] min-w-[44px] rounded-xl bg-[#F1F5F9] text-[#0F172A] text-lg font-black hover:bg-slate-200 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0059FF]/40"
-              >
-                +
-              </button>
-            </div>
-          </section>
-
-          {/* Unit type — canonical supported values */}
-          <section>
-            <div className="flex items-center gap-1.5 text-[13px] font-black text-[#0F172A] mb-1.5">
-              <Home className="w-4 h-4 text-[#0059FF]" />
-              <span>نوع الوحدة</span>
-            </div>
-            <div className="grid grid-cols-4 gap-2">
-              {UNIT_TYPES.map((t) => (
+            <div className="w-full min-h-[50px] p-2 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl flex items-center justify-between">
+              <span className="text-xs font-bold text-[#64748B] pr-2">الحد الأدنى للسعة المطلوبة</span>
+              <div className="flex items-center gap-2">
                 <button
-                  key={t.id}
-                  onClick={() => setUnitType(t.id)}
-                  aria-pressed={unitType === t.id}
-                  className={`min-h-[44px] rounded-xl text-xs font-extrabold border transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0059FF]/40 ${
-                    unitType === t.id
-                      ? 'bg-[#0059FF] text-white border-[#0059FF]'
-                      : 'bg-white text-[#475569] border-[#E2E8F0] hover:border-[#CBD5E1]'
-                  }`}
+                  type="button"
+                  onClick={() => setTotalGuests((g) => Math.max(1, g - 1))}
+                  disabled={totalGuests <= 1}
+                  aria-label="تقليل عدد الأفراد"
+                  className="min-h-[44px] min-w-[44px] rounded-xl bg-white border border-[#E2E8F0] text-[#0F172A] text-lg font-bold disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-50 transition-colors flex items-center justify-center focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0059FF]/40"
                 >
-                  {t.label}
+                  −
                 </button>
-              ))}
+                <span className="min-w-[60px] text-center text-sm font-bold text-[#0F172A]" aria-live="polite">
+                  {totalGuests} {totalGuests === 1 ? 'فرد' : 'أفراد'}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setTotalGuests((g) => g + 1)}
+                  aria-label="زيادة عدد الأفراد"
+                  className="min-h-[44px] min-w-[44px] rounded-xl bg-white border border-[#E2E8F0] text-[#0F172A] text-lg font-bold hover:bg-slate-50 transition-colors flex items-center justify-center focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0059FF]/40"
+                >
+                  +
+                </button>
+              </div>
             </div>
           </section>
 
-          {/* Max price — optional numeric price-ceiling field without arbitrary cap */}
+          {/* Unit type Multi-Select */}
           <section>
-            <div className="flex justify-between items-center text-[13px] font-black mb-1.5">
-              <label htmlFor="c2-maxprice" className="text-[#0F172A]">الحد الأقصى للسعر في الليلة</label>
+            <MultiSelectDropdown
+              id="c2-unit-types"
+              label="نوع الوحدة"
+              icon={<Home className="w-4 h-4 text-[#0059FF]" />}
+              options={unitTypeOptions}
+              selected={unitTypes}
+              onChange={setUnitTypes}
+              placeholder="اختر أنواع الوحدات..."
+              emptySummary="كل أنواع الوحدات (اختياري)"
+              clearLabel="مسح الأنواع"
+              searchPlaceholder="ابحث عن نوع..."
+            />
+          </section>
+
+          {/* Max price — Dynamic drag slider derived from public inventory ceiling */}
+          <section>
+            <div className="flex justify-between items-center text-[13px] font-bold mb-1.5">
+              <div className="flex items-center gap-1.5 text-[#0F172A]">
+                <span>الحد الأقصى للسعر في الليلة</span>
+              </div>
               {maxPriceTouched && maxPrice > 0 ? (
                 <button
                   type="button"
@@ -235,7 +281,7 @@ export const SearchRefineScreen: React.FC<SearchRefineScreenProps> = ({
                     setMaxPrice(0);
                     setMaxPriceTouched(false);
                   }}
-                  className="min-h-[44px] px-2 text-xs font-extrabold text-rose-600 hover:text-rose-700 flex items-center justify-center transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-500/40 rounded-lg"
+                  className="min-h-[44px] px-2 text-xs font-bold text-rose-600 hover:text-rose-700 flex items-center justify-center transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-500/40 rounded-lg"
                 >
                   إلغاء الحد (بدون حد)
                 </button>
@@ -243,41 +289,39 @@ export const SearchRefineScreen: React.FC<SearchRefineScreenProps> = ({
                 <span className="text-xs font-bold text-[#64748B]">بدون حد</span>
               )}
             </div>
-            <div className="relative flex items-center">
+
+            <div className="p-3.5 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-[#64748B]">السقف المحدد:</span>
+                <span className="text-sm font-bold text-[#0F172A]">
+                  {maxPriceTouched && maxPrice > 0
+                    ? `${maxPrice.toLocaleString('ar-EG')} ج.م / ليلة`
+                    : 'بدون حد أقصى'}
+                </span>
+              </div>
+
               <input
-                id="c2-maxprice"
-                type="number"
-                min={1}
-                step={100}
-                inputMode="numeric"
-                value={maxPriceTouched && maxPrice > 0 ? maxPrice : ''}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  if (val === '') {
-                    setMaxPrice(0);
-                    setMaxPriceTouched(false);
-                  } else {
-                    const parsed = parseInt(val, 10);
-                    if (!Number.isNaN(parsed) && parsed > 0) {
-                      setMaxPrice(parsed);
-                      setMaxPriceTouched(true);
-                    } else if (!Number.isNaN(parsed) && parsed <= 0) {
-                      setMaxPrice(0);
-                      setMaxPriceTouched(false);
-                    }
-                  }
-                }}
-                placeholder="بدون حد أقصى — اكتب سقف السعر"
-                className="w-full min-h-[50px] p-3 pl-16 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl text-sm font-bold text-[#0F172A] focus:outline-none focus:border-[#0059FF] focus:ring-2 focus:ring-[#0059FF]/15 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                id="c2-maxprice-slider"
+                type="range"
+                min={1000}
+                max={priceCeiling}
+                step={1000}
+                value={sliderValue}
+                onChange={(e) => handleSliderChange(Number(e.target.value))}
+                aria-label="الحد الأقصى للسعر"
+                className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-[#0059FF]"
               />
-              <span className="absolute left-3.5 text-xs font-extrabold text-[#64748B] pointer-events-none">
-                ج.م / ليلة
-              </span>
+
+              <div className="flex items-center justify-between text-[11px] font-bold text-[#94A3B8]">
+                <span>1,000 ج.م</span>
+                <span>{priceCeiling.toLocaleString('ar-EG')} ج.م (بدون حد)</span>
+              </div>
             </div>
+
             <p className="text-[11px] font-bold text-[#64748B] mt-1.5">
               {maxPriceTouched && maxPrice > 0
                 ? `سيتم عرض الوحدات التي لا يتجاوز سعرها ${maxPrice.toLocaleString('ar-EG')} ج.م في الليلة.`
-                : 'اتركه فارغاً لعرض كل الأسعار، أو حدد سقفاً مناسباً لميزانيتك.'}
+                : 'حرك المؤشر لتحديد سقف أقصى للسعر، أو اتركه في النهاية لعرض كل الأسعار.'}
             </p>
           </section>
         </div>

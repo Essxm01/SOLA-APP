@@ -1,6 +1,8 @@
 export interface PublicPropertySearchFilters {
   destination?: string;
+  destinations?: string[];
   unitType?: string;
+  unitTypes?: string[];
   guests?: number;
   maxPrice?: number;
 }
@@ -38,20 +40,46 @@ export function parsePublicPropertySearchFilters(
 
   const filters: PublicPropertySearchFilters = {};
 
-  const destinationRaw = searchParams.get('destination');
-  if (destinationRaw !== null) {
-    const trimmed = destinationRaw.trim();
-    if (trimmed !== '') {
-      filters.destination = trimmed;
+  // Destination: supports repeated query params & comma-separated values (OR within group)
+  const destParams = [
+    ...searchParams.getAll('destination'),
+    ...searchParams.getAll('destinations'),
+  ];
+  const destList: string[] = [];
+  for (const raw of destParams) {
+    if (raw) {
+      for (const part of raw.split(',')) {
+        const trimmed = part.trim();
+        if (trimmed !== '' && !destList.includes(trimmed)) {
+          destList.push(trimmed);
+        }
+      }
     }
   }
+  if (destList.length > 0) {
+    filters.destinations = destList;
+    filters.destination = destList[0];
+  }
 
-  const unitTypeRaw = searchParams.get('unitType');
-  if (unitTypeRaw !== null) {
-    const trimmed = unitTypeRaw.trim();
-    if (trimmed !== '') {
-      filters.unitType = trimmed.toUpperCase();
+  // Unit Type: supports repeated query params & comma-separated values (OR within group)
+  const typeParams = [
+    ...searchParams.getAll('unitType'),
+    ...searchParams.getAll('unitTypes'),
+  ];
+  const typeList: string[] = [];
+  for (const raw of typeParams) {
+    if (raw) {
+      for (const part of raw.split(',')) {
+        const trimmed = part.trim().toUpperCase();
+        if (trimmed !== '' && trimmed !== 'ALL' && !typeList.includes(trimmed)) {
+          typeList.push(trimmed);
+        }
+      }
     }
+  }
+  if (typeList.length > 0) {
+    filters.unitTypes = typeList;
+    filters.unitType = typeList[0];
   }
 
   const guestsRaw = searchParams.get('guests');

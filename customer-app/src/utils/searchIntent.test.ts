@@ -13,6 +13,9 @@ import {
   EMPTY_SEARCH_INTENT,
   CANONICAL_PROPERTY_TYPE_LABELS,
   getPropertyTypeLabel,
+  getLocalTodayISO,
+  computePriceSliderCeiling,
+  extractFilterMetadata,
   formatArabicDate,
   formatArabicDateShort,
   formatArabicStayRange,
@@ -72,33 +75,65 @@ assertEqual(validateStayRange(D('2026-12-20'), D('2026-12-20')).ok, false, 'same
 {
   const intent: SearchIntent = {
     destination: 'مراسي',
+    destinations: ['مراسي'],
     checkIn: '2026-12-20',
     checkOut: '2026-12-22',
     totalGuests: 4,
     unitType: 'CHALET',
+    unitTypes: ['CHALET'],
     maxPrice: 12000,
     maxPriceTouched: true,
   };
   const f = toPublicSearchFilters(intent);
   assertEqual(f.destination, 'مراسي', 'destination mapped');
+  assertEqual(f.destinations?.[0], 'مراسي', 'destinations mapped');
   assertEqual(f.unitType, 'CHALET', 'unitType mapped');
+  assertEqual(f.unitTypes?.[0], 'CHALET', 'unitTypes mapped');
   assertEqual(f.totalGuests, 4, 'guests mapped under the path-builder key');
   assertEqual(f.maxPrice, 12000, 'maxPrice mapped');
   assertEqual('checkIn' in (f as any), false, 'checkIn must never reach the API');
   assertEqual('checkOut' in (f as any), false, 'checkOut must never reach the API');
 }
 
+// 8b. Multi-destination and Multi-unitType mapped properly
+{
+  const multiIntent: SearchIntent = {
+    destination: 'مراسي',
+    destinations: ['مراسي', 'الجونة'],
+    checkIn: '',
+    checkOut: '',
+    totalGuests: 2,
+    unitType: 'CHALET',
+    unitTypes: ['CHALET', 'VILLA'],
+    maxPrice: 15000,
+    maxPriceTouched: true,
+  };
+  const f = toPublicSearchFilters(multiIntent);
+  assert(Array.isArray(f.destinations), 'f.destinations must be array');
+  assertEqual(f.destinations?.length, 2, 'destinations length 2');
+  assertEqual(f.destinations?.[0], 'مراسي', 'first dest');
+  assertEqual(f.destinations?.[1], 'الجونة', 'second dest');
+  assertEqual(f.destination, 'مراسي', 'fallback primary destination');
+  assert(Array.isArray(f.unitTypes), 'f.unitTypes must be array');
+  assertEqual(f.unitTypes?.length, 2, 'unitTypes length 2');
+  assertEqual(f.unitTypes?.[0], 'CHALET', 'first unitType');
+  assertEqual(f.unitTypes?.[1], 'VILLA', 'second unitType');
+  assertEqual(f.unitType, 'CHALET', 'fallback primary unitType');
+}
+
 // 9. Untouched maxPrice and default guests are NOT sent (no silent filtering).
 {
   const intent: SearchIntent = {
-    destination: '', checkIn: '', checkOut: '',
-    totalGuests: 1, unitType: 'ALL', maxPrice: 0, maxPriceTouched: false,
+    destination: '', destinations: [], checkIn: '', checkOut: '',
+    totalGuests: 1, unitType: 'ALL', unitTypes: [], maxPrice: 0, maxPriceTouched: false,
   };
   const f = toPublicSearchFilters(intent);
   assertEqual(f.destination, undefined, 'empty destination omitted');
+  assertEqual(f.destinations, undefined, 'empty destinations omitted');
   assertEqual(f.totalGuests, undefined, 'guests=1 (no restriction) omitted');
   assertEqual(f.maxPrice, undefined, 'untouched maxPrice omitted');
   assertEqual(f.unitType, undefined, 'ALL omitted');
+  assertEqual(f.unitTypes, undefined, 'empty unitTypes omitted');
 }
 
 // 10. Guest minimum capacity filter is only sent when meaningful (>1).
@@ -157,6 +192,62 @@ assertEqual(validateStayRange(D('2026-12-20'), D('2026-12-20')).ok, false, 'same
   assertEqual(formatArabicStayRange('2026-12-20', '2026-12-22'), '20 ديسمبر ← 22 ديسمبر 2026', 'formatArabicStayRange same year');
   assertEqual(formatArabicStayRange('2026-12-30', '2027-01-02'), '30 ديسمبر 2026 ← 2 يناير 2027', 'formatArabicStayRange cross year');
   assertEqual(formatArabicStayRange('', ''), '', 'formatArabicStayRange empty');
+}
+
+// 15. getLocalTodayISO: returns valid YYYY-MM-DD format
+{
+  const today = getLocalTodayISO();
+  assert(/^\d{4}-\d{2}-\d{2}$/.test(today), `getLocalTodayISO returned valid ISO date: ${today}`);
+}
+
+// 16. computePriceSliderCeiling: rounded up to next 1000 EGP
+{
+  assertEqual(computePriceSliderCeiling(7500), 8000, '7500 -> 8000');
+  assertEqual(computePriceSliderCeiling(30000), 31000, '30000 -> 31000');
+  assertEqual(computePriceSliderCeiling(0), 30000, '0 -> fallback 30000');
+  assertEqual(computePriceSliderCeiling(-5), 30000, 'negative -> fallback 30000');
+}
+
+// 17. extractFilterMetadata: extracts unique destinations, unit types, max price
+{
+  const mockProps = [
+    {
+      id: 'p1',
+      resortName: 'مراسي',
+      region: 'الساحل الشمالي',
+      unitType: 'CHALET',
+      basePricePerNight: 7500,
+    },
+    {
+      id: 'p2',
+      resortName: 'هاسيندا باي',
+      region: 'الساحل الشمالي',
+      unitType: 'VILLA',
+      basePricePerNight: 28500,
+    },
+    {
+      id: 'p3',
+      resortName: 'الجونة',
+      region: 'البحر الأحمر',
+      unitType: 'CHALET',
+      basePricePerNight: 4000,
+    },
+  ];
+
+  const meta = extractFilterMetadata(mockProps);
+  assert(meta.availableDestinations.includes('مراسي'), 'includes مراسي');
+  assert(meta.availableDestinations.includes('هاسيندا باي'), 'includes هاسيندا باي');
+  assert(meta.availableDestinations.includes('الساحل الشمالي'), 'includes الساحل الشمالي');
+  assert(meta.availableDestinations.includes('الجونة'), 'includes الجونة');
+  assert(meta.availableDestinations.includes('البحر الأحمر'), 'includes البحر الأحمر');
+
+  assertEqual(meta.maxInventoryPrice, 28500, 'max price 28500');
+  assertEqual(meta.priceCeiling, 29000, 'price ceiling 29000');
+
+  const unitTypeValues = meta.availableUnitTypes.map(u => u.value);
+  assert(unitTypeValues.includes('CHALET'), 'includes CHALET');
+  assert(unitTypeValues.includes('VILLA'), 'includes VILLA');
+  assertEqual(unitTypeValues.length, 2, 'only 2 unit types present');
 }
 
 console.log('Customer search intent contract tests passed');

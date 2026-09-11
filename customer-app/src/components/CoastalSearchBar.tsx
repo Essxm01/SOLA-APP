@@ -20,19 +20,25 @@ export interface SearchFilterState {
 
 interface CoastalSearchBarProps {
   onOpenSearch: () => void;
-  activeDestination: string;
-  onSelectDestinationChip: (dest: string) => void;
+  activeDestination?: string;
+  onSelectDestinationChip?: (dest: string) => void;
   intent: SearchIntent;
 }
 
-const popularDestinations = ['الكل', 'مراسي', 'رأس الحكمة', 'سيدي عبد الرحمن', 'هاسيندا', 'الساحل الشمالي'];
-
 export const CoastalSearchBar: React.FC<CoastalSearchBarProps> = ({
   onOpenSearch,
-  activeDestination,
-  onSelectDestinationChip,
   intent,
 }) => {
+  const destSummary = React.useMemo(() => {
+    if (intent.destinations && intent.destinations.length > 0) {
+      if (intent.destinations.length === 1) return `بحثك: ${intent.destinations[0]}`;
+      return `بحثك: ${intent.destinations[0]} + ${intent.destinations.length - 1}`;
+    }
+    if (intent.destination.trim() !== '') {
+      return `بحثك: ${intent.destination.trim()}`;
+    }
+    return 'بحث عن وجهة، تواريخ، أو عدد أفراد';
+  }, [intent.destinations, intent.destination]);
 
   return (
     <div className="w-full space-y-4 my-2">
@@ -56,7 +62,7 @@ export const CoastalSearchBar: React.FC<CoastalSearchBarProps> = ({
           </div>
           <div>
             <span className="text-xs font-black text-slate-900 block">
-              {intent.destination.trim() !== '' ? `بحثك: ${intent.destination.trim()}` : 'بحث عن وجهة، تواريخ، أو عدد أفراد'}
+              {destSummary}
             </span>
             <span className="text-[10px] text-slate-400 font-bold">
               {intent.checkIn !== '' && intent.checkOut !== ''
@@ -70,26 +76,6 @@ export const CoastalSearchBar: React.FC<CoastalSearchBarProps> = ({
           <SlidersHorizontal className="w-4 h-4" />
         </div>
       </button>
-
-      {/* Coastal Destination Chips — live server-side destination filters */}
-      <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar scroll-smooth">
-        {popularDestinations.map((dest) => {
-          const isActive = activeDestination === dest;
-          return (
-            <button
-              key={dest}
-              onClick={() => onSelectDestinationChip(dest)}
-              className={`px-3.5 py-1.5 rounded-xl text-xs font-extrabold transition-all whitespace-nowrap min-h-[44px] flex items-center justify-center ${
-                isActive
-                  ? 'bg-[#0059FF] text-white shadow-xs'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-              }`}
-            >
-              {dest}
-            </button>
-          );
-        })}
-      </div>
     </div>
   );
 };

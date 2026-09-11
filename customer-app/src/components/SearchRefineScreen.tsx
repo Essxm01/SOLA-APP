@@ -12,7 +12,6 @@ import { MultiSelectDropdown, type MultiSelectOption } from './MultiSelectDropdo
 import {
   validateStayRange,
   nightsBetween,
-  CANONICAL_PROPERTY_TYPE_LABELS,
   formatArabicDate,
   getLocalTodayISO,
   type SearchIntent,
@@ -50,7 +49,7 @@ export const SearchRefineScreen: React.FC<SearchRefineScreenProps> = ({
   );
   const [unitTypes, setUnitTypes] = useState<string[]>(
     initialIntent.unitTypes && initialIntent.unitTypes.length > 0
-      ? initialIntent.unitTypes
+      ? initialIntent.unitTypes.filter((t) => t !== 'ALL')
       : initialIntent.unitType && initialIntent.unitType !== 'ALL'
       ? [initialIntent.unitType]
       : []
@@ -75,20 +74,56 @@ export const SearchRefineScreen: React.FC<SearchRefineScreenProps> = ({
     return list.map((d) => ({ id: d, label: d }));
   }, [filterMetadata?.availableDestinations]);
 
-  const unitTypeOptions: MultiSelectOption[] = useMemo(() => {
+  // Unit Type Options & Horizontal Chips:
+  // Inventory-backed, customer-facing canonical Arabic names.
+  // Order: الكل -> شقة -> استوديو -> شاليه -> فيلا -> other valid types
+  const unitTypeChips = useMemo(() => {
     const list = filterMetadata?.availableUnitTypes ?? [];
-    if (list.length > 0) {
-      return list.map((t) => ({ id: t.value, label: t.label }));
-    }
-    return [
-      { id: 'CHALET', label: CANONICAL_PROPERTY_TYPE_LABELS.CHALET },
-      { id: 'VILLA', label: CANONICAL_PROPERTY_TYPE_LABELS.VILLA },
-      { id: 'APARTMENT', label: CANONICAL_PROPERTY_TYPE_LABELS.APARTMENT },
-      { id: 'STUDIO', label: CANONICAL_PROPERTY_TYPE_LABELS.STUDIO },
-      { id: 'HOTEL_ROOM', label: CANONICAL_PROPERTY_TYPE_LABELS.HOTEL_ROOM },
-      { id: 'OTHER', label: CANONICAL_PROPERTY_TYPE_LABELS.OTHER },
-    ];
+    const source = list.length > 0
+      ? list.map((t) => ({
+          id: t.value,
+          label: t.value === 'APARTMENT' ? 'شقة' : t.label,
+        }))
+      : [
+          { id: 'APARTMENT', label: 'شقة' },
+          { id: 'STUDIO', label: 'استوديو' },
+          { id: 'CHALET', label: 'شاليه' },
+          { id: 'VILLA', label: 'فيلا' },
+        ];
+
+    const priorityOrder = ['APARTMENT', 'STUDIO', 'CHALET', 'VILLA', 'HOTEL_ROOM', 'OTHER'];
+    const sorted = [...source].sort((a, b) => {
+      const idxA = priorityOrder.indexOf(a.id);
+      const idxB = priorityOrder.indexOf(b.id);
+      return (idxA === -1 ? 99 : idxA) - (idxB === -1 ? 99 : idxB);
+    });
+
+    return [{ id: 'ALL', label: 'الكل' }, ...sorted];
   }, [filterMetadata?.availableUnitTypes]);
+
+  const isAllUnitTypesSelected = unitTypes.length === 0 || unitTypes.includes('ALL');
+
+  const handleToggleUnitType = (optId: string) => {
+    if (optId === 'ALL') {
+      // If "الكل" is selected, all specific selections are cleared.
+      setUnitTypes([]);
+      return;
+    }
+
+    // Specific option clicked
+    const currentSpecific = unitTypes.filter((t) => t !== 'ALL');
+    let next: string[];
+
+    if (currentSpecific.includes(optId)) {
+      // Deselect this option
+      next = currentSpecific.filter((t) => t !== optId);
+    } else {
+      // Select this option
+      next = [...currentSpecific, optId];
+    }
+
+    setUnitTypes(next);
+  };
 
   const handleSliderChange = (newVal: number) => {
     if (newVal >= priceCeiling) {
@@ -102,14 +137,15 @@ export const SearchRefineScreen: React.FC<SearchRefineScreenProps> = ({
 
   const apply = () => {
     if (!canApply) return;
+    const effectiveUnitTypes = unitTypes.filter((t) => t !== 'ALL');
     onApply({
       destination: destinations.length > 0 ? destinations[0] : '',
       destinations,
       checkIn,
       checkOut,
       totalGuests,
-      unitType: unitTypes.length > 0 ? unitTypes[0] : 'ALL',
-      unitTypes,
+      unitType: effectiveUnitTypes.length > 0 ? effectiveUnitTypes[0] : 'ALL',
+      unitTypes: effectiveUnitTypes,
       maxPrice,
       maxPriceTouched,
     });
@@ -131,7 +167,7 @@ export const SearchRefineScreen: React.FC<SearchRefineScreenProps> = ({
         </div>
 
         <div className="px-4 pt-4 space-y-6">
-          {/* Destination Multi-Select */}
+          {/* Destination Multi-Select Dropdown — Pure Tap-to-Select, Zero Typing */}
           <section>
             <MultiSelectDropdown
               id="c2-destinations"
@@ -143,7 +179,6 @@ export const SearchRefineScreen: React.FC<SearchRefineScreenProps> = ({
               placeholder="اختر الوجهات..."
               emptySummary="كل الوجهات (اختياري)"
               clearLabel="مسح الوجهات"
-              searchPlaceholder="ابحث عن قرية أو منطقة..."
             />
           </section>
 
@@ -167,16 +202,17 @@ export const SearchRefineScreen: React.FC<SearchRefineScreenProps> = ({
                 </button>
               )}
             </div>
-            <div className="grid grid-cols-2 gap-3">
+
+            <div className="grid grid-cols-2 gap-2.5">
+              {/* Check-in */}
               <div>
-                <label htmlFor="c2-checkin" className="block text-[11px] font-bold text-[#64748B] mb-1">الوصول</label>
-                <div className="relative rounded-xl has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-[#0059FF]">
-                  <div className="w-full min-h-[50px] p-2.5 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl flex items-center justify-between pointer-events-none text-xs font-bold">
-                    <span className={checkIn ? 'text-[#0F172A]' : 'text-[#94A3B8]'}>
-                      {checkIn ? formatArabicDate(checkIn) : 'حدد تاريخ الوصول'}
-                    </span>
-                    <Calendar className="w-4 h-4 text-[#64748B] shrink-0" />
-                  </div>
+                <label htmlFor="c2-checkin" className="block text-[11px] font-bold text-[#64748B] mb-1">
+                  الوصول
+                </label>
+                <div className="relative w-full min-h-[50px] p-2.5 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl flex items-center justify-between text-xs font-bold text-[#0F172A] focus-within:border-[#0059FF] focus-within:ring-2 focus-within:ring-[#0059FF]/15">
+                  <span className={checkIn ? 'text-[#0F172A]' : 'text-[#94A3B8]'}>
+                    {checkIn ? formatArabicDate(checkIn) : 'اختر تاريخ'}
+                  </span>
                   <input
                     id="c2-checkin"
                     type="date"
@@ -188,15 +224,16 @@ export const SearchRefineScreen: React.FC<SearchRefineScreenProps> = ({
                   />
                 </div>
               </div>
+
+              {/* Check-out */}
               <div>
-                <label htmlFor="c2-checkout" className="block text-[11px] font-bold text-[#64748B] mb-1">المغادرة</label>
-                <div className="relative rounded-xl has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-[#0059FF]">
-                  <div className="w-full min-h-[50px] p-2.5 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl flex items-center justify-between pointer-events-none text-xs font-bold">
-                    <span className={checkOut ? 'text-[#0F172A]' : 'text-[#94A3B8]'}>
-                      {checkOut ? formatArabicDate(checkOut) : 'حدد تاريخ المغادرة'}
-                    </span>
-                    <Calendar className="w-4 h-4 text-[#64748B] shrink-0" />
-                  </div>
+                <label htmlFor="c2-checkout" className="block text-[11px] font-bold text-[#64748B] mb-1">
+                  المغادرة
+                </label>
+                <div className="relative w-full min-h-[50px] p-2.5 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl flex items-center justify-between text-xs font-bold text-[#0F172A] focus-within:border-[#0059FF] focus-within:ring-2 focus-within:ring-[#0059FF]/15">
+                  <span className={checkOut ? 'text-[#0F172A]' : 'text-[#94A3B8]'}>
+                    {checkOut ? formatArabicDate(checkOut) : 'اختر تاريخ'}
+                  </span>
                   <input
                     id="c2-checkout"
                     type="date"
@@ -252,20 +289,51 @@ export const SearchRefineScreen: React.FC<SearchRefineScreenProps> = ({
             </div>
           </section>
 
-          {/* Unit type Multi-Select */}
+          {/* Unit Type — Horizontal Scrollable Multi-Select Chips */}
           <section>
-            <MultiSelectDropdown
-              id="c2-unit-types"
-              label="نوع الوحدة"
-              icon={<Home className="w-4 h-4 text-[#0059FF]" />}
-              options={unitTypeOptions}
-              selected={unitTypes}
-              onChange={setUnitTypes}
-              placeholder="اختر أنواع الوحدات..."
-              emptySummary="كل أنواع الوحدات (اختياري)"
-              clearLabel="مسح الأنواع"
-              searchPlaceholder="ابحث عن نوع..."
-            />
+            <div className="flex items-center justify-between mb-1.5">
+              <div className="flex items-center gap-1.5 text-[13px] font-bold text-[#0F172A]">
+                <Home className="w-4 h-4 text-[#0059FF]" />
+                <span>نوع الوحدة</span>
+              </div>
+              {!isAllUnitTypesSelected && unitTypes.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setUnitTypes([])}
+                  className="min-h-[44px] px-2 text-xs font-bold text-rose-600 hover:text-rose-700 flex items-center justify-center transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-500/40 rounded-lg"
+                >
+                  مسح الأنواع
+                </button>
+              )}
+            </div>
+
+            {/* Horizontal scrollable chip row */}
+            <div
+              className="flex items-center gap-2 overflow-x-auto pb-1.5 pt-0.5 -mx-1 px-1 scroll-smooth"
+              style={{ WebkitOverflowScrolling: 'touch', scrollbarWidth: 'none' }}
+              role="group"
+              aria-label="نوع الوحدة"
+            >
+              {unitTypeChips.map((chip) => {
+                const isSelected = chip.id === 'ALL' ? isAllUnitTypesSelected : unitTypes.includes(chip.id);
+                return (
+                  <button
+                    key={chip.id}
+                    id={`c2-unit-type-chip-${chip.id.toLowerCase()}`}
+                    type="button"
+                    onClick={() => handleToggleUnitType(chip.id)}
+                    aria-pressed={isSelected}
+                    className={`min-h-[44px] px-4 rounded-xl text-xs font-bold shrink-0 transition-all flex items-center justify-center focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0059FF]/40 active:scale-95 ${
+                      isSelected
+                        ? 'bg-[#0059FF] text-white shadow-xs border border-[#0059FF]'
+                        : 'bg-[#F8FAFC] text-[#0F172A] border border-[#E2E8F0] hover:bg-slate-100'
+                    }`}
+                  >
+                    <span>{chip.label}</span>
+                  </button>
+                );
+              })}
+            </div>
           </section>
 
           {/* Max price — Dynamic drag slider derived from public inventory ceiling */}
@@ -309,7 +377,7 @@ export const SearchRefineScreen: React.FC<SearchRefineScreenProps> = ({
                 value={sliderValue}
                 onChange={(e) => handleSliderChange(Number(e.target.value))}
                 aria-label="الحد الأقصى للسعر"
-                className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-[#0059FF]"
+                className="w-full min-h-[44px] py-4 bg-transparent cursor-pointer accent-[#0059FF]"
               />
 
               <div className="flex items-center justify-between text-[11px] font-bold text-[#94A3B8]">

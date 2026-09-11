@@ -36,11 +36,13 @@ const intentChips = (intent: SearchIntent): Array<{ icon: 'pin' | 'cal' | 'users
 
   const dests = Array.isArray(intent.destinations) && intent.destinations.length > 0
     ? intent.destinations
-    : (intent.destination && intent.destination.trim() !== '' ? [intent.destination.trim()] : []);
+    : (intent.destination ? [intent.destination] : []);
   if (dests.length === 1) {
     chips.push({ icon: 'pin', text: dests[0] });
-  } else if (dests.length > 1) {
-    chips.push({ icon: 'pin', text: `${dests[0]} + ${dests.length - 1}` });
+  } else if (dests.length === 2) {
+    chips.push({ icon: 'pin', text: `${dests[0]} + 1` });
+  } else if (dests.length > 2) {
+    chips.push({ icon: 'pin', text: `${dests.length} وجهات محددة` });
   }
 
   if (intent.checkIn !== '' && intent.checkOut !== '') {
@@ -54,8 +56,12 @@ const intentChips = (intent: SearchIntent): Array<{ icon: 'pin' | 'cal' | 'users
     ? intent.unitTypes.filter(t => t !== 'ALL')
     : (intent.unitType && intent.unitType !== 'ALL' ? [intent.unitType] : []);
   if (types.length === 1) {
-    chips.push({ icon: 'home', text: getPropertyTypeLabel(types[0]) });
-  } else if (types.length > 1) {
+    const l = types[0] === 'APARTMENT' ? 'شقة' : getPropertyTypeLabel(types[0]);
+    chips.push({ icon: 'home', text: l });
+  } else if (types.length === 2) {
+    const l1 = types[0] === 'APARTMENT' ? 'شقة' : getPropertyTypeLabel(types[0]);
+    chips.push({ icon: 'home', text: `${l1} + 1` });
+  } else if (types.length > 2) {
     chips.push({ icon: 'home', text: `${types.length} أنواع وحدات` });
   }
 

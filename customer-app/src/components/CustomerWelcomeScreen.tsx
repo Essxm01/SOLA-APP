@@ -52,10 +52,10 @@ export const CustomerWelcomeScreen: React.FC<CustomerWelcomeScreenProps> = ({
             className="w-full h-full object-cover"
           />
 
-          {/* Top bar: Skip — overlaid on hero, >=44px touch target, glassmorphism chip */}
+          {/* Top bar: Skip — free text over hero, >=44px tap target, no button styling */}
           <button
             onClick={onGuestBrowse}
-            className="absolute z-10 min-h-[44px] min-w-[44px] px-3.5 rounded-full bg-white/90 backdrop-blur-md text-[#0F172A] text-sm font-bold shadow-xs hover:bg-white active:scale-95 transition-all flex items-center justify-center border border-white/50"
+            className="absolute z-10 min-h-[44px] min-w-[44px] px-3 py-2 text-white text-sm sm:text-base font-bold drop-shadow-[0_1px_3px_rgba(0,0,0,0.6)] hover:opacity-90 active:opacity-75 transition-opacity flex items-center justify-center focus:outline-none"
             style={{
               top: 'max(env(safe-area-inset-top, 0px) + 12px, 12px)',
               right: '16px',
@@ -114,8 +114,8 @@ export const CustomerWelcomeScreen: React.FC<CustomerWelcomeScreenProps> = ({
           </button>
           <button
             onClick={onGuestBrowse}
-            className="w-full min-h-[44px] rounded-2xl text-[#0059FF] text-sm sm:text-[15px] font-extrabold underline
-                       decoration-2 underline-offset-[6px] hover:bg-[#F1F5F9] transition-colors
+            className="w-full min-h-[44px] rounded-2xl text-[#0F172A] text-sm sm:text-[15px] font-bold
+                       hover:bg-[#F8FAFC] active:opacity-75 transition-colors
                        focus:outline-none focus-visible:ring-4 focus-visible:ring-[#0059FF]/15 flex items-center justify-center"
           >
             تصفح كضيف

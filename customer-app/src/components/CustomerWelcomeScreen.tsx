@@ -36,32 +36,34 @@ export const CustomerWelcomeScreen: React.FC<CustomerWelcomeScreenProps> = ({
       aria-label="مرحبًا بك في كونفرم"
     >
       <div className="w-full max-w-md mx-auto flex-1 flex flex-col justify-between min-h-0">
-        {/* Top bar: Skip — explicit exit, >=44px touch target */}
-        <div className="flex justify-start px-4 pt-1 sm:pt-2 shrink-0">
-          <button
-            onClick={onGuestBrowse}
-            className="min-h-[44px] min-w-[44px] px-3.5 rounded-2xl text-sm font-bold text-[#475569] hover:bg-[#F1F5F9] transition-colors flex items-center justify-center"
-            aria-label="تخطي والتصفح كضيف"
-          >
-            تخطي
-          </button>
-        </div>
-
-        {/* Editorial hospitality visual — licensed KONFRM welcome hero.
-            Flexible bounded container: adapts smoothly from 360x640 up to 430x932
-            without pushing CTAs below the viewport fold. */}
+        {/* Top visual hero — full-width, dominant hospitality anchor.
+            Visually fills the upper section of the screen (image-led, not white-space-led)
+            with subtle bottom rounding and object-cover cropping. */}
         <div
-          className="w-full px-4 shrink min-h-[120px] flex items-center justify-center overflow-hidden"
+          className="w-full relative shrink-0 overflow-hidden rounded-b-3xl"
           style={{
-            height: 'clamp(130px, 29dvh, 360px)',
+            height: 'clamp(200px, 38dvh, 360px)',
           }}
         >
           <img
             src="/welcome-hero.jpg"
             alt=""
             aria-hidden="true"
-            className="w-full h-full object-cover rounded-3xl"
+            className="w-full h-full object-cover"
           />
+
+          {/* Top bar: Skip — overlaid on hero, >=44px touch target, glassmorphism chip */}
+          <button
+            onClick={onGuestBrowse}
+            className="absolute z-10 min-h-[44px] min-w-[44px] px-3.5 rounded-full bg-white/90 backdrop-blur-md text-[#0F172A] text-sm font-bold shadow-xs hover:bg-white active:scale-95 transition-all flex items-center justify-center border border-white/50"
+            style={{
+              top: 'max(env(safe-area-inset-top, 0px) + 12px, 12px)',
+              right: '16px',
+            }}
+            aria-label="تخطي والتصفح كضيف"
+          >
+            تخطي
+          </button>
         </div>
 
         {/* Middle content: Brand mark + headline + truthful copy */}

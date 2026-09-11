@@ -200,12 +200,12 @@ assertEqual(validateStayRange(D('2026-12-20'), D('2026-12-20')).ok, false, 'same
   assert(/^\d{4}-\d{2}-\d{2}$/.test(today), `getLocalTodayISO returned valid ISO date: ${today}`);
 }
 
-// 16. computePriceSliderCeiling: rounded up to next 1000 EGP
+// 16. computePriceSliderCeiling: rounded up to next 1000 EGP, null on no/invalid price
 {
   assertEqual(computePriceSliderCeiling(7500), 8000, '7500 -> 8000');
   assertEqual(computePriceSliderCeiling(30000), 31000, '30000 -> 31000');
-  assertEqual(computePriceSliderCeiling(0), 30000, '0 -> fallback 30000');
-  assertEqual(computePriceSliderCeiling(-5), 30000, 'negative -> fallback 30000');
+  assertEqual(computePriceSliderCeiling(0), null, '0 -> null');
+  assertEqual(computePriceSliderCeiling(-5), null, 'negative -> null');
 }
 
 // 17. extractFilterMetadata: extracts unique destinations, unit types, max price
@@ -248,6 +248,15 @@ assertEqual(validateStayRange(D('2026-12-20'), D('2026-12-20')).ok, false, 'same
   assert(unitTypeValues.includes('CHALET'), 'includes CHALET');
   assert(unitTypeValues.includes('VILLA'), 'includes VILLA');
   assertEqual(unitTypeValues.length, 2, 'only 2 unit types present');
+}
+
+// 17b. extractFilterMetadata: empty inventory yields 0 destinations, 0 unit types, null price ceiling
+{
+  const emptyMeta = extractFilterMetadata([]);
+  assertEqual(emptyMeta.availableDestinations.length, 0, 'empty destinations length 0');
+  assertEqual(emptyMeta.availableUnitTypes.length, 0, 'empty unit types length 0');
+  assertEqual(emptyMeta.maxInventoryPrice, 0, 'empty maxInventoryPrice 0');
+  assertEqual(emptyMeta.priceCeiling, null, 'empty priceCeiling null');
 }
 
 console.log('Customer search intent contract tests passed');

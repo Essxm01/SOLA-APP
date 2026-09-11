@@ -66,8 +66,8 @@ export const SearchRefineScreen: React.FC<SearchRefineScreenProps> = ({
   const datesValid = range.ok;
   const canApply = datesValid;
 
-  const priceCeiling = filterMetadata?.priceCeiling ?? 50000;
-  const sliderValue = maxPriceTouched && maxPrice > 0 ? maxPrice : priceCeiling;
+  const priceCeiling = filterMetadata?.priceCeiling ?? null;
+  const sliderValue = maxPriceTouched && maxPrice > 0 ? maxPrice : (priceCeiling ?? 0);
 
   const destinationOptions: MultiSelectOption[] = useMemo(() => {
     const list = filterMetadata?.availableDestinations ?? [];
@@ -76,20 +76,16 @@ export const SearchRefineScreen: React.FC<SearchRefineScreenProps> = ({
 
   // Unit Type Options & Horizontal Chips:
   // Inventory-backed, customer-facing canonical Arabic names.
-  // Order: الكل -> شقة -> استوديو -> شاليه -> فيلا -> other valid types
+  // When no unit types are in inventory, do not fall back to invented defaults.
   const unitTypeChips = useMemo(() => {
     const list = filterMetadata?.availableUnitTypes ?? [];
-    const source = list.length > 0
-      ? list.map((t) => ({
-          id: t.value,
-          label: t.value === 'APARTMENT' ? 'شقة' : t.label,
-        }))
-      : [
-          { id: 'APARTMENT', label: 'شقة' },
-          { id: 'STUDIO', label: 'استوديو' },
-          { id: 'CHALET', label: 'شاليه' },
-          { id: 'VILLA', label: 'فيلا' },
-        ];
+    if (list.length === 0) {
+      return [];
+    }
+    const source = list.map((t) => ({
+      id: t.value,
+      label: t.value === 'APARTMENT' ? 'شقة' : t.label,
+    }));
 
     const priorityOrder = ['APARTMENT', 'STUDIO', 'CHALET', 'VILLA', 'HOTEL_ROOM', 'OTHER'];
     const sorted = [...source].sort((a, b) => {
@@ -126,7 +122,7 @@ export const SearchRefineScreen: React.FC<SearchRefineScreenProps> = ({
   };
 
   const handleSliderChange = (newVal: number) => {
-    if (newVal >= priceCeiling) {
+    if (priceCeiling === null || newVal >= priceCeiling) {
       setMaxPrice(0);
       setMaxPriceTouched(false);
     } else {
@@ -138,6 +134,8 @@ export const SearchRefineScreen: React.FC<SearchRefineScreenProps> = ({
   const apply = () => {
     if (!canApply) return;
     const effectiveUnitTypes = unitTypes.filter((t) => t !== 'ALL');
+    const effectiveMaxPrice = priceCeiling === null ? 0 : maxPrice;
+    const effectiveMaxPriceTouched = priceCeiling === null ? false : maxPriceTouched;
     onApply({
       destination: destinations.length > 0 ? destinations[0] : '',
       destinations,
@@ -146,8 +144,8 @@ export const SearchRefineScreen: React.FC<SearchRefineScreenProps> = ({
       totalGuests,
       unitType: effectiveUnitTypes.length > 0 ? effectiveUnitTypes[0] : 'ALL',
       unitTypes: effectiveUnitTypes,
-      maxPrice,
-      maxPriceTouched,
+      maxPrice: effectiveMaxPrice,
+      maxPriceTouched: effectiveMaxPriceTouched,
     });
   };
 
@@ -296,7 +294,7 @@ export const SearchRefineScreen: React.FC<SearchRefineScreenProps> = ({
                 <Home className="w-4 h-4 text-[#0059FF]" />
                 <span>نوع الوحدة</span>
               </div>
-              {!isAllUnitTypesSelected && unitTypes.length > 0 && (
+              {unitTypeChips.length > 0 && !isAllUnitTypesSelected && unitTypes.length > 0 && (
                 <button
                   type="button"
                   onClick={() => setUnitTypes([])}
@@ -307,33 +305,39 @@ export const SearchRefineScreen: React.FC<SearchRefineScreenProps> = ({
               )}
             </div>
 
-            {/* Horizontal scrollable chip row */}
-            <div
-              className="flex items-center gap-2 overflow-x-auto pb-1.5 pt-0.5 -mx-1 px-1 scroll-smooth"
-              style={{ WebkitOverflowScrolling: 'touch', scrollbarWidth: 'none' }}
-              role="group"
-              aria-label="نوع الوحدة"
-            >
-              {unitTypeChips.map((chip) => {
-                const isSelected = chip.id === 'ALL' ? isAllUnitTypesSelected : unitTypes.includes(chip.id);
-                return (
-                  <button
-                    key={chip.id}
-                    id={`c2-unit-type-chip-${chip.id.toLowerCase()}`}
-                    type="button"
-                    onClick={() => handleToggleUnitType(chip.id)}
-                    aria-pressed={isSelected}
-                    className={`min-h-[44px] px-4 rounded-xl text-xs font-bold shrink-0 transition-all flex items-center justify-center focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0059FF]/40 active:scale-95 ${
-                      isSelected
-                        ? 'bg-[#0059FF] text-white shadow-xs border border-[#0059FF]'
-                        : 'bg-[#F8FAFC] text-[#0F172A] border border-[#E2E8F0] hover:bg-slate-100'
-                    }`}
-                  >
-                    <span>{chip.label}</span>
-                  </button>
-                );
-              })}
-            </div>
+            {unitTypeChips.length === 0 ? (
+              <div className="w-full min-h-[50px] p-3 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl flex items-center justify-between text-xs font-bold text-[#94A3B8]">
+                لا تتوفر أنواع وحدات حالياً في الإقامات المنشورة.
+              </div>
+            ) : (
+              /* Horizontal scrollable chip row */
+              <div
+                className="flex items-center gap-2 overflow-x-auto pb-1.5 pt-0.5 -mx-1 px-1 scroll-smooth"
+                style={{ WebkitOverflowScrolling: 'touch', scrollbarWidth: 'none' }}
+                role="group"
+                aria-label="نوع الوحدة"
+              >
+                {unitTypeChips.map((chip) => {
+                  const isSelected = chip.id === 'ALL' ? isAllUnitTypesSelected : unitTypes.includes(chip.id);
+                  return (
+                    <button
+                      key={chip.id}
+                      id={`c2-unit-type-chip-${chip.id.toLowerCase()}`}
+                      type="button"
+                      onClick={() => handleToggleUnitType(chip.id)}
+                      aria-pressed={isSelected}
+                      className={`min-h-[44px] px-4 rounded-xl text-xs font-bold shrink-0 transition-all flex items-center justify-center focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0059FF]/40 active:scale-95 ${
+                        isSelected
+                          ? 'bg-[#0059FF] text-white shadow-xs border border-[#0059FF]'
+                          : 'bg-[#F8FAFC] text-[#0F172A] border border-[#E2E8F0] hover:bg-slate-100'
+                      }`}
+                    >
+                      <span>{chip.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </section>
 
           {/* Max price — Dynamic drag slider derived from public inventory ceiling */}
@@ -342,7 +346,7 @@ export const SearchRefineScreen: React.FC<SearchRefineScreenProps> = ({
               <div className="flex items-center gap-1.5 text-[#0F172A]">
                 <span>الحد الأقصى للسعر في الليلة</span>
               </div>
-              {maxPriceTouched && maxPrice > 0 ? (
+              {priceCeiling !== null && maxPriceTouched && maxPrice > 0 ? (
                 <button
                   type="button"
                   onClick={() => {
@@ -358,36 +362,44 @@ export const SearchRefineScreen: React.FC<SearchRefineScreenProps> = ({
               )}
             </div>
 
-            <div className="p-3.5 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-[#64748B]">السقف المحدد:</span>
-                <span className="text-sm font-bold text-[#0F172A]">
-                  {maxPriceTouched && maxPrice > 0
-                    ? `${maxPrice.toLocaleString('ar-EG')} ج.م / ليلة`
-                    : 'بدون حد أقصى'}
-                </span>
+            {priceCeiling === null ? (
+              <div className="w-full min-h-[50px] p-3 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl flex items-center justify-between text-xs font-bold text-[#94A3B8]">
+                لا يتوفر حد أقصى للأسعار لعدم وجود إقامات منشورة حالياً.
               </div>
+            ) : (
+              <div className="p-3.5 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-[#64748B]">السقف المحدد:</span>
+                  <span className="text-sm font-bold text-[#0F172A]">
+                    {maxPriceTouched && maxPrice > 0
+                      ? `${maxPrice.toLocaleString('ar-EG')} ج.م / ليلة`
+                      : 'بدون حد أقصى'}
+                  </span>
+                </div>
 
-              <input
-                id="c2-maxprice-slider"
-                type="range"
-                min={1000}
-                max={priceCeiling}
-                step={1000}
-                value={sliderValue}
-                onChange={(e) => handleSliderChange(Number(e.target.value))}
-                aria-label="الحد الأقصى للسعر"
-                className="w-full min-h-[44px] py-4 bg-transparent cursor-pointer accent-[#0059FF]"
-              />
+                <input
+                  id="c2-maxprice-slider"
+                  type="range"
+                  min={1000}
+                  max={priceCeiling}
+                  step={1000}
+                  value={sliderValue}
+                  onChange={(e) => handleSliderChange(Number(e.target.value))}
+                  aria-label="الحد الأقصى للسعر"
+                  className="w-full min-h-[44px] py-4 bg-transparent cursor-pointer accent-[#0059FF]"
+                />
 
-              <div className="flex items-center justify-between text-[11px] font-bold text-[#94A3B8]">
-                <span>1,000 ج.م</span>
-                <span>{priceCeiling.toLocaleString('ar-EG')} ج.م (بدون حد)</span>
+                <div className="flex items-center justify-between text-[11px] font-bold text-[#94A3B8]">
+                  <span>1,000 ج.م</span>
+                  <span>{priceCeiling.toLocaleString('ar-EG')} ج.م (بدون حد)</span>
+                </div>
               </div>
-            </div>
+            )}
 
             <p className="text-[11px] font-bold text-[#64748B] mt-1.5">
-              {maxPriceTouched && maxPrice > 0
+              {priceCeiling === null
+                ? 'لا توجد إقامات منشورة حالياً لتحديد نطاق الأسعار.'
+                : maxPriceTouched && maxPrice > 0
                 ? `سيتم عرض الوحدات التي لا يتجاوز سعرها ${maxPrice.toLocaleString('ar-EG')} ج.م في الليلة.`
                 : 'حرك المؤشر لتحديد سقف أقصى للسعر، أو اتركه في النهاية لعرض كل الأسعار.'}
             </p>

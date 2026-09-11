@@ -64,9 +64,9 @@ export function getLocalTodayISO(): string {
   return `${year}-${month}-${day}`;
 }
 
-export function computePriceSliderCeiling(maxPrice: number): number {
+export function computePriceSliderCeiling(maxPrice: number): number | null {
   if (!Number.isFinite(maxPrice) || maxPrice <= 0) {
-    return 30000;
+    return null;
   }
   return (Math.floor(maxPrice / 1000) + 1) * 1000;
 }
@@ -75,7 +75,7 @@ export interface FilterMetadata {
   availableDestinations: string[];
   availableUnitTypes: { value: string; label: string }[];
   maxInventoryPrice: number;
-  priceCeiling: number;
+  priceCeiling: number | null;
 }
 
 export function extractFilterMetadata(properties: any[]): FilterMetadata {

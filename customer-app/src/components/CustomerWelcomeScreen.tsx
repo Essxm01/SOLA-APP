@@ -37,10 +37,10 @@ export const CustomerWelcomeScreen: React.FC<CustomerWelcomeScreenProps> = ({
     >
       <div className="w-full max-w-md mx-auto flex-1 flex flex-col justify-between min-h-0">
         {/* Top visual hero — full-width, dominant hospitality anchor.
-            Visually fills the upper section of the screen (image-led, not white-space-led)
-            with subtle bottom rounding and object-cover cropping. */}
+            The lower part dissolves smoothly via a multi-stop eased white gradient
+            into the pure white content background, eliminating any hard boundary. */}
         <div
-          className="w-full relative shrink-0 overflow-hidden rounded-b-3xl"
+          className="w-full relative shrink-0 overflow-hidden"
           style={{
             height: 'clamp(200px, 38dvh, 360px)',
           }}
@@ -50,6 +50,16 @@ export const CustomerWelcomeScreen: React.FC<CustomerWelcomeScreenProps> = ({
             alt=""
             aria-hidden="true"
             className="w-full h-full object-cover"
+          />
+
+          {/* Smooth photographic blend: gradual fade from transparent to pure white */}
+          <div
+            aria-hidden="true"
+            className="absolute inset-x-0 bottom-0 pointer-events-none"
+            style={{
+              height: '40%',
+              background: 'linear-gradient(to bottom, rgba(255, 255, 255, 0) 0%, rgba(255, 255, 255, 0.05) 20%, rgba(255, 255, 255, 0.18) 40%, rgba(255, 255, 255, 0.40) 60%, rgba(255, 255, 255, 0.70) 78%, rgba(255, 255, 255, 0.92) 88%, #ffffff 96%, #ffffff 100%)',
+            }}
           />
 
           {/* Top bar: Skip — free text over hero, >=44px tap target, no button styling */}

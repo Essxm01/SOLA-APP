@@ -1,5 +1,5 @@
 import React from 'react';
-import { MapPin, Users, Bed, Bath, ShieldCheck, Star, Heart } from 'lucide-react';
+import { MapPin, Users, Bed, Bath, ShieldCheck, Heart } from 'lucide-react';
 
 export interface CustomerPropertyItem {
   id: string;
@@ -15,7 +15,6 @@ export interface CustomerPropertyItem {
   basePricePerNight: number;
   currency?: string;
   images?: string[];
-  rating?: number;
 }
 
 interface PropertyCardProps {
@@ -100,17 +99,18 @@ export const PropertyCard: React.FC<PropertyCardProps> = ({
       {/* Content Info */}
       <div className="p-3.5 flex-1 flex flex-col justify-between">
         <div>
-          {/* Location & Rating Row */}
-          <div className="flex items-center justify-between text-slate-500 text-xs font-bold mb-1">
-            <div className="flex items-center gap-1">
+          {/* Location row — only canonical geography; omitted entirely when
+              the canonical record has none (address='' is valid and must not
+              be replaced with an invented location). No rating is rendered:
+              there is no canonical review data yet. */}
+          {(property.address?.trim() || property.resortName?.trim() || property.region?.trim()) ? (
+            <div className="flex items-center gap-1 text-slate-500 text-xs font-bold mb-1">
               <MapPin className="w-3.5 h-3.5 text-[#0059FF] shrink-0" />
-              <span className="truncate max-w-[200px]">{property.address || property.resortName || property.region || 'الساحل الشمالي'}</span>
+              <span className="truncate max-w-[240px]">
+                {(property.address?.trim() || property.resortName?.trim() || property.region?.trim()) as string}
+              </span>
             </div>
-            <div className="flex items-center gap-1 text-slate-800 text-[11px] font-black">
-              <Star className="w-3.5 h-3.5 fill-[#FFD700] text-[#FFD700]" />
-              <span>4.9</span>
-            </div>
-          </div>
+          ) : null}
 
           {/* Title */}
           <h3 className="font-black text-slate-900 text-sm leading-snug line-clamp-2 mb-2 group-hover:text-[#0059FF] transition-colors">

@@ -133,12 +133,19 @@ export const MultiSelectDropdown: React.FC<MultiSelectDropdownProps> = ({
             {options.map((opt) => {
               const isSelected = selected.includes(opt.id);
               return (
-                <div
+                <button
                   key={opt.id}
+                  type="button"
                   role="option"
                   aria-selected={isSelected}
                   onClick={() => toggleOption(opt.id)}
-                  className={`min-h-[44px] w-full px-3 py-2 rounded-xl flex items-center justify-between cursor-pointer transition-colors ${
+                  onKeyDown={(e) => {
+                    if (e.key === ' ' || e.key === 'Enter') {
+                      e.preventDefault();
+                      toggleOption(opt.id);
+                    }
+                  }}
+                  className={`min-h-[44px] w-full px-3 py-2 rounded-xl flex items-center justify-between cursor-pointer transition-colors text-right focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0059FF]/40 ${
                     isSelected ? 'bg-blue-50/70 text-[#0059FF]' : 'hover:bg-slate-50 text-[#0F172A]'
                   }`}
                 >
@@ -152,7 +159,7 @@ export const MultiSelectDropdown: React.FC<MultiSelectDropdownProps> = ({
                   >
                     {isSelected && <Check className="w-3.5 h-3.5 stroke-[3]" />}
                   </div>
-                </div>
+                </button>
               );
             })}
           </div>

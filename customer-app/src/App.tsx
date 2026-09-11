@@ -97,6 +97,7 @@ export function App() {
   // C2 discovery stack: Explore → Search & Refine → Results. State-driven
   // (no router); intent survives back navigation and property-detail round-trips.
   const [discoveryView, setDiscoveryView] = useState<'EXPLORE' | 'SEARCH_REFINE' | 'RESULTS'>('EXPLORE');
+  const [refineOrigin, setRefineOrigin] = useState<'EXPLORE' | 'RESULTS'>('EXPLORE');
   const [searchIntent, setSearchIntent] = useState<SearchIntent>(EMPTY_SEARCH_INTENT);
   const [searchResults, setSearchResults] = useState<CustomerPropertyItem[]>([]);
   const [resultsLoadState, setResultsLoadState] = useState<ResultsLoadState>('LOADING');
@@ -203,6 +204,14 @@ export function App() {
     setDiscoveryView('EXPLORE');
     setSearchIntent(EMPTY_SEARCH_INTENT);
     setActiveDestination('الكل');
+  };
+
+  const handleRefineClose = () => {
+    if (refineOrigin === 'RESULTS') {
+      setDiscoveryView('RESULTS');
+    } else {
+      handleBackToExplore();
+    }
   };
 
   // Fetch Real Customer Profile (AUTH-03 & P2.2)
@@ -638,11 +647,14 @@ export function App() {
           <SearchRefineScreen
             initialIntent={searchIntent}
             filterMetadata={filterMetadata}
+            metadataLoadState={propertyLoadState}
+            metadataError={propertyLoadError}
+            onRetryMetadata={() => void fetchProperties()}
             onApply={handleSearchApply}
-            onClose={() => setDiscoveryView('EXPLORE')}
+            onClose={handleRefineClose}
           />
         )}
-        {discoveryView === 'RESULTS' && !selectedProperty && (
+        {discoveryView === 'RESULTS' && (
           <SearchResultsScreen
             intent={searchIntent}
             items={searchResults}
@@ -651,7 +663,10 @@ export function App() {
             favoritesActionError={favoritesActionError}
             onDismissFavoritesError={() => setFavoritesActionError(null)}
             onRetry={() => void fetchSearchResults(searchIntent)}
-            onEditSearch={() => setDiscoveryView('SEARCH_REFINE')}
+            onEditSearch={() => {
+              setRefineOrigin('RESULTS');
+              setDiscoveryView('SEARCH_REFINE');
+            }}
             onBackToExplore={handleBackToExplore}
             onSelectProperty={(id) => {
               const item = searchResults.find((p) => p.id === id);
@@ -713,7 +728,10 @@ export function App() {
           <div>
             {/* Mobile Coastal Search & Destination Chips */}
             <CoastalSearchBar
-              onOpenSearch={() => setDiscoveryView('SEARCH_REFINE')}
+              onOpenSearch={() => {
+                setRefineOrigin('EXPLORE');
+                setDiscoveryView('SEARCH_REFINE');
+              }}
               activeDestination={activeDestination}
               onSelectDestinationChip={handleSelectDestinationChip}
               intent={searchIntent}
@@ -1134,6 +1152,7 @@ export function App() {
         <PropertyDetailModal
           property={selectedProperty}
           authToken={authToken}
+          initialSearchIntent={searchIntent}
           onClose={() => setSelectedProperty(null)}
           onInitiateBooking={handleInitiateBooking}
           onRequireAuth={(context) => {
@@ -1195,10 +1214,18 @@ export function App() {
           depositAmount={activeBooking.depositAmountEgp}
           onGoToBookings={() => {
             setShowSuccessModal(false);
+            setSelectedProperty(null);
+            setDiscoveryView('EXPLORE');
             setIsEditingAccount(false);
             setActiveTab('BOOKINGS');
+            setSearchIntent(EMPTY_SEARCH_INTENT);
+            void fetchBookings(authToken);
           }}
-          onClose={() => setShowSuccessModal(false)}
+          onClose={() => {
+            setShowSuccessModal(false);
+            setSelectedProperty(null);
+            setDiscoveryView('EXPLORE');
+          }}
         />
       )}
 

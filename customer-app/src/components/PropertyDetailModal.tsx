@@ -76,6 +76,7 @@ interface PropertyDetailModalProps {
   onInitiateBooking: (prop: CustomerPropertyItem, checkIn: string, checkOut: string, guests: number) => Promise<void>;
   onRequireAuth: (interceptedAction: { propertyId: string; checkIn: string; checkOut: string; guests: number }) => void;
   restoredBookingIntent?: { propertyId: string; checkIn: string; checkOut: string; guests: number } | null;
+  initialSearchIntent?: { checkIn?: string; checkOut?: string; totalGuests?: number } | null;
   restoreBookingReview?: boolean;
   onBookingReviewRestored?: () => void;
   isFavorite?: boolean;
@@ -103,6 +104,7 @@ export const PropertyDetailModal: React.FC<PropertyDetailModalProps> = ({
   onInitiateBooking,
   onRequireAuth,
   restoredBookingIntent,
+  initialSearchIntent,
   restoreBookingReview = false,
   onBookingReviewRestored,
   isFavorite = false,
@@ -143,9 +145,18 @@ export const PropertyDetailModal: React.FC<PropertyDetailModalProps> = ({
   }, [fetchDetail]);
 
   // Booking Selection State
-  const [checkIn, setCheckIn] = useState<string | null>(restoredBookingIntent?.checkIn || null);
-  const [checkOut, setCheckOut] = useState<string | null>(restoredBookingIntent?.checkOut || null);
-  const [guests, setGuests] = useState<number>(restoredBookingIntent?.guests || 1);
+  const [checkIn, setCheckIn] = useState<string | null>(
+    restoredBookingIntent?.checkIn || (initialSearchIntent?.checkIn ? initialSearchIntent.checkIn : null)
+  );
+  const [checkOut, setCheckOut] = useState<string | null>(
+    restoredBookingIntent?.checkOut || (initialSearchIntent?.checkOut ? initialSearchIntent.checkOut : null)
+  );
+  const [guests, setGuests] = useState<number>(
+    restoredBookingIntent?.guests ||
+      (initialSearchIntent?.totalGuests && initialSearchIntent.totalGuests > 0
+        ? clampGuests(initialSearchIntent.totalGuests, property.maxGuests || 1)
+        : 1)
+  );
 
   const isDetailLoaded = detail !== null;
 

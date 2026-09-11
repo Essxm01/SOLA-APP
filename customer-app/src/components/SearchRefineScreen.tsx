@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { ArrowRight, MapPin, Calendar, Users, Home } from 'lucide-react';
+import { ArrowRight, MapPin, Calendar, Users, Home, Loader2, AlertCircle, RefreshCw } from 'lucide-react';
 import { MultiSelectDropdown, type MultiSelectOption } from './MultiSelectDropdown';
 
 // KONFRM Customer Search & Refine — Screen 04 (Phase 5 / C2).
@@ -30,6 +30,9 @@ const ERROR_COPY: Record<string, string> = {
 export interface SearchRefineScreenProps {
   initialIntent: SearchIntent;
   filterMetadata?: FilterMetadata;
+  metadataLoadState?: 'LOADING' | 'SUCCESS' | 'ERROR';
+  metadataError?: string | null;
+  onRetryMetadata?: () => void;
   onApply: (intent: SearchIntent) => void;
   onClose: () => void;
 }
@@ -37,6 +40,9 @@ export interface SearchRefineScreenProps {
 export const SearchRefineScreen: React.FC<SearchRefineScreenProps> = ({
   initialIntent,
   filterMetadata,
+  metadataLoadState = 'SUCCESS',
+  metadataError,
+  onRetryMetadata,
   onApply,
   onClose,
 }) => {
@@ -167,17 +173,55 @@ export const SearchRefineScreen: React.FC<SearchRefineScreenProps> = ({
         <div className="px-4 pt-4 space-y-6">
           {/* Destination Multi-Select Dropdown — Pure Tap-to-Select, Zero Typing */}
           <section>
-            <MultiSelectDropdown
-              id="c2-destinations"
-              label="الوجهة أو القرية"
-              icon={<MapPin className="w-4 h-4 text-[#0059FF]" />}
-              options={destinationOptions}
-              selected={destinations}
-              onChange={setDestinations}
-              placeholder="اختر الوجهات..."
-              emptySummary="كل الوجهات (اختياري)"
-              clearLabel="مسح الوجهات"
-            />
+            {metadataLoadState === 'LOADING' ? (
+              <div>
+                <div className="flex items-center gap-1.5 text-[13px] font-bold text-[#0F172A] mb-1.5">
+                  <MapPin className="w-4 h-4 text-[#0059FF]" />
+                  <span>الوجهة أو القرية</span>
+                </div>
+                <div className="w-full min-h-[50px] p-3 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl flex items-center justify-between text-xs font-bold text-[#64748B]">
+                  <span className="flex items-center gap-2">
+                    <Loader2 className="w-4 h-4 animate-spin text-[#0059FF]" />
+                    <span>جاري تحميل الوجهات المتاحة...</span>
+                  </span>
+                </div>
+              </div>
+            ) : metadataLoadState === 'ERROR' ? (
+              <div>
+                <div className="flex items-center gap-1.5 text-[13px] font-bold text-[#0F172A] mb-1.5">
+                  <MapPin className="w-4 h-4 text-[#0059FF]" />
+                  <span>الوجهة أو القرية</span>
+                </div>
+                <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl flex items-center justify-between text-xs font-bold text-rose-800">
+                  <span className="flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                    <span>{metadataError || 'تعذر تحميل الوجهات من الخادم.'}</span>
+                  </span>
+                  {onRetryMetadata && (
+                    <button
+                      type="button"
+                      onClick={onRetryMetadata}
+                      className="min-h-[44px] px-3 py-1 bg-rose-600 text-white rounded-lg text-xs font-bold hover:bg-rose-700 transition-colors flex items-center gap-1 shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-500/40"
+                    >
+                      <RefreshCw className="w-3.5 h-3.5" />
+                      <span>إعادة المحاولة</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <MultiSelectDropdown
+                id="c2-destinations"
+                label="الوجهة أو القرية"
+                icon={<MapPin className="w-4 h-4 text-[#0059FF]" />}
+                options={destinationOptions}
+                selected={destinations}
+                onChange={setDestinations}
+                placeholder="اختر الوجهات..."
+                emptySummary="كل الوجهات (اختياري)"
+                clearLabel="مسح الوجهات"
+              />
+            )}
           </section>
 
           {/* Dates */}
@@ -294,7 +338,7 @@ export const SearchRefineScreen: React.FC<SearchRefineScreenProps> = ({
                 <Home className="w-4 h-4 text-[#0059FF]" />
                 <span>نوع الوحدة</span>
               </div>
-              {unitTypeChips.length > 0 && !isAllUnitTypesSelected && unitTypes.length > 0 && (
+              {metadataLoadState === 'SUCCESS' && unitTypeChips.length > 0 && !isAllUnitTypesSelected && unitTypes.length > 0 && (
                 <button
                   type="button"
                   onClick={() => setUnitTypes([])}
@@ -305,7 +349,31 @@ export const SearchRefineScreen: React.FC<SearchRefineScreenProps> = ({
               )}
             </div>
 
-            {unitTypeChips.length === 0 ? (
+            {metadataLoadState === 'LOADING' ? (
+              <div className="w-full min-h-[50px] p-3 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl flex items-center justify-between text-xs font-bold text-[#64748B]">
+                <span className="flex items-center gap-2">
+                  <Loader2 className="w-4 h-4 animate-spin text-[#0059FF]" />
+                  <span>جاري تحميل أنواع الوحدات...</span>
+                </span>
+              </div>
+            ) : metadataLoadState === 'ERROR' ? (
+              <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl flex items-center justify-between text-xs font-bold text-rose-800">
+                <span className="flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                  <span>{metadataError || 'تعذر تحميل أنواع الوحدات من الخادم.'}</span>
+                </span>
+                {onRetryMetadata && (
+                  <button
+                    type="button"
+                    onClick={onRetryMetadata}
+                    className="min-h-[44px] px-3 py-1 bg-rose-600 text-white rounded-lg text-xs font-bold hover:bg-rose-700 transition-colors flex items-center gap-1 shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-500/40"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5" />
+                    <span>إعادة المحاولة</span>
+                  </button>
+                )}
+              </div>
+            ) : unitTypeChips.length === 0 ? (
               <div className="w-full min-h-[50px] p-3 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl flex items-center justify-between text-xs font-bold text-[#94A3B8]">
                 لا تتوفر أنواع وحدات حالياً في الإقامات المنشورة.
               </div>
@@ -346,7 +414,7 @@ export const SearchRefineScreen: React.FC<SearchRefineScreenProps> = ({
               <div className="flex items-center gap-1.5 text-[#0F172A]">
                 <span>الحد الأقصى للسعر في الليلة</span>
               </div>
-              {priceCeiling !== null && maxPriceTouched && maxPrice > 0 ? (
+              {metadataLoadState === 'SUCCESS' && priceCeiling !== null && maxPriceTouched && maxPrice > 0 ? (
                 <button
                   type="button"
                   onClick={() => {
@@ -358,11 +426,37 @@ export const SearchRefineScreen: React.FC<SearchRefineScreenProps> = ({
                   إلغاء الحد (بدون حد)
                 </button>
               ) : (
-                <span className="text-xs font-bold text-[#64748B]">بدون حد</span>
+                <span className="text-xs font-bold text-[#64748B]">
+                  {metadataLoadState === 'LOADING' ? 'جاري التحميل...' : 'بدون حد'}
+                </span>
               )}
             </div>
 
-            {priceCeiling === null ? (
+            {metadataLoadState === 'LOADING' ? (
+              <div className="w-full min-h-[50px] p-3 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl flex items-center justify-between text-xs font-bold text-[#64748B]">
+                <span className="flex items-center gap-2">
+                  <Loader2 className="w-4 h-4 animate-spin text-[#0059FF]" />
+                  <span>جاري تحميل بيانات الأسعار...</span>
+                </span>
+              </div>
+            ) : metadataLoadState === 'ERROR' ? (
+              <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl flex items-center justify-between text-xs font-bold text-rose-800">
+                <span className="flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                  <span>{metadataError || 'تعذر تحميل بيانات الأسعار من الخادم.'}</span>
+                </span>
+                {onRetryMetadata && (
+                  <button
+                    type="button"
+                    onClick={onRetryMetadata}
+                    className="min-h-[44px] px-3 py-1 bg-rose-600 text-white rounded-lg text-xs font-bold hover:bg-rose-700 transition-colors flex items-center gap-1 shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-500/40"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5" />
+                    <span>إعادة المحاولة</span>
+                  </button>
+                )}
+              </div>
+            ) : priceCeiling === null ? (
               <div className="w-full min-h-[50px] p-3 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl flex items-center justify-between text-xs font-bold text-[#94A3B8]">
                 لا يتوفر حد أقصى للأسعار لعدم وجود إقامات منشورة حالياً.
               </div>
@@ -397,7 +491,11 @@ export const SearchRefineScreen: React.FC<SearchRefineScreenProps> = ({
             )}
 
             <p className="text-[11px] font-bold text-[#64748B] mt-1.5">
-              {priceCeiling === null
+              {metadataLoadState === 'LOADING'
+                ? 'جاري فحص الأسعار المتاحة...'
+                : metadataLoadState === 'ERROR'
+                ? 'تعذر تحديد نطاق الأسعار لتعذر الاتصال.'
+                : priceCeiling === null
                 ? 'لا توجد إقامات منشورة حالياً لتحديد نطاق الأسعار.'
                 : maxPriceTouched && maxPrice > 0
                 ? `سيتم عرض الوحدات التي لا يتجاوز سعرها ${maxPrice.toLocaleString('ar-EG')} ج.م في الليلة.`

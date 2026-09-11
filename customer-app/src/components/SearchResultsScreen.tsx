@@ -169,6 +169,7 @@ export const SearchResultsScreen: React.FC<SearchResultsScreenProps> = ({
               title="لا توجد نتائج مطابقة لبحثك"
               description="جرّب توسيع نطاق البحث: عدّل الوجهة أو نوع الوحدة أو عدد الأفراد أو ارفع سقف السعر."
               onReset={onEditSearch}
+              actionLabel="تعديل البحث"
             />
           )}
 
@@ -177,6 +178,7 @@ export const SearchResultsScreen: React.FC<SearchResultsScreenProps> = ({
               title="لا توجد نتائج مطابقة لبحثك"
               description="جرّب توسيع نطاق البحث: عدّل الوجهة أو نوع الوحدة أو عدد الأفراد أو ارفع سقف السعر."
               onReset={onEditSearch}
+              actionLabel="تعديل البحث"
             />
           )}
 

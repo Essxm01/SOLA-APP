@@ -8,7 +8,12 @@ export function getApiBaseUrl(): string {
   if (envUrl && typeof envUrl === 'string' && envUrl.trim().length > 0) {
     return envUrl.trim().replace(/\/+$/, '');
   }
-  return '/api/v1';
+  // Local development / proxy fallback
+  if (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
+    return '/api/v1';
+  }
+  // Cloudflare Pages previews, production, and non-local environments
+  return 'https://sola-backend-api.essxm01.workers.dev/api/v1';
 }
 
 export function getApiUrl(path: string): string {

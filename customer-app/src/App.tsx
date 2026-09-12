@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { CustomerHeader } from './components/CustomerHeader';
-import { CoastalSearchBar, SearchFilterState } from './components/CoastalSearchBar';
+import { CoastalSearchBar } from './components/CoastalSearchBar';
 import { PropertyCard, CustomerPropertyItem } from './components/PropertyCard';
 import { PropertyDetailModal } from './components/PropertyDetailModal';
 import { CustomerAuthModal, type CustomerUserProfile } from './components/CustomerAuthModal';
@@ -18,6 +18,15 @@ import { LoadingStateView, EmptyStateView, ErrorStateView } from './components/S
 import { getApiUrl } from './utils/api';
 import { fetchCanonicalCollection } from './utils/customerTruthfulState';
 import { buildPublicPropertySearchPath } from './utils/publicPropertySearch';
+import { SearchRefineScreen } from './components/SearchRefineScreen';
+import { SearchResultsScreen, type ResultsLoadState } from './components/SearchResultsScreen';
+import {
+  EMPTY_SEARCH_INTENT,
+  toPublicSearchFilters,
+  extractFilterMetadata,
+  type SearchIntent,
+  type PublicSearchFilters,
+} from './utils/searchIntent';
 import {
   fetchCustomerFavorites,
   addCustomerFavorite,
@@ -85,6 +94,16 @@ export function App() {
     hasSeenCustomerEntry() ? 'APP' : 'SPLASH'
   );
   const [selectedProperty, setSelectedProperty] = useState<CustomerPropertyItem | null>(null);
+  // C2 discovery stack: Explore → Search & Refine → Results. State-driven
+  // (no router); intent survives back navigation and property-detail round-trips.
+  const [discoveryView, setDiscoveryView] = useState<'EXPLORE' | 'SEARCH_REFINE' | 'RESULTS'>('EXPLORE');
+  const [refineOrigin, setRefineOrigin] = useState<'EXPLORE' | 'RESULTS'>('EXPLORE');
+  const [searchIntent, setSearchIntent] = useState<SearchIntent>(EMPTY_SEARCH_INTENT);
+  const [searchResults, setSearchResults] = useState<CustomerPropertyItem[]>([]);
+  const [resultsLoadState, setResultsLoadState] = useState<ResultsLoadState>('LOADING');
+  const [resultsErrorMessage, setResultsErrorMessage] = useState<string | null>(null);
+  const searchRequestIdRef = useRef<number>(0);
+  const filterMetadata = useMemo(() => extractFilterMetadata(properties), [properties]);
   const [showAuthModal, setShowAuthModal] = useState<boolean>(false);
   const [showSupportModal, setShowSupportModal] = useState<boolean>(false);
   const [showWalletModal, setShowWalletModal] = useState<boolean>(false);
@@ -110,7 +129,7 @@ export function App() {
   const [bookingsError, setBookingsError] = useState<string | null>(null);
 
   // Fetch Published Properties from API (Server-Authoritative Public Search — P2.1)
-  const fetchProperties = async (filters?: Partial<SearchFilterState>) => {
+  const fetchProperties = async (filters?: Partial<PublicSearchFilters>) => {
     setPropertyLoadState('LOADING');
     setPropertyLoadError(null);
     let path: string;
@@ -138,17 +157,60 @@ export function App() {
     fetchProperties();
   }, []);
 
-  // Server-Authoritative Search Filter Handler (P2.1)
-  const handleSearchFilters = (filters: SearchFilterState) => {
-    void fetchProperties(filters);
-  };
-
+  // Server-Authoritative Search Filter Handler (P2.1) — Explore quick chips
   const handleSelectDestinationChip = (dest: string) => {
     setActiveDestination(dest);
     if (dest === 'الكل') {
       void fetchProperties();
     } else {
       void fetchProperties({ destination: dest });
+    }
+  };
+
+  // C2 Screen 05: canonical search execution from the Search & Refine intent.
+  // Dates are intent-only and are never sent to the public search API.
+  // searchRequestIdRef ensures newer requests always win and stale responses are ignored.
+  const fetchSearchResults = async (intent: SearchIntent) => {
+    const requestId = ++searchRequestIdRef.current;
+    setResultsLoadState('LOADING');
+    setResultsErrorMessage(null);
+    try {
+      const path = buildPublicPropertySearchPath(toPublicSearchFilters(intent));
+      const result = await fetchCanonicalCollection<CustomerPropertyItem>(path);
+      if (requestId !== searchRequestIdRef.current) return;
+      if (result.kind === 'success') {
+        setSearchResults(result.data);
+        setResultsLoadState(result.data.length === 0 ? 'EMPTY' : 'LOADED');
+        return;
+      }
+      setResultsErrorMessage(result.kind === 'unauthorized'
+        ? 'تعذر تحميل نتائج البحث حالياً. حاول مرة أخرى.'
+        : result.message);
+      setResultsLoadState('ERROR');
+    } catch (err: any) {
+      if (requestId !== searchRequestIdRef.current) return;
+      setResultsErrorMessage(err?.message || 'تعذر تحميل نتائج البحث. حاول مرة أخرى.');
+      setResultsLoadState('ERROR');
+    }
+  };
+
+  const handleSearchApply = (intent: SearchIntent) => {
+    setSearchIntent(intent);
+    setDiscoveryView('RESULTS');
+    void fetchSearchResults(intent);
+  };
+
+  const handleBackToExplore = () => {
+    setDiscoveryView('EXPLORE');
+    setSearchIntent(EMPTY_SEARCH_INTENT);
+    setActiveDestination('الكل');
+  };
+
+  const handleRefineClose = () => {
+    if (refineOrigin === 'RESULTS') {
+      setDiscoveryView('RESULTS');
+    } else {
+      handleBackToExplore();
     }
   };
 
@@ -580,6 +642,40 @@ export function App() {
   return (
     <div className="min-h-screen bg-[#F5F7FA] flex justify-center selection:bg-blue-100">
       <div className="w-full max-w-[430px] min-h-screen bg-white shadow-2xl relative flex flex-col font-sans">
+        {/* C2 Discovery stack (Screen 04/05) — full-screen, intent-preserving */}
+        {discoveryView === 'SEARCH_REFINE' && (
+          <SearchRefineScreen
+            initialIntent={searchIntent}
+            filterMetadata={filterMetadata}
+            metadataLoadState={propertyLoadState}
+            metadataError={propertyLoadError}
+            onRetryMetadata={() => void fetchProperties()}
+            onApply={handleSearchApply}
+            onClose={handleRefineClose}
+          />
+        )}
+        {discoveryView === 'RESULTS' && (
+          <SearchResultsScreen
+            intent={searchIntent}
+            items={searchResults}
+            loadState={resultsLoadState}
+            errorMessage={resultsErrorMessage}
+            favoritesActionError={favoritesActionError}
+            onDismissFavoritesError={() => setFavoritesActionError(null)}
+            onRetry={() => void fetchSearchResults(searchIntent)}
+            onEditSearch={() => {
+              setRefineOrigin('RESULTS');
+              setDiscoveryView('SEARCH_REFINE');
+            }}
+            onBackToExplore={handleBackToExplore}
+            onSelectProperty={(id) => {
+              const item = searchResults.find((p) => p.id === id);
+              if (item) setSelectedProperty(item);
+            }}
+            isFavorite={(id) => favorites.includes(id)}
+            onToggleFavorite={handleToggleFavorite}
+          />
+        )}
         {/* Full-Screen Dedicated Edit Account Page */}
         {isEditingAccount && authToken ? (
           <CustomerEditAccountPage
@@ -596,6 +692,10 @@ export function App() {
               }
             }}
           />
+        ) : discoveryView !== 'EXPLORE' ? (
+          // C2 discovery stack owns the screen; PropertyCard handoff from
+          // Results re-renders the existing Property Details above it.
+          null
         ) : (
           <>
             {/* Mobile White App Header */}
@@ -628,19 +728,23 @@ export function App() {
           <div>
             {/* Mobile Coastal Search & Destination Chips */}
             <CoastalSearchBar
-              onSearch={handleSearchFilters}
+              onOpenSearch={() => {
+                setRefineOrigin('EXPLORE');
+                setDiscoveryView('SEARCH_REFINE');
+              }}
               activeDestination={activeDestination}
               onSelectDestinationChip={handleSelectDestinationChip}
+              intent={searchIntent}
             />
 
-            {/* Results Counter */}
+            {/* Results Header */}
             <div className="flex items-center justify-between my-3">
               <h2 className="text-sm font-black text-slate-900">
-                الوحدات الساحلية المتاحة ({filteredProperties.length})
+                الوحدات الساحلية المتاحة
+                {propertyLoadState === 'SUCCESS' && (
+                  <span className="mr-1 text-slate-500 font-bold">({filteredProperties.length})</span>
+                )}
               </h2>
-              <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
-                ضمان كونفرم للإقامات ⭐️
-              </span>
             </div>
 
             {/* Viewport States */}
@@ -1048,6 +1152,7 @@ export function App() {
         <PropertyDetailModal
           property={selectedProperty}
           authToken={authToken}
+          initialSearchIntent={searchIntent}
           onClose={() => setSelectedProperty(null)}
           onInitiateBooking={handleInitiateBooking}
           onRequireAuth={(context) => {
@@ -1109,15 +1214,24 @@ export function App() {
           depositAmount={activeBooking.depositAmountEgp}
           onGoToBookings={() => {
             setShowSuccessModal(false);
+            setSelectedProperty(null);
+            setDiscoveryView('EXPLORE');
             setIsEditingAccount(false);
             setActiveTab('BOOKINGS');
+            setSearchIntent(EMPTY_SEARCH_INTENT);
+            void fetchBookings(authToken);
           }}
-          onClose={() => setShowSuccessModal(false)}
+          onClose={() => {
+            setShowSuccessModal(false);
+            setSelectedProperty(null);
+            setDiscoveryView('EXPLORE');
+            setSearchIntent(EMPTY_SEARCH_INTENT);
+          }}
         />
       )}
 
       {/* Native Persistent Mobile Bottom Navigation Bar (hidden during property details or edit account view) */}
-      {!selectedProperty && !isEditingAccount && (
+      {!selectedProperty && !isEditingAccount && discoveryView === 'EXPLORE' && (
         <CustomerBottomNav
           activeTab={activeTab}
           onSelectTab={(tab) => {

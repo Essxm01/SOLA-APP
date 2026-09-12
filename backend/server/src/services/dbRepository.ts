@@ -7,7 +7,7 @@
 import { queryDb } from './dbClient.js';
 import { isProductionDatabase } from '../utils/testDbGuard.js';
 import { GLOBAL_MIN_STAY_NIGHTS, GLOBAL_MAX_STAY_NIGHTS, BLOCKING_BOOKING_STATUSES } from '../constants/bookingRules.js';
-import { PublicPropertySearchFilters, validatePublicPropertyBaseRow } from '../contracts/publicProperty.js';
+import { PublicPropertySearchFilters, validatePublicPropertyBaseRow, normalizeSearchUnitType } from '../contracts/publicProperty.js';
 
 // Helper to mask PII strings for admin queue outputs
 export function maskPii(val?: string, visibleLength = 4): string {
@@ -396,23 +396,37 @@ export const propertyDb = {
       return mapped;
     }
 
-    if (filters.destination) {
-      const term = filters.destination.toLowerCase();
-      mapped = mapped.filter((p: any) => {
-        const title = (p.title || '').toLowerCase();
-        const address = (p.address || '').toLowerCase();
-        const region = (p.region || '').toLowerCase();
-        const resort = (p.resortName || '').toLowerCase();
-        return title.includes(term) || address.includes(term) || region.includes(term) || resort.includes(term);
-      });
+    const destinations = filters.destinations && filters.destinations.length > 0
+      ? filters.destinations
+      : (filters.destination ? [filters.destination] : []);
+
+    if (destinations.length > 0) {
+      const lowerTerms = destinations.map(d => d.trim().toLowerCase()).filter(Boolean);
+      if (lowerTerms.length > 0) {
+        mapped = mapped.filter((p: any) => {
+          const title = (p.title || '').toLowerCase();
+          const address = (p.address || '').toLowerCase();
+          const region = (p.region || '').toLowerCase();
+          const resort = (p.resortName || '').toLowerCase();
+          return lowerTerms.some(term =>
+            title.includes(term) || address.includes(term) || region.includes(term) || resort.includes(term)
+          );
+        });
+      }
     }
 
-    if (filters.unitType) {
-      const targetType = filters.unitType.toUpperCase();
-      mapped = mapped.filter((p: any) => {
-        const type = (p.unitType || '').toUpperCase();
-        return type === targetType;
-      });
+    const unitTypes = filters.unitTypes && filters.unitTypes.length > 0
+      ? filters.unitTypes
+      : (filters.unitType ? [filters.unitType] : []);
+
+    if (unitTypes.length > 0) {
+      const normalizedTypes = unitTypes.map(t => normalizeSearchUnitType(t)).filter(Boolean);
+      if (normalizedTypes.length > 0) {
+        mapped = mapped.filter((p: any) => {
+          const type = normalizeSearchUnitType(p.unitType || '');
+          return normalizedTypes.includes(type);
+        });
+      }
     }
 
     if (filters.guests !== undefined) {

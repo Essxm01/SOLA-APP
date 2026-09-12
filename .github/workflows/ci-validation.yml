@@ -101,6 +101,7 @@ jobs:
           npm ci || npm install
           npm run test:truthful-state
           npm run test:entry-state
+          npm run test:search-intent
           npm run build
 
   # ----------------------------------------------------------------------------

@@ -259,4 +259,19 @@ assertEqual(validateStayRange(D('2026-12-20'), D('2026-12-20')).ok, false, 'same
   assertEqual(emptyMeta.priceCeiling, null, 'empty priceCeiling null');
 }
 
+// 18. getPropertyTypeLabel: maps canonical property/unit types to Arabic labels without exposing backend enums
+{
+  assertEqual(getPropertyTypeLabel('SUMMER_HOUSE'), 'بيت صيفي', 'SUMMER_HOUSE -> بيت صيفي');
+  assertEqual(getPropertyTypeLabel('CHALET'), 'شاليه', 'CHALET -> شاليه');
+  assertEqual(getPropertyTypeLabel('chalet'), 'شاليه', 'chalet lower-case -> شاليه');
+  assertEqual(getPropertyTypeLabel('VILLA'), 'فيلا', 'VILLA -> فيلا');
+  assertEqual(getPropertyTypeLabel('CABIN'), 'كابينة', 'CABIN -> كابينة');
+  assertEqual(getPropertyTypeLabel('TOWNHOUSE'), 'تاون هاوس', 'TOWNHOUSE -> تاون هاوس');
+  assertEqual(getPropertyTypeLabel('TWIN_HOUSE'), 'توين هاوس', 'TWIN_HOUSE -> توين هاوس');
+  assertEqual(getPropertyTypeLabel('DUPLEX'), 'دوبلكس', 'DUPLEX -> دوبلكس');
+  assertEqual(getPropertyTypeLabel('PENTHOUSE'), 'بنتهاوس', 'PENTHOUSE -> بنتهاوس');
+  assertEqual(getPropertyTypeLabel(''), '', 'empty returns empty string');
+  assertEqual(getPropertyTypeLabel(null), '', 'null returns empty string');
+}
+
 console.log('Customer search intent contract tests passed');

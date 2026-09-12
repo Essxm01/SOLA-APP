@@ -33,12 +33,22 @@ export const PropertyCard: React.FC<PropertyCardProps> = ({
 }) => {
   const rawFirst = property.images && property.images.length > 0 ? property.images[0] : null;
   const coverImage = typeof rawFirst === 'string' ? rawFirst : (rawFirst as any)?.fileUrl || null;
-  const unitTypeLabel = getPropertyTypeLabel(property.propertyType || property.unitType) || 'وحدة ساحلية';
+  const rawUnitType = property.unitType || property.propertyType;
+  const unitTypeLabel = getPropertyTypeLabel(rawUnitType) || 'وحدة ساحلية';
 
   return (
     <div
+      role="button"
+      tabIndex={0}
       onClick={() => onSelect(property.id)}
-      className="sola-mobile-card group cursor-pointer overflow-hidden flex flex-col justify-between h-full bg-white mb-4"
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onSelect(property.id);
+        }
+      }}
+      aria-label={`عرض تفاصيل ${property.title}`}
+      className="sola-mobile-card group cursor-pointer overflow-hidden flex flex-col justify-between h-full bg-white mb-4 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0059FF]/50"
     >
       {/* Cover Image Container */}
       <div className="relative w-full h-56 overflow-hidden bg-slate-100">
@@ -67,6 +77,9 @@ export const PropertyCard: React.FC<PropertyCardProps> = ({
           onClick={(e) => {
             e.stopPropagation();
             if (onToggleFavorite) onToggleFavorite(property.id, e);
+          }}
+          onKeyDown={(e) => {
+            e.stopPropagation();
           }}
           aria-label={isFavorite ? 'إزالة من المفضلة' : 'إضافة إلى المفضلة'}
           className="absolute top-1.5 left-1.5 min-w-[44px] min-h-[44px] flex items-center justify-center rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0059FF]/40"

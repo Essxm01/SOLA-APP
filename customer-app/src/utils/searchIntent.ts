@@ -39,13 +39,19 @@ export interface PublicSearchFilters {
   maxPrice?: number;
 }
 
-// Canonical property type label mapping (Customer-facing Arabic only — never expose backend enums).
+// Canonical property and unit type label mapping (Customer-facing Arabic only — never expose backend enums).
 export const CANONICAL_PROPERTY_TYPE_LABELS: Record<string, string> = {
   CHALET: 'شاليه',
   VILLA: 'فيلا',
   APARTMENT: 'شقة مصيفية',
   STUDIO: 'استوديو',
   HOTEL_ROOM: 'غرفة فندقية',
+  SUMMER_HOUSE: 'بيت صيفي',
+  CABIN: 'كابينة',
+  TOWNHOUSE: 'تاون هاوس',
+  TWIN_HOUSE: 'توين هاوس',
+  DUPLEX: 'دوبلكس',
+  PENTHOUSE: 'بنتهاوس',
   OTHER: 'أخرى',
 };
 

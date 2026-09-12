@@ -1225,6 +1225,7 @@ export function App() {
             setShowSuccessModal(false);
             setSelectedProperty(null);
             setDiscoveryView('EXPLORE');
+            setSearchIntent(EMPTY_SEARCH_INTENT);
           }}
         />
       )}

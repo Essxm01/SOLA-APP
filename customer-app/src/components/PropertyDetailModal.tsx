@@ -21,6 +21,53 @@ import { BookingReviewSheet } from './BookingReviewSheet';
 import { AvailabilityCalendar, BlockedRange } from './AvailabilityCalendar';
 import { GuestSelector } from './GuestSelector';
 import { getApiUrl } from '../utils/api';
+import { getLocalTodayISO } from '../utils/searchIntent';
+
+function validateStayDatesAgainstAvailability(
+  checkIn: string | null,
+  checkOut: string | null,
+  blockedRanges: BlockedRange[],
+  minStay: number,
+  maxStay: number,
+  todayStr: string
+): { valid: boolean; reason?: string } {
+  if (!checkIn) return { valid: true };
+  if (checkIn < todayStr) {
+    return { valid: false, reason: 'تاريخ الوصول في الماضي' };
+  }
+  const cInDate = new Date(checkIn + 'T00:00:00');
+  for (const b of blockedRanges) {
+    const bIn = new Date(b.checkIn + 'T00:00:00');
+    const bOut = new Date(b.checkOut + 'T00:00:00');
+    if (cInDate >= bIn && cInDate < bOut) {
+      return { valid: false, reason: 'تاريخ الوصول يقع ضمن فترة محجوزة' };
+    }
+  }
+
+  if (!checkOut) return { valid: true };
+  if (checkOut <= checkIn) {
+    return { valid: false, reason: 'تاريخ المغادرة يجب أن يكون بعد تاريخ الوصول' };
+  }
+
+  const cOutDate = new Date(checkOut + 'T00:00:00');
+  const nights = Math.round((cOutDate.getTime() - cInDate.getTime()) / 86400000);
+  if (nights < minStay) {
+    return { valid: false, reason: `أقل مدة إقامة لهذه الوحدة ${minStay} ليلة` };
+  }
+  if (nights > maxStay) {
+    return { valid: false, reason: `أقصى مدة إقامة لهذه الوحدة ${maxStay} ليلة` };
+  }
+
+  for (const b of blockedRanges) {
+    const bIn = new Date(b.checkIn + 'T00:00:00');
+    const bOut = new Date(b.checkOut + 'T00:00:00');
+    if (cInDate < bOut && cOutDate > bIn) {
+      return { valid: false, reason: 'يتخلل الفترة المختارة أيام محجوزة مسبقاً' };
+    }
+  }
+
+  return { valid: true };
+}
 import {
   fetchCanonicalPropertyDetail,
   type CustomerPropertyDetail,
@@ -204,6 +251,7 @@ export const PropertyDetailModal: React.FC<PropertyDetailModalProps> = ({
   const [blockedRanges, setBlockedRanges] = useState<BlockedRange[]>([]);
   const [minStay, setMinStay] = useState<number>(2);
   const [maxStay, setMaxStay] = useState<number>(30);
+  const [dateNotice, setDateNotice] = useState<string | null>(null);
 
   // Server Price Quote State
   const [quoteLoading, setQuoteLoading] = useState<boolean>(false);
@@ -231,9 +279,40 @@ export const PropertyDetailModal: React.FC<PropertyDetailModalProps> = ({
       });
       const json = await res.json();
       if (res.ok && json.success && json.data) {
-        setBlockedRanges(json.data.unavailableRanges || []);
-        setMinStay(json.data.minStay || 2);
-        setMaxStay(json.data.maxStay || 30);
+        const ranges: BlockedRange[] = json.data.unavailableRanges || [];
+        const minS = json.data.minStay || 2;
+        const maxS = json.data.maxStay || 30;
+        setBlockedRanges(ranges);
+        setMinStay(minS);
+        setMaxStay(maxS);
+
+        // Revalidate inherited dates against canonical availability
+        const todayStr = getLocalTodayISO();
+        setCheckIn((prevIn) => {
+          if (!prevIn) return null;
+          setCheckOut((prevOut) => {
+            const check = validateStayDatesAgainstAvailability(prevIn, prevOut, ranges, minS, maxS, todayStr);
+            if (!check.valid) {
+              setDateNotice(
+                'التواريخ المحددة غير متاحة لهذه الوحدة أو تخالف قيود مدة الإقامة. يرجى تحديد تواريخ جديدة من التقويم.'
+              );
+              setQuote(null);
+              setQuoteError(null);
+              return null;
+            }
+            return prevOut;
+          });
+          const checkInOnly = validateStayDatesAgainstAvailability(prevIn, null, ranges, minS, maxS, todayStr);
+          if (!checkInOnly.valid) {
+            setDateNotice(
+              'التواريخ المحددة غير متاحة لهذه الوحدة أو تخالف قيود مدة الإقامة. يرجى تحديد تواريخ جديدة من التقويم.'
+            );
+            setQuote(null);
+            setQuoteError(null);
+            return null;
+          }
+          return prevIn;
+        });
       } else {
         setAvailabilityError(true);
       }
@@ -250,6 +329,7 @@ export const PropertyDetailModal: React.FC<PropertyDetailModalProps> = ({
 
   // ── 2. Handle Date Range Change ───────────────────────────────────────────
   const handleRangeChange = useCallback((newCheckIn: string | null, newCheckOut: string | null) => {
+    setDateNotice(null);
     setCheckIn(newCheckIn);
     setCheckOut(newCheckOut);
     setQuote(null);
@@ -297,12 +377,12 @@ export const PropertyDetailModal: React.FC<PropertyDetailModalProps> = ({
     }
   }, [authToken, checkIn, checkOut, guests, property.id]);
 
-  // Automatically request server quote when valid dates are selected or guests change
+  // Automatically request server quote when valid dates are selected or guests change (after availability loads)
   useEffect(() => {
-    if (checkIn && checkOut) {
+    if (!availabilityLoading && checkIn && checkOut) {
       fetchServerQuote();
     }
-  }, [checkIn, checkOut, guests, fetchServerQuote]);
+  }, [availabilityLoading, checkIn, checkOut, guests, fetchServerQuote]);
 
   useEffect(() => {
     if (!restoreBookingReview || !authToken || !checkIn || !checkOut || quoteLoading) return;
@@ -648,14 +728,22 @@ export const PropertyDetailModal: React.FC<PropertyDetailModalProps> = ({
                 </button>
               </div>
             ) : (
-              <AvailabilityCalendar
-                blockedRanges={blockedRanges}
-                checkIn={checkIn}
-                checkOut={checkOut}
-                minStay={minStay}
-                maxStay={maxStay}
-                onRangeChange={handleRangeChange}
-              />
+              <>
+                {dateNotice && (
+                  <div className="p-3 bg-amber-50 rounded-xl border border-amber-200 flex items-center gap-2 text-amber-800 text-xs font-bold mb-2">
+                    <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+                    <span>{dateNotice}</span>
+                  </div>
+                )}
+                <AvailabilityCalendar
+                  blockedRanges={blockedRanges}
+                  checkIn={checkIn}
+                  checkOut={checkOut}
+                  minStay={minStay}
+                  maxStay={maxStay}
+                  onRangeChange={handleRangeChange}
+                />
+              </>
             )}
           </div>
 

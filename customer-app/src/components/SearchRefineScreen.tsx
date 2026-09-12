@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { ArrowRight, MapPin, Calendar, Users, Home, Loader2, AlertCircle, RefreshCw } from 'lucide-react';
 import { MultiSelectDropdown, type MultiSelectOption } from './MultiSelectDropdown';
 
@@ -66,7 +66,25 @@ export const SearchRefineScreen: React.FC<SearchRefineScreenProps> = ({
   const [maxPrice, setMaxPrice] = useState(initialIntent.maxPrice);
   const [maxPriceTouched, setMaxPriceTouched] = useState(initialIntent.maxPriceTouched);
 
-  const today = useMemo(() => getLocalTodayISO(), []);
+  // Dynamic local-day boundary: refreshes after midnight or when app is resumed from background
+  const [today, setToday] = useState(() => getLocalTodayISO());
+
+  useEffect(() => {
+    const updateToday = () => {
+      const current = getLocalTodayISO();
+      setToday((prev) => (prev !== current ? current : prev));
+    };
+    updateToday();
+    window.addEventListener('focus', updateToday);
+    document.addEventListener('visibilitychange', updateToday);
+    const intervalId = setInterval(updateToday, 60000);
+    return () => {
+      window.removeEventListener('focus', updateToday);
+      document.removeEventListener('visibilitychange', updateToday);
+      clearInterval(intervalId);
+    };
+  }, []);
+
   const range = validateStayRange(checkIn, checkOut, today);
   const nights = nightsBetween(checkIn, checkOut);
   const datesValid = range.ok;

@@ -737,14 +737,14 @@ export function App() {
               intent={searchIntent}
             />
 
-            {/* Results Counter */}
+            {/* Results Header */}
             <div className="flex items-center justify-between my-3">
               <h2 className="text-sm font-black text-slate-900">
-                الوحدات الساحلية المتاحة ({filteredProperties.length})
+                الوحدات الساحلية المتاحة
+                {propertyLoadState === 'SUCCESS' && (
+                  <span className="mr-1 text-slate-500 font-bold">({filteredProperties.length})</span>
+                )}
               </h2>
-              <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
-                ضمان كونفرم للإقامات ⭐️
-              </span>
             </div>
 
             {/* Viewport States */}

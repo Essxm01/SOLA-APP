@@ -188,6 +188,32 @@ export const SearchRefineScreen: React.FC<SearchRefineScreenProps> = ({
           <h1 className="text-lg font-extrabold text-[#0F172A]">ابحث عن إقامتك</h1>
         </div>
 
+        {/* Top Contextual Error Banner on Metadata Failure */}
+        {metadataLoadState === 'ERROR' && (
+          <div
+            className="mx-4 mt-4 p-3.5 bg-rose-50 border border-rose-200 rounded-2xl flex items-center justify-between gap-3 text-xs font-bold text-rose-800"
+            role="alert"
+          >
+            <div className="flex items-center gap-2.5 min-w-0">
+              <AlertCircle className="w-5 h-5 text-rose-600 shrink-0" />
+              <div className="flex flex-col">
+                <span className="font-black text-rose-900">{metadataError || 'تعذر تحميل خيارات البحث حالياً.'}</span>
+                <span className="text-[11px] font-medium text-rose-700">تحقق من الاتصال وحاول مرة أخرى.</span>
+              </div>
+            </div>
+            {onRetryMetadata && (
+              <button
+                type="button"
+                onClick={onRetryMetadata}
+                className="min-h-[44px] px-3.5 py-1.5 bg-rose-600 text-white rounded-xl text-xs font-bold hover:bg-rose-700 transition-colors flex items-center gap-1.5 shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-500/40"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                <span>إعادة المحاولة</span>
+              </button>
+            )}
+          </div>
+        )}
+
         <div className="px-4 pt-4 space-y-6">
           {/* Destination Multi-Select Dropdown — Pure Tap-to-Select, Zero Typing */}
           <section>
@@ -207,24 +233,11 @@ export const SearchRefineScreen: React.FC<SearchRefineScreenProps> = ({
             ) : metadataLoadState === 'ERROR' ? (
               <div>
                 <div className="flex items-center gap-1.5 text-[13px] font-bold text-[#0F172A] mb-1.5">
-                  <MapPin className="w-4 h-4 text-[#0059FF]" />
+                  <MapPin className="w-4 h-4 text-[#94A3B8]" />
                   <span>الوجهة أو القرية</span>
                 </div>
-                <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl flex items-center justify-between text-xs font-bold text-rose-800">
-                  <span className="flex items-center gap-2">
-                    <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
-                    <span>{metadataError || 'تعذر تحميل الوجهات من الخادم.'}</span>
-                  </span>
-                  {onRetryMetadata && (
-                    <button
-                      type="button"
-                      onClick={onRetryMetadata}
-                      className="min-h-[44px] px-3 py-1 bg-rose-600 text-white rounded-lg text-xs font-bold hover:bg-rose-700 transition-colors flex items-center gap-1 shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-500/40"
-                    >
-                      <RefreshCw className="w-3.5 h-3.5" />
-                      <span>إعادة المحاولة</span>
-                    </button>
-                  )}
+                <div className="w-full min-h-[50px] px-3.5 py-2.5 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl flex items-center justify-between text-xs font-bold text-[#94A3B8] opacity-70 cursor-not-allowed">
+                  <span>الوجهات غير متاحة حالياً</span>
                 </div>
               </div>
             ) : (
@@ -375,21 +388,8 @@ export const SearchRefineScreen: React.FC<SearchRefineScreenProps> = ({
                 </span>
               </div>
             ) : metadataLoadState === 'ERROR' ? (
-              <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl flex items-center justify-between text-xs font-bold text-rose-800">
-                <span className="flex items-center gap-2">
-                  <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
-                  <span>{metadataError || 'تعذر تحميل أنواع الوحدات من الخادم.'}</span>
-                </span>
-                {onRetryMetadata && (
-                  <button
-                    type="button"
-                    onClick={onRetryMetadata}
-                    className="min-h-[44px] px-3 py-1 bg-rose-600 text-white rounded-lg text-xs font-bold hover:bg-rose-700 transition-colors flex items-center gap-1 shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-500/40"
-                  >
-                    <RefreshCw className="w-3.5 h-3.5" />
-                    <span>إعادة المحاولة</span>
-                  </button>
-                )}
+              <div className="w-full min-h-[50px] px-3.5 py-2.5 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl flex items-center justify-between text-xs font-bold text-[#94A3B8] opacity-70 cursor-not-allowed">
+                <span>أنواع الوحدات غير متاحة حالياً</span>
               </div>
             ) : unitTypeChips.length === 0 ? (
               <div className="w-full min-h-[50px] p-3 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl flex items-center justify-between text-xs font-bold text-[#94A3B8]">
@@ -445,7 +445,7 @@ export const SearchRefineScreen: React.FC<SearchRefineScreenProps> = ({
                 </button>
               ) : (
                 <span className="text-xs font-bold text-[#64748B]">
-                  {metadataLoadState === 'LOADING' ? 'جاري التحميل...' : 'بدون حد'}
+                  {metadataLoadState === 'LOADING' ? 'جاري التحميل...' : metadataLoadState === 'ERROR' ? 'غير متاح حالياً' : 'بدون حد'}
                 </span>
               )}
             </div>
@@ -458,21 +458,8 @@ export const SearchRefineScreen: React.FC<SearchRefineScreenProps> = ({
                 </span>
               </div>
             ) : metadataLoadState === 'ERROR' ? (
-              <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl flex items-center justify-between text-xs font-bold text-rose-800">
-                <span className="flex items-center gap-2">
-                  <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
-                  <span>{metadataError || 'تعذر تحميل بيانات الأسعار من الخادم.'}</span>
-                </span>
-                {onRetryMetadata && (
-                  <button
-                    type="button"
-                    onClick={onRetryMetadata}
-                    className="min-h-[44px] px-3 py-1 bg-rose-600 text-white rounded-lg text-xs font-bold hover:bg-rose-700 transition-colors flex items-center gap-1 shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-500/40"
-                  >
-                    <RefreshCw className="w-3.5 h-3.5" />
-                    <span>إعادة المحاولة</span>
-                  </button>
-                )}
+              <div className="w-full min-h-[50px] px-3.5 py-2.5 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl flex items-center justify-between text-xs font-bold text-[#94A3B8] opacity-70 cursor-not-allowed">
+                <span>تحديد السقف الأقصى غير متاح حالياً</span>
               </div>
             ) : priceCeiling === null ? (
               <div className="w-full min-h-[50px] p-3 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl flex items-center justify-between text-xs font-bold text-[#94A3B8]">
@@ -512,7 +499,7 @@ export const SearchRefineScreen: React.FC<SearchRefineScreenProps> = ({
               {metadataLoadState === 'LOADING'
                 ? 'جاري فحص الأسعار المتاحة...'
                 : metadataLoadState === 'ERROR'
-                ? 'تعذر تحديد نطاق الأسعار لتعذر الاتصال.'
+                ? 'تعذر تحديد نطاق الأسعار لتعذر الاتصال بالخادم.'
                 : priceCeiling === null
                 ? 'لا توجد إقامات منشورة حالياً لتحديد نطاق الأسعار.'
                 : maxPriceTouched && maxPrice > 0

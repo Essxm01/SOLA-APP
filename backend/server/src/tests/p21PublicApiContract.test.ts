@@ -53,6 +53,17 @@ assert.deepEqual(multiComma, {
   unitTypes: ['CHALET', 'APARTMENT'],
 });
 
+// Legacy singular destination preserves literal commas for exact geography/address search
+const legacyWithComma = parsePublicPropertySearchFilters(
+  new URLSearchParams('destination=العلمين, الكيلو 120&unitType=CHALET')
+);
+assert.deepEqual(legacyWithComma, {
+  destination: 'العلمين, الكيلو 120',
+  destinations: ['العلمين, الكيلو 120'],
+  unitType: 'CHALET',
+  unitTypes: ['CHALET'],
+});
+
 // Empty / blank values are omitted
 const emptyParams = parsePublicPropertySearchFilters(
   new URLSearchParams('destination=%20%20&unitType=')

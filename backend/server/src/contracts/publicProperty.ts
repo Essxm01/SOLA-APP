@@ -40,43 +40,55 @@ export function parsePublicPropertySearchFilters(
 
   const filters: PublicPropertySearchFilters = {};
 
-  // Destination: supports repeated query params & comma-separated values (OR within group)
-  const destParams = [
-    ...searchParams.getAll('destination'),
-    ...searchParams.getAll('destinations'),
-  ];
+  // Destination: supports legacy singular (trimmed literal, preserving commas) & new plural (comma-separated or repeated)
   const destList: string[] = [];
-  for (const raw of destParams) {
+
+  // 1. Legacy singular parameter: preserve commas for literal destination/address matching
+  for (const raw of searchParams.getAll('destination')) {
+    const trimmed = raw?.trim();
+    if (trimmed && !destList.includes(trimmed)) {
+      destList.push(trimmed);
+    }
+  }
+
+  // 2. New plural parameter: supports comma-separated values as well as repeated values
+  for (const raw of searchParams.getAll('destinations')) {
     if (raw) {
       for (const part of raw.split(',')) {
         const trimmed = part.trim();
-        if (trimmed !== '' && !destList.includes(trimmed)) {
+        if (trimmed && !destList.includes(trimmed)) {
           destList.push(trimmed);
         }
       }
     }
   }
+
   if (destList.length > 0) {
     filters.destinations = destList;
     filters.destination = destList[0];
   }
 
-  // Unit Type: supports repeated query params & comma-separated values (OR within group)
-  const typeParams = [
-    ...searchParams.getAll('unitType'),
-    ...searchParams.getAll('unitTypes'),
-  ];
+  // Unit Type: supports legacy singular (trimmed enum) & new plural (comma-separated or repeated)
   const typeList: string[] = [];
-  for (const raw of typeParams) {
+
+  for (const raw of searchParams.getAll('unitType')) {
+    const trimmed = raw?.trim().toUpperCase();
+    if (trimmed && trimmed !== 'ALL' && !typeList.includes(trimmed)) {
+      typeList.push(trimmed);
+    }
+  }
+
+  for (const raw of searchParams.getAll('unitTypes')) {
     if (raw) {
       for (const part of raw.split(',')) {
         const trimmed = part.trim().toUpperCase();
-        if (trimmed !== '' && trimmed !== 'ALL' && !typeList.includes(trimmed)) {
+        if (trimmed && trimmed !== 'ALL' && !typeList.includes(trimmed)) {
           typeList.push(trimmed);
         }
       }
     }
   }
+
   if (typeList.length > 0) {
     filters.unitTypes = typeList;
     filters.unitType = typeList[0];

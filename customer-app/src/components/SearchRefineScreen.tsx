@@ -27,6 +27,27 @@ const ERROR_COPY: Record<string, string> = {
   SEARCH_STAY_TOO_LONG: 'أقصى مدة إقامة 30 ليلة.',
 };
 
+export const CUSTOMER_UNIT_TYPE_CHIPS = [
+  { id: 'ALL', label: 'الكل' },
+  { id: 'APARTMENT', label: 'شقة' },
+  { id: 'CHALET', label: 'شاليه' },
+  { id: 'STUDIO', label: 'استوديو' },
+  { id: 'VILLA', label: 'فيلا' },
+] as const;
+
+export type CustomerUnitTypeId = typeof CUSTOMER_UNIT_TYPE_CHIPS[number]['id'];
+
+export function normalizeCustomerUnitType(raw?: string | null): 'APARTMENT' | 'CHALET' | 'STUDIO' | 'VILLA' | null {
+  if (!raw) return null;
+  const upper = raw.trim().toUpperCase();
+  if (upper === 'ALL' || upper === 'الكل') return null;
+  if (upper === 'APARTMENT' || upper === 'شقة' || upper === 'شقه') return 'APARTMENT';
+  if (upper === 'CHALET' || upper === 'شاليه') return 'CHALET';
+  if (upper === 'STUDIO' || upper === 'استوديو' || upper === 'استديو') return 'STUDIO';
+  if (upper === 'VILLA' || upper === 'فيلا' || upper === 'فيلة') return 'VILLA';
+  return null;
+}
+
 export interface SearchRefineScreenProps {
   initialIntent: SearchIntent;
   filterMetadata?: FilterMetadata;
@@ -53,13 +74,22 @@ export const SearchRefineScreen: React.FC<SearchRefineScreenProps> = ({
       ? [initialIntent.destination]
       : []
   );
-  const [unitTypes, setUnitTypes] = useState<string[]>(
-    initialIntent.unitTypes && initialIntent.unitTypes.length > 0
-      ? initialIntent.unitTypes.filter((t) => t !== 'ALL')
-      : initialIntent.unitType && initialIntent.unitType !== 'ALL'
-      ? [initialIntent.unitType]
-      : []
-  );
+  const [unitTypes, setUnitTypes] = useState<string[]>(() => {
+    const rawList =
+      initialIntent.unitTypes && initialIntent.unitTypes.length > 0
+        ? initialIntent.unitTypes
+        : initialIntent.unitType && initialIntent.unitType !== 'ALL'
+        ? [initialIntent.unitType]
+        : [];
+    const valid = new Set<string>();
+    for (const item of rawList) {
+      const norm = normalizeCustomerUnitType(item);
+      if (norm) {
+        valid.add(norm);
+      }
+    }
+    return Array.from(valid);
+  });
   const [checkIn, setCheckIn] = useState(initialIntent.checkIn);
   const [checkOut, setCheckOut] = useState(initialIntent.checkOut);
   const [totalGuests, setTotalGuests] = useState(initialIntent.totalGuests);
@@ -98,28 +128,7 @@ export const SearchRefineScreen: React.FC<SearchRefineScreenProps> = ({
     return list.map((d) => ({ id: d, label: d }));
   }, [filterMetadata?.availableDestinations]);
 
-  // Unit Type Options & Horizontal Chips:
-  // Inventory-backed, customer-facing canonical Arabic names.
-  // When no unit types are in inventory, do not fall back to invented defaults.
-  const unitTypeChips = useMemo(() => {
-    const list = filterMetadata?.availableUnitTypes ?? [];
-    if (list.length === 0) {
-      return [];
-    }
-    const source = list.map((t) => ({
-      id: t.value,
-      label: t.value === 'APARTMENT' ? 'شقة' : t.label,
-    }));
-
-    const priorityOrder = ['APARTMENT', 'STUDIO', 'CHALET', 'VILLA', 'HOTEL_ROOM', 'OTHER'];
-    const sorted = [...source].sort((a, b) => {
-      const idxA = priorityOrder.indexOf(a.id);
-      const idxB = priorityOrder.indexOf(b.id);
-      return (idxA === -1 ? 99 : idxA) - (idxB === -1 ? 99 : idxB);
-    });
-
-    return [{ id: 'ALL', label: 'الكل' }, ...sorted];
-  }, [filterMetadata?.availableUnitTypes]);
+  // Unit Type Options: Exactly 5 canonical customer options defined in CUSTOMER_UNIT_TYPE_CHIPS
 
   const isAllUnitTypesSelected = unitTypes.length === 0 || unitTypes.includes('ALL');
 
@@ -362,14 +371,14 @@ export const SearchRefineScreen: React.FC<SearchRefineScreenProps> = ({
             </div>
           </section>
 
-          {/* Unit Type — Horizontal Scrollable Multi-Select Chips */}
+          {/* Unit Type — Exactly 5 canonical customer options */}
           <section>
             <div className="flex items-center justify-between mb-1.5">
               <div className="flex items-center gap-1.5 text-[13px] font-bold text-[#0F172A]">
                 <Home className="w-4 h-4 text-[#0059FF]" />
                 <span>نوع الوحدة</span>
               </div>
-              {metadataLoadState === 'SUCCESS' && unitTypeChips.length > 0 && !isAllUnitTypesSelected && unitTypes.length > 0 && (
+              {!isAllUnitTypesSelected && unitTypes.length > 0 && (
                 <button
                   type="button"
                   onClick={() => setUnitTypes([])}
@@ -380,50 +389,33 @@ export const SearchRefineScreen: React.FC<SearchRefineScreenProps> = ({
               )}
             </div>
 
-            {metadataLoadState === 'LOADING' ? (
-              <div className="w-full min-h-[50px] p-3 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl flex items-center justify-between text-xs font-bold text-[#64748B]">
-                <span className="flex items-center gap-2">
-                  <Loader2 className="w-4 h-4 animate-spin text-[#0059FF]" />
-                  <span>جاري تحميل أنواع الوحدات...</span>
-                </span>
-              </div>
-            ) : metadataLoadState === 'ERROR' ? (
-              <div className="w-full min-h-[50px] px-3.5 py-2.5 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl flex items-center justify-between text-xs font-bold text-[#94A3B8] opacity-70 cursor-not-allowed">
-                <span>أنواع الوحدات غير متاحة حالياً</span>
-              </div>
-            ) : unitTypeChips.length === 0 ? (
-              <div className="w-full min-h-[50px] p-3 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl flex items-center justify-between text-xs font-bold text-[#94A3B8]">
-                لا تتوفر أنواع وحدات حالياً في الإقامات المنشورة.
-              </div>
-            ) : (
-              /* Horizontal scrollable chip row */
-              <div
-                className="flex items-center gap-2 overflow-x-auto pb-1.5 pt-0.5 -mx-1 px-1 scroll-smooth"
-                style={{ WebkitOverflowScrolling: 'touch', scrollbarWidth: 'none' }}
-                role="group"
-                aria-label="نوع الوحدة"
-              >
-                {unitTypeChips.map((chip) => {
-                  const isSelected = chip.id === 'ALL' ? isAllUnitTypesSelected : unitTypes.includes(chip.id);
-                  return (
-                    <button
-                      key={chip.id}
-                      id={`c2-unit-type-chip-${chip.id.toLowerCase()}`}
-                      type="button"
-                      onClick={() => handleToggleUnitType(chip.id)}
-                      aria-pressed={isSelected}
-                      className={`min-h-[44px] px-4 rounded-xl text-xs font-bold shrink-0 transition-all flex items-center justify-center focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0059FF]/40 active:scale-95 ${
-                        isSelected
-                          ? 'bg-[#0059FF] text-white shadow-xs border border-[#0059FF]'
-                          : 'bg-[#F8FAFC] text-[#0F172A] border border-[#E2E8F0] hover:bg-slate-100'
-                      }`}
-                    >
-                      <span>{chip.label}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
+            {/* Horizontal scrollable chip row — Exactly 5 canonical customer options */}
+            <div
+              className="flex items-center gap-2.5 overflow-x-auto pb-1.5 pt-0.5 -mx-1 px-1 scroll-smooth"
+              style={{ WebkitOverflowScrolling: 'touch', scrollbarWidth: 'none' }}
+              role="group"
+              aria-label="نوع الوحدة"
+            >
+              {CUSTOMER_UNIT_TYPE_CHIPS.map((chip) => {
+                const isSelected = chip.id === 'ALL' ? isAllUnitTypesSelected : unitTypes.includes(chip.id);
+                return (
+                  <button
+                    key={chip.id}
+                    id={`c2-unit-type-chip-${chip.id.toLowerCase()}`}
+                    type="button"
+                    onClick={() => handleToggleUnitType(chip.id)}
+                    aria-pressed={isSelected}
+                    className={`min-h-[44px] min-w-[68px] px-5 rounded-xl text-xs font-bold shrink-0 transition-all flex items-center justify-center focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0059FF]/40 active:scale-95 ${
+                      isSelected
+                        ? 'bg-[#0059FF] text-white shadow-xs border border-[#0059FF]'
+                        : 'bg-[#F8FAFC] text-[#0F172A] border border-[#E2E8F0] hover:bg-slate-100'
+                    }`}
+                  >
+                    <span>{chip.label}</span>
+                  </button>
+                );
+              })}
+            </div>
           </section>
 
           {/* Max price — Dynamic drag slider derived from public inventory ceiling */}
@@ -481,7 +473,7 @@ export const SearchRefineScreen: React.FC<SearchRefineScreenProps> = ({
                   type="range"
                   min={1000}
                   max={priceCeiling}
-                  step={1000}
+                  step={500}
                   value={sliderValue}
                   onChange={(e) => handleSliderChange(Number(e.target.value))}
                   aria-label="الحد الأقصى للسعر"

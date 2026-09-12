@@ -37,24 +37,26 @@ const D = (s: string) => s;
   assertEqual(r.nights, null, 'no nights computed');
 }
 
+const FIXED_TEST_TODAY = D('2026-06-01');
+
 // 3. One-sided dates are invalid.
 {
-  assertEqual(validateStayRange(D('2026-12-20'), D('')).ok, false, 'missing checkOut rejected');
-  assertEqual(validateStayRange(D(''), D('2026-12-22')).ok, false, 'missing checkIn rejected');
+  assertEqual(validateStayRange(D('2026-12-20'), D(''), FIXED_TEST_TODAY).ok, false, 'missing checkOut rejected');
+  assertEqual(validateStayRange(D(''), D('2026-12-22'), FIXED_TEST_TODAY).ok, false, 'missing checkIn rejected');
 }
 
 // 4. checkOut must be after checkIn.
-assertEqual(validateStayRange(D('2026-12-22'), D('2026-12-20')).ok, false, 'backwards range rejected');
-assertEqual(validateStayRange(D('2026-12-20'), D('2026-12-20')).ok, false, 'same-day range rejected');
+assertEqual(validateStayRange(D('2026-12-22'), D('2026-12-20'), FIXED_TEST_TODAY).ok, false, 'backwards range rejected');
+assertEqual(validateStayRange(D('2026-12-20'), D('2026-12-20'), FIXED_TEST_TODAY).ok, false, 'same-day range rejected');
 
 // 5. Stay length 2–30 nights (existing product rule enforced at this stage).
 {
-  assertEqual(validateStayRange(D('2026-12-20'), D('2026-12-21')).ok, false, '1 night below minimum');
-  assertEqual(validateStayRange(D('2026-12-20'), D('2026-12-22')).ok, true, '2 nights valid');
-  const long = validateStayRange(D('2026-12-01'), D('2026-12-31'));
+  assertEqual(validateStayRange(D('2026-12-20'), D('2026-12-21'), FIXED_TEST_TODAY).ok, false, '1 night below minimum');
+  assertEqual(validateStayRange(D('2026-12-20'), D('2026-12-22'), FIXED_TEST_TODAY).ok, true, '2 nights valid');
+  const long = validateStayRange(D('2026-12-01'), D('2026-12-31'), FIXED_TEST_TODAY);
   assertEqual(long.ok, true, '30 nights valid');
   assertEqual(long.nights, 30, '30-night length computed');
-  assertEqual(validateStayRange(D('2026-12-01'), D('2027-01-02')).ok, false, '31 nights rejected');
+  assertEqual(validateStayRange(D('2026-12-01'), D('2027-01-02'), FIXED_TEST_TODAY).ok, false, '31 nights rejected');
 }
 
 // 6. Past check-in rejected relative to an injected "today".
@@ -66,8 +68,8 @@ assertEqual(validateStayRange(D('2026-12-20'), D('2026-12-20')).ok, false, 'same
 
 // 7. Malformed date strings rejected (no silent parsing).
 {
-  assertEqual(validateStayRange(D('not-a-date'), D('2026-12-22')).ok, false, 'malformed checkIn rejected');
-  assertEqual(validateStayRange(D('2026-12-20'), D('')).ok, false, 'one-sided malformed rejected');
+  assertEqual(validateStayRange(D('not-a-date'), D('2026-12-22'), FIXED_TEST_TODAY).ok, false, 'malformed checkIn rejected');
+  assertEqual(validateStayRange(D('2026-12-20'), D(''), FIXED_TEST_TODAY).ok, false, 'one-sided malformed rejected');
 }
 
 // 8. toPublicSearchFilters maps ONLY server-supported filters.

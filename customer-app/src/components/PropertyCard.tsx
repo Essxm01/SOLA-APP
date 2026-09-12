@@ -37,21 +37,23 @@ export const PropertyCard: React.FC<PropertyCardProps> = ({
   const unitTypeLabel = getPropertyTypeLabel(rawUnitType) || 'وحدة ساحلية';
 
   return (
-    <div
-      role="button"
-      tabIndex={0}
-      onClick={() => onSelect(property.id)}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          onSelect(property.id);
-        }
-      }}
-      aria-label={`عرض تفاصيل ${property.title}`}
-      className="sola-mobile-card group cursor-pointer overflow-hidden flex flex-col justify-between h-full bg-white mb-4 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0059FF]/50"
-    >
+    <div className="sola-mobile-card relative group overflow-hidden flex flex-col justify-between h-full bg-white mb-4">
+      {/* Primary Card Action Button (accessible hit-target covering card, sibling to favorite button — zero nested interactive controls) */}
+      <button
+        type="button"
+        onClick={() => onSelect(property.id)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            onSelect(property.id);
+          }
+        }}
+        aria-label={`عرض تفاصيل ${property.title}`}
+        className="absolute inset-0 z-0 w-full h-full rounded-2xl cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0059FF]/50 pointer-events-auto"
+      />
+
       {/* Cover Image Container */}
-      <div className="relative w-full h-56 overflow-hidden bg-slate-100">
+      <div className="relative w-full h-56 overflow-hidden bg-slate-100 pointer-events-none z-1">
         {coverImage ? (
           <img
             src={coverImage}
@@ -71,18 +73,15 @@ export const PropertyCard: React.FC<PropertyCardProps> = ({
           <span>إقامة موثقة</span>
         </div>
 
-        {/* Favorite Button (>=44px touch target with compact visual indicator) */}
+        {/* Favorite Button (>=44px touch target, sibling control positioned with pointer-events-auto so it acts independently) */}
         <button
           type="button"
           onClick={(e) => {
             e.stopPropagation();
             if (onToggleFavorite) onToggleFavorite(property.id, e);
           }}
-          onKeyDown={(e) => {
-            e.stopPropagation();
-          }}
           aria-label={isFavorite ? 'إزالة من المفضلة' : 'إضافة إلى المفضلة'}
-          className="absolute top-1.5 left-1.5 min-w-[44px] min-h-[44px] flex items-center justify-center rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0059FF]/40"
+          className="pointer-events-auto absolute top-1.5 left-1.5 min-w-[44px] min-h-[44px] flex items-center justify-center rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0059FF]/40"
         >
           <span
             className={`w-8 h-8 rounded-full flex items-center justify-center backdrop-blur-md transition-all ${
@@ -102,7 +101,7 @@ export const PropertyCard: React.FC<PropertyCardProps> = ({
       </div>
 
       {/* Content Info */}
-      <div className="p-3.5 flex-1 flex flex-col justify-between">
+      <div className="p-3.5 flex-1 flex flex-col justify-between pointer-events-none z-1">
         <div>
           {/* Location row — only canonical geography; omitted entirely when
               the canonical record has none (address='' is valid and must not

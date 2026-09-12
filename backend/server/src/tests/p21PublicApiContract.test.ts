@@ -260,6 +260,33 @@ const mockPropertiesSource = [
     maxGuests: 2,
     basePricePerNight: 4500,
   },
+  // Legacy-alias test rows: Arabic unit_type values as stored in DB
+  {
+    id: 'p4',
+    title: 'شاليه سيدي حنيش',
+    unitType: 'شاليه',
+    propertyType: 'SUMMER_HOUSE',
+    address: 'سيدي حنيش',
+    region: 'الساحل الشمالي',
+    resortName: 'بو أيلاند',
+    bedrooms: 3,
+    bathrooms: 2,
+    maxGuests: 6,
+    basePricePerNight: 12000,
+  },
+  {
+    id: 'p5',
+    title: 'شقة العلمين الجديدة',
+    unitType: 'شقة',
+    propertyType: 'APARTMENT',
+    address: 'العلمين الجديدة',
+    region: 'الساحل الشمالي',
+    resortName: 'العلمين',
+    bedrooms: 2,
+    bathrooms: 1,
+    maxGuests: 4,
+    basePricePerNight: 5000,
+  },
 ];
 
 // Test in-memory filtering behavior directly on searchPublic
@@ -296,18 +323,18 @@ globalThis.fetch = (async () => {
 try {
   // Explore: no filters -> all 3
   const all = await propertyDb.searchPublic();
-  assert.equal(all.length, 3);
+  assert.equal(all.length, 5);
 
   // Destination: case-insensitive matching across title, address, region, resortName
   const marassi = await propertyDb.searchPublic({ destination: 'مراسي' });
   assert.deepEqual(marassi.map(p => p.id), ['p1']);
 
   const sahel = await propertyDb.searchPublic({ destination: 'الساحل' });
-  assert.deepEqual(sahel.map(p => p.id), ['p1', 'p2']);
+  assert.deepEqual(sahel.map(p => p.id), ['p1', 'p2', 'p4', 'p5']);
 
   // UnitType: exact normalized match against canonical p.unitType only (Codex Blocker 01)
   const chalets = await propertyDb.searchPublic({ unitType: 'chalet' });
-  assert.deepEqual(chalets.map(p => p.id), ['p1'], 'unitType filter must match canonical p.unitType even when propertyType is SUMMER_HOUSE');
+  assert.deepEqual(chalets.map(p => p.id), ['p1', 'p4'], 'unitType filter must match canonical p.unitType AND Arabic alias rows');
 
   const summerHouses = await propertyDb.searchPublic({ unitType: 'SUMMER_HOUSE' });
   assert.deepEqual(summerHouses.map(p => p.id), [], 'unitType=SUMMER_HOUSE must NOT match property merely because propertyType is SUMMER_HOUSE');
@@ -317,17 +344,17 @@ try {
 
   // Guests: maxGuests >= guests
   const bigGroup = await propertyDb.searchPublic({ guests: 5 });
-  assert.deepEqual(bigGroup.map(p => p.id), ['p2']);
+  assert.deepEqual(bigGroup.map(p => p.id), ['p2', 'p4']);
 
   const midGroup = await propertyDb.searchPublic({ guests: 4 });
-  assert.deepEqual(midGroup.map(p => p.id), ['p1', 'p2']);
+  assert.deepEqual(midGroup.map(p => p.id), ['p1', 'p2', 'p4', 'p5']);
 
   // MaxPrice: basePricePerNight <= maxPrice
   const budget = await propertyDb.searchPublic({ maxPrice: 5000 });
-  assert.deepEqual(budget.map(p => p.id), ['p3']);
+  assert.deepEqual(budget.map(p => p.id), ['p3', 'p5']);
 
   const midBudget = await propertyDb.searchPublic({ maxPrice: 8000 });
-  assert.deepEqual(midBudget.map(p => p.id), ['p1', 'p3']);
+  assert.deepEqual(midBudget.map(p => p.id), ['p1', 'p3', 'p5']);
 
   // Combined filters (AND)
   const combinedMatch = await propertyDb.searchPublic({
@@ -341,9 +368,9 @@ try {
   const combinedZero = await propertyDb.searchPublic({
     destination: 'الساحل',
     unitType: 'CHALET',
-    guests: 6, // p1 only has 4
+    guests: 6, // p1 only has 4, but p4 has 6
   });
-  assert.deepEqual(combinedZero, []);
+  assert.deepEqual(combinedZero.map(p => p.id), ['p4'], 'p4 (شاليه, الساحل, guests=6) now matches via normalization');
 
   // Multi-destination: OR within group
   const multiDest = await propertyDb.searchPublic({ destinations: ['مراسي', 'الجونة'] });
@@ -351,7 +378,7 @@ try {
 
   // Multi-unitType: OR within group
   const multiType = await propertyDb.searchPublic({ unitTypes: ['CHALET', 'VILLA'] });
-  assert.deepEqual(multiType.map(p => p.id), ['p1', 'p2'], 'multi-unitType should match properties of either unitType (OR)');
+  assert.deepEqual(multiType.map(p => p.id), ['p1', 'p2', 'p4'], 'multi-unitType should match properties of either unitType (OR) including legacy aliases');
 
   // Multi-destination + Multi-unitType + Guests + MaxPrice: AND across groups
   const multiCombined = await propertyDb.searchPublic({
@@ -360,7 +387,7 @@ try {
     guests: 2,
     maxPrice: 8000,
   });
-  assert.deepEqual(multiCombined.map(p => p.id), ['p1', 'p3'], 'combined multi-destination and multi-unitType with guests and price');
+  assert.deepEqual(multiCombined.map(p => p.id), ['p1', 'p3', 'p5'], 'combined multi-destination and multi-unitType with guests and price including legacy aliases');
 
   const multiCombinedNarrow = await propertyDb.searchPublic({
     destinations: ['الساحل', 'الجونة'],
@@ -369,6 +396,52 @@ try {
     maxPrice: 8000,
   });
   assert.deepEqual(multiCombinedNarrow.map(p => p.id), ['p1'], 'narrow multi-filter');
+
+  // ---------------------------------------------------------------------------
+  // Legacy unit-type alias normalization tests (C2 compatibility patch)
+  // ---------------------------------------------------------------------------
+
+  // Test L1: query CHALET matches row with unitType=شاليه
+  const legacyChaletMatch = await propertyDb.searchPublic({ unitType: 'CHALET' });
+  assert.ok(legacyChaletMatch.some(p => p.id === 'p4'), 'L1: CHALET query must match row with unitType=شاليه');
+  assert.ok(legacyChaletMatch.some(p => p.id === 'p1'), 'L1: CHALET query must still match canonical CHALET row');
+
+  // Test L2: query APARTMENT matches row with unitType=شقة
+  const legacyAptMatch = await propertyDb.searchPublic({ unitType: 'APARTMENT' });
+  assert.ok(legacyAptMatch.some(p => p.id === 'p5'), 'L2: APARTMENT query must match row with unitType=شقة');
+  assert.ok(legacyAptMatch.some(p => p.id === 'p3'), 'L2: APARTMENT query must still match canonical APARTMENT row');
+
+  // Test L3: Arabic filter value also works (شاليه as filter value matches CHALET row)
+  const arabicFilterChalet = await propertyDb.searchPublic({ unitType: 'شاليه' });
+  assert.deepEqual(arabicFilterChalet.map(p => p.id).sort(), ['p1', 'p4'], 'L3: Arabic filter شاليه must match both canonical and legacy rows');
+
+  // Test L4: Arabic filter شقة matches both canonical and legacy apartment rows
+  const arabicFilterApt = await propertyDb.searchPublic({ unitType: 'شقة' });
+  assert.deepEqual(arabicFilterApt.map(p => p.id).sort(), ['p3', 'p5'], 'L4: Arabic filter شقة must match both canonical and legacy rows');
+
+  // Test L5: multi-select returns both canonical and legacy rows
+  const multiLegacy = await propertyDb.searchPublic({ unitTypes: ['CHALET', 'APARTMENT'] });
+  assert.deepEqual(multiLegacy.map(p => p.id).sort(), ['p1', 'p3', 'p4', 'p5'], 'L5: multi-select CHALET+APARTMENT must include all alias matches');
+
+  // Test L6: HOTEL_ROOM backward compatibility (no alias mapping needed, pass-through)
+  const hotelRoom = await propertyDb.searchPublic({ unitType: 'HOTEL_ROOM' });
+  assert.deepEqual(hotelRoom, [], 'L6: HOTEL_ROOM query returns empty (no HOTEL_ROOM rows in mock) but must not crash');
+
+  // Test L7: OTHER backward compatibility
+  const other = await propertyDb.searchPublic({ unitType: 'OTHER' });
+  assert.deepEqual(other, [], 'L7: OTHER query returns empty (no OTHER rows in mock) but must not crash');
+
+  // Test L8: alternate Arabic spelling شقه maps to APARTMENT
+  const altSpelling = await propertyDb.searchPublic({ unitType: 'شقه' });
+  assert.deepEqual(altSpelling.map(p => p.id).sort(), ['p3', 'p5'], 'L8: شقه (alternate spelling) must map to APARTMENT');
+
+  // Test L9: combined legacy alias + destination + price
+  const legacyCombined = await propertyDb.searchPublic({
+    unitType: 'CHALET',
+    destination: 'الساحل',
+    maxPrice: 15000,
+  });
+  assert.deepEqual(legacyCombined.map(p => p.id), ['p1', 'p4'], 'L9: combined CHALET + الساحل + maxPrice must include legacy alias row');
 
   // Finding 1: Malformed source rows must fail closed before any filtering
   const badRows = [

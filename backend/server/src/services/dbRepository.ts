@@ -7,7 +7,7 @@
 import { queryDb } from './dbClient.js';
 import { isProductionDatabase } from '../utils/testDbGuard.js';
 import { GLOBAL_MIN_STAY_NIGHTS, GLOBAL_MAX_STAY_NIGHTS, BLOCKING_BOOKING_STATUSES } from '../constants/bookingRules.js';
-import { PublicPropertySearchFilters, validatePublicPropertyBaseRow } from '../contracts/publicProperty.js';
+import { PublicPropertySearchFilters, validatePublicPropertyBaseRow, normalizeSearchUnitType } from '../contracts/publicProperty.js';
 
 // Helper to mask PII strings for admin queue outputs
 export function maskPii(val?: string, visibleLength = 4): string {
@@ -420,11 +420,11 @@ export const propertyDb = {
       : (filters.unitType ? [filters.unitType] : []);
 
     if (unitTypes.length > 0) {
-      const upperTypes = unitTypes.map(t => t.trim().toUpperCase()).filter(Boolean);
-      if (upperTypes.length > 0) {
+      const normalizedTypes = unitTypes.map(t => normalizeSearchUnitType(t)).filter(Boolean);
+      if (normalizedTypes.length > 0) {
         mapped = mapped.filter((p: any) => {
-          const type = (p.unitType || '').toUpperCase();
-          return upperTypes.includes(type);
+          const type = normalizeSearchUnitType(p.unitType || '');
+          return normalizedTypes.includes(type);
         });
       }
     }

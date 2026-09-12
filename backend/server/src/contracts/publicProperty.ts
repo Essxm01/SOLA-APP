@@ -1,3 +1,32 @@
+/**
+ * Maps Arabic / legacy unit-type aliases to canonical ENUM values.
+ * Applied at the search-matching boundary so that:
+ *   - A filter value "CHALET" matches a DB row stored as "شاليه"
+ *   - A filter value "شقة" matches a DB row stored as "APARTMENT"
+ * Unknown values are preserved as trimmed-uppercase (HOTEL_ROOM, OTHER, etc.).
+ */
+const UNIT_TYPE_ALIAS_MAP: Record<string, string> = {
+  // Canonical
+  APARTMENT: 'APARTMENT',
+  CHALET: 'CHALET',
+  STUDIO: 'STUDIO',
+  VILLA: 'VILLA',
+  // Arabic aliases
+  'شقة': 'APARTMENT',
+  'شقه': 'APARTMENT',
+  'شاليه': 'CHALET',
+  'استوديو': 'STUDIO',
+  'استديو': 'STUDIO',
+  'فيلا': 'VILLA',
+  'فيلة': 'VILLA',
+};
+
+export function normalizeSearchUnitType(raw: string): string {
+  const trimmed = raw.trim();
+  const mapped = UNIT_TYPE_ALIAS_MAP[trimmed] ?? UNIT_TYPE_ALIAS_MAP[trimmed.toUpperCase()];
+  return mapped ?? trimmed.toUpperCase();
+}
+
 export interface PublicPropertySearchFilters {
   destination?: string;
   destinations?: string[];

@@ -37,6 +37,7 @@ Read these selectively after the default recovery sequence. They govern planning
 | [codex/KONFRM_DECISION_CONFLICTS.md](./codex/KONFRM_DECISION_CONFLICTS.md) | Contradictions between sources, precedence checks, or open Founder questions | Unambiguous tasks with existing tests |
 | [codex/KONFRM_DOCUMENT_RECONCILIATION.md](./codex/KONFRM_DOCUMENT_RECONCILIATION.md) | Determining whether a repository document is current, historical, or superseded | Ordinary implementation after authority is already clear |
 | [codex/P1_1_SCHEMA_RLS_BASELINE_REPORT.md](./codex/P1_1_SCHEMA_RLS_BASELINE_REPORT.md) | Touching Supabase schema, RLS, grants, public RPCs, Storage, migrations, or identity persistence | UI-only work with no persistence/security effect |
+| [automation/KONFRM_AUTO_ORCHESTRATOR_SPEC.md](./automation/KONFRM_AUTO_ORCHESTRATOR_SPEC.md) | Developing, executing, or configuring autonomous agents, adapters, worktree locks, or orchestrator tooling | Routine manual coding tasks with clear contracts |
 
 ## Other authorities
 
@@ -44,6 +45,7 @@ Read these selectively after the default recovery sequence. They govern planning
 - [`../backend/database/migrations/`](../backend/database/migrations/) is migration history and is the technical source for database changes.
 - [`../tasks/CURRENT_TASK.md`](../tasks/CURRENT_TASK.md) is the one active execution contract, not permanent knowledge.
 - [`../tasks/POST_PHASE_7_DEFERRED_CLOSURE.md`](../tasks/POST_PHASE_7_DEFERRED_CLOSURE.md) is the mandatory post-Phase-7/pre-Phase-8 return gate created by explicit Founder sequencing override.
+- [`./automation/KONFRM_AUTO_ORCHESTRATOR_SPEC.md`](./automation/KONFRM_AUTO_ORCHESTRATOR_SPEC.md) is the canonical architecture and adapter contract for the Neutral KONFRM AUTO ORCHESTRATOR.
 
 ## Historical/reference material
 

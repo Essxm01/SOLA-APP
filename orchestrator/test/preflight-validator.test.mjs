@@ -36,7 +36,8 @@ describe('Preflight Validator (C29, C45)', () => {
       mode: 'WRITE',
       requiresWriterLock: true,
       worktreeRoot: tempRepo,
-      agent: 'mock'
+      agent: 'mock',
+      allowedWritePaths: ['init.txt']
     };
 
     const currentTaskMetadata = {
@@ -124,6 +125,203 @@ describe('Preflight Validator (C29, C45)', () => {
     assert.throws(
       () => validatePreflight({ task, adapter: { agentName: 'mock' } }), // Adapter is mock
       /PREFLIGHT_BLOCKED_ADAPTER_MISMATCH/
+    );
+  });
+
+  test('PREFLIGHT-06: real KONFRM context missing metadata blocks (C47)', () => {
+    const head = execFileSync('git', ['-C', tempRepo, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+    const task = {
+      taskId: 'TASK-06',
+      contextMode: 'KONFRM_REPO',
+      expectedBranch: 'feature/test-branch',
+      expectedHeadSha: head,
+      expectedStage: 'DEV',
+      worktreeRoot: tempRepo,
+      agent: 'mock',
+      mode: 'READ_ONLY'
+    };
+
+    // Missing currentTaskMetadata in KONFRM_REPO mode
+    assert.throws(
+      () => validatePreflight({ task, adapter: { agentName: 'mock' }, currentTaskMetadata: null }),
+      /PREFLIGHT_BLOCKED_CONTEXT_METADATA_INSUFFICIENT/
+    );
+  });
+
+  test('PREFLIGHT-07: TASK_ID mismatch blocks (C47)', () => {
+    const head = execFileSync('git', ['-C', tempRepo, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+    const task = {
+      taskId: 'TASK-07',
+      contextMode: 'KONFRM_REPO',
+      expectedBranch: 'feature/test-branch',
+      expectedHeadSha: head,
+      expectedStage: 'DEV',
+      worktreeRoot: tempRepo,
+      agent: 'mock',
+      mode: 'READ_ONLY'
+    };
+
+    const metadata = {
+      TASK_ID: 'TASK-DIFFERENT',
+      EXPECTED_BRANCH: 'feature/test-branch',
+      BASE_SHA: head,
+      STAGE: 'DEV'
+    };
+
+    assert.throws(
+      () => validatePreflight({ task, adapter: { agentName: 'mock' }, currentTaskMetadata: metadata }),
+      /PREFLIGHT_BLOCKED_CONTEXT_MISMATCH/
+    );
+  });
+
+  test('PREFLIGHT-08: BASE_SHA mismatch blocks (C47)', () => {
+    const head = execFileSync('git', ['-C', tempRepo, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+    const task = {
+      taskId: 'TASK-08',
+      contextMode: 'KONFRM_REPO',
+      expectedBranch: 'feature/test-branch',
+      expectedHeadSha: head,
+      expectedStage: 'DEV',
+      worktreeRoot: tempRepo,
+      agent: 'mock',
+      mode: 'READ_ONLY'
+    };
+
+    const metadata = {
+      TASK_ID: 'TASK-08',
+      EXPECTED_BRANCH: 'feature/test-branch',
+      BASE_SHA: 'mismatched_base_sha_123',
+      STAGE: 'DEV'
+    };
+
+    assert.throws(
+      () => validatePreflight({ task, adapter: { agentName: 'mock' }, currentTaskMetadata: metadata }),
+      /PREFLIGHT_BLOCKED_CONTEXT_MISMATCH/
+    );
+  });
+
+  test('PREFLIGHT-09: STAGE mismatch blocks (C47)', () => {
+    const head = execFileSync('git', ['-C', tempRepo, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+    const task = {
+      taskId: 'TASK-09',
+      contextMode: 'KONFRM_REPO',
+      expectedBranch: 'feature/test-branch',
+      expectedHeadSha: head,
+      expectedStage: 'DEV',
+      worktreeRoot: tempRepo,
+      agent: 'mock',
+      mode: 'READ_ONLY'
+    };
+
+    const metadata = {
+      TASK_ID: 'TASK-09',
+      EXPECTED_BRANCH: 'feature/test-branch',
+      BASE_SHA: head,
+      STAGE: 'STAGE_PROD_DIFFERS'
+    };
+
+    assert.throws(
+      () => validatePreflight({ task, adapter: { agentName: 'mock' }, currentTaskMetadata: metadata }),
+      /PREFLIGHT_BLOCKED_CONTEXT_MISMATCH/
+    );
+  });
+
+  test('PREFLIGHT-10: expectedBranch missing for real KONFRM task blocks (C47)', () => {
+    const head = execFileSync('git', ['-C', tempRepo, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+    const task = {
+      taskId: 'TASK-10',
+      contextMode: 'KONFRM_REPO',
+      // expectedBranch missing!
+      expectedHeadSha: head,
+      expectedStage: 'DEV',
+      worktreeRoot: tempRepo,
+      agent: 'mock',
+      mode: 'READ_ONLY'
+    };
+
+    const metadata = {
+      TASK_ID: 'TASK-10',
+      EXPECTED_BRANCH: 'feature/test-branch',
+      BASE_SHA: head,
+      STAGE: 'DEV'
+    };
+
+    assert.throws(
+      () => validatePreflight({ task, adapter: { agentName: 'mock' }, currentTaskMetadata: metadata }),
+      /PREFLIGHT_BLOCKED_CONTEXT_METADATA_INSUFFICIENT/
+    );
+  });
+
+  test('PREFLIGHT-11: expectedHead missing for real KONFRM task blocks (C47)', () => {
+    const task = {
+      taskId: 'TASK-11',
+      contextMode: 'KONFRM_REPO',
+      expectedBranch: 'feature/test-branch',
+      // expectedHeadSha missing!
+      expectedStage: 'DEV',
+      worktreeRoot: tempRepo,
+      agent: 'mock',
+      mode: 'READ_ONLY'
+    };
+
+    const metadata = {
+      TASK_ID: 'TASK-11',
+      EXPECTED_BRANCH: 'feature/test-branch',
+      BASE_SHA: 'some_base',
+      STAGE: 'DEV'
+    };
+
+    assert.throws(
+      () => validatePreflight({ task, adapter: { agentName: 'mock' }, currentTaskMetadata: metadata }),
+      /PREFLIGHT_BLOCKED_CONTEXT_METADATA_INSUFFICIENT/
+    );
+  });
+
+  test('PREFLIGHT-12: invalid taskId blocks before lock (C48)', () => {
+    const invalidIds = [
+      '../evil_task',
+      '..\\evil_task',
+      '/task_abs',
+      '\\task_abs',
+      'task with space',
+      'C:\\escaped\\task',
+      'task\x00null',
+      'a'.repeat(150)
+    ];
+
+    for (const badId of invalidIds) {
+      const task = {
+        taskId: badId,
+        expectedBranch: 'feature/test-branch',
+        worktreeRoot: tempRepo,
+        agent: 'mock',
+        mode: 'READ_ONLY'
+      };
+
+      assert.throws(
+        () => validatePreflight({ task, adapter: { agentName: 'mock' } }),
+        /PREFLIGHT_BLOCKED_INVALID_IDENTIFIER/,
+        `Should reject invalid taskId: "${badId}"`
+      );
+    }
+  });
+
+  test('PREFLIGHT-13: WRITE empty allowlist blocks (C59)', () => {
+    const head = execFileSync('git', ['-C', tempRepo, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+    const task = {
+      taskId: 'TASK-13',
+      expectedBranch: 'feature/test-branch',
+      expectedHeadSha: head,
+      mode: 'WRITE',
+      requiresWriterLock: true,
+      worktreeRoot: tempRepo,
+      agent: 'mock',
+      allowedWritePaths: [] // Empty allowlist without unrestrictedSandbox!
+    };
+
+    assert.throws(
+      () => validatePreflight({ task, adapter: { agentName: 'mock' } }),
+      /PREFLIGHT_BLOCKED_WRITE_SCOPE_MISSING/
     );
   });
 });

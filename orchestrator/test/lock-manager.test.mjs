@@ -344,4 +344,143 @@ describe('Writer Lock Engine (Section 13, 15, 16, C4, C5, C13, C26)', () => {
     assert.equal(finalOnDisk.lockInstanceId, 'new-concurrent-winner-instance');
   });
 
+  test('LOCK-11: StartTime unavailable for live PID does not reclaim (C50)', () => {
+    const lockFilePath = path.join(paths.locks, identity.lockFileName);
+    const staleMetadata = {
+      lockKey: identity.lockKey,
+      lockInstanceId: 'stale-instance-11',
+      worktreePath: tempRepo,
+      canonicalWorktreeRealpath: identity.canonicalWorktreeRealpath,
+      canonicalGitCommonDir: identity.canonicalGitCommonDir,
+      branch: 'test-branch',
+      taskId: 'TASK-11',
+      agent: 'mock',
+      ownerPid: 12345,
+      ownerStartTime: '2026-09-17T01:00:00.000Z',
+      ownerIdentityConfidence: 'VERIFIED'
+    };
+    fs.writeFileSync(lockFilePath, JSON.stringify(staleMetadata, null, 2), 'utf8');
+
+    const recovery = recoverStaleLock({
+      lockFilePath,
+      quarantineDir: paths.quarantine,
+      staleMetadata,
+      isAliveChecker: () => true, // PID alive
+      getStartTimeChecker: () => null // StartTime unavailable!
+    });
+
+    assert.equal(recovery.recovered, false);
+    assert.equal(recovery.reason, 'OWNER_IDENTITY_UNVERIFIED');
+    assert.ok(fs.existsSync(lockFilePath), 'Lock must not be reclaimed when identity is unverified');
+  });
+
+  test('LOCK-12: Stored identity UNKNOWN does not reclaim live PID (C50)', () => {
+    const lockFilePath = path.join(paths.locks, identity.lockFileName);
+    const staleMetadata = {
+      lockKey: identity.lockKey,
+      lockInstanceId: 'stale-instance-12',
+      worktreePath: tempRepo,
+      canonicalWorktreeRealpath: identity.canonicalWorktreeRealpath,
+      canonicalGitCommonDir: identity.canonicalGitCommonDir,
+      branch: 'test-branch',
+      taskId: 'TASK-12',
+      agent: 'mock',
+      ownerPid: 12345,
+      ownerStartTime: null,
+      ownerIdentityConfidence: 'UNKNOWN'
+    };
+    fs.writeFileSync(lockFilePath, JSON.stringify(staleMetadata, null, 2), 'utf8');
+
+    const recovery = recoverStaleLock({
+      lockFilePath,
+      quarantineDir: paths.quarantine,
+      staleMetadata,
+      isAliveChecker: () => true, // PID alive
+      getStartTimeChecker: () => '2026-09-17T02:00:00.000Z'
+    });
+
+    assert.equal(recovery.recovered, false);
+    assert.equal(recovery.reason, 'OWNER_IDENTITY_UNVERIFIED');
+    assert.ok(fs.existsSync(lockFilePath), 'Lock must not be reclaimed when stored identity was UNKNOWN');
+  });
+
+  test('LOCK-13: Recovery mutex blocks second recoverer (C51)', () => {
+    const lockFilePath = path.join(paths.locks, identity.lockFileName);
+    const staleMetadata = {
+      lockKey: identity.lockKey,
+      lockInstanceId: 'stale-instance-13',
+      worktreePath: tempRepo,
+      canonicalWorktreeRealpath: identity.canonicalWorktreeRealpath,
+      canonicalGitCommonDir: identity.canonicalGitCommonDir,
+      branch: 'test-branch',
+      taskId: 'TASK-13',
+      agent: 'mock',
+      ownerPid: 999999,
+      ownerStartTime: '2026-09-17T01:00:00.000Z',
+      ownerIdentityConfidence: 'VERIFIED'
+    };
+    fs.writeFileSync(lockFilePath, JSON.stringify(staleMetadata, null, 2), 'utf8');
+
+    // Simulate recovery mutex already held by another process
+    const recoveryMutexPath = path.join(paths.locks, `recovery_${identity.lockKey}.lock`);
+    fs.writeFileSync(recoveryMutexPath, JSON.stringify({ recoveringPid: 88888 }), { flag: 'wx' });
+
+    try {
+      const recovery = recoverStaleLock({
+        lockFilePath,
+        quarantineDir: paths.quarantine,
+        staleMetadata,
+        isAliveChecker: () => false
+      });
+
+      assert.equal(recovery.recovered, false);
+      assert.equal(recovery.reason, 'RECOVERY_IN_PROGRESS');
+      assert.equal(recovery.contention, true);
+    } finally {
+      try { fs.unlinkSync(recoveryMutexPath); } catch {}
+    }
+  });
+
+  test('LOCK-14: Normal writer winning after quarantine is not disturbed (C51)', () => {
+    const lockFilePath = path.join(paths.locks, identity.lockFileName);
+    const staleMetadata = {
+      lockKey: identity.lockKey,
+      lockInstanceId: 'stale-instance-14',
+      worktreePath: tempRepo,
+      canonicalWorktreeRealpath: identity.canonicalWorktreeRealpath,
+      canonicalGitCommonDir: identity.canonicalGitCommonDir,
+      branch: 'test-branch',
+      taskId: 'TASK-14',
+      agent: 'mock',
+      ownerPid: 999999,
+      ownerStartTime: '2026-09-17T01:00:00.000Z',
+      ownerIdentityConfidence: 'VERIFIED'
+    };
+    fs.writeFileSync(lockFilePath, JSON.stringify(staleMetadata, null, 2), 'utf8');
+
+    const normalWinnerMetadata = {
+      lockKey: identity.lockKey,
+      lockInstanceId: 'normal-winner-14',
+      taskId: 'TASK-WINNER'
+    };
+
+    const recovery = recoverStaleLock({
+      lockFilePath,
+      quarantineDir: paths.quarantine,
+      staleMetadata,
+      isAliveChecker: () => false,
+      attemptAcquisitionAfterQuarantine: true,
+      onAfterQuarantineHook: () => {
+        // Normal writer acquires right after quarantine!
+        fs.writeFileSync(lockFilePath, JSON.stringify(normalWinnerMetadata, null, 2), { flag: 'wx' });
+      }
+    });
+
+    assert.equal(recovery.recovered, false);
+    assert.equal(recovery.reason, 'LOCK_ACQUISITION_LOST_AFTER_RECOVERY');
+    assert.ok(fs.existsSync(lockFilePath));
+    const onDisk = JSON.parse(fs.readFileSync(lockFilePath, 'utf8'));
+    assert.equal(onDisk.lockInstanceId, 'normal-winner-14', 'Winner lock must remain undisturbed');
+  });
+
 });

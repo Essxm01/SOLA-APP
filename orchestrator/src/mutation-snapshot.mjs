@@ -38,14 +38,26 @@ function hashString(content) {
   return crypto.createHash('sha256').update(content || '', 'utf8').digest('hex');
 }
 
-function hashFileContent(filePath) {
+export function fingerprintUntrackedEntry(filePath) {
   try {
-    const data = fs.readFileSync(filePath);
-    return crypto.createHash('sha256').update(data).digest('hex');
+    const stat = fs.lstatSync(filePath);
+    if (stat.isSymbolicLink()) {
+      const linkTarget = fs.readlinkSync(filePath);
+      return 'SYMLINK:' + hashString(linkTarget);
+    }
+    if (stat.isFile()) {
+      const data = fs.readFileSync(filePath);
+      return 'FILE:' + crypto.createHash('sha256').update(data).digest('hex');
+    }
+    if (stat.isDirectory()) {
+      return 'DIR:' + stat.mtimeMs;
+    }
+    return 'OTHER:' + stat.mode;
   } catch {
     return 'UNREADABLE';
   }
 }
+
 
 export function captureMutationSnapshot(worktreeRoot, gitBinary = 'git') {
   if (!worktreeRoot) {
@@ -111,7 +123,7 @@ export function captureMutationSnapshot(worktreeRoot, gitBinary = 'git') {
     for (const entry of parsedEntries) {
       if (entry.status === '??') {
         const fullPath = path.join(resolved, entry.path);
-        untrackedContentMap[entry.path] = hashFileContent(fullPath);
+        untrackedContentMap[entry.path] = fingerprintUntrackedEntry(fullPath);
       }
     }
 

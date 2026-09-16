@@ -10,6 +10,7 @@
  * until terminal evidence is completely written.
  */
 
+import crypto from 'node:crypto';
 import { resolveRuntimePaths, ensureRuntimeDirectories } from './runtime-paths.mjs';
 import { computeWorktreeIdentity } from './worktree-identity.mjs';
 import { acquireLock, releaseLock } from './lock-manager.mjs';
@@ -17,6 +18,37 @@ import { captureMutationSnapshot, classifyMutation } from './mutation-snapshot.m
 import { createRunDescriptor, updateRunDescriptor, writeAuditEvent } from './run-store.mjs';
 import { validatePreflight } from './preflight-validator.mjs';
 import { validateWriteBoundaries } from './boundary-validator.mjs';
+
+export function finalizeTerminalEvidence({
+  runsDir,
+  eventsDir,
+  runId,
+  result,
+  descriptorUpdate
+}) {
+  let auditEventWritten = false;
+  let descriptorUpdated = false;
+
+  try {
+    writeAuditEvent(eventsDir, runId, result);
+    auditEventWritten = true;
+  } catch (err) {
+    throw new Error(`EVIDENCE_FINALIZATION_FAILED: Failed to write audit event: ${err.message}`);
+  }
+
+  try {
+    updateRunDescriptor(runsDir, runId, descriptorUpdate);
+    descriptorUpdated = true;
+  } catch (err) {
+    throw new Error(`EVIDENCE_FINALIZATION_FAILED: Failed to update run descriptor: ${err.message}`);
+  }
+
+  return {
+    auditEventWritten,
+    descriptorUpdated,
+    terminalEvidenceComplete: auditEventWritten && descriptorUpdated
+  };
+}
 
 export async function executeOrchestratedTask({
   task,
@@ -31,53 +63,56 @@ export async function executeOrchestratedTask({
     throw new Error('executeOrchestratedTask: adapter is required');
   }
 
-  // 1. Preflight Invariants & Context Validation (C21, C23, C29, C45)
+  // 1. Preflight Invariants & Context Validation (C21, C23, C29, C45, C47, C48, C59)
   validatePreflight({
     task,
     adapter,
     currentTaskMetadata: task.currentTaskMetadata || null
   });
 
-  const paths = ensureRuntimeDirectories(runtimePaths ? runtimePaths.root : null);
-  const runId = task.runId || `run_${task.taskId}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  const paths = (runtimePaths && runtimePaths.runs && runtimePaths.events && runtimePaths.locks)
+    ? runtimePaths
+    : ensureRuntimeDirectories(runtimePaths ? runtimePaths.root : null);
+  const runId = task.runId || `run_${crypto.randomUUID()}`;
   const startedAt = new Date().toISOString();
+
 
   let acquiredLockInstanceId = null;
   let lockFilePath = null;
   let beforeSnapshot = null;
+  let retainLock = false;
+  let lockRetentionReason = null;
 
-  // 2. Writer Lock Acquisition (C32: Lock MUST precede pre-run baseline snapshot)
-  if (task.mode === 'WRITE') {
-    const worktreeIdentity = computeWorktreeIdentity(task.worktreeRoot);
-    const lockAcquisition = acquireLock({
-      locksDir: paths.locks,
-      worktreeIdentity,
-      worktreePath: task.worktreeRoot,
-      branch: task.expectedBranch || 'unknown',
+  // 2. Worktree Activity Lock Acquisition (C32, C49: Lock MUST precede pre-run baseline snapshot for all modes)
+  const worktreeIdentity = computeWorktreeIdentity(task.worktreeRoot);
+  const lockAcquisition = acquireLock({
+    locksDir: paths.locks,
+    worktreeIdentity,
+    worktreePath: task.worktreeRoot,
+    branch: task.expectedBranch || 'unknown',
+    taskId: task.taskId,
+    agent: task.agent,
+    ownerPid: process.pid
+  });
+
+  if (!lockAcquisition.acquired) {
+    return {
       taskId: task.taskId,
       agent: task.agent,
-      ownerPid: process.pid
-    });
-
-    if (!lockAcquisition.acquired) {
-      return {
-        taskId: task.taskId,
-        agent: task.agent,
-        runId,
-        status: 'BLOCKED',
-        executionOutcome: 'CANCELLED',
-        verificationOutcome: 'PENDING_VERIFICATION',
-        contention: true,
-        reason: 'Worktree lock contention detected',
-        activeLock: lockAcquisition.activeLock
-      };
-    }
-
-    acquiredLockInstanceId = lockAcquisition.lockMetadata.lockInstanceId;
-    lockFilePath = lockAcquisition.lockFilePath;
+      runId,
+      status: 'BLOCKED',
+      executionOutcome: 'CANCELLED',
+      verificationOutcome: 'PENDING_VERIFICATION',
+      contention: true,
+      reason: 'Worktree lock contention detected',
+      activeLock: lockAcquisition.activeLock
+    };
   }
 
-  // 3. Pre-run Snapshot (C32: Captured under lock for WRITE mode)
+  acquiredLockInstanceId = lockAcquisition.lockMetadata.lockInstanceId;
+  lockFilePath = lockAcquisition.lockFilePath;
+
+  // 3. Pre-run Snapshot (C32: Captured under lock)
   beforeSnapshot = captureMutationSnapshot(task.worktreeRoot);
 
   try {
@@ -107,6 +142,14 @@ export async function executeOrchestratedTask({
 
     let status = 'SUCCESS';
     let executionOutcome = 'PROCESS_COMPLETED';
+    if (processResult.timedOut) {
+      executionOutcome = 'TIMED_OUT';
+    } else if (processResult.exitCode !== 0 && processResult.exitCode !== null) {
+      executionOutcome = 'PROCESS_FAILED';
+    } else if (processResult.spawnError) {
+      executionOutcome = 'PROCESS_FAILED';
+    }
+
     let verificationOutcome = 'PENDING_VERIFICATION';
     let retryEligible = false;
     let fallbackEligible = false;
@@ -118,18 +161,27 @@ export async function executeOrchestratedTask({
     const branchMismatch = beforeSnapshot.branch !== afterSnapshot.branch;
     const headMismatch = beforeSnapshot.head !== afterSnapshot.head;
 
-    if (branchMismatch || headMismatch) {
+    // C55: Child process aliveness check
+    if (processResult.processStillAlive || processResult.terminationStatus === 'TERMINATION_FAILED') {
+      status = 'PROCESS_STILL_ALIVE_BLOCKED';
+      verificationOutcome = 'VERIFICATION_FAILED';
+      verificationSummary = 'Child process could not be terminated and remains alive; activity lock retained';
+      retryEligible = false;
+      fallbackEligible = false;
+      retainLock = true;
+      lockRetentionReason = 'LOCK_RETAINED_DUE_TO_LIVE_PROCESS';
+    }
+    // C34: Context & Branch/HEAD Immutability
+    else if (branchMismatch || headMismatch) {
       status = 'CONTEXT_MISMATCH';
-      executionOutcome = 'PROCESS_COMPLETED';
       verificationOutcome = 'VERIFICATION_FAILED';
       verificationSummary = `Branch or HEAD changed unexpectedly (branch: ${beforeSnapshot.branch} -> ${afterSnapshot.branch}, HEAD: ${beforeSnapshot.head} -> ${afterSnapshot.head})`;
       retryEligible = false;
       fallbackEligible = false;
     }
-    // C30: READ_ONLY and REVIEW Immutability
+    // C30, C58: READ_ONLY and REVIEW Immutability (preserves executionOutcome)
     else if ((task.mode === 'READ_ONLY' || task.mode === 'REVIEW') && mutation.classification !== 'ZERO_MUTATION') {
       status = 'READ_ONLY_MUTATION_BLOCKED';
-      executionOutcome = 'PROCESS_COMPLETED';
       verificationOutcome = 'VERIFICATION_FAILED';
       verificationSummary = `Mutation detected in ${task.mode} mode: ${mutation.changedPaths.join(', ')}`;
       retryEligible = false;
@@ -138,15 +190,13 @@ export async function executeOrchestratedTask({
     // C46: Fail-closed on UNKNOWN mutation classification
     else if (mutation.classification === 'UNKNOWN') {
       status = 'FAILED';
-      executionOutcome = 'PROCESS_COMPLETED';
       verificationOutcome = 'VERIFICATION_FAILED';
       verificationSummary = 'Mutation classification is UNKNOWN (fail closed)';
       retryEligible = false;
       fallbackEligible = false;
     }
     // Process timed out
-    else if (processResult.timedOut) {
-      executionOutcome = 'TIMED_OUT';
+    else if (executionOutcome === 'TIMED_OUT') {
       if (mutation.classification === 'MUTATED') {
         status = 'PARTIAL_MUTATION_BLOCKED';
         verificationOutcome = 'VERIFICATION_FAILED';
@@ -160,9 +210,8 @@ export async function executeOrchestratedTask({
         maxRetriesAllowed = 1;
       }
     }
-    // Process failed with non-zero exit code
-    else if (processResult.exitCode !== 0) {
-      executionOutcome = 'PROCESS_FAILED';
+    // Process failed with non-zero exit code or spawn error
+    else if (executionOutcome === 'PROCESS_FAILED') {
       if (mutation.classification === 'MUTATED') {
         status = 'PARTIAL_MUTATION_BLOCKED';
         verificationOutcome = 'VERIFICATION_FAILED';
@@ -178,8 +227,6 @@ export async function executeOrchestratedTask({
     }
     // Malformed output
     else if (rawResult.malformed) {
-      // C35: Malformed output + mutation -> PARTIAL_MUTATION_BLOCKED (no retry)
-      executionOutcome = 'PROCESS_COMPLETED';
       verificationOutcome = 'VERIFICATION_FAILED';
       if (mutation.classification !== 'ZERO_MUTATION') {
         status = 'PARTIAL_MUTATION_BLOCKED';
@@ -204,13 +251,12 @@ export async function executeOrchestratedTask({
 
       if (!boundaryCheck.valid) {
         status = 'FORBIDDEN_MUTATION_BLOCKED';
-        executionOutcome = 'PROCESS_COMPLETED';
         verificationOutcome = 'VERIFICATION_FAILED';
         verificationSummary = boundaryCheck.reason || 'Write boundary violation';
         retryEligible = false;
         fallbackEligible = false;
       } else {
-        // Verification Gate (Writer Lock RETAINED)
+        // Verification Gate (Activity Lock RETAINED)
         if (typeof verifier === 'function') {
           try {
             const vRes = await verifier(task, rawResult);
@@ -230,7 +276,6 @@ export async function executeOrchestratedTask({
             verificationSummary = `Verification threw error: ${vErr.message}`;
           }
         } else if (task.mode === 'WRITE') {
-          // C36: WRITE mode requires explicit verifier
           testsPassed = false;
           status = 'FAILED';
           verificationOutcome = 'VERIFICATION_CONFIGURATION_MISSING';
@@ -238,7 +283,6 @@ export async function executeOrchestratedTask({
           retryEligible = false;
           fallbackEligible = false;
         } else {
-          // READ_ONLY or REVIEW without custom verifier
           testsPassed = true;
           status = 'SUCCESS';
           verificationOutcome = 'VERIFIED_PASSED';
@@ -275,22 +319,43 @@ export async function executeOrchestratedTask({
       retryEligible,
       fallbackEligible,
       maxRetriesAllowed,
+      lockRetained: retainLock,
+      lockRetentionReason: lockRetentionReason || null,
       eventLogPath: paths.events,
       rawLogPath: null,
       rawLogSha256: null
     };
 
-    // 8. Finalize Evidence Snapshot & Audit Event
-    writeAuditEvent(paths.events, runId, normalizedResult);
-    updateRunDescriptor(paths.runs, runId, {
-      state: status,
-      finishedAt,
-      durationMs,
-      exitCode: normalizedResult.exitCode
-    });
+    // 8. Finalize Evidence Snapshot & Audit Event (C56)
+    try {
+      finalizeTerminalEvidence({
+        runsDir: paths.runs,
+        eventsDir: paths.events,
+        runId,
+        result: normalizedResult,
+        descriptorUpdate: {
+          state: status,
+          finishedAt,
+          durationMs,
+          exitCode: normalizedResult.exitCode
+        }
+      });
+    } catch (evidenceErr) {
+      retainLock = true;
+      lockRetentionReason = 'LOCK_RETAINED_DUE_TO_EVIDENCE_FAILURE';
+      normalizedResult.lockRetained = true;
+      normalizedResult.lockRetentionReason = lockRetentionReason;
+      throw evidenceErr;
+    }
 
     return normalizedResult;
   } catch (error) {
+    if (error.message && error.message.startsWith('EVIDENCE_FINALIZATION_FAILED')) {
+      retainLock = true;
+      lockRetentionReason = 'LOCK_RETAINED_DUE_TO_EVIDENCE_FAILURE';
+      throw error;
+    }
+
     // C37: Exception terminal finalization BEFORE lock release
     let afterSnapshot = null;
     let mutation = { classification: 'UNKNOWN', changedPaths: [] };
@@ -299,7 +364,9 @@ export async function executeOrchestratedTask({
       if (beforeSnapshot && afterSnapshot) {
         mutation = classifyMutation(beforeSnapshot, afterSnapshot);
       }
-    } catch {}
+    } catch (_snapErr) {
+      // Snapshot capture on failure may not be possible if repo is corrupt
+    }
 
     const finishedAt = new Date().toISOString();
     const normalizedResult = {
@@ -327,28 +394,40 @@ export async function executeOrchestratedTask({
       retryEligible: false,
       fallbackEligible: false,
       maxRetriesAllowed: 0,
+      lockRetained: retainLock,
+      lockRetentionReason: lockRetentionReason || null,
       eventLogPath: paths.events,
       rawLogPath: null,
       rawLogSha256: null
     };
 
     try {
-      writeAuditEvent(paths.events, runId, normalizedResult);
-      updateRunDescriptor(paths.runs, runId, {
-        state: 'FAILED',
-        finishedAt,
-        durationMs: normalizedResult.durationMs,
-        exitCode: null
+      finalizeTerminalEvidence({
+        runsDir: paths.runs,
+        eventsDir: paths.events,
+        runId,
+        result: normalizedResult,
+        descriptorUpdate: {
+          state: 'FAILED',
+          finishedAt,
+          durationMs: normalizedResult.durationMs,
+          exitCode: null
+        }
       });
-    } catch {}
+    } catch (evidenceErr) {
+      retainLock = true;
+      lockRetentionReason = 'LOCK_RETAINED_DUE_TO_EVIDENCE_FAILURE';
+      normalizedResult.lockRetained = true;
+      normalizedResult.lockRetentionReason = lockRetentionReason;
+      throw evidenceErr;
+    }
 
     return normalizedResult;
   } finally {
-    // 9. Writer Lock Released ONLY AFTER Evidence Finalization (C13, C37)
-    if (acquiredLockInstanceId && lockFilePath) {
-      try {
-        releaseLock(lockFilePath, acquiredLockInstanceId);
-      } catch (err) {}
+    // 9. Activity Lock Released ONLY AFTER Evidence Finalization (C13, C37, C57)
+    // Retained if live process remains or evidence finalization failed (C55, C56)
+    if (acquiredLockInstanceId && lockFilePath && !retainLock) {
+      releaseLock(lockFilePath, acquiredLockInstanceId);
     }
   }
 }

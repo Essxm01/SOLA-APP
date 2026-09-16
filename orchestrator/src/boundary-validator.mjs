@@ -37,6 +37,7 @@ export function isPathEscaped(normalizedPath) {
 }
 
 export function pathMatchesScope(candidatePath, scopePath) {
+  const isDirectoryScope = typeof scopePath === 'string' && (scopePath.endsWith('/') || scopePath.endsWith('\\'));
   const normCandidate = normalizeRelativePath(candidatePath);
   const normScope = normalizeRelativePath(scopePath);
 
@@ -52,12 +53,15 @@ export function pathMatchesScope(candidatePath, scopePath) {
   if (cLower === sLower) return true;
 
   // Directory scope match: candidate must be under scope/
-  if (sLower.endsWith('/')) {
-    return cLower.startsWith(sLower);
-  } else {
-    return cLower.startsWith(sLower + '/');
+  if (isDirectoryScope) {
+    const dirPrefix = sLower.endsWith('/') ? sLower : sLower + '/';
+    return cLower.startsWith(dirPrefix);
   }
+
+  // Exact file scope does NOT match child paths
+  return false;
 }
+
 
 export const isPathAllowed = pathMatchesScope;
 

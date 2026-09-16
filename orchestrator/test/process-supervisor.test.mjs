@@ -141,4 +141,72 @@ describe('Process Supervisor (Section 19, 20, C18, C19)', () => {
       assert.equal(isProcessAlive(childPid), false, 'Child process must be dead');
     }
   });
+
+  test('PROC-08: Failed termination settles within bounded time (C54)', async () => {
+    let termCalled = false;
+    const mockFailTerm = async () => {
+      termCalled = true;
+      return { status: 'TERMINATION_FAILED' };
+    };
+
+    const startTime = Date.now();
+    const handle = spawnSupervisedProcess({
+      command: process.execPath,
+      args: [mockAgentPath, '--scenario', 'hang'],
+      timeoutMs: 200,
+      terminateProcessTreeFn: mockFailTerm
+    });
+
+    try {
+      const result = await handle.promise;
+      const elapsed = Date.now() - startTime;
+      assert.ok(termCalled, 'Termination function must have been called');
+      assert.ok(elapsed < 2000, `Must settle within bounded time, took ${elapsed}ms`);
+      assert.equal(result.timedOut, true);
+    } finally {
+      await killProcessTree(handle.pid);
+    }
+  });
+
+  test('PROC-09: Failed termination reports processStillAlive: true and terminationStatus: TERMINATION_FAILED (C54, C55)', async () => {
+    const mockFailTerm = async () => ({ status: 'TERMINATION_FAILED' });
+    const handle = spawnSupervisedProcess({
+      command: process.execPath,
+      args: [mockAgentPath, '--scenario', 'hang'],
+      timeoutMs: 200,
+      terminateProcessTreeFn: mockFailTerm
+    });
+
+    try {
+      const result = await handle.promise;
+      assert.equal(result.timedOut, true);
+      assert.equal(result.terminationStatus, 'TERMINATION_FAILED');
+      assert.equal(result.processStillAlive, true);
+    } finally {
+      await killProcessTree(handle.pid);
+    }
+  });
+
+  test('PROC-10: Async cancel() returns deterministic status, processStillAlive, and cancellationMethod (C54)', async () => {
+    const handle = spawnSupervisedProcess({
+      command: process.execPath,
+      args: [mockAgentPath, '--scenario', 'hang'],
+      timeoutMs: 10000
+    });
+
+    try {
+      const cancelResult = await handle.cancel('PROCESS_TERMINATE');
+      assert.equal(typeof cancelResult, 'object');
+      assert.equal(cancelResult.status, 'TERMINATED');
+      assert.equal(cancelResult.processStillAlive, false);
+      assert.equal(cancelResult.cancellationMethod, 'PROCESS_TERMINATE');
+
+      const procResult = await handle.promise;
+      assert.equal(procResult.cancelled, true);
+      assert.equal(procResult.terminationStatus, 'TERMINATED');
+      assert.equal(procResult.processStillAlive, false);
+    } finally {
+      await killProcessTree(handle.pid);
+    }
+  });
 });

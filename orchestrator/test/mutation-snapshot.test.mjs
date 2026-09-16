@@ -127,4 +127,45 @@ describe('Mutation Snapshot (Section 17, C14, C15, C28, C31)', () => {
     assert.equal(r.classification, 'UNKNOWN');
     assert.equal(r.hasChanged, true);
   });
+
+  test('MUT-09: Symlink fingerprint does not follow target (C53)', async () => {
+    const { fingerprintUntrackedEntry } = await import('../src/mutation-snapshot.mjs');
+    const targetDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mut-target-'));
+    const linkPath = path.join(tempRepo, 'symlink_entry');
+    try {
+      fs.symlinkSync(targetDir, linkPath, 'junction');
+
+      const fp1 = fingerprintUntrackedEntry(linkPath);
+      assert.ok(fp1.startsWith('SYMLINK:'), 'Must be identified as SYMLINK');
+
+      // Modifying target content must not change the symlink's fingerprint
+      fs.writeFileSync(path.join(targetDir, 'new_external_file.txt'), 'data');
+      const fp2 = fingerprintUntrackedEntry(linkPath);
+      assert.equal(fp1, fp2, 'Fingerprint must not follow external target content');
+    } finally {
+      try { fs.unlinkSync(linkPath); } catch {}
+      try { fs.rmSync(targetDir, { recursive: true, force: true }); } catch {}
+    }
+  });
+
+  test('MUT-10: Symlink target change is detected (C53)', async () => {
+    const { fingerprintUntrackedEntry } = await import('../src/mutation-snapshot.mjs');
+    const targetDir1 = fs.mkdtempSync(path.join(os.tmpdir(), 'mut-target1-'));
+    const targetDir2 = fs.mkdtempSync(path.join(os.tmpdir(), 'mut-target2-'));
+    const linkPath = path.join(tempRepo, 'symlink_entry2');
+    try {
+      fs.symlinkSync(targetDir1, linkPath, 'junction');
+      const fp1 = fingerprintUntrackedEntry(linkPath);
+
+      fs.unlinkSync(linkPath);
+      fs.symlinkSync(targetDir2, linkPath, 'junction');
+      const fp2 = fingerprintUntrackedEntry(linkPath);
+
+      assert.notEqual(fp1, fp2, 'Target change must produce different fingerprint');
+    } finally {
+      try { fs.unlinkSync(linkPath); } catch {}
+      try { fs.rmSync(targetDir1, { recursive: true, force: true }); } catch {}
+      try { fs.rmSync(targetDir2, { recursive: true, force: true }); } catch {}
+    }
+  });
 });

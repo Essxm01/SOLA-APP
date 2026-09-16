@@ -77,7 +77,11 @@ export function acquireLock({
   const lockFilePath = path.join(locksDir, worktreeIdentity.lockFileName);
   const now = new Date().toISOString();
   const lockInstanceId = crypto.randomUUID();
-  const ownerStartTime = (typeof getStartTimeFn === 'function' ? getStartTimeFn(ownerPid) : null) || now;
+
+  // C50: Process start identity must fail closed. Never substitute now.
+  const rawStartTime = typeof getStartTimeFn === 'function' ? getStartTimeFn(ownerPid) : null;
+  const ownerStartTime = rawStartTime || null;
+  const ownerIdentityConfidence = rawStartTime ? 'VERIFIED' : 'UNKNOWN';
 
   const payload = {
     lockKey: worktreeIdentity.lockKey,
@@ -90,6 +94,7 @@ export function acquireLock({
     agent,
     ownerPid,
     ownerStartTime,
+    ownerIdentityConfidence,
     acquiredAt: now,
     heartbeatAt: now,
     leaseDurationMs
@@ -140,106 +145,184 @@ export function refreshHeartbeat(lockFilePath, lockInstanceId) {
 export function releaseLock(lockFilePath, lockInstanceId) {
   const current = readLock(lockFilePath);
   if (!current) {
-    return true;
+    const err = new Error(`LOCK_RELEASE_FAILED: Lock file missing at ${lockFilePath}`);
+    err.code = 'LOCK_RELEASE_FAILED';
+    throw err;
   }
 
   if (current.lockInstanceId !== lockInstanceId) {
-    throw new Error(
-      `RELEASE_ABORTED_OWNERSHIP_MISMATCH: Cannot release lock. Existing owner instance ${current.lockInstanceId} !== requested ${lockInstanceId}`
+    const err = new Error(
+      `LOCK_RELEASE_FAILED: RELEASE_ABORTED_OWNERSHIP_MISMATCH: Cannot release lock. Existing owner instance ${current.lockInstanceId} !== requested ${lockInstanceId}`
     );
+    err.code = 'LOCK_RELEASE_FAILED';
+    throw err;
   }
 
   try {
     fs.unlinkSync(lockFilePath);
     return true;
   } catch (err) {
-    if (err.code === 'ENOENT') return true;
-    throw err;
+    const releaseErr = new Error(`LOCK_RELEASE_FAILED: ${err.message}`);
+    releaseErr.code = 'LOCK_RELEASE_FAILED';
+    throw releaseErr;
   }
 }
 
+/**
+ * Threat model:
+ * Protects against concurrent KONFRM orchestrator processes attempting stale lock recovery.
+ * Does not claim protection against arbitrary malicious external filesystem tampering.
+ */
 export function recoverStaleLock({
   lockFilePath,
   quarantineDir,
-  staleMetadata,
+  staleMetadata = null,
   isAliveChecker = isProcessAlive,
   getStartTimeChecker = getProcessStartTime,
-  onBeforeRenameHook = null
+  onBeforeRenameHook = null,
+  onAfterQuarantineHook = null,
+  attemptAcquisitionAfterQuarantine = false
 }) {
-  if (!fs.existsSync(lockFilePath)) {
-    return { recovered: false, reason: 'LOCK_NOT_FOUND' };
-  }
+  const lockDir = path.dirname(lockFilePath);
+  const baseName = path.basename(lockFilePath, '.json');
+  const lockKey = staleMetadata?.lockKey || (baseName.startsWith('lock_') ? baseName.replace(/^lock_/, '') : baseName);
+  const recoveryMutexPath = path.join(lockDir, `recovery_${lockKey}.lock`);
 
-  const currentOnDisk = readLock(lockFilePath);
-  if (!currentOnDisk) {
-    return { recovered: false, reason: 'LOCK_UNREADABLE' };
-  }
-
-  // 1. Process liveness and start-time check (C38)
-  const alive = isAliveChecker(currentOnDisk.ownerPid);
-  if (alive) {
-    const currentStartTime = typeof getStartTimeChecker === 'function'
-      ? getStartTimeChecker(currentOnDisk.ownerPid)
-      : null;
-
-    if (
-      currentStartTime &&
-      currentOnDisk.ownerStartTime &&
-      currentStartTime === currentOnDisk.ownerStartTime
-    ) {
+  let recoveryFd = null;
+  try {
+    recoveryFd = fs.openSync(recoveryMutexPath, 'wx');
+    fs.writeFileSync(recoveryFd, JSON.stringify({
+      recoveringPid: process.pid,
+      timestamp: new Date().toISOString()
+    }), 'utf8');
+  } catch (mutexErr) {
+    if (mutexErr.code === 'EEXIST') {
       return {
         recovered: false,
-        reason: 'OWNER_ACTIVE',
-        activeOwnerPid: currentOnDisk.ownerPid
+        contention: true,
+        reason: 'RECOVERY_IN_PROGRESS'
       };
     }
-    // If start times differ, PID was recycled! Process is considered dead.
+    throw mutexErr;
   }
-
-  // 2. Pre-reclaim verification
-  if (staleMetadata && currentOnDisk.lockInstanceId !== staleMetadata.lockInstanceId) {
-    return {
-      recovered: false,
-      reason: 'RECLAIM_ABORTED_LOCK_CHANGED',
-      currentInstanceId: currentOnDisk.lockInstanceId
-    };
-  }
-
-  // 3. Race simulation hook (C39)
-  if (typeof onBeforeRenameHook === 'function') {
-    onBeforeRenameHook();
-  }
-
-  // 4. Immediately re-read before rename to close the true race window (C39)
-  const freshBeforeRename = readLock(lockFilePath);
-  if (!freshBeforeRename || freshBeforeRename.lockInstanceId !== currentOnDisk.lockInstanceId) {
-    return {
-      recovered: false,
-      reason: 'RECLAIM_ABORTED_LOCK_CHANGED',
-      currentInstanceId: freshBeforeRename ? freshBeforeRename.lockInstanceId : null
-    };
-  }
-
-  // 5. Move stale lock file to quarantine
-  if (!fs.existsSync(quarantineDir)) {
-    fs.mkdirSync(quarantineDir, { recursive: true });
-  }
-
-  const timestamp = Date.now();
-  const quarantinedFileName = `stale_${currentOnDisk.lockKey}_${currentOnDisk.lockInstanceId}_${timestamp}.json`;
-  const quarantinedPath = path.join(quarantineDir, quarantinedFileName);
 
   try {
-    fs.renameSync(lockFilePath, quarantinedPath);
+    if (!fs.existsSync(lockFilePath)) {
+      return { recovered: false, reason: 'LOCK_NOT_FOUND' };
+    }
+
+    const currentOnDisk = readLock(lockFilePath);
+    if (!currentOnDisk) {
+      return { recovered: false, reason: 'LOCK_UNREADABLE' };
+    }
+
+    // 1. Process liveness and start-time check (C38, C50)
+    const alive = isAliveChecker(currentOnDisk.ownerPid);
+    if (alive) {
+      const currentStartTime = typeof getStartTimeChecker === 'function'
+        ? getStartTimeChecker(currentOnDisk.ownerPid)
+        : null;
+
+      const storedStartTime = currentOnDisk.ownerStartTime;
+      const storedConfidence = currentOnDisk.ownerIdentityConfidence || (storedStartTime ? 'VERIFIED' : 'UNKNOWN');
+      const currentConfidence = currentStartTime ? 'VERIFIED' : 'UNKNOWN';
+
+      if (storedConfidence === 'VERIFIED' && currentConfidence === 'VERIFIED') {
+        if (currentStartTime === storedStartTime) {
+          return {
+            recovered: false,
+            reason: 'OWNER_ACTIVE',
+            activeOwnerPid: currentOnDisk.ownerPid
+          };
+        }
+        // If start times differ, PID was recycled! Process is considered dead.
+      } else {
+        // Inability to prove identity is NEVER interpreted as proof that the lock is stale (C50)
+        return {
+          recovered: false,
+          reason: 'OWNER_IDENTITY_UNVERIFIED',
+          activeOwnerPid: currentOnDisk.ownerPid
+        };
+      }
+    }
+
+    // 2. Pre-reclaim verification
+    if (staleMetadata && currentOnDisk.lockInstanceId !== staleMetadata.lockInstanceId) {
+      return {
+        recovered: false,
+        reason: 'RECLAIM_ABORTED_LOCK_CHANGED',
+        currentInstanceId: currentOnDisk.lockInstanceId
+      };
+    }
+
+    // 3. Race simulation hook (C39)
+    if (typeof onBeforeRenameHook === 'function') {
+      onBeforeRenameHook();
+    }
+
+    // 4. Immediately re-read before rename to close the race window (C39)
+    const freshBeforeRename = readLock(lockFilePath);
+    if (!freshBeforeRename || freshBeforeRename.lockInstanceId !== currentOnDisk.lockInstanceId) {
+      return {
+        recovered: false,
+        reason: 'RECLAIM_ABORTED_LOCK_CHANGED',
+        currentInstanceId: freshBeforeRename ? freshBeforeRename.lockInstanceId : null
+      };
+    }
+
+    // 5. Move stale lock file to quarantine
+    if (!fs.existsSync(quarantineDir)) {
+      fs.mkdirSync(quarantineDir, { recursive: true });
+    }
+
+    const timestamp = Date.now();
+    const quarantinedFileName = `stale_${currentOnDisk.lockKey}_${currentOnDisk.lockInstanceId}_${timestamp}.json`;
+    const quarantinedPath = path.join(quarantineDir, quarantinedFileName);
+
+    try {
+      fs.renameSync(lockFilePath, quarantinedPath);
+    } catch (err) {
+      return {
+        recovered: false,
+        reason: `RECLAIM_RENAME_FAILED: ${err.message}`
+      };
+    }
+
+    // 6. Hook after quarantine (for race testing, C51)
+    if (typeof onAfterQuarantineHook === 'function') {
+      onAfterQuarantineHook();
+    }
+
+    // 7. Check if another normal writer won after quarantine (C51)
+    if (attemptAcquisitionAfterQuarantine) {
+      if (fs.existsSync(lockFilePath)) {
+        const winningLock = readLock(lockFilePath);
+        return {
+          recovered: false,
+          contention: true,
+          reason: 'LOCK_ACQUISITION_LOST_AFTER_RECOVERY',
+          activeLock: winningLock
+        };
+      }
+    }
+
     return {
       recovered: true,
       quarantinedPath,
       previousLock: currentOnDisk
     };
-  } catch (err) {
-    return {
-      recovered: false,
-      reason: `RECLAIM_RENAME_FAILED: ${err.message}`
-    };
+  } finally {
+    if (recoveryFd !== null) {
+      try {
+        fs.closeSync(recoveryFd);
+      } catch (_closeErr) {
+        // Recovery fd already closed
+      }
+      try {
+        fs.unlinkSync(recoveryMutexPath);
+      } catch (_unlinkErr) {
+        // Recovery mutex already cleaned up
+      }
+    }
   }
 }

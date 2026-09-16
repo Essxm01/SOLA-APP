@@ -117,7 +117,8 @@ describe('Core Runner & Safety Integration (Section 23-32, C13, C14, C15, C21, C
       worktreeRoot: tempRepo,
       prompt: 'Write then fail',
       scenario: 'write-then-fail',
-      target: partialTarget
+      target: partialTarget,
+      allowedWritePaths: ['partial_work.txt']
     };
 
     const result = await executeOrchestratedTask({
@@ -142,7 +143,8 @@ describe('Core Runner & Safety Integration (Section 23-32, C13, C14, C15, C21, C
       requiresWriterLock: true,
       worktreeRoot: tempRepo,
       prompt: 'Transient fail without mutation',
-      scenario: 'fail'
+      scenario: 'fail',
+      allowedWritePaths: ['dummy.txt']
     };
 
     const result = await executeOrchestratedTask({
@@ -171,8 +173,10 @@ describe('Core Runner & Safety Integration (Section 23-32, C13, C14, C15, C21, C
       requiresWriterLock: true,
       worktreeRoot: tempRepo,
       prompt: 'Writer A execution',
-      scenario: 'success'
+      scenario: 'success',
+      allowedWritePaths: ['dummy.txt']
     };
+
 
     const verifier = async (t, res) => {
       verificationStarted = true;
@@ -354,7 +358,8 @@ describe('Core Runner & Safety Integration (Section 23-32, C13, C14, C15, C21, C
       mode: 'WRITE',
       requiresWriterLock: true,
       worktreeRoot: tempRepo,
-      prompt: 'Test adapter start error'
+      prompt: 'Test adapter start error',
+      allowedWritePaths: ['dummy.txt']
     };
 
     const result = await executeOrchestratedTask({
@@ -404,7 +409,8 @@ describe('Core Runner & Safety Integration (Section 23-32, C13, C14, C15, C21, C
       mode: 'WRITE',
       requiresWriterLock: true,
       worktreeRoot: tempRepo,
-      prompt: 'Test collector error'
+      prompt: 'Test collector error',
+      allowedWritePaths: ['crash_collect.txt']
     };
 
     const result = await executeOrchestratedTask({
@@ -438,7 +444,8 @@ describe('Core Runner & Safety Integration (Section 23-32, C13, C14, C15, C21, C
       mode: 'WRITE',
       requiresWriterLock: true,
       worktreeRoot: tempRepo,
-      prompt: 'Test malformed output with mutation'
+      prompt: 'Test malformed output with mutation',
+      allowedWritePaths: ['malformed_mutation.txt']
     };
 
     const result = await executeOrchestratedTask({
@@ -476,8 +483,10 @@ describe('Core Runner & Safety Integration (Section 23-32, C13, C14, C15, C21, C
       mode: 'WRITE',
       requiresWriterLock: true,
       worktreeRoot: tempRepo,
-      prompt: 'Agent that commits directly'
+      prompt: 'Agent that commits directly',
+      allowedWritePaths: ['commit_mutation.txt']
     };
+
 
     const result = await executeOrchestratedTask({
       task,
@@ -554,5 +563,328 @@ describe('Core Runner & Safety Integration (Section 23-32, C13, C14, C15, C21, C
     assert.equal(result.retryEligible, false);
     assert.equal(result.fallbackEligible, false);
     assert.ok(fs.existsSync(outOfBoundsTarget));
+  });
+
+  test('ACTIVITY-01: READ_ONLY holds lock -> concurrent WRITE blocked with contention (C49)', async () => {
+    const adapter = new MockAgentAdapter();
+    const identity = computeWorktreeIdentity(tempRepo);
+    let writerBContentionObserved = false;
+
+    const taskA = {
+      taskId: 'TASK-READONLY-A',
+      agent: 'mock',
+      mode: 'READ_ONLY',
+      worktreeRoot: tempRepo,
+      prompt: 'Read-only task',
+      scenario: 'success'
+    };
+
+    const verifier = async () => {
+      const attemptB = acquireLock({
+        locksDir: paths.locks,
+        worktreeIdentity: identity,
+        worktreePath: tempRepo,
+        branch: 'test',
+        taskId: 'TASK-WRITE-B',
+        agent: 'mock',
+        ownerPid: process.pid + 60
+      });
+
+      if (!attemptB.acquired && attemptB.contention) {
+        writerBContentionObserved = true;
+      }
+      return { passed: true, summary: 'Passed' };
+    };
+
+    const resultA = await executeOrchestratedTask({
+      task: taskA,
+      adapter,
+      runtimePaths: paths,
+      verifier
+    });
+
+    assert.equal(resultA.status, 'SUCCESS');
+    assert.equal(writerBContentionObserved, true, 'Concurrent WRITE must observe contention while READ_ONLY holds lock');
+  });
+
+  test('ACTIVITY-02: WRITE holds lock -> concurrent READ_ONLY blocked with contention (C49)', async () => {
+    const adapter = new MockAgentAdapter();
+    let readOnlyBContentionObserved = false;
+
+    const taskA = {
+      taskId: 'TASK-WRITE-A',
+      agent: 'mock',
+      mode: 'WRITE',
+      requiresWriterLock: true,
+      worktreeRoot: tempRepo,
+      prompt: 'Write task A',
+      scenario: 'success',
+      allowedWritePaths: ['dummy.txt']
+    };
+
+    const verifier = async () => {
+      const taskB = {
+        taskId: 'TASK-READONLY-B',
+        agent: 'mock',
+        mode: 'READ_ONLY',
+        worktreeRoot: tempRepo,
+        prompt: 'Concurrent read-only task',
+        scenario: 'success'
+      };
+
+      const resultB = await executeOrchestratedTask({
+        task: taskB,
+        adapter,
+        runtimePaths: paths
+      });
+
+      if (resultB.status === 'BLOCKED' && resultB.contention) {
+        readOnlyBContentionObserved = true;
+      }
+      return { passed: true, summary: 'Passed' };
+    };
+
+    const resultA = await executeOrchestratedTask({
+      task: taskA,
+      adapter,
+      runtimePaths: paths,
+      verifier
+    });
+
+    assert.equal(resultA.status, 'SUCCESS');
+    assert.equal(readOnlyBContentionObserved, true, 'Concurrent READ_ONLY must be BLOCKED with contention while WRITE holds lock');
+  });
+
+  test('ACTIVITY-03: Tasks on distinct worktrees acquire independently (C49)', async () => {
+    const adapter = new MockAgentAdapter();
+    const tempRepo2 = fs.mkdtempSync(path.join(os.tmpdir(), 'konfrm-core-repo2-'));
+    try {
+      execFileSync('git', ['init', tempRepo2], { stdio: 'ignore' });
+      execFileSync('git', ['-C', tempRepo2, 'config', 'user.name', 'Test Runner'], { stdio: 'ignore' });
+      execFileSync('git', ['-C', tempRepo2, 'config', 'user.email', 'test@example.com'], { stdio: 'ignore' });
+      fs.writeFileSync(path.join(tempRepo2, 'base.txt'), 'base\n', 'utf8');
+      execFileSync('git', ['-C', tempRepo2, 'add', '.'], { stdio: 'ignore' });
+      execFileSync('git', ['-C', tempRepo2, 'commit', '-m', 'Base commit repo 2'], { stdio: 'ignore' });
+
+      let distinctLockSuccess = false;
+      const taskA = {
+        taskId: 'TASK-WORKTREE-A',
+        agent: 'mock',
+        mode: 'WRITE',
+        requiresWriterLock: true,
+        worktreeRoot: tempRepo,
+        prompt: 'Worktree A',
+        scenario: 'success',
+        allowedWritePaths: ['dummy.txt']
+      };
+
+      const verifier = async () => {
+        const taskB = {
+          taskId: 'TASK-WORKTREE-B',
+          agent: 'mock',
+          mode: 'WRITE',
+          requiresWriterLock: true,
+          worktreeRoot: tempRepo2,
+          prompt: 'Worktree B',
+          scenario: 'success',
+          allowedWritePaths: ['dummy.txt']
+        };
+        const verifierB = async () => ({ passed: true });
+        const resultB = await executeOrchestratedTask({
+          task: taskB,
+          adapter,
+          runtimePaths: paths,
+          verifier: verifierB
+        });
+        if (resultB.status === 'SUCCESS') {
+          distinctLockSuccess = true;
+        }
+        return { passed: true };
+      };
+
+      const resultA = await executeOrchestratedTask({
+        task: taskA,
+        adapter,
+        runtimePaths: paths,
+        verifier
+      });
+
+      assert.equal(resultA.status, 'SUCCESS');
+      assert.equal(distinctLockSuccess, true, 'Distinct worktrees must acquire locks independently');
+    } finally {
+      fs.rmSync(tempRepo2, { recursive: true, force: true });
+    }
+  });
+
+  test('CORE-14: Termination failure retains activity lock, surfaces LOCK_RETAINED_DUE_TO_LIVE_PROCESS, and status PROCESS_STILL_ALIVE_BLOCKED (C55)', async () => {
+    const liveProcessAdapter = {
+      agentName: 'mock',
+      async startTask() {},
+      async collectResult() {
+        return {
+          malformed: false,
+          processResult: {
+            timedOut: true,
+            exitCode: null,
+            durationMs: 500,
+            stdout: '',
+            stderr: 'Failed to kill process tree',
+            terminationStatus: 'TERMINATION_FAILED',
+            processStillAlive: true
+          }
+        };
+      }
+    };
+
+    const task = {
+      taskId: 'TASK-LIVE-PROC',
+      agent: 'mock',
+      mode: 'WRITE',
+      requiresWriterLock: true,
+      worktreeRoot: tempRepo,
+      prompt: 'Live process test',
+      allowedWritePaths: ['dummy.txt']
+    };
+
+    const result = await executeOrchestratedTask({
+      task,
+      adapter: liveProcessAdapter,
+      runtimePaths: paths
+    });
+
+    assert.equal(result.status, 'PROCESS_STILL_ALIVE_BLOCKED');
+    assert.equal(result.lockRetained, true);
+    assert.equal(result.lockRetentionReason, 'LOCK_RETAINED_DUE_TO_LIVE_PROCESS');
+
+    const lockFiles = fs.readdirSync(paths.locks).filter(f => f.startsWith('lock_') && f.endsWith('.json'));
+    assert.ok(lockFiles.length > 0, 'Lock file must be retained on disk when process is still alive');
+  });
+
+  test('CORE-15: Evidence writer failure surfaces EVIDENCE_FINALIZATION_FAILED, retains lock LOCK_RETAINED_DUE_TO_EVIDENCE_FAILURE (C56)', async () => {
+    const adapter = new MockAgentAdapter();
+    const brokenPaths = {
+      ...paths,
+      events: path.join(paths.root, 'non_existent_dir_cannot_write')
+    };
+    fs.writeFileSync(brokenPaths.events, 'I am a file, not a directory\n', 'utf8');
+
+    const task = {
+      taskId: 'TASK-EVIDENCE-FAIL',
+      agent: 'mock',
+      mode: 'WRITE',
+      requiresWriterLock: true,
+      worktreeRoot: tempRepo,
+      prompt: 'Evidence failure',
+      scenario: 'success',
+      allowedWritePaths: ['output.txt']
+    };
+
+    const verifier = async () => ({ passed: true });
+
+    await assert.rejects(
+      () => executeOrchestratedTask({ task, adapter, runtimePaths: brokenPaths, verifier }),
+      /EVIDENCE_FINALIZATION_FAILED/
+    );
+
+    const lockFiles = fs.readdirSync(paths.locks).filter(f => f.startsWith('lock_') && f.endsWith('.json'));
+    assert.ok(lockFiles.length > 0, 'Lock must be retained on disk when evidence finalization fails');
+  });
+
+  test('CORE-16: Descriptor update failure surfaces EVIDENCE_FINALIZATION_FAILED (C56)', async () => {
+    const adapter = new MockAgentAdapter();
+    const brokenPaths = {
+      ...paths,
+      runs: path.join(paths.root, 'runs_file_blocking_descriptor')
+    };
+    fs.writeFileSync(brokenPaths.runs, 'I am a file, not a directory\n', 'utf8');
+
+    const task = {
+      taskId: 'TASK-DESC-FAIL',
+      agent: 'mock',
+      mode: 'WRITE',
+      requiresWriterLock: true,
+      worktreeRoot: tempRepo,
+      prompt: 'Descriptor failure',
+      scenario: 'success',
+      allowedWritePaths: ['output.txt']
+    };
+
+    const verifier = async () => ({ passed: true });
+
+    await assert.rejects(
+      () => executeOrchestratedTask({ task, adapter, runtimePaths: brokenPaths, verifier }),
+      /EVIDENCE_FINALIZATION_FAILED/
+    );
+  });
+
+  test('CORE-17: Lock release ownership failure surfaces LOCK_RELEASE_FAILED (C57)', async () => {
+    const adapter = new MockAgentAdapter();
+    const task = {
+      taskId: 'TASK-RELEASE-FAIL',
+      agent: 'mock',
+      mode: 'WRITE',
+      requiresWriterLock: true,
+      worktreeRoot: tempRepo,
+      prompt: 'Release failure',
+      scenario: 'success',
+      allowedWritePaths: ['output.txt']
+    };
+
+    const verifier = async () => {
+      const lockFiles = fs.readdirSync(paths.locks).filter(f => f.startsWith('lock_') && f.endsWith('.json'));
+      assert.ok(lockFiles.length > 0);
+      const lockPath = path.join(paths.locks, lockFiles[0]);
+      const currentContent = JSON.parse(fs.readFileSync(lockPath, 'utf8'));
+      currentContent.lockInstanceId = 'tampered-different-instance-id';
+      fs.writeFileSync(lockPath, JSON.stringify(currentContent), 'utf8');
+      return { passed: true };
+    };
+
+    await assert.rejects(
+      () => executeOrchestratedTask({ task, adapter, runtimePaths: paths, verifier }),
+      /LOCK_RELEASE_FAILED/
+    );
+  });
+
+  test('CORE-18: READ_ONLY timeout + mutation preserves executionOutcome: TIMED_OUT with status READ_ONLY_MUTATION_BLOCKED (C58)', async () => {
+    const mutatingTimeoutAdapter = {
+      agentName: 'mock',
+      async startTask() {
+        fs.writeFileSync(path.join(tempRepo, 'timed_out_mutation.txt'), 'illegal read only mutation\n', 'utf8');
+      },
+      async collectResult() {
+        return {
+          malformed: false,
+          processResult: {
+            timedOut: true,
+            exitCode: null,
+            durationMs: 500,
+            stdout: '',
+            stderr: 'Process timed out'
+          }
+        };
+      }
+    };
+
+    const task = {
+      taskId: 'TASK-RO-TIMEOUT-MUT',
+      agent: 'mock',
+      mode: 'READ_ONLY',
+      worktreeRoot: tempRepo,
+      prompt: 'Timeout and mutate in read-only'
+    };
+
+    const result = await executeOrchestratedTask({
+      task,
+      adapter: mutatingTimeoutAdapter,
+      runtimePaths: paths
+    });
+
+    assert.equal(result.executionOutcome, 'TIMED_OUT', 'executionOutcome must be TIMED_OUT even with mutation');
+    assert.equal(result.status, 'READ_ONLY_MUTATION_BLOCKED');
+    assert.equal(result.verificationOutcome, 'VERIFICATION_FAILED');
+    assert.equal(result.retryEligible, false);
+    assert.equal(result.fallbackEligible, false);
+    assert.ok(fs.existsSync(path.join(tempRepo, 'timed_out_mutation.txt')));
   });
 });

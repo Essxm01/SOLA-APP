@@ -78,4 +78,21 @@ describe('Boundary Validator (C33)', () => {
     });
     assert.equal(res2.valid, true);
   });
+
+  test('BOUNDARY-07: Exact file scope does not permit child path (C52)', () => {
+    const resExact = validateWriteBoundaries({
+      changedPaths: ['foo.txt'],
+      allowedWritePaths: ['foo.txt'],
+      forbiddenWritePaths: []
+    });
+    assert.equal(resExact.valid, true);
+
+    const resChild = validateWriteBoundaries({
+      changedPaths: ['foo.txt/child.txt'],
+      allowedWritePaths: ['foo.txt'],
+      forbiddenWritePaths: []
+    });
+    assert.equal(resChild.valid, false, 'Exact file scope must block child path');
+    assert.ok(resChild.outsideAllowedViolations.includes('foo.txt/child.txt'));
+  });
 });

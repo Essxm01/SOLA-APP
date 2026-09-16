@@ -285,3 +285,44 @@
   - `CORE-09`: Exception during result collection captures post-failure snapshot, finalizes terminal failure evidence, and only then releases lock.
   - `CORE-10`: Malformed output combined with mutation (`!= ZERO_MUTATION`) yields `PARTIAL_MUTATION_BLOCKED` with no retry or fallback.
   - `CORE-12`: Lock is never released before terminal evidence snapshot is written. If evidence persistence fails, `EVIDENCE_FINALIZATION_FAILED` is surfaced.
+
+## AUTO-03R2 Final Core Safety Closure Addendum
+
+### Task 17: Preflight Context & Safe Identifiers (C47, C48, C59)
+- **Target File:** `orchestrator/src/preflight-validator.mjs`
+- **Test File:** `orchestrator/test/preflight-validator.test.mjs`
+- **Behaviors Verified:**
+  - `PREFLIGHT-06..11`: Explicit `contextMode` validation (`KONFRM_REPO` requires strict Git metadata checks; `SYNTHETIC_LAB` requires disposable test directory).
+  - `PREFLIGHT-12`: Safe identifier grammar enforcement for `taskId` and `runId` (`^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$`).
+  - `PREFLIGHT-13`: Non-empty `allowedWritePaths` enforcement for WRITE tasks (`PREFLIGHT_BLOCKED_WRITE_SCOPE_MISSING`).
+
+### Task 18: Lock Engine Identity & Cooperative Mutex (C50, C51, C57)
+- **Target File:** `orchestrator/src/lock-manager.mjs`
+- **Test File:** `orchestrator/test/lock-manager.test.mjs`
+- **Behaviors Verified:**
+  - `LOCK-11, 12`: Fail-closed identity verification (`ownerIdentityConfidence`). Unavailable or UNKNOWN process start time never reclaims live PID.
+  - `LOCK-13, 14`: Atomic recovery mutex `recovery_<LOCK_KEY>.lock` prevents concurrent stale recovery races.
+  - Fail-closed lock release error propagation.
+
+### Task 19: Boundary Validator Exact File Scope (C52)
+- **Target File:** `orchestrator/src/boundary-validator.mjs`
+- **Test File:** `orchestrator/test/boundary-validator.test.mjs`
+- **Behaviors Verified:**
+  - `BOUNDARY-07`: Exact file scopes (without trailing slash) strictly disallow child subpaths.
+
+### Task 20: Symlink-Safe Mutation Fingerprinting (C53)
+- **Target File:** `orchestrator/src/mutation-snapshot.mjs`
+- **Test File:** `orchestrator/test/mutation-snapshot.test.mjs`
+- **Behaviors Verified:**
+  - `MUT-09, 10`: Untracked entry inspection uses `lstatSync` and records symlink targets without traversing.
+
+### Task 21: Bounded Process Supervision & Activity Lock Integration (C49, C54, C55, C56, C57, C58)
+- **Target Files:** `orchestrator/src/process-supervisor.mjs`, `orchestrator/src/core-runner.mjs`
+- **Test Files:** `orchestrator/test/process-supervisor.test.mjs`, `orchestrator/test/core-runner.test.mjs`
+- **Behaviors Verified:**
+  - `PROC-08..10`: Bounded termination settlement, aliveness reporting, and async cancellation.
+  - `ACTIVITY-01..03`: Activity lock acquired across all execution modes (`WRITE`, `READ_ONLY`, `REVIEW`).
+  - `CORE-14`: Termination failure retains activity lock (`LOCK_RETAINED_DUE_TO_LIVE_PROCESS`, `PROCESS_STILL_ALIVE_BLOCKED`).
+  - `CORE-15, 16`: `finalizeTerminalEvidence` tracks audit events and descriptor updates; failure retains lock and surfaces `EVIDENCE_FINALIZATION_FAILED`.
+  - `CORE-17`: Unhandled lock release errors surface `LOCK_RELEASE_FAILED`.
+  - `CORE-18`: Separation of process outcome (`TIMED_OUT`, `PROCESS_FAILED`) from status policy (`READ_ONLY_MUTATION_BLOCKED`).

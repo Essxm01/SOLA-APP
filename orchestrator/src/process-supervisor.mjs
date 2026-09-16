@@ -84,12 +84,15 @@ export async function terminateProcessTree(pid, cancellationMethod = 'PROCESS_TE
   } else {
     try {
       process.kill(-pid, 'SIGKILL');
-    } catch {
+    } catch (_groupKillErr) {
       try {
         process.kill(pid, 'SIGKILL');
-      } catch {}
+      } catch (_singleKillErr) {
+        // Process may already have exited
+      }
     }
   }
+
 
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
@@ -111,7 +114,8 @@ export function spawnSupervisedProcess({
   env = null,
   stdinText = null,
   timeoutMs = 600000,
-  maxBufferBytes = 4 * 1024 * 1024
+  maxBufferBytes = 4 * 1024 * 1024,
+  terminateProcessTreeFn = terminateProcessTree
 }) {
   if (!command) {
     throw new Error('spawnSupervisedProcess: command is required');
@@ -124,6 +128,9 @@ export function spawnSupervisedProcess({
   let cancelled = false;
   let cancellationMethod = null;
   let timeoutTimer = null;
+  let forceCloseTimer = null;
+  let settled = false;
+  let terminationResult = null;
 
   let stdoutChunks = [];
   let stderrChunks = [];
@@ -166,68 +173,120 @@ export function spawnSupervisedProcess({
     child.stdin.end();
   }
 
-  const cancel = (method = 'PROCESS_TERMINATE') => {
-    if (cancelled || timedOut) return;
+  let resolvePromise;
+  const promise = new Promise((resolve) => {
+    resolvePromise = resolve;
+  });
+
+  const settle = (resultData = {}) => {
+    if (settled) return;
+    settled = true;
+    if (timeoutTimer) clearTimeout(timeoutTimer);
+    if (forceCloseTimer) clearTimeout(forceCloseTimer);
+
+    const alive = isProcessAlive(pid);
+    let finalTerminationStatus = null;
+    if (terminationResult?.status) {
+      finalTerminationStatus = terminationResult.status;
+    } else if (timedOut || cancelled) {
+      finalTerminationStatus = alive ? 'TERMINATION_FAILED' : 'TERMINATED';
+    }
+
+    const processStillAlive = alive;
+
+    resolvePromise({
+      pid,
+      exitCode: resultData.exitCode ?? null,
+      signal: resultData.signal ?? null,
+      stdout: Buffer.concat(stdoutChunks).toString('utf8'),
+      stderr: Buffer.concat(stderrChunks).toString('utf8'),
+      durationMs: Date.now() - startTime,
+      timedOut,
+      cancelled,
+      cancellationMethod,
+      terminationStatus: finalTerminationStatus,
+      processStillAlive,
+      spawnError: resultData.spawnError
+    });
+  };
+
+  const scheduleForceClose = () => {
+    if (settled || forceCloseTimer) return;
+    forceCloseTimer = setTimeout(() => {
+      if (!settled) {
+        settle({ exitCode: null, signal: null });
+      }
+    }, 300);
+  };
+
+  const cancel = async (method = 'PROCESS_TERMINATE') => {
+    if (cancelled || timedOut || settled) {
+      const alive = isProcessAlive(pid);
+      return {
+        status: terminationResult?.status || (alive ? 'TERMINATION_FAILED' : 'ALREADY_EXITED'),
+        processStillAlive: alive,
+        cancellationMethod: cancellationMethod || method
+      };
+    }
     cancelled = true;
     cancellationMethod = method;
 
-    if (process.platform === 'win32' || method === 'WINDOWS_PROCESS_TREE_TERMINATE') {
-      killProcessTree(pid, method);
-    } else {
-      try {
-        child.kill();
-      } catch {
-        killProcessTree(pid, method);
-      }
+    try {
+      const term = await terminateProcessTreeFn(pid, method);
+      const alive = isProcessAlive(pid);
+      terminationResult = {
+        status: term?.status || (alive ? 'TERMINATION_FAILED' : 'TERMINATED'),
+        processStillAlive: alive,
+        cancellationMethod
+      };
+    } catch (_termErr) {
+      const alive = isProcessAlive(pid);
+      terminationResult = {
+        status: alive ? 'TERMINATION_FAILED' : 'TERMINATED',
+        processStillAlive: alive,
+        cancellationMethod
+      };
     }
+
+    scheduleForceClose();
+    return terminationResult;
   };
 
-  const promise = new Promise((resolve) => {
-    child.on('error', err => {
-      if (timeoutTimer) clearTimeout(timeoutTimer);
-      const durationMs = Date.now() - startTime;
-      resolve({
-        pid,
-        exitCode: null,
-        signal: null,
-        stdout: Buffer.concat(stdoutChunks).toString('utf8'),
-        stderr: Buffer.concat(stderrChunks).toString('utf8'),
-        durationMs,
-        timedOut,
-        cancelled,
-        cancellationMethod,
-        spawnError: err.message
-      });
-    });
+  child.on('error', err => {
+    settle({ exitCode: null, signal: null, spawnError: err.message });
+  });
 
-    if (timeoutMs > 0 && timeoutMs !== Infinity) {
-      timeoutTimer = setTimeout(() => {
-        timedOut = true;
-        cancellationMethod = process.platform === 'win32'
-          ? 'WINDOWS_PROCESS_TREE_TERMINATE'
-          : 'TIMEOUT_ABORT';
-        killProcessTree(pid, cancellationMethod);
-      }, timeoutMs);
-    }
+  if (timeoutMs > 0 && timeoutMs !== Infinity) {
+    timeoutTimer = setTimeout(async () => {
+      if (settled || cancelled || timedOut) return;
+      timedOut = true;
+      cancellationMethod = process.platform === 'win32'
+        ? 'WINDOWS_PROCESS_TREE_TERMINATE'
+        : 'TIMEOUT_ABORT';
 
-    child.on('close', (code, signal) => {
-      if (timeoutTimer) clearTimeout(timeoutTimer);
-      const durationMs = Date.now() - startTime;
-      const stdout = Buffer.concat(stdoutChunks).toString('utf8');
-      const stderr = Buffer.concat(stderrChunks).toString('utf8');
+      try {
+        const term = await terminateProcessTreeFn(pid, cancellationMethod);
+        const alive = isProcessAlive(pid);
+        terminationResult = {
+          status: term?.status || (alive ? 'TERMINATION_FAILED' : 'TERMINATED'),
+          processStillAlive: alive,
+          cancellationMethod
+        };
+      } catch (_termErr) {
+        const alive = isProcessAlive(pid);
+        terminationResult = {
+          status: alive ? 'TERMINATION_FAILED' : 'TERMINATED',
+          processStillAlive: alive,
+          cancellationMethod
+        };
+      }
 
-      resolve({
-        pid,
-        exitCode: code, // null if terminated via signal
-        signal,
-        stdout,
-        stderr,
-        durationMs,
-        timedOut,
-        cancelled,
-        cancellationMethod
-      });
-    });
+      scheduleForceClose();
+    }, timeoutMs);
+  }
+
+  child.on('close', (code, signal) => {
+    settle({ exitCode: code, signal });
   });
 
   return {

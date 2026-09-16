@@ -1,12 +1,15 @@
 /**
- * Mutation Snapshot Engine (Section 17, C14, C15, C28)
- * Captures normalized pre/post Git status and diffs.
+ * Mutation Snapshot Engine (Section 17, C14, C15, C28, C31)
+ * Captures normalized pre/post Git status, diffs, and content fingerprints.
+ * Detects mutations even when porcelain state remains identical (e.g. pre-dirty files).
  * Classifies mutations strictly into ZERO_MUTATION, MUTATED, or UNKNOWN.
  * Strictly non-destructive: never runs git restore, git reset, or git clean.
  */
 
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
+import fs from 'node:fs';
+import crypto from 'node:crypto';
 
 export function parseStatusPorcelain(statusText) {
   if (!statusText || typeof statusText !== 'string') return [];
@@ -15,16 +18,13 @@ export function parseStatusPorcelain(statusText) {
 
   for (const line of lines) {
     if (!line.trim()) continue;
-    // Status format: XY PATH or XY PATH -> NEW_PATH
     const statusPart = line.slice(0, 2);
     const pathPart = line.slice(3).trim();
 
-    // If rename: "file1 -> file2"
     let filePath = pathPart;
     if (pathPart.includes(' -> ')) {
       filePath = pathPart.split(' -> ')[1];
     }
-    // Normalize slashes
     files.push({
       status: statusPart,
       path: filePath.replace(/\\/g, '/')
@@ -32,6 +32,19 @@ export function parseStatusPorcelain(statusText) {
   }
 
   return files;
+}
+
+function hashString(content) {
+  return crypto.createHash('sha256').update(content || '', 'utf8').digest('hex');
+}
+
+function hashFileContent(filePath) {
+  try {
+    const data = fs.readFileSync(filePath);
+    return crypto.createHash('sha256').update(data).digest('hex');
+  } catch {
+    return 'UNREADABLE';
+  }
 }
 
 export function captureMutationSnapshot(worktreeRoot, gitBinary = 'git') {
@@ -76,12 +89,41 @@ export function captureMutationSnapshot(worktreeRoot, gitBinary = 'git') {
 
     const parsedEntries = parseStatusPorcelain(statusText);
 
+    // Content fingerprints (C31)
+    // 1. Unstaged diff
+    const unstagedDiff = execFileSync(
+      gitBinary,
+      ['-C', resolved, 'diff', '--binary'],
+      { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], shell: false }
+    );
+    const trackedDiffHash = hashString(unstagedDiff);
+
+    // 2. Staged/index diff
+    const stagedDiff = execFileSync(
+      gitBinary,
+      ['-C', resolved, 'diff', '--cached', '--binary'],
+      { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], shell: false }
+    );
+    const stagedDiffHash = hashString(stagedDiff);
+
+    // 3. Untracked file content hashes
+    const untrackedContentMap = {};
+    for (const entry of parsedEntries) {
+      if (entry.status === '??') {
+        const fullPath = path.join(resolved, entry.path);
+        untrackedContentMap[entry.path] = hashFileContent(fullPath);
+      }
+    }
+
     return {
       worktreeRoot: resolved,
       branch,
       head,
       status: statusText,
       parsedEntries,
+      trackedDiffHash,
+      stagedDiffHash,
+      untrackedContentMap,
       timestamp: new Date().toISOString()
     };
   } catch (err) {
@@ -91,6 +133,9 @@ export function captureMutationSnapshot(worktreeRoot, gitBinary = 'git') {
       head: 'ERROR',
       status: 'ERROR',
       parsedEntries: [],
+      trackedDiffHash: 'ERROR',
+      stagedDiffHash: 'ERROR',
+      untrackedContentMap: {},
       error: err.message,
       timestamp: new Date().toISOString()
     };
@@ -98,12 +143,20 @@ export function captureMutationSnapshot(worktreeRoot, gitBinary = 'git') {
 }
 
 export function compareMutationSnapshots(before, after) {
-  if (!before || !after || before.head === 'ERROR' || after.head === 'ERROR') {
+  if (
+    !before ||
+    !after ||
+    before.head === 'ERROR' ||
+    after.head === 'ERROR' ||
+    before.status === 'ERROR' ||
+    after.status === 'ERROR'
+  ) {
     return {
       hasChanged: true,
       branchChanged: true,
       headChanged: true,
       statusChanged: true,
+      contentChanged: true,
       changedPaths: []
     };
   }
@@ -111,10 +164,12 @@ export function compareMutationSnapshots(before, after) {
   const branchChanged = before.branch !== after.branch;
   const headChanged = before.head !== after.head;
   const statusChanged = before.status !== after.status;
+  const trackedContentChanged = (before.trackedDiffHash || '') !== (after.trackedDiffHash || '');
+  const stagedContentChanged = (before.stagedDiffHash || '') !== (after.stagedDiffHash || '');
 
   const changedPathSet = new Set();
 
-  // Find paths present in after that weren't in before or changed status
+  // 1. Status entry differences
   const beforeMap = new Map(before.parsedEntries.map(e => [e.path, e.status]));
   const afterMap = new Map(after.parsedEntries.map(e => [e.path, e.status]));
 
@@ -130,20 +185,49 @@ export function compareMutationSnapshots(before, after) {
     }
   }
 
+  // 2. Untracked file content changes
+  const beforeUntracked = before.untrackedContentMap || {};
+  const afterUntracked = after.untrackedContentMap || {};
+
+  for (const [p, h] of Object.entries(afterUntracked)) {
+    if (beforeUntracked[p] !== h) {
+      changedPathSet.add(p);
+    }
+  }
+
+  // 3. Tracked content differences when status string didn't change
+  if (trackedContentChanged || stagedContentChanged) {
+    // If diff changed, any tracked modified file is marked changed
+    for (const e of after.parsedEntries) {
+      if (e.status.includes('M') || e.status.includes('A') || e.status.includes('D')) {
+        changedPathSet.add(e.path);
+      }
+    }
+  }
+
   const changedPaths = Array.from(changedPathSet);
-  const hasChanged = branchChanged || headChanged || statusChanged || changedPaths.length > 0;
+  const contentChanged = trackedContentChanged || stagedContentChanged || changedPaths.length > 0;
+  const hasChanged = branchChanged || headChanged || statusChanged || contentChanged;
 
   return {
     hasChanged,
     branchChanged,
     headChanged,
     statusChanged,
+    contentChanged,
     changedPaths
   };
 }
 
 export function classifyMutation(before, after) {
-  if (!before || !after || before.head === 'ERROR' || after.head === 'ERROR') {
+  if (
+    !before ||
+    !after ||
+    before.head === 'ERROR' ||
+    after.head === 'ERROR' ||
+    before.status === 'ERROR' ||
+    after.status === 'ERROR'
+  ) {
     return {
       classification: 'UNKNOWN',
       hasChanged: true,
@@ -159,7 +243,7 @@ export function classifyMutation(before, after) {
       classification: 'ZERO_MUTATION',
       hasChanged: false,
       changedPaths: [],
-      reason: 'Worktree branch, HEAD, and working directory status are identical'
+      reason: 'Worktree branch, HEAD, status, and contents are identical'
     };
   }
 
@@ -169,6 +253,7 @@ export function classifyMutation(before, after) {
     changedPaths: comparison.changedPaths,
     branchChanged: comparison.branchChanged,
     headChanged: comparison.headChanged,
+    contentChanged: comparison.contentChanged,
     reason: `Detected mutations: ${comparison.changedPaths.length} file(s) altered`
   };
 }

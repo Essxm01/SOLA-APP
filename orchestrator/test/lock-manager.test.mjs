@@ -220,4 +220,128 @@ describe('Writer Lock Engine (Section 13, 15, 16, C4, C5, C13, C26)', () => {
     assert.equal(refreshed.lockInstanceId, res.lockMetadata.lockInstanceId);
     assert.ok(new Date(refreshed.heartbeatAt) >= new Date(beforeHeartbeat));
   });
+
+  test('LOCK-07: Real owner process start identity recorded on acquisition (C38)', () => {
+    const fakeStartTime = '2026-09-17T01:00:00.000Z';
+    const res = acquireLock({
+      locksDir: paths.locks,
+      worktreeIdentity: identity,
+      worktreePath: tempRepo,
+      branch: 'test-branch',
+      taskId: 'TASK-START-ID',
+      agent: 'mock',
+      ownerPid: process.pid,
+      getStartTimeFn: (pid) => fakeStartTime
+    });
+
+    assert.equal(res.acquired, true);
+    assert.equal(res.lockMetadata.ownerStartTime, fakeStartTime);
+  });
+
+  test('LOCK-08: PID recycled start-time mismatch is reclaimable (C38)', () => {
+    const lockFilePath = path.join(paths.locks, identity.lockFileName);
+    const staleMetadata = {
+      lockKey: identity.lockKey,
+      lockInstanceId: 'recycled-instance-1',
+      worktreePath: tempRepo,
+      canonicalWorktreeRealpath: identity.canonicalWorktreeRealpath,
+      canonicalGitCommonDir: identity.canonicalGitCommonDir,
+      branch: 'test-branch',
+      taskId: 'RECYCLED-TASK',
+      agent: 'mock',
+      ownerPid: 12345,
+      ownerStartTime: '2026-09-17T01:00:00.000Z', // Original start time
+      acquiredAt: '2026-09-17T01:00:00.000Z',
+      heartbeatAt: '2026-09-17T01:00:00.000Z',
+      leaseDurationMs: 300000
+    };
+    fs.writeFileSync(lockFilePath, JSON.stringify(staleMetadata, null, 2), 'utf8');
+
+    // PID 12345 exists, BUT has a NEW start time (recycled PID!)
+    const recovery = recoverStaleLock({
+      lockFilePath,
+      quarantineDir: paths.quarantine,
+      staleMetadata,
+      isAliveChecker: (pid) => true, // Process with PID 12345 exists
+      getStartTimeChecker: (pid) => '2026-09-17T02:30:00.000Z' // Different start time!
+    });
+
+    assert.equal(recovery.recovered, true);
+    assert.ok(fs.existsSync(recovery.quarantinedPath));
+  });
+
+  test('LOCK-09: Live same PID and same StartTime is NOT reclaimable (C38)', () => {
+    const lockFilePath = path.join(paths.locks, identity.lockFileName);
+    const liveMetadata = {
+      lockKey: identity.lockKey,
+      lockInstanceId: 'live-instance-1',
+      worktreePath: tempRepo,
+      canonicalWorktreeRealpath: identity.canonicalWorktreeRealpath,
+      canonicalGitCommonDir: identity.canonicalGitCommonDir,
+      branch: 'test-branch',
+      taskId: 'LIVE-TASK',
+      agent: 'mock',
+      ownerPid: process.pid,
+      ownerStartTime: '2026-09-17T01:00:00.000Z',
+      acquiredAt: '2026-09-17T01:00:00.000Z',
+      heartbeatAt: '2026-09-17T01:00:00.000Z',
+      leaseDurationMs: 300000
+    };
+    fs.writeFileSync(lockFilePath, JSON.stringify(liveMetadata, null, 2), 'utf8');
+
+    const recovery = recoverStaleLock({
+      lockFilePath,
+      quarantineDir: paths.quarantine,
+      staleMetadata: liveMetadata,
+      isAliveChecker: (pid) => true,
+      getStartTimeChecker: (pid) => '2026-09-17T01:00:00.000Z' // Same start time!
+    });
+
+    assert.equal(recovery.recovered, false);
+    assert.equal(recovery.reason, 'OWNER_ACTIVE');
+  });
+
+  test('LOCK-10: True reclaim race hook replacing lock aborts rename (C39)', () => {
+    const lockFilePath = path.join(paths.locks, identity.lockFileName);
+    const staleMetadata = {
+      lockKey: identity.lockKey,
+      lockInstanceId: 'stale-race-instance',
+      worktreePath: tempRepo,
+      canonicalWorktreeRealpath: identity.canonicalWorktreeRealpath,
+      canonicalGitCommonDir: identity.canonicalGitCommonDir,
+      branch: 'test-branch',
+      taskId: 'STALE-RACE-TASK',
+      agent: 'mock',
+      ownerPid: 999999,
+      ownerStartTime: '2026-09-17T01:00:00.000Z',
+      acquiredAt: '2026-09-17T01:00:00.000Z',
+      heartbeatAt: '2026-09-17T01:00:00.000Z',
+      leaseDurationMs: 300000
+    };
+    fs.writeFileSync(lockFilePath, JSON.stringify(staleMetadata, null, 2), 'utf8');
+
+    const replacementMetadata = {
+      ...staleMetadata,
+      lockInstanceId: 'new-concurrent-winner-instance',
+      taskId: 'CONCURRENT-WINNER'
+    };
+
+    const recovery = recoverStaleLock({
+      lockFilePath,
+      quarantineDir: paths.quarantine,
+      staleMetadata,
+      isAliveChecker: (pid) => false,
+      // Hook runs right before the rename
+      onBeforeRenameHook: () => {
+        fs.writeFileSync(lockFilePath, JSON.stringify(replacementMetadata, null, 2), 'utf8');
+      }
+    });
+
+    assert.equal(recovery.recovered, false);
+    assert.equal(recovery.reason, 'RECLAIM_ABORTED_LOCK_CHANGED');
+    assert.ok(fs.existsSync(lockFilePath));
+    const finalOnDisk = JSON.parse(fs.readFileSync(lockFilePath, 'utf8'));
+    assert.equal(finalOnDisk.lockInstanceId, 'new-concurrent-winner-instance');
+  });
+
 });

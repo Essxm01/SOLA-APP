@@ -10,7 +10,7 @@ import {
   classifyMutation
 } from '../src/mutation-snapshot.mjs';
 
-describe('Mutation Snapshot (Section 17, C14, C15, C28)', () => {
+describe('Mutation Snapshot (Section 17, C14, C15, C28, C31)', () => {
   let tempRepo;
 
   beforeEach(() => {
@@ -19,7 +19,6 @@ describe('Mutation Snapshot (Section 17, C14, C15, C28)', () => {
     execFileSync('git', ['-C', tempRepo, 'config', 'user.name', 'Test Runner'], { stdio: 'ignore' });
     execFileSync('git', ['-C', tempRepo, 'config', 'user.email', 'test@example.com'], { stdio: 'ignore' });
 
-    // Create initial commit
     fs.writeFileSync(path.join(tempRepo, 'initial.txt'), 'initial content\n', 'utf8');
     execFileSync('git', ['-C', tempRepo, 'add', '.'], { stdio: 'ignore' });
     execFileSync('git', ['-C', tempRepo, 'commit', '-m', 'Initial commit'], { stdio: 'ignore' });
@@ -33,7 +32,6 @@ describe('Mutation Snapshot (Section 17, C14, C15, C28)', () => {
 
   test('GIT-01: Classifies ZERO_MUTATION when worktree is identical before and after', () => {
     const before = captureMutationSnapshot(tempRepo);
-    // No mutation
     const after = captureMutationSnapshot(tempRepo);
 
     const result = classifyMutation(before, after);
@@ -45,7 +43,6 @@ describe('Mutation Snapshot (Section 17, C14, C15, C28)', () => {
   test('GIT-02: Classifies MUTATED when tracked file is modified', () => {
     const before = captureMutationSnapshot(tempRepo);
 
-    // Mutate tracked file
     fs.appendFileSync(path.join(tempRepo, 'initial.txt'), 'appended mutation\n', 'utf8');
 
     const after = captureMutationSnapshot(tempRepo);
@@ -59,7 +56,6 @@ describe('Mutation Snapshot (Section 17, C14, C15, C28)', () => {
   test('GIT-03: Classifies MUTATED when untracked file is created', () => {
     const before = captureMutationSnapshot(tempRepo);
 
-    // Create untracked file
     fs.writeFileSync(path.join(tempRepo, 'untracked.txt'), 'untracked content\n', 'utf8');
 
     const after = captureMutationSnapshot(tempRepo);
@@ -78,5 +74,57 @@ describe('Mutation Snapshot (Section 17, C14, C15, C28)', () => {
     const before = captureMutationSnapshot(tempRepo);
     const r2 = classifyMutation(before, null);
     assert.equal(r2.classification, 'UNKNOWN');
+  });
+
+  test('MUT-05: Pre-existing dirty tracked file changed again is detected as MUTATED (C31)', () => {
+    // 1. Make file dirty BEFORE snapshot
+    fs.appendFileSync(path.join(tempRepo, 'initial.txt'), 'pre-existing uncommitted change\n', 'utf8');
+    const before = captureMutationSnapshot(tempRepo);
+
+    // 2. Change file content again during run (porcelain status is still " M initial.txt")
+    fs.appendFileSync(path.join(tempRepo, 'initial.txt'), 'second modification during run\n', 'utf8');
+    const after = captureMutationSnapshot(tempRepo);
+
+    const result = classifyMutation(before, after);
+    assert.equal(result.classification, 'MUTATED');
+    assert.equal(result.hasChanged, true);
+    assert.ok(result.changedPaths.includes('initial.txt'));
+  });
+
+  test('MUT-06: Pre-existing untracked file changed content is detected as MUTATED (C31)', () => {
+    // 1. Create untracked file before snapshot
+    const untrackedPath = path.join(tempRepo, 'pre_untracked.txt');
+    fs.writeFileSync(untrackedPath, 'untracked initial content\n', 'utf8');
+    const before = captureMutationSnapshot(tempRepo);
+
+    // 2. Modify untracked file content during run (status is still "?? pre_untracked.txt")
+    fs.appendFileSync(untrackedPath, 'untracked modified content\n', 'utf8');
+    const after = captureMutationSnapshot(tempRepo);
+
+    const result = classifyMutation(before, after);
+    assert.equal(result.classification, 'MUTATED');
+    assert.equal(result.hasChanged, true);
+    assert.ok(result.changedPaths.includes('pre_untracked.txt'));
+  });
+
+  test('MUT-07: Staged content changed is detected as MUTATED (C31)', () => {
+    fs.appendFileSync(path.join(tempRepo, 'initial.txt'), 'staged mod 1\n', 'utf8');
+    execFileSync('git', ['-C', tempRepo, 'add', 'initial.txt'], { stdio: 'ignore' });
+    const before = captureMutationSnapshot(tempRepo);
+
+    fs.appendFileSync(path.join(tempRepo, 'initial.txt'), 'staged mod 2\n', 'utf8');
+    execFileSync('git', ['-C', tempRepo, 'add', 'initial.txt'], { stdio: 'ignore' });
+    const after = captureMutationSnapshot(tempRepo);
+
+    const result = classifyMutation(before, after);
+    assert.equal(result.classification, 'MUTATED');
+    assert.equal(result.hasChanged, true);
+    assert.ok(result.changedPaths.includes('initial.txt'));
+  });
+
+  test('MUT-08: UNKNOWN fails closed (C46)', () => {
+    const r = classifyMutation({ head: 'ERROR' }, { head: 'clean' });
+    assert.equal(r.classification, 'UNKNOWN');
+    assert.equal(r.hasChanged, true);
   });
 });

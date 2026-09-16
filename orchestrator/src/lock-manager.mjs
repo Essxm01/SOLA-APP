@@ -1,25 +1,51 @@
 /**
- * External Single-Writer Lock Engine (Section 13, 15, 16, C4, C5, C13, C26)
- * Implements atomic wx file locking, ownership verification, and race-safe stale lock recovery.
+ * External Single-Writer Lock Engine (Section 13, 15, 16, C4, C5, C13, C26, C38, C39)
+ * Implements atomic wx file locking, process start-time verification, ownership checks,
+ * and race-safe stale lock recovery.
  * Locks reside strictly outside the Git repository in the orchestrator runtime locks directory.
  */
 
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import { execFileSync } from 'node:child_process';
 
 export function isProcessAlive(pid) {
   if (typeof pid !== 'number' || isNaN(pid) || pid <= 0) return false;
   try {
-    // Signal 0 tests for process existence without sending a signal
     process.kill(pid, 0);
     return true;
   } catch (err) {
-    // EPERM means the process exists but belongs to another user
     if (err.code === 'EPERM') return true;
-    // ESRCH means no such process exists
     if (err.code === 'ESRCH') return false;
     return false;
+  }
+}
+
+export function getProcessStartTime(pid) {
+  if (typeof pid !== 'number' || isNaN(pid) || pid <= 0) return null;
+  if (process.platform === 'win32') {
+    try {
+      const out = execFileSync(
+        'powershell.exe',
+        ['-NoProfile', '-Command', `$p = Get-Process -Id ${pid} -ErrorAction SilentlyContinue; if ($p) { $p.StartTime.ToString("o") }`],
+        { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], shell: false }
+      ).trim();
+      return out || null;
+    } catch {
+      return null;
+    }
+  } else {
+    try {
+      const out = execFileSync('ps', ['-p', String(pid), '-o', 'lstart='], {
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'pipe'],
+        shell: false
+      }).trim();
+      return out || null;
+    } catch {
+      return null;
+    }
   }
 }
 
@@ -41,7 +67,8 @@ export function acquireLock({
   taskId,
   agent = 'mock',
   ownerPid = process.pid,
-  leaseDurationMs = 300000
+  leaseDurationMs = 300000,
+  getStartTimeFn = getProcessStartTime
 }) {
   if (!locksDir || !worktreeIdentity) {
     throw new Error('acquireLock: locksDir and worktreeIdentity are required');
@@ -50,6 +77,7 @@ export function acquireLock({
   const lockFilePath = path.join(locksDir, worktreeIdentity.lockFileName);
   const now = new Date().toISOString();
   const lockInstanceId = crypto.randomUUID();
+  const ownerStartTime = (typeof getStartTimeFn === 'function' ? getStartTimeFn(ownerPid) : null) || now;
 
   const payload = {
     lockKey: worktreeIdentity.lockKey,
@@ -61,14 +89,13 @@ export function acquireLock({
     taskId: taskId || 'UNKNOWN',
     agent,
     ownerPid,
-    ownerStartTime: now,
+    ownerStartTime,
     acquiredAt: now,
     heartbeatAt: now,
     leaseDurationMs
   };
 
   try {
-    // 'wx' flag: Open for writing, fails with EEXIST if path already exists
     const fd = fs.openSync(lockFilePath, 'wx');
     fs.writeFileSync(fd, JSON.stringify(payload, null, 2), 'utf8');
     fs.closeSync(fd);
@@ -113,7 +140,6 @@ export function refreshHeartbeat(lockFilePath, lockInstanceId) {
 export function releaseLock(lockFilePath, lockInstanceId) {
   const current = readLock(lockFilePath);
   if (!current) {
-    // Already gone
     return true;
   }
 
@@ -136,7 +162,9 @@ export function recoverStaleLock({
   lockFilePath,
   quarantineDir,
   staleMetadata,
-  isAliveChecker = isProcessAlive
+  isAliveChecker = isProcessAlive,
+  getStartTimeChecker = getProcessStartTime,
+  onBeforeRenameHook = null
 }) {
   if (!fs.existsSync(lockFilePath)) {
     return { recovered: false, reason: 'LOCK_NOT_FOUND' };
@@ -147,17 +175,28 @@ export function recoverStaleLock({
     return { recovered: false, reason: 'LOCK_UNREADABLE' };
   }
 
-  // 1. Verify owner process is actually dead
+  // 1. Process liveness and start-time check (C38)
   const alive = isAliveChecker(currentOnDisk.ownerPid);
   if (alive) {
-    return {
-      recovered: false,
-      reason: 'OWNER_ACTIVE',
-      activeOwnerPid: currentOnDisk.ownerPid
-    };
+    const currentStartTime = typeof getStartTimeChecker === 'function'
+      ? getStartTimeChecker(currentOnDisk.ownerPid)
+      : null;
+
+    if (
+      currentStartTime &&
+      currentOnDisk.ownerStartTime &&
+      currentStartTime === currentOnDisk.ownerStartTime
+    ) {
+      return {
+        recovered: false,
+        reason: 'OWNER_ACTIVE',
+        activeOwnerPid: currentOnDisk.ownerPid
+      };
+    }
+    // If start times differ, PID was recycled! Process is considered dead.
   }
 
-  // 2. Atomic race prevention: ensure metadata on disk matches staleMetadata identified
+  // 2. Pre-reclaim verification
   if (staleMetadata && currentOnDisk.lockInstanceId !== staleMetadata.lockInstanceId) {
     return {
       recovered: false,
@@ -166,7 +205,22 @@ export function recoverStaleLock({
     };
   }
 
-  // 3. Move stale lock file to quarantine atomically
+  // 3. Race simulation hook (C39)
+  if (typeof onBeforeRenameHook === 'function') {
+    onBeforeRenameHook();
+  }
+
+  // 4. Immediately re-read before rename to close the true race window (C39)
+  const freshBeforeRename = readLock(lockFilePath);
+  if (!freshBeforeRename || freshBeforeRename.lockInstanceId !== currentOnDisk.lockInstanceId) {
+    return {
+      recovered: false,
+      reason: 'RECLAIM_ABORTED_LOCK_CHANGED',
+      currentInstanceId: freshBeforeRename ? freshBeforeRename.lockInstanceId : null
+    };
+  }
+
+  // 5. Move stale lock file to quarantine
   if (!fs.existsSync(quarantineDir)) {
     fs.mkdirSync(quarantineDir, { recursive: true });
   }

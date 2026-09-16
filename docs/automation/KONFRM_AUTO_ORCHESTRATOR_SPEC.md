@@ -1,10 +1,10 @@
 # Neutral KONFRM AUTO ORCHESTRATOR Architecture & Agent Adapter Specification
 
-**Document Version:** 1.0.0  
-**Status:** CANONICAL SPECIFICATION — IMPLEMENTATION READY  
-**Classification:** Internal Tooling & Governance Architecture  
-**Task ID:** `AUTO-02`  
-**Target Repository:** KONFRM / SOLA  
+**Document Version:** 1.1.0
+**Status:** CANONICAL SPECIFICATION — BRIDGE REVIEW REVISION (AUTO-02R)
+**Classification:** Internal Tooling & Governance Architecture
+**Task ID:** `AUTO-02R`
+**Target Repository:** KONFRM / SOLA
 
 ---
 
@@ -91,22 +91,23 @@ The local interface reality audit conducted in `AUTO-01` verified the physical p
 
 ## 3. AUTO-01 Baseline Corrections & Ground Rules
 
-The AUTO-02 architecture explicitly incorporates four critical corrections to findings from AUTO-01:
+The orchestrator architecture incorporates critical corrections to findings from AUTO-01:
 
 ### 3.1 Quota Telemetry Reality: `NOT_FOUND` vs `UNSUPPORTED`
-- **Rule:** The orchestrator must record `PROGRAMMATIC_QUOTA_ACCESS = NOT_FOUND` rather than `UNSUPPORTED` for all three agents. No vendor CLI currently provides an explicit command declaring quota queries impossible; rather, no machine-readable interface was discovered.
+- **Rule:** The orchestrator records `PROGRAMMATIC_QUOTA_ACCESS = NOT_FOUND` rather than `UNSUPPORTED` for all three agents. Currently observed quota presentation across all three providers is GUI/Web-oriented; no documented machine-readable command was discovered locally.
+- **Strict Prohibition:** Under no circumstances may the orchestrator scrape web interfaces, extract browser cookies, reverse-engineer authenticated endpoints, or purchase credits.
 - **Quota Confidence Model:** All quota telemetry is modeled with strict confidence tagging:
   ```typescript
   export type QuotaConfidence = "EXACT" | "ESTIMATED" | "UNKNOWN";
   ```
-- **Initial State:** The initial state for all agents is `UNKNOWN`. The orchestrator must not encode unverified assumptions regarding rolling windows (e.g. 5-hour, 3-hour), monthly reset dates, or per-model quotas without direct machine-readable evidence.
+- **Initial State:** The initial state for all agents is `UNKNOWN`. The orchestrator must not encode unverified assumptions regarding rolling windows, monthly reset dates, or per-model quotas without direct machine-readable evidence.
 
 ### 3.2 Security Posture: Explicit `MEDIUM` with Process Hardening
-- **Rule:** Global security posture is classified as `ORCHESTRATOR_SECURITY_POSTURE = MEDIUM` (correcting AUTO-01's tentative `LOW`). Spawning child processes and recording evidence introduces attack surfaces:
-  1. *Argument Leakage:* Prompts containing sensitive tokens or user data exposed in OS process listings (`Get-Process`, Task Manager).
+- **Rule:** Global security posture is classified as `ORCHESTRATOR_SECURITY_POSTURE = MEDIUM`. Spawning child processes introduces real security considerations:
+  1. *Argument Leakage:* Prompts containing sensitive tokens or user data can be visible in OS process listings (`Get-Process`, Task Manager).
   2. *Log Persistence:* Unbounded stdout/stderr logs capturing tokens or credentials written to disk.
   3. *Environment Inheritance:* Child processes inheriting parent process environment variables containing production secrets.
-- **Mandatory Mitigations:** Prompts must be passed via stdin or temporary ACL-restricted files; environment blocks passed to agents must be strictly allowlisted; raw logs must be scrubbed before persistence.
+- **Mandatory Mitigations:** Prompts are transported via stdin piping or user-ACL-restricted temporary files to significantly **REDUCE** process argument exposure (though not claimed universally eliminated due to vendor differences). Environment blocks passed to child processes are allowlisted; raw logs are disabled by default.
 
 ### 3.3 Locking: Worktree-Aware External Lock (Never `.git/konfrm_writer.lock`)
 - **Rule:** The orchestrator must not rely on `.git/konfrm_writer.lock` or repository-tracked files for mutual exclusion. Git worktrees represent `.git` as a plain text file referencing the common git directory, and repository-internal locks risk uncommitted file pollution.
@@ -117,7 +118,7 @@ The AUTO-02 architecture explicitly incorporates four critical corrections to fi
 
 ### 3.4 Preflight Reality: Fail Closed on `AUTO_GAP_001`
 - **Observed Gap:** On branch `phase5/customer-c2-discovery` (HEAD `d0591bc3`), `tasks/CURRENT_TASK.md` still points to Phase 3/4 handoff (`PHASE_3_TO_PHASE_4_HANDOFF`).
-- **Orchestrator Contract:** When `branch identity != CURRENT_TASK identity`, the orchestrator preflight must immediately **FAIL CLOSED** with error `PREFLIGHT_BLOCKED_CONTEXT_MISMATCH`. No write agent may start. The orchestrator must never guess or auto-repair task assignments.
+- **Orchestrator Contract:** Preflight enforces explicit metadata comparison. If required task/branch metadata is missing, preflight transitions to `PREFLIGHT_BLOCKED_CONTEXT_METADATA_INSUFFICIENT`. If metadata exists but conflicts (`actualBranch !== EXPECTED_BRANCH`), preflight immediately **FAILS CLOSED** with diagnostic `PREFLIGHT_BLOCKED_CONTEXT_MISMATCH`. No write agent may start.
 
 ---
 
@@ -148,7 +149,7 @@ orchestrator/
 
 ---
 
-## 5. Runtime Technology Decision
+## 5. Runtime Technology Decision & Versioning
 
 ### 5.1 Technology Evaluation
 
@@ -160,13 +161,16 @@ orchestrator/
 | **Type Safety** | Static compile-time checking | Supported via TypeScript `.d.ts` declarations & JSDoc | None |
 | **Z Code Compatibility** | Requires Node runtime | Native Node runtime matches bundled `zcode.cjs` | Requires bridging to Node anyway |
 
-### 5.2 Decision: Option B — Dependency-Free Node.js ESM (ADR-AUTO-002)
-- **Selected Architecture:** The orchestrator core is implemented as pure, dependency-free Node.js ESM modules (`.mjs` or `"type": "module"` `.js`), accompanied by canonical TypeScript declaration files (`.d.ts`) to ensure strict compile-time verification.
-- **Rationale:**
-  1. *Zero Dependency Footprint:* The orchestrator must run in clean CI environments and separate git worktrees without requiring `npm install` in the orchestrator directory.
-  2. *Native Platform Capabilities:* Modern Node.js provides native `node:child_process`, `node:fs/promises`, `node:crypto`, `node:path`, and native JSON parsing with zero external packages.
-  3. *Immediate Execution:* No compile or bundle step is required before launching supervision or diagnostic tasks.
-  4. *YAGNI Compliance:* Introducing third-party orchestration frameworks (LangChain, AutoGen, CrewAI) violates the core simplicity invariant of KONFRM.
+### 5.2 Runtime Versioning Discipline (Correction C2)
+The specification explicitly distinguishes between host discovery and minimum engine requirements:
+- `CURRENT_LOCAL_VERSION`: Node.js `v25.6.0` was observed locally on the host machine during the AUTO-01 audit.
+- `MINIMUM_SUPPORTED_RUNTIME`: Node.js LTS `v20.0.0+` (or any modern runtime providing native ES modules, `node:fs/promises`, `node:child_process`, and `node:crypto`).
+The orchestrator code must depend strictly on standard, stable Node.js runtime APIs. It must not rely on bleeding-edge, version-specific features of Node v25. AUTO-03 will execute formal runtime-version compatibility validation.
+
+### 5.3 Proposed Runtime Decision: Option B — Dependency-Free Node.js ESM (ADR-AUTO-009)
+- **Status:** `PROPOSED_PENDING_FOUNDER_APPROVAL`
+- **Proposal:** Implement the orchestrator core as pure, dependency-free Node.js ESM modules (`.mjs` or `"type": "module"` `.js`), accompanied by canonical TypeScript declaration files (`.d.ts`).
+- **Rationale:** Zero dependency footprint, native platform process capabilities, immediate execution without build steps, and full compliance with the YAGNI principle. Final architectural adoption remains subject to explicit Founder review.
 
 ---
 
@@ -397,9 +401,11 @@ export interface AgentTask {
 
 ---
 
-## 10. AgentResult Specification
+## 10. AgentResult Specification & Machine-Enforced Verification Boundary (Correction C10)
 
-The `AgentResult` represents the normalized post-execution artifact collected by the orchestrator. Raw, unbounded logs are stripped and linked via file references:
+The `AgentResult` represents the normalized post-execution artifact collected by the orchestrator. To guarantee that an agent's successful process exit is never confused with task verification:
+- `executionOutcome` tracks child process behavior.
+- `verificationOutcome` tracks independent quality gate verification.
 
 ```typescript
 export type ResultStatus =
@@ -412,6 +418,19 @@ export type ResultStatus =
   | "FORBIDDEN_MUTATION_DETECTED"
   | "MALFORMED_OUTPUT";
 
+export type ExecutionOutcome =
+  | "PROCESS_COMPLETED"
+  | "PROCESS_FAILED"
+  | "TIMED_OUT"
+  | "CANCELLED"
+  | "RATE_LIMITED";
+
+export type VerificationOutcome =
+  | "VERIFIED_PASSED"
+  | "VERIFICATION_FAILED"
+  | "VERIFICATION_SKIPPED_READONLY"
+  | "PENDING_VERIFICATION";
+
 export interface AgentResult {
   // Run Metadata
   readonly taskId: string;
@@ -419,6 +438,10 @@ export interface AgentResult {
   readonly agentVersion: string;
   readonly runId: string;
   readonly status: ResultStatus;
+
+  // Machine-Enforced Dual Outcomes
+  readonly executionOutcome: ExecutionOutcome;
+  readonly verificationOutcome: VerificationOutcome;
 
   // Temporal Metrics
   readonly startedAt: string; // ISO 8601
@@ -445,9 +468,10 @@ export interface AgentResult {
   readonly openGaps: readonly string[];
   readonly founderDecisionRequired: string | null;
 
-  // Audit References
-  readonly rawLogPath: string;
-  readonly rawLogSha256: string;
+  // Audit References (Normalized Layer 1 Only by default)
+  readonly eventLogPath: string;
+  readonly rawLogPath: string | null;
+  readonly rawLogSha256: string | null;
 }
 ```
 
@@ -468,35 +492,36 @@ The orchestrator operates as a strictly deterministic finite state machine (FSM)
                └───────┬───────┘
                        │ Agent Runtimes Found
                        ▼
-               ┌───────────────┐        Context Mismatch
-               │   PREFLIGHT   ├─────────────────────────────┐
-               └───────┬───────┘                             │
-                       │ Preflight PASSED                    ▼
-                       ▼                       ┌───────────────────────────┐
-               ┌───────────────┐               │     TERMINAL FAILURES:    │
-               │     READY     │               │ - CONTEXT_MISMATCH        │
-               └───────┬───────┘               │ - BLOCKED                 │
-                       │ Request Lock          │ - CAPABILITY_MISSING      │
-                       ▼                       │ - QUOTA_BLOCKED           │
-              ┌─────────────────┐  Contention  │ - TIMED_OUT               │
-              │ WAITING_FOR_LOCK├─────────────►│ - CANCELLED               │
-              └────────┬────────┘              │ - FAILED                  │
-                       │ Lock Acquired         └─────────────▲─────────────┘
-                       ▼                                     │
-               ┌───────────────┐       Timeout / Crash /     │
-               │    RUNNING    ├───────Rate Limit / Error────┤
-               └───────┬───────┘                             │
-                       │ Process Exited 0                    │
-                       ▼                                     │
-               ┌───────────────┐       Schema Invalid /      │
-               │  COLLECTING   ├───────Parse Failure─────────┤
-               └───────┬───────┘                             │
-                       │ Normalized                          │
-                       ▼                                     │
-               ┌───────────────┐       Quality Gate /        │
-               │   VERIFYING   ├───────Test Failure──────────┘
+               ┌───────────────┐        Metadata Missing or Mismatch
+               │   PREFLIGHT   ├──────────────────────────────────────┐
+               └───────┬───────┘                                      │
+                       │ Preflight PASSED                             ▼
+                       ▼                        ┌──────────────────────────────────────────┐
+               ┌───────────────┐                │            TERMINAL FAILURES:            │
+               │     READY     │                │ - CONTEXT_METADATA_INSUFFICIENT          │
+               └───────┬───────┘                │ - CONTEXT_MISMATCH                       │
+                       │ Request Lock           │ - BLOCKED                                │
+                       ▼                        │ - CAPABILITY_MISSING                     │
+              ┌─────────────────┐  Contention   │ - QUOTA_BLOCKED                          │
+              │ WAITING_FOR_LOCK├──────────────►│ - TIMED_OUT                              │
+              └────────┬────────┘               │ - CANCELLED                              │
+                       │ Lock Acquired          │ - FAILED                                 │
+                       ▼                        └────────────────────▲─────────────────────┘
+               ┌───────────────┐        Timeout / Crash /            │
+               │    RUNNING    ├────────Rate Limit / Error───────────┤
+               └───────┬───────┘                                     │
+                       │ Process Exited 0                            │
+                       │ (AGENT_EXECUTION_FINISHED)                  │
+                       ▼                                             │
+               ┌───────────────┐        Schema Invalid /             │
+               │  COLLECTING   ├────────Parse Failure────────────────┤
+               └───────┬───────┘                                     │
+                       │ Normalized                                  │
+                       ▼                                             │
+               ┌───────────────┐        Quality Gate /               │
+               │   VERIFYING   ├────────Test Failure─────────────────┘
                └───────┬───────┘
-                       │ Verification PASSED
+                       │ Verification PASSED (TASK_VERIFIED)
                        ▼
                ┌───────────────┐
                │   COMPLETED   │
@@ -511,22 +536,23 @@ The orchestrator operates as a strictly deterministic finite state machine (FSM)
 | `DISCOVERING` | Agent runtime resolved | `PREFLIGHT` | Verify binary presence and probe `--version`. |
 | `DISCOVERING` | Agent not found | `CAPABILITY_MISSING` | **FAIL CLOSED**. Human escalation required. |
 | `PREFLIGHT` | Git / context checks pass | `READY` | Verify clean worktree, branch matching, authority docs. |
-| `PREFLIGHT` | Branch / task mismatch | `CONTEXT_MISMATCH` | **FAIL CLOSED** (`PREFLIGHT_BLOCKED_CONTEXT_MISMATCH`). |
-| `READY` | Lock requested | `WAITING_FOR_LOCK` | Compute worktree lock key. |
-| `WAITING_FOR_LOCK` | Exclusive lock acquired | `RUNNING` | Create lock file with `wx` flag; record owner PID. |
-| `WAITING_FOR_LOCK` | Lock contention timeout | `BLOCKED` | Do not overwrite active lock. Report active owner PID. |
+| `PREFLIGHT` | Branch metadata missing | `CONTEXT_METADATA_INSUFFICIENT` | **FAIL CLOSED** (`PREFLIGHT_BLOCKED_CONTEXT_METADATA_INSUFFICIENT`). |
+| `PREFLIGHT` | Branch metadata mismatch | `CONTEXT_MISMATCH` | **FAIL CLOSED** (`PREFLIGHT_BLOCKED_CONTEXT_MISMATCH`). |
+| `READY` | Lock requested | `WAITING_FOR_LOCK` | Compute canonical worktree lock key. |
+| `WAITING_FOR_LOCK` | Exclusive lock acquired | `RUNNING` | Create lock file with `wx` flag; record owner PID and unique `lockInstanceId`. |
+| `WAITING_FOR_LOCK` | Lock contention timeout | `BLOCKED` | Do not overwrite active lock. Report active owner PID and instance ID. |
 | `RUNNING` | Execution exceeds timeout | `TIMED_OUT` | Issue escalating SIGINT -> SIGTERM -> SIGKILL; release lock. |
-| `RUNNING` | Rate limit response | `QUOTA_BLOCKED` | Terminate process; record cooldown; release lock. |
+| `RUNNING` | Rate limit response | `QUOTA_BLOCKED` | Terminate process; enter provider `COOLDOWN`; release lock. |
 | `RUNNING` | Non-zero exit code | `FAILED` | Capture stderr; release lock; no unhandled loop. |
-| `RUNNING` | Exit code 0 | `COLLECTING` | Capture stdout/stderr streams; release writer lock. |
-| `COLLECTING` | Result parse success | `VERIFYING` | Validate JSON schema; check changed file boundaries. |
-| `COLLECTING` | Malformed output | `FAILED` | Mark `MALFORMED_OUTPUT`; retain raw logs. |
-| `VERIFYING` | Quality gates pass | `COMPLETED` | Independent test run passes; no forbidden mutations. |
-| `VERIFYING` | Test / gate fails | `FAILED` | Record gate failure evidence; halt execution. |
+| `RUNNING` | Exit code 0 | `COLLECTING` | Process finished (`AGENT_EXECUTION_FINISHED`). Capture streams; release writer lock. |
+| `COLLECTING` | Result parse success | `VERIFYING` | Validate JSON schema; check changed file boundaries; set `verificationOutcome = "PENDING_VERIFICATION"`. |
+| `COLLECTING` | Malformed output | `FAILED` | Mark `MALFORMED_OUTPUT`; release lock. |
+| `VERIFYING` | Quality gates pass | `COMPLETED` | Independent test run passes (`TASK_VERIFIED`). Set `verificationOutcome = "VERIFIED_PASSED"`. |
+| `VERIFYING` | Test / gate fails | `FAILED` | Set `verificationOutcome = "VERIFICATION_FAILED"`; record gate failure evidence. |
 
 ---
 
-## 12. Preflight Validation Contract & Fail-Closed Semantics
+## 12. Preflight Validation Contract & Explicit Metadata Comparator (Correction C6)
 
 Before any execution agent process is launched, the preflight validator executes 10 non-negotiable checks. If any check fails, execution immediately halts without mutating the filesystem:
 
@@ -534,10 +560,31 @@ Before any execution agent process is launched, the preflight validator executes
 2. **Branch Identity Integrity:** Verify `git rev-parse --abbrev-ref HEAD` matches the target task contract branch.
 3. **Baseline Ancestry Verification:** If `expectedHeadSha` is specified, verify `git rev-parse HEAD` matches exactly.
 4. **Task Contract Presence:** Verify `tasks/CURRENT_TASK.md` exists and is readable.
-5. **Branch / Task Identity Consistency (AUTO_GAP_001 Rule):**
-   - The orchestrator extracts `TASK_ID` and `ROADMAP_PHASE` from `tasks/CURRENT_TASK.md`.
-   - It verifies that the active branch name contains or corresponds to the active task ID.
-   - If a mismatch is detected (e.g., active branch is `phase5/customer-c2-discovery` but `tasks/CURRENT_TASK.md` references `PHASE_3_TO_PHASE_4_HANDOFF`), preflight transitions to `CONTEXT_MISMATCH` with diagnostic `PREFLIGHT_BLOCKED_CONTEXT_MISMATCH`.
+5. **Branch / Task Identity Consistency (Explicit Metadata Comparator):**
+   - The orchestrator requires explicit metadata fields in `tasks/CURRENT_TASK.md` (or its machine-readable companion):
+     - `TASK_ID`
+     - `EXPECTED_BRANCH`
+     - `BASE_SHA`
+     - `STAGE`
+   - **No Heuristic String Matching:** Preflight performs a strict equality check:
+     ```javascript
+     if (!taskContract.EXPECTED_BRANCH || !taskContract.TASK_ID) {
+       return {
+         status: "CONTEXT_METADATA_INSUFFICIENT",
+         diagnostic: "PREFLIGHT_BLOCKED_CONTEXT_METADATA_INSUFFICIENT",
+         error: "tasks/CURRENT_TASK.md lacks required EXPECTED_BRANCH or TASK_ID metadata"
+       };
+     }
+     if (actualBranch !== taskContract.EXPECTED_BRANCH) {
+       return {
+         status: "CONTEXT_MISMATCH",
+         diagnostic: "PREFLIGHT_BLOCKED_CONTEXT_MISMATCH",
+         error: `Active branch '${actualBranch}' does not match EXPECTED_BRANCH '${taskContract.EXPECTED_BRANCH}' (TASK_ID: '${taskContract.TASK_ID}')`
+       };
+     }
+     ```
+   - If metadata is missing: `PREFLIGHT_BLOCKED_CONTEXT_METADATA_INSUFFICIENT`.
+   - If metadata conflicts: `PREFLIGHT_BLOCKED_CONTEXT_MISMATCH`.
 6. **Mandatory Universal Core Presence:** Confirm all 6 core documents exist: `AGENTS.md`, `docs/INDEX.md`, `docs/CURRENT_STATE.md`, `tasks/CURRENT_TASK.md`, `docs/codex/KONFRM_MASTER_RULES.md`, and the active task contract.
 7. **Agent Installation Health:** Confirm the selected agent binary exists, is executable, and its version satisfies compatibility boundaries.
 8. **Lock Availability:** Confirm no active, live-process lock exists for the targeted worktree.
@@ -548,29 +595,45 @@ Before any execution agent process is launched, the preflight validator executes
 
 ## 13. Worktree-Aware External Single-Writer Lock Contract
 
-### 13.1 Lock File Path & Key Derivation
-Locks are strictly external to the Git repository to prevent worktree `.git` reference conflicts and accidental dirty commits:
-```text
-Lock Root: %LOCALAPPDATA%\KONFRM\orchestrator\locks\
-Lock File: %LOCALAPPDATA%\KONFRM\orchestrator\locks\lock_<WORKTREE_HASH>.json
-```
-The `WORKTREE_HASH` is derived deterministically:
-```text
-WORKTREE_HASH = SHA256(ToLowerCase(NormalizePath(worktreeRoot)))[0..16]
-```
+### 13.1 Canonical Worktree Lock Identity (Correction C4)
+Locks reside strictly outside the Git repository in `%LOCALAPPDATA%\KONFRM\orchestrator\locks\`.
+To guarantee robust identity resolution resilient against Windows path aliases, symlinks, 8.3 short names, and casing variations:
+
+1. Resolve the canonical realpath of the worktree root:
+   ```text
+   CANONICAL_WORKTREE_REALPATH = fs.realpathSync.native(path.resolve(worktreeRoot))
+   ```
+2. Resolve the canonical realpath of the shared git common directory:
+   ```text
+   CANONICAL_GIT_COMMON_DIR = fs.realpathSync.native(path.resolve(execSync("git rev-parse --git-common-dir", { cwd: worktreeRoot })))
+   ```
+3. Normalize Windows casing and directory separators (uppercase drive letter, forward slashes).
+4. Construct the canonical identity input:
+   ```text
+   LOCK_ID_INPUT = canonicalGitCommonDir + "\n" + canonicalWorktreeRealpath
+   ```
+5. Derive the deterministic lock key:
+   ```text
+   WORKTREE_HASH = SHA256(LOCK_ID_INPUT)[0..16]
+   LOCK_FILE = %LOCALAPPDATA%\KONFRM\orchestrator\locks\lock_<WORKTREE_HASH>.json
+   ```
+- **Invariant:** The branch name is **never** part of the lock identity. The worktree remains locked to the writer even if the branch changes unexpectedly during execution.
 
 ### 13.2 Atomic Acquisition Protocol
 In Node.js, atomic file creation is achieved using `node:fs` open flags:
 ```javascript
 import fs from 'node:fs';
+import crypto from 'node:crypto';
 
 function acquireLock(lockPath, lockMetadata) {
   try {
+    const lockInstanceId = crypto.randomUUID();
+    const payload = { ...lockMetadata, lockInstanceId };
     // 'wx' flag: Open for writing, fails if path exists (O_CREAT | O_EXCL)
     const fd = fs.openSync(lockPath, 'wx');
-    fs.writeFileSync(fd, JSON.stringify(lockMetadata, null, 2), 'utf8');
+    fs.writeFileSync(fd, JSON.stringify(payload, null, 2), 'utf8');
     fs.closeSync(fd);
-    return { acquired: true, lockMetadata };
+    return { acquired: true, lockMetadata: payload };
   } catch (err) {
     if (err.code === 'EEXIST') {
       return { acquired: false, contention: true };
@@ -584,8 +647,10 @@ function acquireLock(lockPath, lockMetadata) {
 ```typescript
 export interface WorktreeLockMetadata {
   readonly lockKey: string;
+  readonly lockInstanceId: string; // Unique random UUID generated per acquisition
   readonly worktreePath: string;
-  readonly repositoryRoot: string;
+  readonly canonicalWorktreeRealpath: string;
+  readonly canonicalGitCommonDir: string;
   readonly branch: string;
   readonly taskId: string;
   readonly agent: "codex" | "antigravity" | "zcode" | "mock";
@@ -597,13 +662,17 @@ export interface WorktreeLockMetadata {
 }
 ```
 
-### 13.4 Stale Lock Detection & Crash Recovery
+### 13.4 Race-Safe Stale Lock Recovery (Correction C5)
 - **Rule:** A lock is **never** deleted purely because its elapsed time exceeds a threshold.
-- **Liveness Proof Requirement:** To break or claim an existing lock file, the orchestrator must prove through the OS process subsystem that:
-  1. The PID recorded in `ownerPid` no longer exists on the operating system; **OR**
-  2. The process running at `ownerPid` has a creation timestamp that differs from `ownerStartTime` (PID recycling detected).
-- On Windows, this is validated using native process query tools (`Get-Process -Id <pid>` verifying `StartTime`).
-- If the owner process is confirmed dead, the stale lock is quarantined to `%LOCALAPPDATA%\KONFRM\orchestrator\locks\quarantine\` with audit reason `OWNER_PROCESS_TERMINATED`, and a fresh lock is acquired.
+- **Race-Safe Protocol:** To prevent two competing orchestrator processes from simultaneously reclaiming a dead lock:
+  1. *Read Snapshot:* Read current lock metadata and record its `lockInstanceId` and `ownerPid`.
+  2. *Liveness Proof:* Verify owner PID state via native OS query (`Get-Process -Id <pid>`). Prove that:
+     - The PID no longer exists on the OS; **OR**
+     - The process creation `StartTime` differs from `ownerStartTime` (PID recycling detected).
+  3. *Pre-Reclaim Re-Read:* Re-read the lock file from disk. Verify that `lockInstanceId` still matches the observed dead instance (ensuring no other process already took over).
+  4. *Atomic Removal:* Execute an atomic filesystem rename moving the verified stale lock to `%LOCALAPPDATA%\KONFRM\orchestrator\locks\quarantine\lock_<HASH>_<lockInstanceId>.json`. If the rename fails (due to another process winning the race), immediately abort takeover.
+  5. *Exclusive Re-Acquisition:* Attempt standard atomic acquisition (`wx` flag) to create the new lock file with a fresh `lockInstanceId`.
+  6. *Winner Confirmation:* Only the process that successfully creates the new file proceeds to execution.
 
 ---
 
@@ -644,7 +713,7 @@ export interface WorktreeLockMetadata {
   - Non-interactive batch execution.
   - `--sandbox read-only` for Review tasks.
   - `--sandbox workspace-write` for Write tasks.
-- **Prompt Transport:** Stdin piping preferred over command-line string arguments to prevent process table inspection.
+- **Prompt Transport:** Standard input (stdin) piping preferred to reduce process table exposure.
 - **Stream Capture:** Captures JSON/JSONL output from stdout; captures diagnostic telemetry from stderr.
 - **Cancellation:** Dispatches `SIGINT` (Ctrl+C equivalent), waits 5000ms for graceful teardown, escalates to `SIGKILL` on timeout.
 
@@ -654,7 +723,7 @@ export interface WorktreeLockMetadata {
   ```text
   agy --prompt-file <restrictedTempFile> --add-dir <worktreePath> --json
   ```
-- **Permission Governance:** The dangerous flag `--dangerously-skip-permissions` is **forbidden** by default. Sandboxing and permission elevation are governed strictly by the preflight task policy.
+- **Permission Governance:** The dangerous flag `--dangerously-skip-permissions` is **forbidden** by default. Sandboxing and permission elevation are governed strictly by task policy.
 - **Session Support:** Preserves `conversation_id` for multi-step task continuation where authorized.
 - **Cancellation:** Dispatches `SIGINT` to child process handle.
 
@@ -676,16 +745,18 @@ export interface WorktreeLockMetadata {
 
 ## 16. Quota, Budget, and Provider Health Model
 
-### 16.1 Quota Confidence States
+### 16.1 Quota Confidence States & Prohibitions (Correction C12)
 Because no machine-readable quota API exists locally for any agent:
 - `QuotaConfidence` is permanently tagged `UNKNOWN` at initial launch.
-- The orchestrator tracks deterministic, local surrogate budgets rather than guessing remote balance:
+- Currently observed quota presentation is GUI/Web-oriented; this is documented as `PROGRAMMATIC_QUOTA_ACCESS = NOT_FOUND`, not `UNSUPPORTED`.
+- The orchestrator is strictly prohibited from scraping web cookies or reverse-engineering private endpoints.
+- Local surrogate budgets govern execution deterministically:
 
 ```typescript
 export interface LocalTaskBudget {
   readonly maxDurationMs: number;       // Default: 600,000 (10 mins)
   readonly maxTurnsAllowed: number;     // Default: 15 turns
-  readonly maxProcessRetries: number;   // Default: 1 retry for transient failure
+  readonly maxProcessRetries: number;   // MAX_AUTOMATIC_TRANSIENT_RETRIES = 1
   readonly maxDiskMutationBytes: number;// Default: 50 MB
 }
 ```
@@ -704,14 +775,15 @@ export type ProviderHealthState =
   | "UNKNOWN";           // Untested in current session
 ```
 
-### 16.3 Rate-Limit Response & Cooldown Protocol
-When a provider CLI returns a response indicating rate limiting (e.g. HTTP 429, "rate limit reached", "quota exceeded"):
-1. The provider is marked `RATE_LIMITED`.
-2. A local cooldown timer is initiated (default: 15 minutes exponential backoff, capped at 60 minutes).
-3. The orchestrator transitions the run to `QUOTA_BLOCKED`.
-4. The orchestrator checks if a secondary fallback agent is eligible for the task (e.g., switching from Antigravity to Z Code for a low-risk write task).
-5. **Strict Constraint:** Codex is **never** used as a fallback execution worker when Antigravity/Z Code are rate-limited.
-6. Under no circumstances does the orchestrator prompt for, or execute, credit top-ups.
+### 16.3 Deterministic Rate-Limit Response & Cooldown Protocol (Correction C11)
+- **Retry Invariant:** `MAX_AUTOMATIC_TRANSIENT_RETRIES = 1`. Misleading "exponential retry" language is eliminated.
+- When a provider CLI returns a rate-limit response (e.g. HTTP 429, "quota exceeded"):
+  1. The provider enters state `COOLDOWN`.
+  2. If the provider returned a machine-readable `retry-after` header or timestamp, use that duration; otherwise, apply a fixed 15-minute cooldown window.
+  3. No busy retry loop; the run transitions to `QUOTA_BLOCKED`.
+  4. Routing may switch to an eligible fallback execution agent (e.g. Antigravity ↔ Z Code) only if authorized by task policy.
+  5. Codex is **never** used as an execution fallback when workers are rate-limited.
+  6. Zero paid credit top-ups or billing actions are permitted.
 
 ---
 
@@ -754,7 +826,7 @@ export interface AgentSelector {
 
 The orchestrator defines explicit, modular extension points for supporting tooling without implementing or installing them prematurely:
 
-| Tool / Framework | Intended Architectural Role | Orchestrator Extension Hook | Status in AUTO-02 |
+| Tool / Framework | Intended Architectural Role | Orchestrator Extension Hook | Status in AUTO-02R |
 | :--- | :--- | :--- | :--- |
 | **Caveman** | Prompt & context compression; markdown minification | `contextRouter.preProcessContext()` | Extension point defined; uninstalled |
 | **Repomix** | Token-efficient codebase packaging & file bundling | `contextRouter.packRepositorySlice()` | Extension point defined; uninstalled |
@@ -768,8 +840,17 @@ The orchestrator defines explicit, modular extension points for supporting tooli
 
 ---
 
-## 19. Prompt Transport Security & Two-Layer Logging Architecture
+## 19. Prompt Transport, Logging & Environment Security
 
+### 19.1 Prompt Transport Security (Correction C8)
+To significantly **REDUCE** (not universally eliminate) prompt exposure in operating system process monitor listings (`Get-Process`, Task Manager):
+- **Transport Preference Order:**
+  1. *Standard Input (stdin):* Direct stream piping from orchestrator to agent child process.
+  2. *Supported Structured IPC:* Local socket or domain IPC where available.
+  3. *Restricted Temporary Prompt File:* Stored in the orchestrator private runtime directory under `%LOCALAPPDATA%\KONFRM\orchestrator\runs\<RUN_ID>\prompt_<RUN_ID>.tmp` with Windows DACL restricted exclusively to the current user SID. Must be deleted immediately once no longer needed.
+  4. *Command Line Argument:* Permitted only if no safer method is supported by the provider.
+
+### 19.2 Two-Layer Logging Architecture (Correction C7)
 ```text
 ┌────────────────────────────────────────────────────────────────────────┐
 │                   TWO-LAYER LOGGING ARCHITECTURE                       │
@@ -777,28 +858,22 @@ The orchestrator defines explicit, modular extension points for supporting tooli
 │ LAYER 1: NORMALIZED AUDIT EVENTS (Shared / Git-Eligible Summaries)     │
 │ Path: %LOCALAPPDATA%\KONFRM\orchestrator\events\event_<runId>.json     │
 │ Content: Redacted, bounded (<64KB), task metadata, SHA delta, status. │
-│ Rules: ZERO secrets; ZERO prompt bodies; ZERO raw stack dumps.        │
+│ Rules: ALWAYS ENABLED. Zero secrets; zero prompt bodies.               │
 ├────────────────────────────────────────────────────────────────────────┤
 │ LAYER 2: RAW PROVIDER ARTIFACTS (Local-Only / Ephemeral)              │
-│ Path: %LOCALAPPDATA%\KONFRM\orchestrator\logs\run_<runId>\             │
-│ Content: Complete raw stdout, stderr, process telemetry, crash dumps.   │
-│ Rules: Never committed to Git; 7-day retention; user-ACL restricted.  │
+│ Status: DISABLED BY DEFAULT (RAW_PROVIDER_LOGGING = false)            │
+│ Enabled: ONLY during controlled debugging runs via explicit flag.     │
+│ Content: Complete raw stdout/stderr logs, process telemetry.          │
+│ Rules: Never committed to Git; user-ACL restricted; bounded retention.│
 └────────────────────────────────────────────────────────────────────────┘
 ```
+- **Sanitization & Redaction Engine:** Always active. Regex patterns scrub Supabase JWTs (`[REDACTED_JWT]`), Bearer tokens (`[REDACTED_TOKEN]`), and API key signatures before any event is saved to Layer 1.
 
-### 19.1 Prompt Transport Security
-To eliminate sensitive prompt text from appearing in OS process monitor tools (`Get-Process`, `wmic process`):
-- **Transport Preference Order:**
-  1. *Standard Input (stdin):* Direct stream piping from orchestrator to agent child process.
-  2. *Restricted Temporary File:* Written to `%TEMP%\konfrm_prompts\prompt_<runId>.tmp` with Windows DACL restricted exclusively to the current user SID, then deleted immediately upon agent startup.
-  3. *Command Line Argument:* Permitted only for short non-sensitive arguments or boolean flags; **never** for full prompts.
-
-### 19.2 Sanitization & Redaction Engine
-Before writing any event to Layer 1 or displaying stdout summaries:
-- Regular expression patterns redact known credential signatures:
-  - Supabase JWTs: `eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+` -> `[REDACTED_JWT]`
-  - Bearer tokens: `Bearer\s+[A-Za-z0-9_\-\.]+` -> `Bearer [REDACTED_TOKEN]`
-  - Cloudflare / API Keys: `(key|secret|token|password)\s*[:=]\s*['"][^'"]+['"]` -> `$1: "[REDACTED]"`
+### 19.3 Child Process Environment Inheritance & Isolation (Correction C9)
+- **Rule:** The orchestrator must not blindly inject new secrets into child processes.
+- **Provider Authentication:** Uses each provider's existing authenticated local mechanism (ChatGPT subscription, Google account session, Z.AI OAuth).
+- **Environment Allowlist:** The supervisor constructs a minimal environment block containing essential system variables (`PATH`, `SYSTEMROOT`, `TEMP`, `USERPROFILE`, `HOMEDRIVE`, `HOMEPATH`, `APPDATA`, `LOCALAPPDATA`, and provider config directories).
+- **Prohibitions:** Full environment listings must never be written to logs. Application secrets from `.env` files are never copied into task prompts or child process environment blocks.
 
 ---
 
@@ -815,7 +890,7 @@ All machine-specific configuration, caches, logs, and lock files are strictly is
 │
 ├── locks/
 │   ├── lock_<WORKTREE_HASH>.json   # Active single-writer lock files
-│   └── quarantine/                 # Terminated or broken locks preserved for audit
+│   └── quarantine/                 # Stale or reclaimed locks preserved for audit
 │
 ├── runs/
 │   └── run_<runId>.json        # Serialized AgentRun execution descriptor
@@ -823,10 +898,10 @@ All machine-specific configuration, caches, logs, and lock files are strictly is
 ├── events/
 │   └── event_<runId>.json      # Layer 1 sanitized audit events
 │
-├── logs/
+├── logs/                       # Present only when raw logging is explicitly enabled
 │   └── run_<runId>/
-│       ├── stdout.log          # Layer 2 raw standard output
-│       ├── stderr.log          # Layer 2 raw standard error
+│       ├── stdout.log          # Raw standard output
+│       ├── stderr.log          # Raw standard error
 │       └── process_meta.json   # PID, CPU, memory, and exit code records
 │
 ├── capabilities/
@@ -845,15 +920,17 @@ Configuration files contain **zero** secrets. Missing config files default safel
 ```json
 {
   "$schema": "./schemas/orchestrator-config.json",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "execution": {
     "defaultTimeoutMs": 600000,
     "maxProcessRetries": 1,
     "lockLeaseDurationMs": 300000,
-    "heartbeatIntervalMs": 10000
+    "heartbeatIntervalMs": 10000,
+    "cooldownDurationMs": 900000
   },
   "logging": {
-    "retentionDays": 7,
+    "enableRawProviderLogging": false,
+    "debugLogRetentionDays": 3,
     "maxLogSizeBytes": 10485760,
     "redactSensitiveKeys": true
   },
@@ -870,9 +947,9 @@ Configuration files contain **zero** secrets. Missing config files default safel
 
 ---
 
-## 22. Failure Handling & Conservative Retry Matrix
+## 22. Failure Handling & Conservative Retry Matrix (Correction C11)
 
-The orchestrator adheres to a strict anti-looping retry philosophy. Business ambiguity, branch mismatches, and schema violations must **never** be retried automatically:
+The orchestrator adheres to a strict anti-looping retry philosophy. Business ambiguity, branch mismatches, and schema violations must **never** be retried automatically (`MAX_AUTOMATIC_TRANSIENT_RETRIES = 1`):
 
 | Scenario / Failure Trigger | Terminal / Intermediate State | Automatic Action | Retry Allowed? | Fallback Allowed? | Escalation Condition |
 | :--- | :--- | :--- | :--- | :--- | :--- |
@@ -880,11 +957,12 @@ The orchestrator adheres to a strict anti-looping retry philosophy. Business amb
 | **Agent version incompatible** | `CAPABILITY_MISSING` | Log version mismatch; halt execution | No | Yes | Version outside supported range |
 | **JSON output malformed** | `FAILED` | Capture raw output; release lock | No | No | Malformed JSON on non-zero exit |
 | **Authentication expired** | `BLOCKED` | Mark provider `AUTH_EXPIRED`; halt | No | No | Requires manual user login |
-| **Quota / Rate Limit reached** | `QUOTA_BLOCKED` | Initiate provider cooldown timer | No | Yes (if task permits) | Rate limit across all agents |
+| **Quota / Rate Limit reached** | `QUOTA_BLOCKED` | Enter provider `COOLDOWN` window | No | Yes (if task permits) | Rate limit across all agents |
 | **Agent process hangs / timeout**| `TIMED_OUT` | Issue escalating SIGINT->SIGKILL | Yes (1x transient) | Yes | Hangs on second attempt |
 | **Non-zero exit (syntax/compile)**| `FAILED` | Collect stderr; report failure | No | No | Code defect must be diagnosed |
 | **Forbidden file mutated** | `BLOCKED` | Revert worktree changes via Git | No | No | Security violation; escalate |
-| **Branch changed unexpectedly** | `CONTEXT_MISMATCH` | Abort run; release lock | No | No | Worktree altered during execution |
+| **Branch metadata missing** | `CONTEXT_METADATA_INSUFFICIENT` | Abort preflight; release lock | No | No | Missing EXPECTED_BRANCH in contract |
+| **Branch metadata mismatch** | `CONTEXT_MISMATCH` | Abort preflight; release lock | No | No | actualBranch !== EXPECTED_BRANCH |
 | **HEAD changed during execution**| `CONTEXT_MISMATCH` | Abort run; capture git reflog | No | No | Concurrent commit detected |
 | **Writer lock disappears/altered**| `BLOCKED` | Kill agent immediately via SIGKILL | No | No | Mutual exclusion compromised |
 | **Process crash (SIGSEGV/OOM)** | `FAILED` | Capture OS crash code; release lock | Yes (1x transient) | Yes | Second crash triggers escalation |
@@ -892,7 +970,7 @@ The orchestrator adheres to a strict anti-looping retry philosophy. Business amb
 
 ---
 
-## 23. Verification Boundary (`AGENT_FINISHED` vs `TASK_VERIFIED`)
+## 23. Verification Boundary (`AGENT_EXECUTION_FINISHED` vs `TASK_VERIFIED`)
 
 A fundamental flaw of naive automation is treating the agent's exit code or self-reported success as task completion. The KONFRM Orchestrator enforces a strict verification boundary:
 
@@ -903,8 +981,12 @@ A fundamental flaw of naive automation is treating the agent's exit code or self
                                  │
                                  ▼
                   ┌──────────────────────────────┐
-                  │  Status: AGENT_FINISHED      │
-                  │  (Candidate Result Collected)│
+                  │ Status: AGENT_EXECUTION_     │
+                  │         FINISHED             │
+                  │ executionOutcome:            │
+                  │   PROCESS_COMPLETED          │
+                  │ verificationOutcome:         │
+                  │   PENDING_VERIFICATION       │
                   └──────────────┬───────────────┘
                                  │
                                  ▼
@@ -922,37 +1004,38 @@ A fundamental flaw of naive automation is treating the agent's exit code or self
                    ▼ PASSED                    ▼ FAILED
         ┌───────────────────┐         ┌───────────────────┐
         │ Status: COMPLETED │         │  Status: FAILED   │
-        │ (TASK_VERIFIED)   │         │ (Verification Gate│
-        └───────────────────┘         │  Check Failed)    │
-                                      └───────────────────┘
+        │ verificationOutcome:        │ verificationOutcome:│
+        │   VERIFIED_PASSED │         │   VERIFICATION_   │
+        │ (TASK_VERIFIED)   │         │   FAILED          │
+        └───────────────────┘         └───────────────────┘
 ```
 
-1. **Candidate State:** When an agent finishes with exit code 0, its state is recorded as `AGENT_FINISHED`. The task is **not** closed.
-2. **Independent Test Execution:** The orchestrator independently spawns project verification scripts (`npm run check`, `npm run test`, `git diff --check`) in the worktree.
-3. **Task Verification:** Only when all independent checks succeed without regression or forbidden file edits is the run promoted to `COMPLETED` (`TASK_VERIFIED`).
+1. **Execution Outcome:** When an agent finishes with exit code 0, its execution outcome is recorded as `PROCESS_COMPLETED`. The task is **not** complete.
+2. **Independent Test Execution:** The orchestrator independently executes project verification scripts (`npm run check`, `npm run test`, `git diff --check`) in the worktree.
+3. **Verification Outcome:** Only when all independent checks succeed without regression or forbidden file edits is the verification outcome marked `VERIFIED_PASSED` and the run promoted to `COMPLETED` (`TASK_VERIFIED`).
 
 ---
 
-## 24. Architecture Decision Records (ADRs)
+## 24. Architecture Decision Records (ADRs) (Correction C1)
 
 ### ADR-AUTO-001: Neutral Orchestrator Hub
 - **Context:** Deciding whether Codex, Antigravity, or Z Code should host the master coordination logic.
 - **Decision:** Adopt an independent, neutral orchestration process.
 - **Consequences:** Eliminates vendor lock-in; enables objective evaluation; preserves Codex for scarce high-value review.
 
-### ADR-AUTO-002: Dependency-Free Node.js ESM Runtime
-- **Context:** Selecting the implementation technology for the orchestrator supervisor.
-- **Decision:** Use native Node.js ESM with zero third-party dependencies, supported by TypeScript declaration contracts.
-- **Consequences:** Runs immediately without build steps or `npm install`; aligns with existing Node toolchain; cross-platform.
+### ADR-AUTO-002: CLI-First / GUI Last Resort
+- **Context:** Determining how the orchestrator interacts with local AI coding agents.
+- **Decision:** Prioritize headless CLI process invocation and standard I/O streams. GUI automation (mouse clicks, desktop window scraping) is strictly forbidden.
+- **Consequences:** Deterministic, scriptable process lifecycle; eliminates fragility of window focus and screen resolution.
 
 ### ADR-AUTO-003: External Worktree-Aware Writer Lock
 - **Context:** Preventing concurrent writers across Git worktrees without relying on `.git/konfrm_writer.lock`.
-- **Decision:** Store locks in `%LOCALAPPDATA%\KONFRM\orchestrator\locks\` keyed by normalized worktree path hash, using atomic creation (`wx`) and PID start-time validation.
-- **Consequences:** Safe across Git worktrees; resilient against stale locks; does not pollute repository git status.
+- **Decision:** Store locks in `%LOCALAPPDATA%\KONFRM\orchestrator\locks\` keyed by `canonicalGitCommonDir + "\n" + canonicalWorktreeRealpath`, using atomic creation (`wx`) and PID start-time validation.
+- **Consequences:** Safe across Git worktrees; resilient against stale locks; zero Git status pollution.
 
 ### ADR-AUTO-004: Dynamic Agent Discovery Precedence
 - **Context:** Avoiding machine-specific hard-coded binary paths across different developer workstations.
-- **Decision:** Implement 5-stage discovery: Override -> PATH -> Vendor Roots -> Probe -> NOT_FOUND.
+- **Decision:** Implement 5-stage discovery: Override → PATH → Vendor Roots → Capability Probe → `NOT_FOUND`.
 - **Consequences:** Portable across environments; tolerates auto-updates of desktop applications; keeps local paths out of Git.
 
 ### ADR-AUTO-005: Unknown Quota Is Not Zero Quota
@@ -971,16 +1054,22 @@ A fundamental flaw of naive automation is treating the agent's exit code or self
 - **Consequences:** Zero Git pollution; clean repository status; centralized log retention and rotation.
 
 ### ADR-AUTO-008: Zero Paid API Spend & No Automatic Credit Purchases
-- **Context:** Managing subscription boundaries and credit cards.
+- **Context:** Managing subscription boundaries and financial risk.
 - **Decision:** The orchestrator is strictly prohibited from triggering paid API calls or credit purchases upon quota exhaustion.
 - **Consequences:** Absolute financial safety; rate limits halt execution or route to available subscription quotas within policy.
 
+### ADR-AUTO-009: Orchestrator Runtime (Correction C1)
+- **Status:** `PROPOSED_PENDING_FOUNDER_APPROVAL`
+- **Proposal:** Dependency-Free Node.js ESM.
+- **Context:** Selecting the implementation language for the orchestrator supervisor.
+- **Consequences:** If approved, runs immediately on modern Node.js LTS (>= 20.0.0) without extra npm dependencies or compile steps. Pending explicit Founder approval before AUTO-03.
+
 ---
 
-## 25. AUTO_GAP_001 Analysis & Resolution Strategy
+## 25. AUTO_GAP_001 Analysis & Resolution Strategy (Correction C6)
 
 ### Observed Reality
-During the post-AUTO-01 audit, an inspection of active branch `phase5/customer-c2-discovery` (HEAD `d0591bc3f3657cf0ee466606bfb91f3bd681e8e0`) revealed:
+During post-AUTO-01 auditing, inspection of active branch `phase5/customer-c2-discovery` (HEAD `d0591bc3f3657cf0ee466606bfb91f3bd681e8e0`) revealed:
 - `tasks/CURRENT_TASK.md` remains populated with:
   ```text
   TASK_ID: PHASE_3_TO_PHASE_4_HANDOFF
@@ -993,24 +1082,31 @@ During the post-AUTO-01 audit, an inspection of active branch `phase5/customer-c
 - A mismatch between branch identity and task contract creates a catastrophic failure mode where an agent on a Phase 5 branch may attempt to execute Phase 4 entry gates, or vice-versa.
 
 ### Fail-Closed Orchestrator Rule
-- The preflight validator enforces `branchTaskIdentityMatch`:
+- The preflight validator enforces explicit metadata comparison:
   ```javascript
-  if (!isBranchTaskConsistent(branchName, taskContract)) {
+  if (!taskContract.EXPECTED_BRANCH || !taskContract.TASK_ID) {
+    return {
+      status: "CONTEXT_METADATA_INSUFFICIENT",
+      diagnostic: "PREFLIGHT_BLOCKED_CONTEXT_METADATA_INSUFFICIENT",
+      error: "tasks/CURRENT_TASK.md lacks required EXPECTED_BRANCH or TASK_ID metadata"
+    };
+  }
+  if (actualBranch !== taskContract.EXPECTED_BRANCH) {
     return {
       status: "CONTEXT_MISMATCH",
       diagnostic: "PREFLIGHT_BLOCKED_CONTEXT_MISMATCH",
-      error: `Branch '${branchName}' does not match CURRENT_TASK.md ID '${taskContract.taskId}'`
+      error: `Active branch '${actualBranch}' does not match EXPECTED_BRANCH '${taskContract.EXPECTED_BRANCH}'`
     };
   }
   ```
-- **Action for AUTO-02:** Do **not** modify `phase5/customer-c2-discovery` or its `tasks/CURRENT_TASK.md`.
+- **Action for AUTO-02R:** Do **not** modify `phase5/customer-c2-discovery` or its `tasks/CURRENT_TASK.md`.
 - **Recommendation:** Schedule a dedicated, isolated repository governance task (`GOV-TASK-ALIGNMENT`) to align the task pointer on `phase5/customer-c2-discovery` under Founder review.
 
 ---
 
-## 26. Explicit Non-Goals for AUTO-02
+## 26. Explicit Non-Goals for AUTO-02R
 
-To maintain absolute architectural focus and safety, the following activities are strictly out of scope for AUTO-02:
+To maintain absolute architectural focus and safety, the following activities are strictly out of scope:
 1. Writing implementation code or creating executable orchestrator scripts.
 2. Spawning live agents against the KONFRM codebase.
 3. Modifying application code in `customer-app`, `owner-app`, `admin-app`, or `backend`.

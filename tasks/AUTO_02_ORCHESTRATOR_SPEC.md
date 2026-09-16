@@ -1,12 +1,13 @@
-# Task Contract: AUTO-02 — Neutral Orchestrator Architecture & Agent Adapter Contract
+# Task Contract: AUTO-02 / AUTO-02R — Neutral Orchestrator Architecture & Agent Adapter Contract
 
-**TASK_ID:** `AUTO-02`  
-**ROADMAP_PHASE:** `TOOLING_AUTOMATION`  
-**STAGE:** `SPECIFICATION_COMPLETE`  
-**BASE_MAIN_SHA:** `04a611eecd587414f2d2e5de1179600259e4a1ca`  
-**BRANCH:** `tooling/auto-02-orchestrator-spec`  
-**CANONICAL_SPECIFICATION:** [`docs/automation/KONFRM_AUTO_ORCHESTRATOR_SPEC.md`](../docs/automation/KONFRM_AUTO_ORCHESTRATOR_SPEC.md)  
-**GOVERNING_AUTHORITY:** Founder + ChatGPT Strategic Brain  
+**TASK_ID:** `AUTO-02R`
+**ROADMAP_PHASE:** `TOOLING_AUTOMATION`
+**STAGE:** `BRIDGE_REVIEW_REVISION`
+**BASE_MAIN_SHA:** `04a611eecd587414f2d2e5de1179600259e4a1ca`
+**STARTING_HEAD_SHA:** `1d21160cca09766da30146280cf1aacd237c1eb3`
+**BRANCH:** `tooling/auto-02-orchestrator-spec`
+**CANONICAL_SPECIFICATION:** [`docs/automation/KONFRM_AUTO_ORCHESTRATOR_SPEC.md`](../docs/automation/KONFRM_AUTO_ORCHESTRATOR_SPEC.md)
+**GOVERNING_AUTHORITY:** Founder + ChatGPT Strategic Brain
 
 ---
 
@@ -14,7 +15,7 @@
 
 Define the implementation-ready technical specification, common adapter interfaces, locking protocols, state machine, and failure handling for the **Neutral KONFRM AUTO ORCHESTRATOR**.
 
-This task establishes the formal contracts required before any orchestrator process code or adapter implementation is written.
+This task contract covers both the baseline specification pass (AUTO-02) and the Bridge architecture correction pass (AUTO-02R) prior to any AUTO-03 supervisor implementation.
 
 ---
 
@@ -28,44 +29,49 @@ Per KONFRM documentation deduplication rules, all architectural details, TypeScr
 
 ## 3. Scope & Deliverables
 
-1. **Canonical Architecture Specification:**
-   - Authored at [`docs/automation/KONFRM_AUTO_ORCHESTRATOR_SPEC.md`](../docs/automation/KONFRM_AUTO_ORCHESTRATOR_SPEC.md).
+1. **Canonical Architecture Specification (`docs/automation/KONFRM_AUTO_ORCHESTRATOR_SPEC.md`):**
    - Covers all 13 modular orchestrator subsystems.
-   - Formalizes the `Option B` runtime decision (Dependency-Free Node.js ESM).
-   - Establishes the 5-stage dynamic agent discovery precedence.
-   - Defines complete TypeScript contracts for `AgentAdapter`, `AgentTask`, `AgentResult`, `AgentCapabilities`, and `QuotaSnapshot`.
-   - Formulates the worktree-aware external locking model in `%LOCALAPPDATA%\KONFRM\orchestrator\locks\`.
-   - Formulates the deterministic finite state machine (9 lifecycle states, 7 terminal failure states).
-   - Incorporates ADR-AUTO-001 through ADR-AUTO-008.
-   - Formulates the fail-closed resolution for `AUTO_GAP_001` (`PREFLIGHT_BLOCKED_CONTEXT_MISMATCH`).
-   - Outlines the phased delivery sequence (AUTO-02 through AUTO-10).
+   - Restores canonical ADR numbering (ADR-AUTO-001 through ADR-AUTO-008).
+   - Records Node.js ESM runtime recommendation as `ADR-AUTO-009 (Proposed, Pending Founder Approval)`.
+   - Distinguishes host local discovery (`CURRENT_LOCAL_VERSION`) from engine minimum (`MINIMUM_SUPPORTED_RUNTIME`).
+   - Upgrades worktree lock identity to `canonicalGitCommonDir + "\n" + canonicalWorktreeRealpath`.
+   - Adds race-safe stale lock recovery with random `lockInstanceId`.
+   - Defines explicit `tasks/CURRENT_TASK.md` metadata comparison (`actualBranch === EXPECTED_BRANCH`).
+   - Enforces `RAW_PROVIDER_LOGGING = DISABLED_BY_DEFAULT`.
+   - Specifies child process environment inheritance allowlisting.
+   - Machine-enforces `AGENT_EXECUTION_FINISHED` vs `TASK_VERIFIED` via dual outcomes (`executionOutcome` vs `verificationOutcome`).
+   - Standardizes deterministic single-retry semantics (`MAX_AUTOMATIC_TRANSIENT_RETRIES = 1`).
+   - Outlines phased delivery roadmap (AUTO-02 through AUTO-10).
 
-2. **Index Routing:**
-   - Updated [`docs/INDEX.md`](../docs/INDEX.md) to route future agents to the automation specification.
+2. **Index Routing (`docs/INDEX.md`):**
+   - Routes future agents to the automation specification.
 
-3. **Task Contract Record:**
-   - This document (`tasks/AUTO_02_ORCHESTRATOR_SPEC.md`).
+3. **Task Contract Record (`tasks/AUTO_02_ORCHESTRATOR_SPEC.md`):**
+   - This document.
 
 ---
 
 ## 4. Non-Goals (Enforced Boundaries)
 
-- **Zero Code Implementation:** No process supervisor, adapter code, or CLI tools implemented in AUTO-02.
+- **Zero Code Implementation:** No process supervisor, adapter code, or CLI tools implemented in AUTO-02/AUTO-02R.
 - **Zero Application Modifications:** No edits to `customer-app/`, `owner-app/`, `admin-app/`, or `backend/`.
 - **Zero Infrastructure Changes:** No Supabase schema, migration, or Cloudflare Worker edits.
 - **Zero Framework Installs:** No installations of Caveman, Repomix, Spec Kit, gstack, Superpowers, or BMAD.
 - **Zero Financial Spending:** No paid API tokens, credits, or subscriptions top-ups.
-- **Zero Git Pollution:** Active Phase 5 worktree (`phase5/customer-c2-discovery`) remains completely untouched.
-- **Governance File Preservation:** `docs/BRAIN_SYNC_PROTOCOL.md` is **not** modified during AUTO-02; held for post-spec Bridge review.
+- **Zero Git Pollution:** Active Phase 5 worktree (`phase5/customer-c2-discovery`) remains completely untouched by AUTO-02/AUTO-02R.
+- **Governance File Preservation:** `docs/BRAIN_SYNC_PROTOCOL.md` is **not** modified; held for post-spec Bridge review.
 
 ---
 
 ## 5. Verification & Acceptance Criteria
 
 - [x] Canonical specification authored with complete TypeScript interface definitions (zero `any`, zero `TBD`).
-- [x] External worktree-aware lock semantics fully documented with atomic acquisition (`wx`) and PID start-time validation.
-- [x] Quota confidence model explicitly incorporates `PROGRAMMATIC_QUOTA_ACCESS = NOT_FOUND` and `UNKNOWN` default.
-- [x] Process security model classified as `MEDIUM` with prompt stdin transport and log redaction requirements.
-- [x] `AUTO_GAP_001` documented with fail-closed preflight semantics (`PREFLIGHT_BLOCKED_CONTEXT_MISMATCH`).
-- [x] ADR-AUTO-001 through ADR-AUTO-008 fully articulated.
-- [x] Clean Git working tree on `tooling/auto-02-orchestrator-spec` with zero application code changes.
+- [x] Canonical ADR numbering restored (ADR-AUTO-001 through ADR-AUTO-008); runtime proposal tagged as ADR-AUTO-009 (Proposed).
+- [x] Canonical worktree lock identity derived from `canonicalGitCommonDir` and `canonicalWorktreeRealpath`.
+- [x] Race-safe stale lock recovery protocol specified with unique `lockInstanceId`.
+- [x] Explicit CURRENT_TASK comparator defined (`actualBranch === EXPECTED_BRANCH`).
+- [x] Security defaults updated: `RAW_PROVIDER_LOGGING = DISABLED_BY_DEFAULT`, prompt exposure reduced, environment allowlisted.
+- [x] Dual outcomes (`executionOutcome`, `verificationOutcome`) machine-enforce verification boundary.
+- [x] Deterministic single-retry policy specified (`MAX_AUTOMATIC_TRANSIENT_RETRIES = 1`).
+- [x] Type verification script compiles cleanly with `0 errors`.
+- [x] Active Phase 5 worktree verified unchanged (`UNCHANGED_WITH_PREEXISTING_UNTRACKED_STATE`).

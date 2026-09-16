@@ -36,7 +36,7 @@ Per KONFRM documentation deduplication rules, all architectural details, TypeScr
    - Covers all 13 modular orchestrator subsystems.
    - Restores and hardens canonical ADRs (ADR-AUTO-001 through ADR-AUTO-008).
    - **ADR-AUTO-002 (GUI Last Resort):** Explicitly specifies `V1: GUI_AUTOMATION = DISABLED`; native interfaces (CLI, SDK, IPC, wrapper) have priority; GUI automation is a genuine last resort requiring explicit Founder approval and a dedicated ADR.
-   - **ADR-AUTO-009 (Orchestrator Runtime):** Updated to reflect Node.js lifecycle realities (Node 20 and 25 are EOL; Node 22 and 24 are supported LTS; preferred is Node 24.x LTS); preflight rejects EOL Node in production; status remains `PROPOSED_PENDING_FOUNDER_APPROVAL`.
+   - **ADR-AUTO-009 (Orchestrator Runtime):** Updated to reflect Node.js lifecycle realities (Node 20 and 25 are EOL; Node 22 and 24 are supported LTS; preferred is Node 24.x LTS); preflight rejects EOL Node in production; subsequently APPROVED by Founder on 2026-09-17.
    - **C13 (Lock Lifetime):** For `WRITE` tasks, the writer lock is acquired before mutation and held continuously across `RUNNING` -> `COLLECTING` -> `VERIFYING` until the terminal result and evidence snapshot are finalized.
    - **C14 (Non-Destructive Mutation Handling):** On forbidden file mutation, the orchestrator freezes the worktree, retains the lock, captures exact Git diff/status, transitions to `FORBIDDEN_MUTATION_BLOCKED`, and strictly forbids destructive auto-reverts (`git restore`, `git reset`, `git clean`).
    - **C15 (Mutation-Aware Retry & Fallback):** Mandatory `POST_FAILURE_MUTATION_CHECK`. A single transient retry is permitted only if proven zero mutation occurred; any mutation or unknown state transitions to `PARTIAL_MUTATION_BLOCKED` with no automatic retry or fallback.
@@ -76,7 +76,7 @@ Per KONFRM documentation deduplication rules, all architectural details, TypeScr
 ## 5. Verification & Acceptance Criteria
 
 - [x] Canonical specification authored with complete TypeScript interface definitions (zero `any`, zero `TBD`).
-- [x] Canonical ADR numbering restored (ADR-AUTO-001 through ADR-AUTO-008); ADR-AUTO-009 updated for Node EOL lifecycle and tagged `PROPOSED_PENDING_FOUNDER_APPROVAL`.
+- [x] Canonical ADR numbering restored (ADR-AUTO-001 through ADR-AUTO-008); ADR-AUTO-009 updated for Node EOL lifecycle (subsequently approved by Founder on 2026-09-17).
 - [x] ADR-AUTO-002 specifies `V1: GUI_AUTOMATION = DISABLED` as genuine last resort requiring Founder approval and dedicated ADR.
 - [x] C13 lock lifetime invariant implemented: held through `RUNNING` -> `COLLECTING` -> `VERIFYING` until terminal snapshot.
 - [x] C14 non-destructive mutation handling specified: worktree frozen, evidence captured, no auto `git restore`/`git clean`.

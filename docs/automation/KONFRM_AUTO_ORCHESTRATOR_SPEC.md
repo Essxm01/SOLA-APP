@@ -182,9 +182,10 @@ The specification strictly decouples host observations from production runtime r
   3. Strict exit code and stderr checking.
   4. Zero secret tokens or passwords passed in command-line arguments.
 
-### 5.4 Proposed Runtime Decision: Option B — Dependency-Free Node.js ESM (ADR-AUTO-009)
-- **Status:** `PROPOSED_PENDING_FOUNDER_APPROVAL`
-- **Proposal:** Implement the orchestrator core as pure, dependency-free Node.js ESM modules, supported by canonical TypeScript declaration files (`.d.ts`). Final architectural adoption remains subject to explicit Founder review.
+### 5.4 Runtime Decision: Option B — Dependency-Free Node.js ESM (ADR-AUTO-009)
+- **Status:** `APPROVED`
+- **Founder Approved:** `2026-09-17`
+- **Decision:** Implement the orchestrator core as pure, dependency-free Node.js ESM modules, supported by canonical TypeScript declaration files (`.d.ts`). Node 24.x LTS is preferred; supported LTS releases only; real-agent preflight fails closed on EOL runtimes. ZERO third-party runtime npm dependencies.
 
 ---
 
@@ -1103,12 +1104,14 @@ A fundamental flaw of naive automation is treating the agent's exit code or self
 - **Consequences:** Absolute financial safety; rate limits halt execution or route to available subscription quotas within policy.
 
 ### ADR-AUTO-009: Orchestrator Runtime (Correction C1, C23)
-- **Status:** `PROPOSED_PENDING_FOUNDER_APPROVAL`
-- **Proposal:** Dependency-Free Node.js ESM.
+- **Status:** `APPROVED`
+- **Founder Approved:** `2026-09-17`
+- **Core Runtime:** Dependency-Free Node.js ESM.
 - **Preferred Runtime:** Node.js 24.x LTS.
-- **Supported Initial Runtime:** Active Node.js LTS releases (Node 22.x LTS and Node 24.x LTS) verified by AUTO-03 compatibility tests.
+- **Supported Policy:** Supported Node.js LTS releases only, subject to compatibility verification.
 - **EOL Runtime Policy:** Fail preflight for production/real-agent orchestrator operation on EOL Node releases (including Node 20 and Node 25).
-- **Consequences:** Runs immediately on modern supported Node LTS without extra npm dependencies or compile steps. Awaits explicit Founder approval before AUTO-03.
+- **Third-Party Runtime NPM Dependencies:** ZERO.
+- **Consequences:** Runs immediately on modern supported Node LTS without extra npm dependencies or compile steps.
 
 ---
 
@@ -1186,7 +1189,9 @@ To maintain absolute architectural focus and safety, the following activities ar
 ├─────────┼──────────────────────────────────┼───────────────────────────┤
 │ AUTO-05 │ Single-Agent Write Sandbox       │ Worktree-isolated writes  │
 │         │                                  │ File boundary enforcer    │
-│         │                                  │ Rollback on failure       │
+│         │                                  │ Evidence-preserving       │
+│         │                                  │ failure isolation &       │
+│         │                                  │ explicit recovery         │
 ├─────────┼──────────────────────────────────┼───────────────────────────┤
 │ AUTO-06 │ Routing, Fallback & Budget       │ Risk-based agent selector │
 │         │ Governance                       │ Rate-limit cooldown logic │

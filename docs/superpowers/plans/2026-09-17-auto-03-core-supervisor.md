@@ -203,3 +203,85 @@
 2. Full test suite execution: `node --test orchestrator/test/*.test.mjs`.
 3. Check whitespace: `git diff --check`.
 4. Phase 5 worktree regression verification.
+## AUTO-03R Safety Hardening Addendum
+
+### Task 10: Preflight Validation Engine (C29, C45)
+- **Target File:** `orchestrator/src/preflight-validator.mjs`
+- **Test File:** `orchestrator/test/preflight-validator.test.mjs`
+- **Specification:** Section 12, C6, C21, C23, C29, C45.
+- **Behaviors to Verify:**
+  - `PREFLIGHT-01`: Valid task contract with matching branch, matching HEAD, and matching adapter passes validation.
+  - `PREFLIGHT-02`: Branch mismatch between worktree and `expectedBranch` throws `PREFLIGHT_BLOCKED_CONTEXT_MISMATCH`.
+  - `PREFLIGHT-03`: HEAD mismatch throws `PREFLIGHT_BLOCKED_HEAD_MISMATCH`.
+  - `PREFLIGHT-04`: Missing metadata (`TASK_ID`, `EXPECTED_BRANCH`, `BASE_SHA`, `STAGE`) throws `PREFLIGHT_BLOCKED_CONTEXT_METADATA_INSUFFICIENT`.
+  - `PREFLIGHT-05`: Task agent and adapter agent mismatch throws `PREFLIGHT_BLOCKED_ADAPTER_MISMATCH`.
+  - Enforces `mode === "WRITE"` requires `requiresWriterLock: true` (`PREFLIGHT_BLOCKED_INVALID_TASK_CONTRACT`).
+  - Enforces Node runtime check for real agents (`PREFLIGHT_BLOCKED_EOL_RUNTIME`).
+
+### Task 11: Content-Sensitive Mutation Detection & Immutability (C30, C31, C34, C46)
+- **Target File:** `orchestrator/src/mutation-snapshot.mjs`
+- **Test File:** `orchestrator/test/mutation-snapshot.test.mjs`
+- **Specification:** Section 17, C14, C15, C28, C30, C31, C34, C46.
+- **Behaviors to Verify:**
+  - Computes content fingerprints for tracked unstaged changes (`git diff --binary`), staged changes (`git diff --cached --binary`), and untracked files (relative path + SHA-256 of file contents).
+  - `MUT-05`: Pre-existing dirty tracked file changed again detected as `MUTATED`.
+  - `MUT-06`: Pre-existing untracked file changed content detected as `MUTATED`.
+  - `MUT-07`: Staged content changed detected as `MUTATED`.
+  - `MUT-08`: Unknown snapshot or Git error fails closed with `UNKNOWN`.
+  - `READONLY-01`: Clean READ_ONLY and REVIEW executions succeed without mutation.
+  - `READONLY-02`: Any tracked file mutation during READ_ONLY or REVIEW immediately yields `READ_ONLY_MUTATION_BLOCKED` (`retryEligible: false`, `fallbackEligible: false`, file preserved).
+  - `READONLY-03`: Any untracked file mutation during READ_ONLY or REVIEW yields `READ_ONLY_MUTATION_BLOCKED`.
+  - `CORE-11`: Any unexpected change to branch or HEAD yields `CONTEXT_MISMATCH` (fail closed, no retry).
+
+### Task 12: Write Boundaries & Allowed Paths Enforcement (C33)
+- **Target File:** `orchestrator/src/boundary-validator.mjs` (or integrated in core-runner)
+- **Test File:** `orchestrator/test/boundary-validator.test.mjs`
+- **Specification:** Section 9, C33.
+- **Behaviors to Verify:**
+  - Canonical path normalization (slashes, casing on Windows).
+  - Rejects directory traversal (`../`).
+  - Directory scopes strictly match children (e.g. `customer-app/src/` allows `customer-app/src/a.ts`, but rejects prefix collision `customer-app/src2/a.ts`).
+  - `BOUNDARY-01`: Mutation outside `allowedWritePaths` transitions to `FORBIDDEN_MUTATION_BLOCKED`.
+  - `BOUNDARY-02`: Directory child path is allowed when parent dir is in `allowedWritePaths`.
+  - `BOUNDARY-03`: Prefix collision path is blocked.
+  - `BOUNDARY-04`: Path traversal `../` escape is blocked.
+  - Empty `allowedWritePaths` for WRITE mode fails closed unless unrestricted sandbox flag is declared.
+
+### Task 13: Lock Engine Hardening: Baseline Sequencing, Real Process StartTime, and True Race Safety (C32, C38, C39)
+- **Target File:** `orchestrator/src/lock-manager.mjs`, `orchestrator/src/core-runner.mjs`
+- **Test File:** `orchestrator/test/lock-manager.test.mjs`
+- **Specification:** Section 13, C32, C38, C39.
+- **Behaviors to Verify:**
+  - C32: For WRITE tasks, writer lock acquisition precedes execution baseline snapshot capture.
+  - `LOCK-07`: Real process creation time (`ownerStartTime`) retrieved via structured OS query or injectable provider; stored in lock metadata.
+  - `LOCK-08`: PID recycled with mismatched `ownerStartTime` is classified as dead owner and reclaimable.
+  - `LOCK-09`: Active PID with matching `ownerStartTime` is classified as live owner and not reclaimable.
+  - `LOCK-10`: True reclaim race simulation: Injectable hook simulates another process acquiring a new lock instance between stale re-read and rename. Reclaim aborts (`RECLAIM_ABORTED_LOCK_CHANGED`) without deleting the new lock.
+
+### Task 14: Process Supervisor Hardening: Async Termination, Tree Handling, Environment Isolation (C40, C41, C42)
+- **Target File:** `orchestrator/src/process-supervisor.mjs`
+- **Test File:** `orchestrator/test/process-supervisor.test.mjs`
+- **Specification:** Section 19, C18, C40, C41, C42.
+- **Behaviors to Verify:**
+  - `PROC-05`: `buildSafeChildEnvironment()` allows only whitelisted system variables (`PATH`, `SYSTEMROOT`, `TEMP`, `USERPROFILE`, etc.); arbitrary parent environment secrets (`KONFRM_TEST_SECRET_SHOULD_NOT_INHERIT`) are not inherited.
+  - `PROC-06`: Termination helper is async, awaits command completion, verifies process disappearance, and handles failures deterministically.
+  - `PROC-07`: Parent and child process tree cancellation: mock subprocess spawning a child confirms both parent and child processes are terminated on cancellation or timeout.
+
+### Task 15: Run Store & Audit Redaction Hardening (C43, C44)
+- **Target File:** `orchestrator/src/run-store.mjs`
+- **Test File:** `orchestrator/test/run-store.test.mjs`
+- **Specification:** Section 19.2, 19.4, C43, C44.
+- **Behaviors to Verify:**
+  - `RUN-04`: Layer 1 audit event writer recursively sanitizes strings, redacting Bearer tokens, JWT patterns, API keys, passwords, and secrets before persistence.
+  - `RUN-05`: `runId` and `taskId` validated against safe identifier regex `^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$`; path traversal attempts (`../`, `..\`, absolute paths, slashes) are rejected.
+
+### Task 16: Core Runner Terminal Finalization & Safety Contracts (C35, C36, C37, C46)
+- **Target File:** `orchestrator/src/core-runner.mjs`
+- **Test File:** `orchestrator/test/core-runner.test.mjs`
+- **Specification:** Section 22, 23, C13, C35, C36, C37, C46.
+- **Behaviors to Verify:**
+  - `CORE-07`: Verification is mandatory; WRITE mode without verifier yields `VERIFICATION_CONFIGURATION_MISSING` (fails closed, no implicit success).
+  - `CORE-08`: Exception during adapter start captures post-failure snapshot, finalizes terminal failure evidence, and only then releases lock.
+  - `CORE-09`: Exception during result collection captures post-failure snapshot, finalizes terminal failure evidence, and only then releases lock.
+  - `CORE-10`: Malformed output combined with mutation (`!= ZERO_MUTATION`) yields `PARTIAL_MUTATION_BLOCKED` with no retry or fallback.
+  - `CORE-12`: Lock is never released before terminal evidence snapshot is written. If evidence persistence fails, `EVIDENCE_FINALIZATION_FAILED` is surfaced.

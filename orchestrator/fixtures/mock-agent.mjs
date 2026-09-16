@@ -119,6 +119,26 @@ async function run() {
       break;
     }
 
+    case 'check-env': {
+      const result = {
+        status: 'SUCCESS',
+        secretPresent: Boolean(process.env.KONFRM_TEST_SECRET_SHOULD_NOT_INHERIT)
+      };
+      process.stdout.write(JSON.stringify(result) + '\n');
+      process.exit(0);
+      break;
+    }
+
+    case 'spawn-child': {
+      const { spawn } = await import('node:child_process');
+      const child = spawn(process.execPath, [process.argv[1], '--scenario', 'hang'], {
+        stdio: 'ignore'
+      });
+      process.stdout.write(JSON.stringify({ childPid: child.pid }) + '\n');
+      setInterval(() => {}, 10000);
+      break;
+    }
+
     case 'malformed-output': {
       process.stdout.write('{ this is not valid JSON ::: def syntax error\n');
       process.exit(0);

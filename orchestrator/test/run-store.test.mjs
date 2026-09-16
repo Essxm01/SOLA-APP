@@ -94,4 +94,57 @@ describe('Run Store (Section 18, 19.4, C20, C27)', () => {
     assert.equal(onDisk.status, 'SUCCESS');
     assert.equal(onDisk.executionOutcome, 'PROCESS_COMPLETED');
   });
+
+  test('RUN-04: String & key redaction prevents sensitive credentials in audit events (C43)', () => {
+    const runId = 'run_test_redact_04';
+    writeAuditEvent(paths.events, runId, {
+      taskId: 'TASK-04',
+      token: 'secret_raw_token_xyz',
+      apiKey: 'sk-1234567890abcdef',
+      details: {
+        authorization: 'Bearer secret_bearer_token_abc',
+        rawOutput: 'Error with token=super_secret_leak_123 in request'
+      }
+    });
+
+    const eventFilePath = path.join(paths.events, `event_${runId}.json`);
+    const onDisk = JSON.parse(fs.readFileSync(eventFilePath, 'utf8'));
+
+    assert.equal(onDisk.token, '[REDACTED]');
+    assert.equal(onDisk.apiKey, '[REDACTED]');
+    assert.equal(onDisk.details.authorization, '[REDACTED]');
+    assert.ok(onDisk.details.rawOutput.includes('token=[REDACTED]'));
+    assert.equal(onDisk.details.rawOutput.includes('super_secret_leak_123'), false);
+  });
+
+  test('RUN-05: Unsafe runId with path traversal or invalid characters is rejected (C44)', () => {
+    const unsafeIds = [
+      '../evil_run',
+      '..\\evil_run',
+      '/run_abs',
+      '\\run_abs',
+      'run/sub',
+      'run with space',
+      'run;command',
+      ''
+    ];
+
+    for (const badId of unsafeIds) {
+      assert.throws(
+        () => createRunDescriptor({
+          runsDir: paths.runs,
+          runId: badId,
+          taskId: 'TASK-05'
+        }),
+        /INVALID_RUN_ID/,
+        `Should reject unsafe runId: "${badId}"`
+      );
+
+      assert.throws(
+        () => writeAuditEvent(paths.events, badId, { taskId: 'TASK-05' }),
+        /INVALID_RUN_ID/,
+        `Should reject unsafe runId in audit event: "${badId}"`
+      );
+    }
+  });
 });

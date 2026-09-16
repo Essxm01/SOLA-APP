@@ -78,4 +78,67 @@ describe('Process Supervisor (Section 19, 20, C18, C19)', () => {
     // On Windows or POSIX, terminated process exitCode can be null or a signal-based code
     assert.ok(result.exitCode === null || typeof result.exitCode === 'number');
   });
+
+  test('PROC-05: Secret env is not inherited by default (C42)', async () => {
+    process.env.KONFRM_TEST_SECRET_SHOULD_NOT_INHERIT = 'super_secret_value_xyz';
+    try {
+      const handle = spawnSupervisedProcess({
+        command: process.execPath,
+        args: [mockAgentPath, '--scenario', 'check-env'],
+        timeoutMs: 5000
+      });
+
+      const result = await handle.promise;
+      assert.equal(result.exitCode, 0);
+      const parsed = JSON.parse(result.stdout.trim());
+      assert.equal(parsed.secretPresent, false, 'Secret environment variable MUST NOT be inherited');
+    } finally {
+      delete process.env.KONFRM_TEST_SECRET_SHOULD_NOT_INHERIT;
+    }
+  });
+
+  test('PROC-06: Termination command completes within bounded timeout (C40)', async () => {
+    // Inactive PID
+    const res = await killProcessTree(999999, 'WINDOWS_PROCESS_TREE_TERMINATE');
+    assert.ok(res.status === 'ALREADY_EXITED' || res.status === 'TERMINATED');
+  });
+
+  test('PROC-07: Parent + child process tree cancellation terminates both (C41)', async () => {
+    const handle = spawnSupervisedProcess({
+      command: process.execPath,
+      args: [mockAgentPath, '--scenario', 'spawn-child'],
+      timeoutMs: 10000
+    });
+
+    // Wait until childPid is written to stdout
+    let childPid = null;
+    for (let i = 0; i < 30; i++) {
+      if (handle.stdoutChunks) {
+        const text = Buffer.concat(handle.stdoutChunks).toString('utf8');
+        if (text.includes('childPid')) {
+          try {
+            const data = JSON.parse(text.trim().split('\n')[0]);
+            childPid = data.childPid;
+            break;
+          } catch {}
+        }
+      }
+      await new Promise(r => setTimeout(r, 100));
+    }
+
+    const parentPid = handle.pid;
+    assert.ok(parentPid);
+
+    // Cancel tree
+    handle.cancel('WINDOWS_PROCESS_TREE_TERMINATE');
+    await handle.promise;
+
+    // Check both parent and child dead
+    await new Promise(r => setTimeout(r, 400));
+    const { isProcessAlive } = await import('../src/lock-manager.mjs');
+    assert.equal(isProcessAlive(parentPid), false, 'Parent process must be dead');
+    if (childPid) {
+      assert.equal(isProcessAlive(childPid), false, 'Child process must be dead');
+    }
+  });
 });

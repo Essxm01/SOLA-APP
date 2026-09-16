@@ -9,6 +9,42 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 
+export function validateSafeRunId(runId) {
+  if (typeof runId !== 'string' || !runId || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(runId)) {
+    throw new Error(`INVALID_RUN_ID: runId must match ^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$, got: "${runId}"`);
+  }
+  if (runId.includes('/') || runId.includes('\\') || runId.includes('..')) {
+    throw new Error(`INVALID_RUN_ID: path traversal detected in runId: "${runId}"`);
+  }
+  return runId;
+}
+
+export function redactSensitiveData(val) {
+  if (val === null || val === undefined) return val;
+  if (typeof val === 'string') {
+    let sanitized = val;
+    sanitized = sanitized.replace(/Bearer\s+[A-Za-z0-9._~+/-]+=*/gi, 'Bearer [REDACTED]');
+    sanitized = sanitized.replace(/eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]*/g, '[REDACTED_JWT]');
+    sanitized = sanitized.replace(/(password|secret|api_key|apiKey|token|access_token)\s*[:=]\s*['"]?([^\s,;'"}{]+)['"]?/gi, '$1=[REDACTED]');
+    return sanitized;
+  }
+  if (Array.isArray(val)) {
+    return val.map(item => redactSensitiveData(item));
+  }
+  if (typeof val === 'object') {
+    const redactedObj = {};
+    for (const [key, prop] of Object.entries(val)) {
+      if (/password|secret|token|apiKey|api_key|authorization/i.test(key)) {
+        redactedObj[key] = '[REDACTED]';
+      } else {
+        redactedObj[key] = redactSensitiveData(prop);
+      }
+    }
+    return redactedObj;
+  }
+  return val;
+}
+
 export function createRunDescriptor({
   runsDir,
   eventsDir,
@@ -22,8 +58,9 @@ export function createRunDescriptor({
   rawLogPath = null,
   rawLogSha256 = null
 }) {
-  if (!runsDir || !runId) {
-    throw new Error('createRunDescriptor: runsDir and runId are required');
+  validateSafeRunId(runId);
+  if (!runsDir) {
+    throw new Error('createRunDescriptor: runsDir is required');
   }
 
   const promptText = typeof prompt === 'string' ? prompt : '';
@@ -58,12 +95,14 @@ export function createRunDescriptor({
 }
 
 export function readRunDescriptor(runsDir, runId) {
+  validateSafeRunId(runId);
   const descriptorPath = path.join(runsDir, `run_${runId}.json`);
   if (!fs.existsSync(descriptorPath)) return null;
   return JSON.parse(fs.readFileSync(descriptorPath, 'utf8'));
 }
 
 export function updateRunDescriptor(runsDir, runId, updates) {
+  validateSafeRunId(runId);
   const current = readRunDescriptor(runsDir, runId);
   if (!current) {
     throw new Error(`Run descriptor not found for runId: ${runId}`);
@@ -80,19 +119,21 @@ export function updateRunDescriptor(runsDir, runId, updates) {
 }
 
 export function writeAuditEvent(eventsDir, runId, payload) {
-  if (!eventsDir || !runId) {
-    throw new Error('writeAuditEvent: eventsDir and runId are required');
+  validateSafeRunId(runId);
+  if (!eventsDir) {
+    throw new Error('writeAuditEvent: eventsDir is required');
   }
 
   if (!fs.existsSync(eventsDir)) {
     fs.mkdirSync(eventsDir, { recursive: true });
   }
 
+  const sanitizedPayload = redactSensitiveData(payload);
   const eventPath = path.join(eventsDir, `event_${runId}.json`);
   const eventData = {
     runId,
     timestamp: new Date().toISOString(),
-    ...payload
+    ...sanitizedPayload
   };
 
   fs.writeFileSync(eventPath, JSON.stringify(eventData, null, 2), 'utf8');

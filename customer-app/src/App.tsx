@@ -103,6 +103,7 @@ export function App() {
   const [resultsLoadState, setResultsLoadState] = useState<ResultsLoadState>('LOADING');
   const [resultsErrorMessage, setResultsErrorMessage] = useState<string | null>(null);
   const searchRequestIdRef = useRef<number>(0);
+  const resultsScrollTopRef = useRef<number>(0);
   const filterMetadata = useMemo(() => extractFilterMetadata(properties), [properties]);
   const [showAuthModal, setShowAuthModal] = useState<boolean>(false);
   const [showSupportModal, setShowSupportModal] = useState<boolean>(false);
@@ -197,6 +198,7 @@ export function App() {
   const handleSearchApply = (intent: SearchIntent) => {
     setSearchIntent(intent);
     setDiscoveryView('RESULTS');
+    resultsScrollTopRef.current = 0;
     void fetchSearchResults(intent);
   };
 
@@ -204,6 +206,7 @@ export function App() {
     setDiscoveryView('EXPLORE');
     setSearchIntent(EMPTY_SEARCH_INTENT);
     setActiveDestination('الكل');
+    resultsScrollTopRef.current = 0;
   };
 
   const handleRefineClose = () => {
@@ -674,6 +677,8 @@ export function App() {
             }}
             isFavorite={(id) => favorites.includes(id)}
             onToggleFavorite={handleToggleFavorite}
+            restoreScrollTop={resultsScrollTopRef.current}
+            onReportScrollTop={(offset) => { resultsScrollTopRef.current = offset; }}
           />
         )}
         {/* Full-Screen Dedicated Edit Account Page */}

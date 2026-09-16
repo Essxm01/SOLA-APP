@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef, useLayoutEffect, useEffect } from 'react';
 import { ArrowRight, MapPin, Calendar, Users, Home, Search, X } from 'lucide-react';
 import { PropertyCard, CustomerPropertyItem } from './PropertyCard';
 import { LoadingStateView, EmptyStateView, ErrorStateView } from './StateViews';
@@ -29,6 +29,10 @@ export interface SearchResultsScreenProps {
   onSelectProperty: (id: string) => void;
   isFavorite: (id: string) => boolean;
   onToggleFavorite: (id: string, e: React.MouseEvent) => void;
+  /** Scroll offset to restore on remount (Edit → Back flow). */
+  restoreScrollTop?: number;
+  /** Called on scroll so the parent can persist the current offset. */
+  onReportScrollTop?: (offset: number) => void;
 }
 
 const intentChips = (intent: SearchIntent): Array<{ icon: 'pin' | 'cal' | 'users' | 'home' | 'price'; text: string }> => {
@@ -94,11 +98,38 @@ export const SearchResultsScreen: React.FC<SearchResultsScreenProps> = ({
   onSelectProperty,
   isFavorite,
   onToggleFavorite,
+  restoreScrollTop,
+  onReportScrollTop,
 }) => {
   const chips = intentChips(intent);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const restoredRef = useRef(false);
+
+  // Report scroll position to parent on every scroll event
+  useEffect(() => {
+    const el = scrollContainerRef.current;
+    if (!el || !onReportScrollTop) return;
+    const handler = () => onReportScrollTop(el.scrollTop);
+    el.addEventListener('scroll', handler, { passive: true });
+    return () => el.removeEventListener('scroll', handler);
+  }, [onReportScrollTop]);
+
+  // Restore scroll position on remount (Edit → Back flow)
+  // Uses useLayoutEffect + rAF so DOM content exists before scrolling
+  useLayoutEffect(() => {
+    if (restoredRef.current) return;
+    if (!restoreScrollTop || restoreScrollTop <= 0) return;
+    if (loadState !== 'LOADED') return;
+    restoredRef.current = true;
+    const el = scrollContainerRef.current;
+    if (!el) return;
+    requestAnimationFrame(() => {
+      el.scrollTop = restoreScrollTop;
+    });
+  }, [restoreScrollTop, loadState]);
 
   return (
-    <div dir="rtl" className="fixed inset-0 z-[45] bg-white overflow-y-auto">
+    <div ref={scrollContainerRef} dir="rtl" className="fixed inset-0 z-[45] bg-white overflow-y-auto">
       <div className="w-full max-w-md mx-auto pb-24">
         {/* Header */}
         <div className="sticky top-0 bg-white/95 backdrop-blur-md border-b border-slate-100 px-4 py-3 flex items-center gap-3 z-10">
@@ -143,7 +174,7 @@ export const SearchResultsScreen: React.FC<SearchResultsScreenProps> = ({
                   type="button"
                   onClick={onDismissFavoritesError}
                   aria-label="إغلاق التنبيه"
-                  className="min-h-[36px] min-w-[36px] flex items-center justify-center text-rose-500 hover:text-rose-700 rounded-lg"
+                  className="min-h-[44px] min-w-[44px] flex items-center justify-center text-rose-500 hover:text-rose-700 rounded-lg"
                 >
                   <X className="w-4 h-4" />
                 </button>

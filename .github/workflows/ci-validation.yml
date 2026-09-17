@@ -102,6 +102,7 @@ jobs:
           npm run test:truthful-state
           npm run test:entry-state
           npm run test:search-intent
+          npm run test:api
           npm run build
 
   # ----------------------------------------------------------------------------

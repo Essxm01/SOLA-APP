@@ -16,7 +16,8 @@ export const DEFAULT_SUBDIRS = [
   'events',
   'logs',
   'capabilities',
-  'cache'
+  'cache',
+  'labs'
 ];
 
 export function getDefaultProductionRoot() {
@@ -36,7 +37,8 @@ export function resolveRuntimePaths(customRoot = null) {
     events: path.join(root, 'events'),
     logs: path.join(root, 'logs'),
     capabilities: path.join(root, 'capabilities'),
-    cache: path.join(root, 'cache')
+    cache: path.join(root, 'cache'),
+    labs: path.join(root, 'labs')
   };
 }
 

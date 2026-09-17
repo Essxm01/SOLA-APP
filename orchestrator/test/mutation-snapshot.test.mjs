@@ -168,4 +168,102 @@ describe('Mutation Snapshot (Section 17, C14, C15, C28, C31)', () => {
       try { fs.rmSync(targetDir2, { recursive: true, force: true }); } catch {}
     }
   });
+
+  test('IGNORED-01: ignored file modified is detected as MUTATED (C64)', () => {
+    fs.writeFileSync(path.join(tempRepo, '.gitignore'), 'ignored.txt\n', 'utf8');
+    execFileSync('git', ['-C', tempRepo, 'add', '.gitignore'], { stdio: 'ignore' });
+    execFileSync('git', ['-C', tempRepo, 'commit', '-m', 'Add gitignore'], { stdio: 'ignore' });
+
+    fs.writeFileSync(path.join(tempRepo, 'ignored.txt'), 'initial ignored\n', 'utf8');
+    const before = captureMutationSnapshot(tempRepo);
+
+    fs.appendFileSync(path.join(tempRepo, 'ignored.txt'), 'appended ignored\n', 'utf8');
+    const after = captureMutationSnapshot(tempRepo);
+
+    const result = classifyMutation(before, after);
+    assert.equal(result.classification, 'MUTATED');
+    assert.equal(result.hasChanged, true);
+    assert.ok(result.changedPaths.includes('ignored.txt'));
+  });
+
+  test('IGNORED-02: ignored file created is detected as MUTATED (C64)', () => {
+    fs.writeFileSync(path.join(tempRepo, '.gitignore'), 'ignored.txt\n', 'utf8');
+    execFileSync('git', ['-C', tempRepo, 'add', '.gitignore'], { stdio: 'ignore' });
+    execFileSync('git', ['-C', tempRepo, 'commit', '-m', 'Add gitignore'], { stdio: 'ignore' });
+
+    const before = captureMutationSnapshot(tempRepo);
+
+    fs.writeFileSync(path.join(tempRepo, 'ignored.txt'), 'newly created ignored\n', 'utf8');
+    const after = captureMutationSnapshot(tempRepo);
+
+    const result = classifyMutation(before, after);
+    assert.equal(result.classification, 'MUTATED');
+    assert.equal(result.hasChanged, true);
+    assert.ok(result.changedPaths.includes('ignored.txt'));
+  });
+
+  test('IGNORED-03: ignored symlink mutation is detected as MUTATED (C64)', () => {
+    fs.writeFileSync(path.join(tempRepo, '.gitignore'), 'ignored_link\n', 'utf8');
+    execFileSync('git', ['-C', tempRepo, 'add', '.gitignore'], { stdio: 'ignore' });
+    execFileSync('git', ['-C', tempRepo, 'commit', '-m', 'Add gitignore'], { stdio: 'ignore' });
+
+    const target1 = fs.mkdtempSync(path.join(os.tmpdir(), 'mut-ig-target1-'));
+    const target2 = fs.mkdtempSync(path.join(os.tmpdir(), 'mut-ig-target2-'));
+    const linkPath = path.join(tempRepo, 'ignored_link');
+
+    try {
+      fs.symlinkSync(target1, linkPath, 'junction');
+      const before = captureMutationSnapshot(tempRepo);
+
+      fs.unlinkSync(linkPath);
+      fs.symlinkSync(target2, linkPath, 'junction');
+      const after = captureMutationSnapshot(tempRepo);
+
+      const result = classifyMutation(before, after);
+      assert.equal(result.classification, 'MUTATED');
+      assert.equal(result.hasChanged, true);
+      assert.ok(result.changedPaths.includes('ignored_link'));
+    } finally {
+      try { fs.unlinkSync(linkPath); } catch {}
+      try { fs.rmSync(target1, { recursive: true, force: true }); } catch {}
+      try { fs.rmSync(target2, { recursive: true, force: true }); } catch {}
+    }
+  });
+
+  test('IGNORED-04: unchanged ignored tree yields ZERO_MUTATION (C64)', () => {
+    fs.writeFileSync(path.join(tempRepo, '.gitignore'), 'ignored.txt\n', 'utf8');
+    execFileSync('git', ['-C', tempRepo, 'add', '.gitignore'], { stdio: 'ignore' });
+    execFileSync('git', ['-C', tempRepo, 'commit', '-m', 'Add gitignore'], { stdio: 'ignore' });
+
+    fs.writeFileSync(path.join(tempRepo, 'ignored.txt'), 'steady content\n', 'utf8');
+    const before = captureMutationSnapshot(tempRepo);
+    const after = captureMutationSnapshot(tempRepo);
+
+    const result = classifyMutation(before, after);
+    assert.equal(result.classification, 'ZERO_MUTATION');
+    assert.equal(result.hasChanged, false);
+    assert.equal(result.changedPaths.length, 0);
+  });
+
+  test('IGNORED-05: ignored files limit exceeded fails closed with UNKNOWN (C64)', () => {
+    fs.writeFileSync(path.join(tempRepo, '.gitignore'), 'ignored_*\n', 'utf8');
+    execFileSync('git', ['-C', tempRepo, 'add', '.gitignore'], { stdio: 'ignore' });
+    execFileSync('git', ['-C', tempRepo, 'commit', '-m', 'Add gitignore'], { stdio: 'ignore' });
+
+    // Create 5 ignored files
+    for (let i = 0; i < 5; i++) {
+      fs.writeFileSync(path.join(tempRepo, `ignored_${i}.txt`), `data ${i}\n`, 'utf8');
+    }
+
+    // Capture with maxIgnoredEntries = 3 (limit exceeded)
+    const before = captureMutationSnapshot(tempRepo, { maxIgnoredEntries: 3 });
+    const after = captureMutationSnapshot(tempRepo, { maxIgnoredEntries: 3 });
+
+    assert.equal(before.ignoredLimitExceeded, true);
+    assert.equal(after.ignoredLimitExceeded, true);
+
+    const result = classifyMutation(before, after);
+    assert.equal(result.classification, 'UNKNOWN');
+    assert.equal(result.hasChanged, true);
+  });
 });

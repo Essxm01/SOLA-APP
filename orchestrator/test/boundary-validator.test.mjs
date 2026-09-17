@@ -2,7 +2,9 @@ import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   isPathAllowed,
-  validateWriteBoundaries
+  validateWriteBoundaries,
+  validateWriteScopeDefinition,
+  validateWriteScopes
 } from '../src/boundary-validator.mjs';
 
 describe('Boundary Validator (C33)', () => {
@@ -94,5 +96,53 @@ describe('Boundary Validator (C33)', () => {
     });
     assert.equal(resChild.valid, false, 'Exact file scope must block child path');
     assert.ok(resChild.outsideAllowedViolations.includes('foo.txt/child.txt'));
+  });
+
+  test('BOUNDARY-08: validateWriteScopeDefinition rejects invalid syntax (C70)', () => {
+    const invalidScopes = [
+      '',
+      '   ',
+      '../outside',
+      'src/../../escape',
+      '/absolute/path',
+      '\\absolute\\path',
+      'C:/windows/path',
+      'D:\\data',
+      '\\\\unc\\share',
+      '//unc/share',
+      'path/with\x00null',
+      'path/with\rnewline'
+    ];
+
+    for (const scope of invalidScopes) {
+      const res = validateWriteScopeDefinition(scope);
+      assert.equal(res.valid, false, `Scope "${scope}" should be rejected`);
+    }
+  });
+
+  test('BOUNDARY-09: validateWriteScopeDefinition accepts valid relative scopes (C70)', () => {
+    const validScopes = [
+      'src/file.txt',
+      'src/components/',
+      'package.json',
+      'tests/unit/test.mjs',
+      'docs/'
+    ];
+
+    for (const scope of validScopes) {
+      const res = validateWriteScopeDefinition(scope);
+      assert.equal(res.valid, true, `Scope "${scope}" should be accepted`);
+    }
+  });
+
+  test('BOUNDARY-10: validateWriteScopes throws on first invalid scope (C70)', () => {
+    assert.throws(
+      () => validateWriteScopes(['src/', '../outside.txt']),
+      /PREFLIGHT_BLOCKED_INVALID_WRITE_SCOPE/
+    );
+
+    assert.doesNotThrow(() => {
+      validateWriteScopes(['src/', 'package.json']);
+    });
   });
 });

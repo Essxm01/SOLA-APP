@@ -887,4 +887,49 @@ describe('Core Runner & Safety Integration (Section 23-32, C13, C14, C15, C21, C
     assert.equal(result.fallbackEligible, false);
     assert.ok(fs.existsSync(path.join(tempRepo, 'timed_out_mutation.txt')));
   });
+
+  test('CORE-19: unverified termination retains hard-block lock semantics (C67)', async () => {
+    const unverifiedTerminationAdapter = {
+      agentName: 'mock',
+      async startTask() {},
+      async collectResult() {
+        return {
+          malformed: false,
+          processResult: {
+            timedOut: true,
+            exitCode: null,
+            durationMs: 500,
+            stdout: '',
+            stderr: 'Termination unverified',
+            terminationStatus: 'TREE_TERMINATION_UNVERIFIED',
+            processStillAlive: true
+          }
+        };
+      }
+    };
+
+    const task = {
+      taskId: 'TASK-UNVERIFIED-TERM',
+      agent: 'mock',
+      mode: 'WRITE',
+      requiresWriterLock: true,
+      allowedWritePaths: ['allowed.txt'],
+      worktreeRoot: tempRepo,
+      prompt: 'Unverified termination test'
+    };
+
+    const result = await executeOrchestratedTask({
+      task,
+      adapter: unverifiedTerminationAdapter,
+      runtimePaths: paths
+    });
+
+    assert.equal(result.status, 'PROCESS_STILL_ALIVE_BLOCKED');
+    assert.equal(result.verificationOutcome, 'VERIFICATION_FAILED');
+    assert.equal(result.lockRetained, true);
+    assert.equal(result.lockRetentionReason, 'LOCK_RETAINED_DUE_TO_LIVE_PROCESS');
+
+    const lockFiles = fs.readdirSync(paths.locks).filter(f => f.startsWith('lock_') && f.endsWith('.json'));
+    assert.ok(lockFiles.length > 0, 'Lock file must be retained on disk');
+  });
 });

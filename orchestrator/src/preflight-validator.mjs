@@ -3,9 +3,13 @@
  * Enforces non-negotiable checks before any execution agent process is launched.
  */
 
+import fs from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 import { assertRuntimeAllowsRealAgentExecution } from './runtime-policy.mjs';
+import { loadRepositoryTaskContract } from './task-contract-loader.mjs';
+import { resolveRuntimePaths } from './runtime-paths.mjs';
+import { validateWriteScopes } from './boundary-validator.mjs';
 
 export function validateSafeIdentifier(id, fieldName = 'identifier') {
   if (typeof id !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(id)) {
@@ -25,7 +29,8 @@ export function validatePreflight({
   task,
   adapter = null,
   currentTaskMetadata = null,
-  gitBinary = 'git'
+  gitBinary = 'git',
+  runtimePaths = null
 }) {
   if (!task || !task.taskId) {
     throw new Error('validatePreflight: task with taskId is required');
@@ -44,7 +49,14 @@ export function validatePreflight({
     throw err;
   }
 
-  // 3. Write Scope Allowlist Verification (Correction C59)
+  // 3. Write Scope Allowlist Verification & Scope Syntax Check (Correction C59, C70)
+  if (task.allowedWritePaths) {
+    validateWriteScopes(task.allowedWritePaths);
+  }
+  if (task.forbiddenWritePaths) {
+    validateWriteScopes(task.forbiddenWritePaths);
+  }
+
   if (task.mode === 'WRITE' && (!task.allowedWritePaths || task.allowedWritePaths.length === 0) && !task.unrestrictedSandbox) {
     const err = new Error('PREFLIGHT_BLOCKED_WRITE_SCOPE_MISSING: WRITE mode requires non-empty allowedWritePaths unless unrestrictedSandbox is true');
     err.code = 'PREFLIGHT_BLOCKED_WRITE_SCOPE_MISSING';
@@ -65,8 +77,16 @@ export function validatePreflight({
     throw err;
   }
 
-  // 6. KONFRM_REPO Context Mode Validation (Correction C47)
+  const worktreeRoot = path.resolve(task.worktreeRoot || process.cwd());
+
+  // 6. KONFRM_REPO Context Mode Validation (Correction C47, C61, C62, C69)
   if (task.contextMode === 'KONFRM_REPO') {
+    if (task.unrestrictedSandbox) {
+      const err = new Error('PREFLIGHT_BLOCKED_UNRESTRICTED_PRODUCT_WRITE: unrestrictedSandbox is strictly forbidden for KONFRM_REPO context');
+      err.code = 'PREFLIGHT_BLOCKED_UNRESTRICTED_PRODUCT_WRITE';
+      throw err;
+    }
+
     const requiredTaskFields = ['taskId', 'expectedBranch', 'expectedHeadSha', 'expectedStage', 'worktreeRoot', 'agent', 'mode'];
     const missingTaskFields = requiredTaskFields.filter(f => !task[f]);
     if (missingTaskFields.length > 0) {
@@ -75,43 +95,50 @@ export function validatePreflight({
       throw err;
     }
 
-    if (!currentTaskMetadata) {
-      const err = new Error('PREFLIGHT_BLOCKED_CONTEXT_METADATA_INSUFFICIENT: currentTaskMetadata is required in KONFRM_REPO mode');
+    let repoMetadata = null;
+    const taskMdPath = path.join(worktreeRoot, 'tasks', 'CURRENT_TASK.md');
+    if (fs.existsSync(taskMdPath)) {
+      repoMetadata = loadRepositoryTaskContract(worktreeRoot);
+    } else if (currentTaskMetadata) {
+      repoMetadata = currentTaskMetadata;
+    } else {
+      const err = new Error('PREFLIGHT_BLOCKED_CONTEXT_METADATA_INSUFFICIENT: Repository tasks/CURRENT_TASK.md not found and no metadata provided');
       err.code = 'PREFLIGHT_BLOCKED_CONTEXT_METADATA_INSUFFICIENT';
       throw err;
     }
 
     const requiredMetadataKeys = ['TASK_ID', 'EXPECTED_BRANCH', 'BASE_SHA', 'STAGE'];
-    const missingKeys = requiredMetadataKeys.filter(k => !currentTaskMetadata[k]);
+    const missingKeys = requiredMetadataKeys.filter(k => !repoMetadata[k]);
     if (missingKeys.length > 0) {
       const err = new Error(`PREFLIGHT_BLOCKED_CONTEXT_METADATA_INSUFFICIENT: Missing metadata key(s): ${missingKeys.join(', ')}`);
       err.code = 'PREFLIGHT_BLOCKED_CONTEXT_METADATA_INSUFFICIENT';
       throw err;
     }
 
-    if (currentTaskMetadata.TASK_ID !== task.taskId) {
-      const err = new Error(`PREFLIGHT_BLOCKED_CONTEXT_MISMATCH: metadata.TASK_ID "${currentTaskMetadata.TASK_ID}" !== task.taskId "${task.taskId}"`);
+    if (repoMetadata.TASK_ID !== task.taskId) {
+      const err = new Error(`PREFLIGHT_BLOCKED_CONTEXT_MISMATCH: metadata.TASK_ID "${repoMetadata.TASK_ID}" !== task.taskId "${task.taskId}"`);
       err.code = 'PREFLIGHT_BLOCKED_CONTEXT_MISMATCH';
       throw err;
     }
-    if (currentTaskMetadata.EXPECTED_BRANCH !== task.expectedBranch) {
-      const err = new Error(`PREFLIGHT_BLOCKED_CONTEXT_MISMATCH: metadata.EXPECTED_BRANCH "${currentTaskMetadata.EXPECTED_BRANCH}" !== task.expectedBranch "${task.expectedBranch}"`);
+    if (repoMetadata.EXPECTED_BRANCH !== task.expectedBranch) {
+      const err = new Error(`PREFLIGHT_BLOCKED_CONTEXT_MISMATCH: metadata.EXPECTED_BRANCH "${repoMetadata.EXPECTED_BRANCH}" !== task.expectedBranch "${task.expectedBranch}"`);
       err.code = 'PREFLIGHT_BLOCKED_CONTEXT_MISMATCH';
       throw err;
     }
-    if (currentTaskMetadata.BASE_SHA !== task.expectedHeadSha) {
-      const err = new Error(`PREFLIGHT_BLOCKED_CONTEXT_MISMATCH: metadata.BASE_SHA "${currentTaskMetadata.BASE_SHA}" !== task.expectedHeadSha "${task.expectedHeadSha}"`);
+    const expectedBaseSha = task.baseSha || task.expectedHeadSha;
+    if (repoMetadata.BASE_SHA !== expectedBaseSha) {
+      const err = new Error(`PREFLIGHT_BLOCKED_CONTEXT_MISMATCH: metadata.BASE_SHA "${repoMetadata.BASE_SHA}" !== expected baseSha "${expectedBaseSha}"`);
       err.code = 'PREFLIGHT_BLOCKED_CONTEXT_MISMATCH';
       throw err;
     }
-    if (currentTaskMetadata.STAGE !== task.expectedStage) {
-      const err = new Error(`PREFLIGHT_BLOCKED_CONTEXT_MISMATCH: metadata.STAGE "${currentTaskMetadata.STAGE}" !== task.expectedStage "${task.expectedStage}"`);
+    if (repoMetadata.STAGE !== task.expectedStage) {
+      const err = new Error(`PREFLIGHT_BLOCKED_CONTEXT_MISMATCH: metadata.STAGE "${repoMetadata.STAGE}" !== task.expectedStage "${task.expectedStage}"`);
       err.code = 'PREFLIGHT_BLOCKED_CONTEXT_MISMATCH';
       throw err;
     }
   }
 
-  // 7. SYNTHETIC_LAB Context Mode Validation (Correction C47)
+  // 7. SYNTHETIC_LAB Context Mode Validation (Correction C47, C63)
   if (task.contextMode === 'SYNTHETIC_LAB') {
     if (!task.expectedBranch) {
       const err = new Error('PREFLIGHT_BLOCKED_CONTEXT_MISMATCH: expectedBranch is required in SYNTHETIC_LAB mode');
@@ -123,10 +150,50 @@ export function validatePreflight({
       err.code = 'PREFLIGHT_BLOCKED_HEAD_MISMATCH';
       throw err;
     }
-    const resolvedRoot = path.resolve(task.worktreeRoot || process.cwd()).toLowerCase();
-    if (resolvedRoot.includes('sola - rental app') || resolvedRoot.includes('yallah masyaf')) {
-      const err = new Error('PREFLIGHT_BLOCKED_SYNTHETIC_LAB_TARGETS_PRODUCT_REPO: SYNTHETIC_LAB must never target product worktree');
-      err.code = 'PREFLIGHT_BLOCKED_SYNTHETIC_LAB_TARGETS_PRODUCT_REPO';
+
+    const labsBaseDir = runtimePaths?.labs || resolveRuntimePaths().labs;
+    if (!labsBaseDir || !fs.existsSync(labsBaseDir)) {
+      const err = new Error(`PREFLIGHT_BLOCKED_INVALID_SYNTHETIC_LAB: labs directory does not exist: "${labsBaseDir}"`);
+      err.code = 'PREFLIGHT_BLOCKED_INVALID_SYNTHETIC_LAB';
+      throw err;
+    }
+
+    if (!fs.existsSync(worktreeRoot)) {
+      const err = new Error(`PREFLIGHT_BLOCKED_INVALID_SYNTHETIC_LAB: worktreeRoot does not exist: "${worktreeRoot}"`);
+      err.code = 'PREFLIGHT_BLOCKED_INVALID_SYNTHETIC_LAB';
+      throw err;
+    }
+
+    const realLabsDir = fs.realpathSync(labsBaseDir);
+    const realWorktree = fs.realpathSync(worktreeRoot);
+
+    const relativeToLabs = path.relative(realLabsDir, realWorktree);
+    const isUnderLabs = relativeToLabs && !relativeToLabs.startsWith('..') && !path.isAbsolute(relativeToLabs);
+    if (!isUnderLabs) {
+      const err = new Error(`PREFLIGHT_BLOCKED_INVALID_SYNTHETIC_LAB: worktreeRoot "${worktreeRoot}" (real: "${realWorktree}") is not within canonical labs directory "${realLabsDir}"`);
+      err.code = 'PREFLIGHT_BLOCKED_INVALID_SYNTHETIC_LAB';
+      throw err;
+    }
+
+    const manifestPath = path.join(worktreeRoot, 'lab-manifest.json');
+    if (!fs.existsSync(manifestPath)) {
+      const err = new Error(`PREFLIGHT_BLOCKED_INVALID_SYNTHETIC_LAB: Missing lab-manifest.json in "${worktreeRoot}"`);
+      err.code = 'PREFLIGHT_BLOCKED_INVALID_SYNTHETIC_LAB';
+      throw err;
+    }
+
+    let manifest;
+    try {
+      manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+    } catch {
+      const err = new Error(`PREFLIGHT_BLOCKED_INVALID_SYNTHETIC_LAB: Malformed lab-manifest.json in "${worktreeRoot}"`);
+      err.code = 'PREFLIGHT_BLOCKED_INVALID_SYNTHETIC_LAB';
+      throw err;
+    }
+
+    if (!manifest || manifest.schemaVersion !== 1 || typeof manifest.labId !== 'string' || !manifest.labId || typeof manifest.purpose !== 'string' || !manifest.purpose) {
+      const err = new Error('PREFLIGHT_BLOCKED_INVALID_SYNTHETIC_LAB: Invalid lab-manifest.json schema (requires schemaVersion: 1, labId: string, purpose: string)');
+      err.code = 'PREFLIGHT_BLOCKED_INVALID_SYNTHETIC_LAB';
       throw err;
     }
   }
@@ -138,8 +205,6 @@ export function validatePreflight({
   }
 
   // 9. Git Worktree & Branch Validation (Correction C29)
-  const worktreeRoot = path.resolve(task.worktreeRoot || process.cwd());
-
   let currentBranch = '';
   try {
     currentBranch = execFileSync(gitBinary, ['-C', worktreeRoot, 'branch', '--show-current'], {

@@ -324,4 +324,212 @@ describe('Preflight Validator (C29, C45)', () => {
       /PREFLIGHT_BLOCKED_WRITE_SCOPE_MISSING/
     );
   });
+
+  test('LAB-01: valid canonical runtime lab accepted (C63)', () => {
+    const fakeLabsRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'konfrm-labs-root-'));
+    const labWorktree = path.join(fakeLabsRoot, 'test-lab-1');
+    fs.mkdirSync(labWorktree, { recursive: true });
+
+    execFileSync('git', ['init', '-b', 'main', labWorktree], { stdio: 'ignore' });
+    execFileSync('git', ['-C', labWorktree, 'config', 'user.name', 'Test Runner'], { stdio: 'ignore' });
+    execFileSync('git', ['-C', labWorktree, 'config', 'user.email', 'test@example.com'], { stdio: 'ignore' });
+    fs.writeFileSync(path.join(labWorktree, 'init.txt'), 'init\n', 'utf8');
+    execFileSync('git', ['-C', labWorktree, 'add', '.'], { stdio: 'ignore' });
+    execFileSync('git', ['-C', labWorktree, 'commit', '-m', 'Init'], { stdio: 'ignore' });
+
+    fs.writeFileSync(path.join(labWorktree, 'lab-manifest.json'), JSON.stringify({
+      schemaVersion: 1,
+      labId: 'lab-01',
+      purpose: 'AUTO-04_TEST'
+    }), 'utf8');
+
+    const head = execFileSync('git', ['-C', labWorktree, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+    const task = {
+      taskId: 'TASK-LAB-01',
+      contextMode: 'SYNTHETIC_LAB',
+      expectedBranch: 'main',
+      expectedHeadSha: head,
+      worktreeRoot: labWorktree,
+      agent: 'mock',
+      mode: 'WRITE',
+      requiresWriterLock: true,
+      allowedWritePaths: ['init.txt']
+    };
+
+    assert.doesNotThrow(() => {
+      validatePreflight({
+        task,
+        adapter: { agentName: 'mock' },
+        runtimePaths: { labs: fakeLabsRoot }
+      });
+    });
+
+    fs.rmSync(fakeLabsRoot, { recursive: true, force: true });
+  });
+
+  test('LAB-02: same repo outside labs root rejected (C63)', () => {
+    const head = execFileSync('git', ['-C', tempRepo, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+    fs.writeFileSync(path.join(tempRepo, 'lab-manifest.json'), JSON.stringify({
+      schemaVersion: 1,
+      labId: 'lab-02',
+      purpose: 'AUTO-04_TEST'
+    }), 'utf8');
+
+    const fakeLabsRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'konfrm-labs-root-'));
+    const task = {
+      taskId: 'TASK-LAB-02',
+      contextMode: 'SYNTHETIC_LAB',
+      expectedBranch: 'feature/test-branch',
+      expectedHeadSha: head,
+      worktreeRoot: tempRepo,
+      agent: 'mock',
+      mode: 'WRITE',
+      requiresWriterLock: true,
+      allowedWritePaths: ['init.txt']
+    };
+
+    assert.throws(
+      () => validatePreflight({
+        task,
+        adapter: { agentName: 'mock' },
+        runtimePaths: { labs: fakeLabsRoot }
+      }),
+      /PREFLIGHT_BLOCKED_INVALID_SYNTHETIC_LAB/
+    );
+
+    fs.rmSync(fakeLabsRoot, { recursive: true, force: true });
+  });
+
+  test('LAB-03: symlink/junction escape rejected (C63)', () => {
+    const fakeLabsRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'konfrm-labs-root-'));
+    const outsideDir = fs.mkdtempSync(path.join(os.tmpdir(), 'konfrm-outside-'));
+    execFileSync('git', ['init', '-b', 'main', outsideDir], { stdio: 'ignore' });
+    fs.writeFileSync(path.join(outsideDir, 'init.txt'), 'init\n', 'utf8');
+    execFileSync('git', ['-C', outsideDir, 'add', '.'], { stdio: 'ignore' });
+    execFileSync('git', ['-C', outsideDir, 'commit', '-m', 'Init'], { stdio: 'ignore' });
+    fs.writeFileSync(path.join(outsideDir, 'lab-manifest.json'), JSON.stringify({
+      schemaVersion: 1,
+      labId: 'escape-lab',
+      purpose: 'TEST'
+    }), 'utf8');
+
+    const junctionInsideLabs = path.join(fakeLabsRoot, 'escaped-link');
+    fs.symlinkSync(outsideDir, junctionInsideLabs, 'junction');
+
+    const head = execFileSync('git', ['-C', outsideDir, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+    const task = {
+      taskId: 'TASK-LAB-03',
+      contextMode: 'SYNTHETIC_LAB',
+      expectedBranch: 'main',
+      expectedHeadSha: head,
+      worktreeRoot: junctionInsideLabs,
+      agent: 'mock',
+      mode: 'WRITE',
+      requiresWriterLock: true,
+      allowedWritePaths: ['init.txt']
+    };
+
+    assert.throws(
+      () => validatePreflight({
+        task,
+        adapter: { agentName: 'mock' },
+        runtimePaths: { labs: fakeLabsRoot }
+      }),
+      /PREFLIGHT_BLOCKED_INVALID_SYNTHETIC_LAB/
+    );
+
+    fs.rmSync(fakeLabsRoot, { recursive: true, force: true });
+    fs.rmSync(outsideDir, { recursive: true, force: true });
+  });
+
+  test('LAB-04: renamed product-like repo outside lab root rejected (C63)', () => {
+    const head = execFileSync('git', ['-C', tempRepo, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+    const fakeLabsRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'konfrm-labs-root-'));
+
+    const task = {
+      taskId: 'TASK-LAB-04',
+      contextMode: 'SYNTHETIC_LAB',
+      expectedBranch: 'feature/test-branch',
+      expectedHeadSha: head,
+      worktreeRoot: tempRepo,
+      agent: 'mock',
+      mode: 'WRITE',
+      requiresWriterLock: true,
+      allowedWritePaths: ['init.txt']
+    };
+
+    assert.throws(
+      () => validatePreflight({
+        task,
+        adapter: { agentName: 'mock' },
+        runtimePaths: { labs: fakeLabsRoot }
+      }),
+      /PREFLIGHT_BLOCKED_INVALID_SYNTHETIC_LAB/
+    );
+
+    fs.rmSync(fakeLabsRoot, { recursive: true, force: true });
+  });
+
+  test('PREFLIGHT-14: unrestrictedSandbox rejected in KONFRM_REPO (C69)', () => {
+    const head = execFileSync('git', ['-C', tempRepo, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+    fs.mkdirSync(path.join(tempRepo, 'tasks'), { recursive: true });
+    fs.writeFileSync(path.join(tempRepo, 'tasks', 'CURRENT_TASK.md'), `<!-- KONFRM_TASK_METADATA\nTASK_ID: TASK-14\nEXPECTED_BRANCH: feature/test-branch\nBASE_SHA: ${head}\nSTAGE: DEV\n-->\n`, 'utf8');
+
+    const task = {
+      taskId: 'TASK-14',
+      baseSha: head,
+      expectedBranch: 'feature/test-branch',
+      expectedHeadSha: head,
+      expectedStage: 'DEV',
+      contextMode: 'KONFRM_REPO',
+      mode: 'WRITE',
+      requiresWriterLock: true,
+      unrestrictedSandbox: true,
+      worktreeRoot: tempRepo,
+      agent: 'mock'
+    };
+
+    assert.throws(
+      () => validatePreflight({ task, adapter: { agentName: 'mock' } }),
+      /PREFLIGHT_BLOCKED_UNRESTRICTED_PRODUCT_WRITE/
+    );
+  });
+
+  test('PREFLIGHT-15: traversal in allowedWritePaths rejected (C70)', () => {
+    const head = execFileSync('git', ['-C', tempRepo, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+    const task = {
+      taskId: 'TASK-15',
+      expectedBranch: 'feature/test-branch',
+      expectedHeadSha: head,
+      mode: 'WRITE',
+      requiresWriterLock: true,
+      worktreeRoot: tempRepo,
+      agent: 'mock',
+      allowedWritePaths: ['../outside.txt']
+    };
+
+    assert.throws(
+      () => validatePreflight({ task, adapter: { agentName: 'mock' } }),
+      /PREFLIGHT_BLOCKED_INVALID_WRITE_SCOPE/
+    );
+  });
+
+  test('PREFLIGHT-16: absolute allowedWritePath rejected (C70)', () => {
+    const head = execFileSync('git', ['-C', tempRepo, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+    const task = {
+      taskId: 'TASK-16',
+      expectedBranch: 'feature/test-branch',
+      expectedHeadSha: head,
+      mode: 'WRITE',
+      requiresWriterLock: true,
+      worktreeRoot: tempRepo,
+      agent: 'mock',
+      allowedWritePaths: ['C:/absolute/path.txt']
+    };
+
+    assert.throws(
+      () => validatePreflight({ task, adapter: { agentName: 'mock' } }),
+      /PREFLIGHT_BLOCKED_INVALID_WRITE_SCOPE/
+    );
+  });
 });

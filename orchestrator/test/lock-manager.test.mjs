@@ -421,16 +421,22 @@ describe('Writer Lock Engine (Section 13, 15, 16, C4, C5, C13, C26)', () => {
     };
     fs.writeFileSync(lockFilePath, JSON.stringify(staleMetadata, null, 2), 'utf8');
 
-    // Simulate recovery mutex already held by another process
+    // Simulate recovery mutex already held by an active live recovering process
     const recoveryMutexPath = path.join(paths.locks, `recovery_${identity.lockKey}.lock`);
-    fs.writeFileSync(recoveryMutexPath, JSON.stringify({ recoveringPid: 88888 }), { flag: 'wx' });
+    fs.writeFileSync(recoveryMutexPath, JSON.stringify({
+      recoveringPid: 88888,
+      recoveringProcessStartTime: '2026-09-17T01:00:00.000Z',
+      recoveryInstanceId: 'mutex-instance-13',
+      createdAt: '2026-09-17T01:00:00.000Z'
+    }), { flag: 'wx' });
 
     try {
       const recovery = recoverStaleLock({
         lockFilePath,
         quarantineDir: paths.quarantine,
         staleMetadata,
-        isAliveChecker: () => false
+        isAliveChecker: (pid) => pid === 88888,
+        getStartTimeChecker: (pid) => '2026-09-17T01:00:00.000Z'
       });
 
       assert.equal(recovery.recovered, false);
@@ -483,4 +489,211 @@ describe('Writer Lock Engine (Section 13, 15, 16, C4, C5, C13, C26)', () => {
     assert.equal(onDisk.lockInstanceId, 'normal-winner-14', 'Winner lock must remain undisturbed');
   });
 
+  test('LOCK-15: stale recovery acquires primary lock (C65)', () => {
+    const lockFilePath = path.join(paths.locks, identity.lockFileName);
+    const staleMetadata = {
+      lockKey: identity.lockKey,
+      lockInstanceId: 'stale-15',
+      worktreePath: tempRepo,
+      canonicalWorktreeRealpath: identity.canonicalWorktreeRealpath,
+      canonicalGitCommonDir: identity.canonicalGitCommonDir,
+      branch: 'test-branch',
+      taskId: 'TASK-STALE-15',
+      agent: 'mock',
+      ownerPid: 999999,
+      ownerStartTime: '2026-09-17T01:00:00.000Z',
+      ownerIdentityConfidence: 'VERIFIED'
+    };
+    fs.writeFileSync(lockFilePath, JSON.stringify(staleMetadata, null, 2), 'utf8');
+
+    const recovery = recoverStaleLock({
+      lockFilePath,
+      quarantineDir: paths.quarantine,
+      staleMetadata,
+      isAliveChecker: () => false,
+      newLockParams: {
+        locksDir: paths.locks,
+        worktreeIdentity: identity,
+        worktreePath: tempRepo,
+        branch: 'test-branch',
+        taskId: 'TASK-RECOVERED-15',
+        agent: 'mock',
+        ownerPid: process.pid
+      }
+    });
+
+    assert.equal(recovery.recovered, true);
+    assert.equal(recovery.acquired, true);
+    assert.ok(recovery.newLockMetadata);
+    assert.equal(recovery.newLockMetadata.taskId, 'TASK-RECOVERED-15');
+    assert.ok(fs.existsSync(lockFilePath));
+    const onDisk = JSON.parse(fs.readFileSync(lockFilePath, 'utf8'));
+    assert.equal(onDisk.lockInstanceId, recovery.newLockMetadata.lockInstanceId);
+  });
+
+  test('LOCK-16: returns owned lock metadata (C65)', () => {
+    const lockFilePath = path.join(paths.locks, identity.lockFileName);
+    const staleMetadata = {
+      lockKey: identity.lockKey,
+      lockInstanceId: 'stale-16',
+      worktreePath: tempRepo,
+      canonicalWorktreeRealpath: identity.canonicalWorktreeRealpath,
+      canonicalGitCommonDir: identity.canonicalGitCommonDir,
+      branch: 'test-branch',
+      taskId: 'TASK-STALE-16',
+      agent: 'mock',
+      ownerPid: 999999,
+      ownerStartTime: '2026-09-17T01:00:00.000Z',
+      ownerIdentityConfidence: 'VERIFIED'
+    };
+    fs.writeFileSync(lockFilePath, JSON.stringify(staleMetadata, null, 2), 'utf8');
+
+    const recovery = recoverStaleLock({
+      lockFilePath,
+      quarantineDir: paths.quarantine,
+      staleMetadata,
+      isAliveChecker: () => false,
+      newLockParams: {
+        locksDir: paths.locks,
+        worktreeIdentity: identity,
+        worktreePath: tempRepo,
+        branch: 'test-branch',
+        taskId: 'TASK-OWNED-16',
+        agent: 'mock',
+        ownerPid: process.pid
+      }
+    });
+
+    assert.equal(recovery.acquired, true);
+    assert.equal(recovery.newLockMetadata.taskId, 'TASK-OWNED-16');
+    assert.equal(recovery.newLockMetadata.ownerPid, process.pid);
+  });
+
+  test('LOCK-17: competing writer wins -> cannot proceed (C65)', () => {
+    const lockFilePath = path.join(paths.locks, identity.lockFileName);
+    const staleMetadata = {
+      lockKey: identity.lockKey,
+      lockInstanceId: 'stale-17',
+      worktreePath: tempRepo,
+      canonicalWorktreeRealpath: identity.canonicalWorktreeRealpath,
+      canonicalGitCommonDir: identity.canonicalGitCommonDir,
+      branch: 'test-branch',
+      taskId: 'TASK-STALE-17',
+      agent: 'mock',
+      ownerPid: 999999,
+      ownerStartTime: '2026-09-17T01:00:00.000Z',
+      ownerIdentityConfidence: 'VERIFIED'
+    };
+    fs.writeFileSync(lockFilePath, JSON.stringify(staleMetadata, null, 2), 'utf8');
+
+    const competingMetadata = {
+      lockKey: identity.lockKey,
+      lockInstanceId: 'competing-instance-17',
+      taskId: 'COMPETING-TASK'
+    };
+
+    const recovery = recoverStaleLock({
+      lockFilePath,
+      quarantineDir: paths.quarantine,
+      staleMetadata,
+      isAliveChecker: () => false,
+      onAfterQuarantineHook: () => {
+        fs.writeFileSync(lockFilePath, JSON.stringify(competingMetadata, null, 2), { flag: 'wx' });
+      },
+      newLockParams: {
+        locksDir: paths.locks,
+        worktreeIdentity: identity,
+        worktreePath: tempRepo,
+        branch: 'test-branch',
+        taskId: 'RECOVERER-TASK-17',
+        agent: 'mock',
+        ownerPid: process.pid
+      }
+    });
+
+    assert.equal(recovery.acquired, false);
+    assert.equal(recovery.reason, 'LOCK_ACQUISITION_LOST_AFTER_RECOVERY');
+  });
+
+  test('LOCK-18: orphan recovery mutex live owner blocks concurrent recovery (C66)', () => {
+    const lockFilePath = path.join(paths.locks, identity.lockFileName);
+    const recoveryMutexPath = path.join(paths.locks, `recovery_${identity.lockKey}.lock`);
+
+    fs.writeFileSync(recoveryMutexPath, JSON.stringify({
+      recoveringPid: 55555,
+      recoveringProcessStartTime: '2026-09-17T01:00:00.000Z',
+      recoveryInstanceId: 'live-mutex-uuid-18',
+      createdAt: '2026-09-17T01:00:00.000Z'
+    }, null, 2), 'utf8');
+
+    const recovery = recoverStaleLock({
+      lockFilePath,
+      quarantineDir: paths.quarantine,
+      isAliveChecker: (pid) => pid === 55555,
+      getStartTimeChecker: (pid) => '2026-09-17T01:00:00.000Z'
+    });
+
+    assert.equal(recovery.recovered, false);
+    assert.equal(recovery.reason, 'RECOVERY_IN_PROGRESS');
+    assert.equal(recovery.contention, true);
+  });
+
+  test('LOCK-19: unverifiable recovery mutex fails closed (C66)', () => {
+    const lockFilePath = path.join(paths.locks, identity.lockFileName);
+    const recoveryMutexPath = path.join(paths.locks, `recovery_${identity.lockKey}.lock`);
+
+    fs.writeFileSync(recoveryMutexPath, JSON.stringify({
+      recoveringPid: 44444,
+      recoveringProcessStartTime: '2026-09-17T01:00:00.000Z',
+      recoveryInstanceId: 'unverified-mutex-uuid-19',
+      createdAt: '2026-09-17T01:00:00.000Z'
+    }, null, 2), 'utf8');
+
+    const recovery = recoverStaleLock({
+      lockFilePath,
+      quarantineDir: paths.quarantine,
+      isAliveChecker: (pid) => pid === 44444,
+      getStartTimeChecker: (pid) => null
+    });
+
+    assert.equal(recovery.recovered, false);
+    assert.equal(recovery.reason, 'RECOVERY_MUTEX_IDENTITY_UNVERIFIED');
+  });
+
+  test('LOCK-20: dead recovery mutex is reclaimed and recovery proceeds (C66)', () => {
+    const lockFilePath = path.join(paths.locks, identity.lockFileName);
+    const recoveryMutexPath = path.join(paths.locks, `recovery_${identity.lockKey}.lock`);
+
+    fs.writeFileSync(recoveryMutexPath, JSON.stringify({
+      recoveringPid: 999998,
+      recoveringProcessStartTime: '2026-09-17T01:00:00.000Z',
+      recoveryInstanceId: 'dead-mutex-uuid-20',
+      createdAt: '2026-09-17T01:00:00.000Z'
+    }, null, 2), 'utf8');
+
+    const staleMetadata = {
+      lockKey: identity.lockKey,
+      lockInstanceId: 'stale-20',
+      worktreePath: tempRepo,
+      canonicalWorktreeRealpath: identity.canonicalWorktreeRealpath,
+      canonicalGitCommonDir: identity.canonicalGitCommonDir,
+      branch: 'test-branch',
+      taskId: 'TASK-STALE-20',
+      agent: 'mock',
+      ownerPid: 999999,
+      ownerStartTime: '2026-09-17T01:00:00.000Z',
+      ownerIdentityConfidence: 'VERIFIED'
+    };
+    fs.writeFileSync(lockFilePath, JSON.stringify(staleMetadata, null, 2), 'utf8');
+
+    const recovery = recoverStaleLock({
+      lockFilePath,
+      quarantineDir: paths.quarantine,
+      staleMetadata,
+      isAliveChecker: (pid) => false
+    });
+
+    assert.equal(recovery.recovered, true);
+    assert.ok(fs.existsSync(recovery.quarantinedPath));
+  });
 });

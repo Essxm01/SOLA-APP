@@ -48,14 +48,27 @@ export function isProcessAlive(pid) {
   }
 }
 
-export function buildSafeChildEnvironment(customEnv = {}) {
+export function buildSafeChildEnvironment(customEnv = {}, allowedEnvOverrideKeys = null) {
+  if (customEnv && typeof customEnv === 'object') {
+    if (allowedEnvOverrideKeys !== null && allowedEnvOverrideKeys !== undefined) {
+      const allowedSet = new Set(allowedEnvOverrideKeys);
+      for (const key of Object.keys(customEnv)) {
+        if (!allowedSet.has(key)) {
+          const err = new Error(`CHILD_ENV_OVERRIDE_NOT_ALLOWED: Environment override "${key}" is not in declared allowedEnvOverrideKeys`);
+          err.code = 'CHILD_ENV_OVERRIDE_NOT_ALLOWED';
+          throw err;
+        }
+      }
+    }
+  }
+
   const safeEnv = {};
   for (const [key, value] of Object.entries(process.env)) {
     if (DEFAULT_ALLOWED_ENV_VARS.has(key.toUpperCase())) {
       safeEnv[key] = value;
     }
   }
-  for (const [key, value] of Object.entries(customEnv)) {
+  for (const [key, value] of Object.entries(customEnv || {})) {
     if (value !== undefined && value !== null) {
       safeEnv[key] = String(value);
     }
@@ -72,12 +85,16 @@ export async function terminateProcessTree(pid, cancellationMethod = 'PROCESS_TE
     return { status: 'ALREADY_EXITED' };
   }
 
+  let taskkillFailed = false;
   if (process.platform === 'win32') {
     await new Promise((resolve) => {
       execFile('taskkill.exe', ['/T', '/F', '/PID', String(pid)], {
         windowsHide: true,
         stdio: 'ignore'
-      }, () => {
+      }, (err) => {
+        if (err) {
+          taskkillFailed = true;
+        }
         resolve();
       });
     });
@@ -93,7 +110,6 @@ export async function terminateProcessTree(pid, cancellationMethod = 'PROCESS_TE
     }
   }
 
-
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     if (!isProcessAlive(pid)) {
@@ -102,7 +118,13 @@ export async function terminateProcessTree(pid, cancellationMethod = 'PROCESS_TE
     await new Promise((r) => setTimeout(r, 50));
   }
 
-  return isProcessAlive(pid) ? { status: 'TERMINATION_FAILED' } : { status: 'TERMINATED' };
+  if (isProcessAlive(pid)) {
+    return {
+      status: taskkillFailed ? 'TREE_TERMINATION_UNVERIFIED' : 'TERMINATION_FAILED'
+    };
+  }
+
+  return { status: 'TERMINATED' };
 }
 
 export const killProcessTree = terminateProcessTree;
@@ -112,6 +134,8 @@ export function spawnSupervisedProcess({
   args = [],
   cwd = process.cwd(),
   env = null,
+  envOverrides = null,
+  allowedEnvOverrideKeys = null,
   stdinText = null,
   timeoutMs = 600000,
   maxBufferBytes = 4 * 1024 * 1024,
@@ -121,7 +145,19 @@ export function spawnSupervisedProcess({
     throw new Error('spawnSupervisedProcess: command is required');
   }
 
-  const effectiveEnv = env ? { ...buildSafeChildEnvironment(), ...env } : buildSafeChildEnvironment();
+  if (envOverrides && typeof envOverrides === 'object') {
+    const allowed = new Set(allowedEnvOverrideKeys || []);
+    for (const k of Object.keys(envOverrides)) {
+      if (!allowed.has(k)) {
+        const err = new Error(`CHILD_ENV_OVERRIDE_NOT_ALLOWED: Environment override "${k}" is not in declared allowedEnvOverrideKeys`);
+        err.code = 'CHILD_ENV_OVERRIDE_NOT_ALLOWED';
+        throw err;
+      }
+    }
+  }
+
+  const overrides = envOverrides ? envOverrides : (env || {});
+  const effectiveEnv = buildSafeChildEnvironment(overrides);
 
   const startTime = Date.now();
   let timedOut = false;

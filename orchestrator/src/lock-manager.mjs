@@ -181,29 +181,88 @@ export function recoverStaleLock({
   getStartTimeChecker = getProcessStartTime,
   onBeforeRenameHook = null,
   onAfterQuarantineHook = null,
-  attemptAcquisitionAfterQuarantine = false
+  attemptAcquisitionAfterQuarantine = false,
+  newLockParams = null
 }) {
   const lockDir = path.dirname(lockFilePath);
   const baseName = path.basename(lockFilePath, '.json');
   const lockKey = staleMetadata?.lockKey || (baseName.startsWith('lock_') ? baseName.replace(/^lock_/, '') : baseName);
   const recoveryMutexPath = path.join(lockDir, `recovery_${lockKey}.lock`);
 
+  const recoveryInstanceId = crypto.randomUUID();
+  const recoveringProcessStartTime = typeof getStartTimeChecker === 'function'
+    ? getStartTimeChecker(process.pid)
+    : null;
+
+  const recoveryPayload = {
+    recoveringPid: process.pid,
+    recoveringProcessStartTime,
+    recoveryInstanceId,
+    createdAt: new Date().toISOString()
+  };
+
   let recoveryFd = null;
   try {
     recoveryFd = fs.openSync(recoveryMutexPath, 'wx');
-    fs.writeFileSync(recoveryFd, JSON.stringify({
-      recoveringPid: process.pid,
-      timestamp: new Date().toISOString()
-    }), 'utf8');
+    fs.writeFileSync(recoveryFd, JSON.stringify(recoveryPayload, null, 2), 'utf8');
   } catch (mutexErr) {
     if (mutexErr.code === 'EEXIST') {
-      return {
-        recovered: false,
-        contention: true,
-        reason: 'RECOVERY_IN_PROGRESS'
-      };
+      const existingMutex = readLock(recoveryMutexPath);
+      if (!existingMutex || typeof existingMutex.recoveringPid !== 'number') {
+        return {
+          recovered: false,
+          contention: true,
+          reason: 'RECOVERY_MUTEX_IDENTITY_UNVERIFIED'
+        };
+      }
+
+      const mutexPid = existingMutex.recoveringPid;
+      const isMutexAlive = isAliveChecker(mutexPid);
+
+      if (isMutexAlive) {
+        const currentMutexStartTime = typeof getStartTimeChecker === 'function'
+          ? getStartTimeChecker(mutexPid)
+          : null;
+        const storedMutexStartTime = existingMutex.recoveringProcessStartTime;
+
+        if (storedMutexStartTime && currentMutexStartTime) {
+          if (currentMutexStartTime === storedMutexStartTime) {
+            return {
+              recovered: false,
+              contention: true,
+              reason: 'RECOVERY_IN_PROGRESS'
+            };
+          }
+          // Start times differ: PID recycled! Mutex owner dead.
+        } else {
+          return {
+            recovered: false,
+            contention: true,
+            reason: 'RECOVERY_MUTEX_IDENTITY_UNVERIFIED'
+          };
+        }
+      }
+
+      // Mutex owner is proven dead -> reclaim the orphaned mutex
+      try {
+        fs.unlinkSync(recoveryMutexPath);
+      } catch {
+        // Ignored if already removed
+      }
+
+      try {
+        recoveryFd = fs.openSync(recoveryMutexPath, 'wx');
+        fs.writeFileSync(recoveryFd, JSON.stringify(recoveryPayload, null, 2), 'utf8');
+      } catch (reAcquireErr) {
+        return {
+          recovered: false,
+          contention: true,
+          reason: 'RECOVERY_IN_PROGRESS'
+        };
+      }
+    } else {
+      throw mutexErr;
     }
-    throw mutexErr;
   }
 
   try {
@@ -293,7 +352,30 @@ export function recoverStaleLock({
       onAfterQuarantineHook();
     }
 
-    // 7. Check if another normal writer won after quarantine (C51)
+    // 7. Acquire primary lock or verify no competitor won (Correction C51, C65)
+    if (newLockParams) {
+      const acquireResult = acquireLock(newLockParams);
+      if (!acquireResult.acquired) {
+        return {
+          recovered: false,
+          acquired: false,
+          contention: true,
+          reason: 'LOCK_ACQUISITION_LOST_AFTER_RECOVERY',
+          activeLock: acquireResult.activeLock,
+          quarantinedPath,
+          previousLock: currentOnDisk
+        };
+      }
+      return {
+        recovered: true,
+        acquired: true,
+        lockFilePath: acquireResult.lockFilePath,
+        newLockMetadata: acquireResult.lockMetadata,
+        quarantinedPath,
+        previousLock: currentOnDisk
+      };
+    }
+
     if (attemptAcquisitionAfterQuarantine) {
       if (fs.existsSync(lockFilePath)) {
         const winningLock = readLock(lockFilePath);

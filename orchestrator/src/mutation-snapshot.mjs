@@ -59,10 +59,18 @@ export function fingerprintUntrackedEntry(filePath) {
 }
 
 
-export function captureMutationSnapshot(worktreeRoot, gitBinary = 'git') {
+export function captureMutationSnapshot(worktreeRoot, options = {}) {
   if (!worktreeRoot) {
     throw new Error('captureMutationSnapshot: worktreeRoot is required');
   }
+
+  const gitBinary = typeof options === 'string' ? options : (options?.gitBinary || 'git');
+  const maxIgnoredEntries = typeof options === 'object' && options?.maxIgnoredEntries !== undefined
+    ? options.maxIgnoredEntries
+    : 2000;
+  const maxIgnoredBytes = typeof options === 'object' && options?.maxIgnoredBytes !== undefined
+    ? options.maxIgnoredBytes
+    : 50 * 1024 * 1024;
 
   const resolved = path.resolve(worktreeRoot);
 
@@ -127,6 +135,73 @@ export function captureMutationSnapshot(worktreeRoot, gitBinary = 'git') {
       }
     }
 
+    // 4. Ignored files content hashes & limits (Correction C64)
+    let ignoredLimitExceeded = false;
+    const ignoredContentMap = {};
+    let ignoredBytesCount = 0;
+
+    let ignoredRaw = '';
+    let ignoredDirsRaw = '';
+    try {
+      ignoredRaw = execFileSync(
+        gitBinary,
+        ['-C', resolved, 'ls-files', '--others', '--ignored', '--exclude-standard', '-z'],
+        { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], shell: false, maxBuffer: 32 * 1024 * 1024 }
+      );
+      ignoredDirsRaw = execFileSync(
+        gitBinary,
+        ['-C', resolved, 'ls-files', '--others', '--ignored', '--exclude-standard', '--directory', '-z'],
+        { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], shell: false, maxBuffer: 32 * 1024 * 1024 }
+      );
+    } catch {
+      ignoredRaw = '';
+      ignoredDirsRaw = '';
+    }
+
+    const rawList = [
+      ...(ignoredRaw ? ignoredRaw.split('\0').filter(Boolean) : []),
+      ...(ignoredDirsRaw ? ignoredDirsRaw.split('\0').filter(Boolean) : [])
+    ];
+
+    const ignoredEntriesSet = new Set();
+    for (const item of rawList) {
+      let clean = item.replace(/\\/g, '/');
+      if (clean.endsWith('/')) {
+        clean = clean.slice(0, -1);
+      }
+      if (clean) {
+        ignoredEntriesSet.add(clean);
+      }
+    }
+    const ignoredEntries = Array.from(ignoredEntriesSet);
+
+    if (ignoredEntries.length > maxIgnoredEntries) {
+      ignoredLimitExceeded = true;
+    } else {
+      for (const relPath of ignoredEntries) {
+        const normalizedRelPath = relPath.replace(/\\/g, '/');
+        const fullPath = path.join(resolved, relPath);
+        try {
+          const lstat = fs.lstatSync(fullPath);
+          if (lstat.isSymbolicLink()) {
+            ignoredBytesCount += 128;
+            ignoredContentMap[normalizedRelPath] = fingerprintUntrackedEntry(fullPath);
+          } else if (lstat.isFile()) {
+            ignoredBytesCount += lstat.size;
+            if (ignoredBytesCount > maxIgnoredBytes) {
+              ignoredLimitExceeded = true;
+              break;
+            }
+            ignoredContentMap[normalizedRelPath] = fingerprintUntrackedEntry(fullPath);
+          } else if (lstat.isDirectory()) {
+            ignoredContentMap[normalizedRelPath] = fingerprintUntrackedEntry(fullPath);
+          }
+        } catch {
+          ignoredContentMap[normalizedRelPath] = 'UNREADABLE';
+        }
+      }
+    }
+
     return {
       worktreeRoot: resolved,
       branch,
@@ -136,6 +211,8 @@ export function captureMutationSnapshot(worktreeRoot, gitBinary = 'git') {
       trackedDiffHash,
       stagedDiffHash,
       untrackedContentMap,
+      ignoredContentMap,
+      ignoredLimitExceeded,
       timestamp: new Date().toISOString()
     };
   } catch (err) {
@@ -148,6 +225,8 @@ export function captureMutationSnapshot(worktreeRoot, gitBinary = 'git') {
       trackedDiffHash: 'ERROR',
       stagedDiffHash: 'ERROR',
       untrackedContentMap: {},
+      ignoredContentMap: {},
+      ignoredLimitExceeded: false,
       error: err.message,
       timestamp: new Date().toISOString()
     };
@@ -217,6 +296,22 @@ export function compareMutationSnapshots(before, after) {
     }
   }
 
+  // 4. Ignored files content differences (Correction C64)
+  const beforeIgnored = before.ignoredContentMap || {};
+  const afterIgnored = after.ignoredContentMap || {};
+
+  for (const [p, h] of Object.entries(afterIgnored)) {
+    if (beforeIgnored[p] !== h) {
+      changedPathSet.add(p);
+    }
+  }
+
+  for (const [p, h] of Object.entries(beforeIgnored)) {
+    if (!Object.prototype.hasOwnProperty.call(afterIgnored, p)) {
+      changedPathSet.add(p);
+    }
+  }
+
   const changedPaths = Array.from(changedPathSet);
   const contentChanged = trackedContentChanged || stagedContentChanged || changedPaths.length > 0;
   const hasChanged = branchChanged || headChanged || statusChanged || contentChanged;
@@ -245,6 +340,15 @@ export function classifyMutation(before, after) {
       hasChanged: true,
       changedPaths: [],
       reason: 'Missing or corrupted snapshot baseline'
+    };
+  }
+
+  if (before.ignoredLimitExceeded || after.ignoredLimitExceeded) {
+    return {
+      classification: 'UNKNOWN',
+      hasChanged: true,
+      changedPaths: [],
+      reason: 'Ignored files limit exceeded during mutation snapshot'
     };
   }
 

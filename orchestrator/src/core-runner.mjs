@@ -161,11 +161,15 @@ export async function executeOrchestratedTask({
     const branchMismatch = beforeSnapshot.branch !== afterSnapshot.branch;
     const headMismatch = beforeSnapshot.head !== afterSnapshot.head;
 
-    // C55: Child process aliveness check
-    if (processResult.processStillAlive || processResult.terminationStatus === 'TERMINATION_FAILED') {
+    // C55, C67: Child process aliveness and unverified termination check
+    if (
+      processResult.processStillAlive ||
+      processResult.terminationStatus === 'TERMINATION_FAILED' ||
+      processResult.terminationStatus === 'TREE_TERMINATION_UNVERIFIED'
+    ) {
       status = 'PROCESS_STILL_ALIVE_BLOCKED';
       verificationOutcome = 'VERIFICATION_FAILED';
-      verificationSummary = 'Child process could not be terminated and remains alive; activity lock retained';
+      verificationSummary = 'Child process could not be terminated or tree termination unverified; activity lock retained';
       retryEligible = false;
       fallbackEligible = false;
       retainLock = true;

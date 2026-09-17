@@ -129,3 +129,38 @@ export function validateWriteBoundaries({
       : `Boundary violation: ${forbiddenViolations.length} forbidden file(s), ${outsideAllowedViolations.length} file(s) outside allowed scope`
   };
 }
+
+export function validateWriteScopeDefinition(scopePath) {
+  if (typeof scopePath !== 'string' || scopePath.trim().length === 0) {
+    return { valid: false, reason: 'Scope path must be a non-empty string' };
+  }
+  if (/[\x00-\x1F\x7F]/.test(scopePath)) {
+    return { valid: false, reason: 'Control characters detected in scope' };
+  }
+  if (scopePath.startsWith('\\\\') || scopePath.startsWith('//')) {
+    return { valid: false, reason: 'UNC path not allowed in scope' };
+  }
+  if (/^[A-Za-z]:/.test(scopePath)) {
+    return { valid: false, reason: 'Drive letter / absolute path not allowed in scope' };
+  }
+  if (scopePath.startsWith('/') || scopePath.startsWith('\\')) {
+    return { valid: false, reason: 'Leading slash not allowed in scope' };
+  }
+  const norm = normalizeRelativePath(scopePath);
+  if (isPathEscaped(norm) || scopePath.includes('..')) {
+    return { valid: false, reason: 'Path traversal not allowed in scope' };
+  }
+  return { valid: true };
+}
+
+export function validateWriteScopes(scopes) {
+  if (!Array.isArray(scopes)) return;
+  for (const s of scopes) {
+    const res = validateWriteScopeDefinition(s);
+    if (!res.valid) {
+      const err = new Error(`PREFLIGHT_BLOCKED_INVALID_WRITE_SCOPE: Invalid write scope "${s}": ${res.reason}`);
+      err.code = 'PREFLIGHT_BLOCKED_INVALID_WRITE_SCOPE';
+      throw err;
+    }
+  }
+}

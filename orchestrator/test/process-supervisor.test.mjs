@@ -209,4 +209,65 @@ describe('Process Supervisor (Section 19, 20, C18, C19)', () => {
       await killProcessTree(handle.pid);
     }
   });
+
+  test('ENV-01: undeclared env override rejected (C68)', () => {
+    assert.throws(
+      () => spawnSupervisedProcess({
+        command: process.execPath,
+        args: ['-e', 'console.log(1)'],
+        envOverrides: { EVIL_KEY: 'bad' },
+        allowedEnvOverrideKeys: ['SAFE_KEY']
+      }),
+      /CHILD_ENV_OVERRIDE_NOT_ALLOWED/
+    );
+  });
+
+  test('ENV-02: declared harmless override accepted (C68)', async () => {
+    const handle = spawnSupervisedProcess({
+      command: process.execPath,
+      args: ['-e', 'console.log(process.env.TEST_SAFE_OVERRIDE)'],
+      envOverrides: { TEST_SAFE_OVERRIDE: 'declared_value_123' },
+      allowedEnvOverrideKeys: ['TEST_SAFE_OVERRIDE']
+    });
+
+    const result = await handle.promise;
+    assert.equal(result.exitCode, 0);
+    assert.equal(result.stdout.trim(), 'declared_value_123');
+  });
+
+  test('ENV-03: parent secret remains absent (C68)', async () => {
+    process.env.KONFRM_PARENT_SECRET_xyz = 'super_secret_leak';
+    try {
+      const handle = spawnSupervisedProcess({
+        command: process.execPath,
+        args: ['-e', 'console.log(process.env.KONFRM_PARENT_SECRET_xyz || "ABSENT")'],
+        envOverrides: { ALLOWED_VAR: '1' },
+        allowedEnvOverrideKeys: ['ALLOWED_VAR']
+      });
+
+      const result = await handle.promise;
+      assert.equal(result.exitCode, 0);
+      assert.equal(result.stdout.trim(), 'ABSENT');
+    } finally {
+      delete process.env.KONFRM_PARENT_SECRET_xyz;
+    }
+  });
+
+  test('PROC-11: taskkill error reports TREE_TERMINATION_UNVERIFIED (C67)', async () => {
+    const mockUnverifiedTerm = async () => ({ status: 'TREE_TERMINATION_UNVERIFIED' });
+    const handle = spawnSupervisedProcess({
+      command: process.execPath,
+      args: [mockAgentPath, '--scenario', 'hang'],
+      timeoutMs: 200,
+      terminateProcessTreeFn: mockUnverifiedTerm
+    });
+
+    try {
+      const result = await handle.promise;
+      assert.equal(result.timedOut, true);
+      assert.equal(result.terminationStatus, 'TREE_TERMINATION_UNVERIFIED');
+    } finally {
+      await killProcessTree(handle.pid);
+    }
+  });
 });

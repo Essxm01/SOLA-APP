@@ -157,7 +157,7 @@ export const AvailabilityCalendar: React.FC<AvailabilityCalendarProps> = ({
     // Phase 1: Select Check-In
     if (!checkIn || (checkIn && checkOut)) {
       if (!isCheckInViable(day, blockedRanges, minStay, today)) {
-        setValidationNotice('هذا اليوم لا يتيح المدة الدنيا المطلوبة للإقامة بشكل متصل. اختر تاريخ وصول آخر.');
+        setValidationNotice('لا توجد ليالٍ كافية بعد هذا التاريخ. اختر تاريخ وصول آخر.');
         return;
       }
       setValidationNotice(null);
@@ -171,7 +171,7 @@ export const AvailabilityCalendar: React.FC<AvailabilityCalendarProps> = ({
     // Tapping before or on check-in restarts check-in
     if (day <= cIn) {
       if (!isCheckInViable(day, blockedRanges, minStay, today)) {
-        setValidationNotice('هذا اليوم لا يتيح المدة الدنيا المطلوبة للإقامة بشكل متصل. اختر تاريخ وصول آخر.');
+        setValidationNotice('لا توجد ليالٍ كافية بعد هذا التاريخ. اختر تاريخ وصول آخر.');
         return;
       }
       setValidationNotice(null);

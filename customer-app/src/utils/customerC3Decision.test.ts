@@ -179,7 +179,7 @@ async function run() {
     'C3-REG-16a: AvailabilityCalendar must provide explicit "تغيير تاريخ الوصول" escape action'
   );
   assert(
-    calendarSource.includes('هذا اليوم لا يتيح المدة الدنيا المطلوبة للإقامة بشكل متصل. اختر تاريخ وصول آخر.'),
+    calendarSource.includes('لا توجد ليالٍ كافية بعد هذا التاريخ. اختر تاريخ وصول آخر.'),
     'C3-REG-16b: AvailabilityCalendar must show canonical Arabic inline notice when tapping unviable check-in date'
   );
   assert(

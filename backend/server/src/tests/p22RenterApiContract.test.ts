@@ -447,11 +447,13 @@ try {
 
 // 3E. C2-F1: POST /customer/bookings response has no financialSummary and missing createdAt fails closed
 const origBookingCreate = bookingDb.create;
+const origBookingGetById2 = bookingDb.getById;
 const origPropAvailability = propertyAvailabilityDb.getByPropertyId;
 const origBookingBlocks = bookingDb.getBlocksByPropertyId;
 (userDb as any).getById = async (id: string) => (id === testCustomerId ? { id, fullName: 'عميل', phoneNumber: '+201012345678' } : null);
 (propertyAvailabilityDb as any).getByPropertyId = async () => [];
 (bookingDb as any).getBlocksByPropertyId = async () => [];
+(bookingDb as any).getById = async () => null;
 (propertyDb as any).getById = async () => ({
   id: 'e0000000-0000-4000-8000-000000000002',
   ownerId: '00000000-0000-4000-8000-000000000009',
@@ -536,6 +538,7 @@ try {
   assert.equal(res.statusCode, 500, 'Missing persisted createdAt must return 500 fail-closed');
 } finally {
   (bookingDb as any).create = origBookingCreate;
+  (bookingDb as any).getById = origBookingGetById2;
   (propertyDb as any).getById = origPropGetById;
   (propertyAvailabilityDb as any).getByPropertyId = origPropAvailability;
   (bookingDb as any).getBlocksByPropertyId = origBookingBlocks;

@@ -289,6 +289,7 @@ async function withStubFetch(fn: () => Promise<void>) {
 const originals: Record<string, any> = {
   propertyById: propertyDb.getById,
   userById: userDb.getById,
+  bookingById: bookingDb.getById,
   create: bookingDb.create,
   summary: (bookingDb as any).createFinancialSummary,
   deleteNew: bookingDb.deleteNewBooking,
@@ -298,6 +299,7 @@ const originals: Record<string, any> = {
 try {
   (propertyDb as any).getById = async (id: string) => id === propertyId ? { ...publishedProperty } : null;
   (userDb as any).getById = async (id: string) => id === customerId ? { id, fullName: 'عميل', phoneNumber: '+201012345678' } : null;
+  (bookingDb as any).getById = async () => null;
   (bookingDb as any).getBlocksByPropertyId = async () => [];
   (propertyAvailabilityDb as any).getByPropertyId = async () => [];
   let createdPayload: any = null;
@@ -382,6 +384,7 @@ try {
 } finally {
   (propertyDb as any).getById = originals.propertyById;
   (userDb as any).getById = originals.userById;
+  (bookingDb as any).getById = originals.bookingById;
   (bookingDb as any).create = originals.create;
   (bookingDb as any).createFinancialSummary = originals.summary;
   (bookingDb as any).deleteNewBooking = originals.deleteNew;

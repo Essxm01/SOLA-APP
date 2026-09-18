@@ -6,3 +6,11 @@
 - **Header:** light `surface.primary` or canvas-adjacent surface, page context, limited actions, and no standard dark/navy app-header variant.
 
 Use an appropriate control rather than inventing a screen-specific filter or navigation pattern. Directional icons follow RTL behaviour.
+
+## Navigation grammar
+
+Use a full page for a meaningful destination or full entity; a BottomSheet for a short contextual task; a Dialog for short confirmation/high-stakes acknowledgement; and inline expansion for secondary detail that belongs to the current entity.
+
+Back represents hierarchy. Close/X dismisses a temporary layer.
+
+Customer top-level navigation remains Explore / Favorites / Bookings / Account unless a newer Founder decision changes it. Contextual capabilities such as booking chat do not automatically deserve a permanent bottom-navigation tab.

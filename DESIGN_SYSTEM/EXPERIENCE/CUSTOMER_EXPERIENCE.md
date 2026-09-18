@@ -22,3 +22,11 @@ Customer may continue to explore, search, view properties, prices, availability 
 | Profile/trips | ما رحلاتي وحسابي؟ | Current/upcoming booking summary and account details | Continue current trip/account task | Owner finances/operations |
 
 Primary booking CTAs may be full-width/large on mobile. Share, favorite, policy viewing and chat remain secondary unless their state makes them the next task. Customer sees decision-relevant prices, deposit, remaining amount, dates and status—but never KONFRM commission, owner net, owner wallet, payout data or admin audit information.
+
+## Current Phase 5 screen architecture
+
+The current Customer primary-screen model is consolidated in CUSTOMER_PHASE5_MASTER_UX.md. It replaces the older UX assumption that Property Detail, Date Selection, Guest Selection and Price Review are separate primary screens.
+
+For the current model, Screen 06 is one coherent Property Details / Booking Decision experience containing media, property truth, dates, guests, availability, canonical quote and the decision CTA. Its final Design Lab contract is C3_PROPERTY_DETAIL_BOOKING_DECISION.md.
+
+Decision-critical information should precede long secondary property content. Optional missing description/amenities/rules should usually collapse rather than create noisy empty containers.

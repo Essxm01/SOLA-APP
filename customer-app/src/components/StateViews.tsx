@@ -16,12 +16,14 @@ interface EmptyStateProps {
   title?: string;
   description?: string;
   onReset?: () => void;
+  actionLabel?: string;
 }
 
 export const EmptyStateView: React.FC<EmptyStateProps> = ({
   title = 'لم نجد وحدات تطابق بحثك',
   description = 'جرب البحث عن وجهة ساحلية أخرى أو تغيير تواريخ الإقامة لنتائج أفضل.',
   onReset,
+  actionLabel = 'إعادة عرض جميع العقارات',
 }) => (
   <div className="flex flex-col items-center justify-center py-16 px-4 text-center max-w-md mx-auto bg-white rounded-3xl border border-slate-200 shadow-sm my-8">
     <div className="w-16 h-16 bg-blue-50 text-[#0059FF] rounded-2xl flex items-center justify-center mb-4">
@@ -32,9 +34,9 @@ export const EmptyStateView: React.FC<EmptyStateProps> = ({
     {onReset && (
       <button
         onClick={onReset}
-        className="px-6 py-2.5 bg-[#0059FF] text-white font-extrabold text-xs rounded-xl hover:bg-blue-700 transition-all shadow-md"
+        className="min-h-[44px] px-6 py-2.5 bg-[#0059FF] text-white font-extrabold text-xs rounded-xl hover:bg-blue-700 transition-all shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0059FF]/40"
       >
-        إعادة عرض جميع العقارات
+        {actionLabel}
       </button>
     )}
   </div>

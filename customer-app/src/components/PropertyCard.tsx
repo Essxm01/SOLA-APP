@@ -1,5 +1,6 @@
 import React from 'react';
-import { MapPin, Users, Bed, Bath, ShieldCheck, Star, Heart } from 'lucide-react';
+import { MapPin, Users, Bed, Bath, ShieldCheck, Heart } from 'lucide-react';
+import { getPropertyTypeLabel } from '../utils/searchIntent';
 
 export interface CustomerPropertyItem {
   id: string;
@@ -15,7 +16,6 @@ export interface CustomerPropertyItem {
   basePricePerNight: number;
   currency?: string;
   images?: string[];
-  rating?: number;
 }
 
 interface PropertyCardProps {
@@ -33,30 +33,27 @@ export const PropertyCard: React.FC<PropertyCardProps> = ({
 }) => {
   const rawFirst = property.images && property.images.length > 0 ? property.images[0] : null;
   const coverImage = typeof rawFirst === 'string' ? rawFirst : (rawFirst as any)?.fileUrl || null;
-
-  const translateType = (type?: string) => {
-    switch (type?.toUpperCase()) {
-      case 'VILLA':
-      case 'فيلا':
-        return 'فيلا فاخرة';
-      case 'CHALET':
-      case 'شاليه':
-        return 'شاليه ساحلي';
-      case 'APARTMENT':
-      case 'شقة':
-        return 'شقة مصيفية';
-      default:
-        return property.unitType || 'وحدة ساحلية';
-    }
-  };
+  const rawUnitType = property.unitType || property.propertyType;
+  const unitTypeLabel = getPropertyTypeLabel(rawUnitType) || 'وحدة ساحلية';
 
   return (
-    <div
-      onClick={() => onSelect(property.id)}
-      className="sola-mobile-card group cursor-pointer overflow-hidden flex flex-col justify-between h-full bg-white mb-4"
-    >
+    <div className="sola-mobile-card relative group overflow-hidden flex flex-col justify-between h-full bg-white mb-4">
+      {/* Primary Card Action Button (accessible hit-target covering card, sibling to favorite button — zero nested interactive controls) */}
+      <button
+        type="button"
+        onClick={() => onSelect(property.id)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            onSelect(property.id);
+          }
+        }}
+        aria-label={`عرض تفاصيل ${property.title}`}
+        className="absolute inset-0 z-0 w-full h-full rounded-2xl cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0059FF]/50 pointer-events-auto"
+      />
+
       {/* Cover Image Container */}
-      <div className="relative w-full h-56 overflow-hidden bg-slate-100">
+      <div className="relative w-full h-56 overflow-hidden bg-slate-100 pointer-events-none z-1">
         {coverImage ? (
           <img
             src={coverImage}
@@ -76,41 +73,48 @@ export const PropertyCard: React.FC<PropertyCardProps> = ({
           <span>إقامة موثقة</span>
         </div>
 
-        {/* Favorite Button */}
+        {/* Favorite Button (>=44px touch target, sibling control positioned with pointer-events-auto so it acts independently) */}
         <button
+          type="button"
           onClick={(e) => {
             e.stopPropagation();
             if (onToggleFavorite) onToggleFavorite(property.id, e);
           }}
-          className={`absolute top-3 left-3 w-8 h-8 rounded-full flex items-center justify-center backdrop-blur-md transition-all ${
-            isFavorite
-              ? 'bg-rose-500 text-white shadow-md'
-              : 'bg-white/80 text-slate-700 hover:bg-white'
-          }`}
+          aria-label={isFavorite ? 'إزالة من المفضلة' : 'إضافة إلى المفضلة'}
+          className="pointer-events-auto absolute top-1.5 left-1.5 min-w-[44px] min-h-[44px] flex items-center justify-center rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0059FF]/40"
         >
-          <Heart className={`w-4 h-4 ${isFavorite ? 'fill-white' : ''}`} />
+          <span
+            className={`w-8 h-8 rounded-full flex items-center justify-center backdrop-blur-md transition-all ${
+              isFavorite
+                ? 'bg-rose-500 text-white shadow-md'
+                : 'bg-white/80 text-slate-700 hover:bg-white'
+            }`}
+          >
+            <Heart className={`w-4 h-4 ${isFavorite ? 'fill-white' : ''}`} />
+          </span>
         </button>
 
-        {/* Unit Type Pill */}
+        {/* Unit Type Pill (canonical Arabic label — never exposes backend enum) */}
         <div className="absolute bottom-3 right-3 bg-slate-900/80 backdrop-blur-md text-white font-extrabold text-[10px] px-2.5 py-1 rounded-lg">
-          {translateType(property.propertyType || property.unitType)}
+          {unitTypeLabel}
         </div>
       </div>
 
       {/* Content Info */}
-      <div className="p-3.5 flex-1 flex flex-col justify-between">
+      <div className="p-3.5 flex-1 flex flex-col justify-between pointer-events-none z-1">
         <div>
-          {/* Location & Rating Row */}
-          <div className="flex items-center justify-between text-slate-500 text-xs font-bold mb-1">
-            <div className="flex items-center gap-1">
+          {/* Location row — only canonical geography; omitted entirely when
+              the canonical record has none (address='' is valid and must not
+              be replaced with an invented location). No rating is rendered:
+              there is no canonical review data yet. */}
+          {(property.address?.trim() || property.resortName?.trim() || property.region?.trim()) ? (
+            <div className="flex items-center gap-1 text-slate-500 text-xs font-bold mb-1">
               <MapPin className="w-3.5 h-3.5 text-[#0059FF] shrink-0" />
-              <span className="truncate max-w-[200px]">{property.address || property.resortName || property.region || 'الساحل الشمالي'}</span>
+              <span className="truncate max-w-[240px]">
+                {(property.address?.trim() || property.resortName?.trim() || property.region?.trim()) as string}
+              </span>
             </div>
-            <div className="flex items-center gap-1 text-slate-800 text-[11px] font-black">
-              <Star className="w-3.5 h-3.5 fill-[#FFD700] text-[#FFD700]" />
-              <span>4.9</span>
-            </div>
-          </div>
+          ) : null}
 
           {/* Title */}
           <h3 className="font-black text-slate-900 text-sm leading-snug line-clamp-2 mb-2 group-hover:text-[#0059FF] transition-colors">

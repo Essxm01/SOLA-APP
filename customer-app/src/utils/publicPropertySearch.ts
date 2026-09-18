@@ -1,6 +1,8 @@
 export interface PublicPropertySearchInputFilters {
   destination?: string;
+  destinations?: string[];
   unitType?: string;
+  unitTypes?: string[];
   totalGuests?: number;
   maxPrice?: number;
 }
@@ -13,17 +15,37 @@ export function buildPublicPropertySearchPath(filters?: PublicPropertySearchInpu
 
   const params = new URLSearchParams();
 
-  if (filters.destination !== undefined && filters.destination !== null) {
+  // Multi-destination support with fallback to single destination
+  if (Array.isArray(filters.destinations) && filters.destinations.length > 0) {
+    for (const d of filters.destinations) {
+      if (d !== undefined && d !== null) {
+        const trimmed = String(d).trim();
+        if (trimmed !== '') {
+          params.append('destination', trimmed);
+        }
+      }
+    }
+  } else if (filters.destination !== undefined && filters.destination !== null) {
     const trimmed = String(filters.destination).trim();
     if (trimmed !== '') {
-      params.set('destination', trimmed);
+      params.append('destination', trimmed);
     }
   }
 
-  if (filters.unitType !== undefined && filters.unitType !== null) {
+  // Multi-unitType support with fallback to single unitType
+  if (Array.isArray(filters.unitTypes) && filters.unitTypes.length > 0) {
+    for (const t of filters.unitTypes) {
+      if (t !== undefined && t !== null) {
+        const trimmed = String(t).trim().toUpperCase();
+        if (trimmed !== '' && trimmed !== 'ALL') {
+          params.append('unitType', trimmed);
+        }
+      }
+    }
+  } else if (filters.unitType !== undefined && filters.unitType !== null) {
     const trimmed = String(filters.unitType).trim().toUpperCase();
     if (trimmed !== '' && trimmed !== 'ALL') {
-      params.set('unitType', trimmed);
+      params.append('unitType', trimmed);
     }
   }
 

@@ -41,7 +41,7 @@ export interface PrototypeCompletionResult {
   confirmedAt?: string;
 }
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api/v1';
+import { getApiUrl } from '../utils/api';
 
 export class CustomerPaymentService {
   /**
@@ -52,7 +52,7 @@ export class CustomerPaymentService {
     idempotencyKey: string,
     authToken: string
   ): Promise<InitiatePaymentResult> {
-    const res = await fetch(`${API_BASE_URL}/customer/bookings/${bookingId}/pay`, {
+    const res = await fetch(getApiUrl(`/customer/bookings/${bookingId}/pay`), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -75,7 +75,7 @@ export class CustomerPaymentService {
     paymentTransactionId: string,
     authToken: string
   ): Promise<PrototypeCompletionResult> {
-    const res = await fetch(`${API_BASE_URL}/customer/bookings/${bookingId}/pay/prototype-complete`, {
+    const res = await fetch(getApiUrl(`/customer/bookings/${bookingId}/pay/prototype-complete`), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
       body: JSON.stringify({ paymentTransactionId }),
@@ -92,7 +92,7 @@ export class CustomerPaymentService {
     bookingId: string,
     authToken: string
   ): Promise<PaymentStatusResult> {
-    const res = await fetch(`${API_BASE_URL}/customer/bookings/${bookingId}/payment-status`, {
+    const res = await fetch(getApiUrl(`/customer/bookings/${bookingId}/payment-status`), {
       method: 'GET',
       headers: {
         Authorization: `Bearer ${authToken}`,

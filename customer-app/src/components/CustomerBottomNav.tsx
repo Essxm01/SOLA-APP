@@ -63,7 +63,7 @@ export const CustomerBottomNav: React.FC<CustomerBottomNavProps> = ({
                   <span className="absolute -top-1 -right-1.5 w-2.5 h-2.5 bg-emerald-500 rounded-full ring-2 ring-white" />
                 )}
               </span>
-              <span className={`text-[10px] leading-none ${isActive ? 'font-black' : 'font-bold'}`}>{label}</span>
+              <span className={`text-[11px] leading-none ${isActive ? 'font-black' : 'font-bold'}`}>{label}</span>
             </button>
           );
         })}

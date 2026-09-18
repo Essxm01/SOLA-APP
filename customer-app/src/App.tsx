@@ -566,35 +566,6 @@ export function App() {
     setActiveTab('EXPLORE');
   };
 
-  // Booking Request Handler: submits intent only. The server owns price, availability, and persistence.
-  const handleInitiateBooking = async (
-    prop: CustomerPropertyItem,
-    checkIn: string,
-    checkOut: string,
-    guests: number
-  ): Promise<void> => {
-    if (!authToken) {
-      const intent = { propertyId: prop.id, checkIn, checkOut, guests };
-      localStorage.setItem('sola_customer_pending_booking_intent', JSON.stringify(intent));
-      setInterceptedContext(intent);
-      setShowAuthModal(true);
-      return;
-    }
-
-    const res = await fetch(getApiUrl('/customer/bookings'), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
-      body: JSON.stringify({ propertyId: prop.id, checkIn, checkOut, guests }),
-    });
-    const json = await res.json();
-    if (!res.ok || !json.success || !json.data) {
-      throw new Error(json?.error?.message || 'تعذر إرسال طلب الحجز. لم يتم إنشاء أي طلب.');
-    }
-
-    await fetchBookings(authToken);
-    setSelectedProperty(null);
-    setShowSuccessModal(true);
-  };
 
   const handleBookingSuccess = async (bookingData: any) => {
     try {
@@ -1181,7 +1152,6 @@ export function App() {
           authToken={authToken}
           initialSearchIntent={searchIntent}
           onClose={() => setSelectedProperty(null)}
-          onInitiateBooking={handleInitiateBooking}
           onBookingSuccess={handleBookingSuccess}
           onRequireAuth={(context) => {
             localStorage.setItem('sola_customer_pending_booking_intent', JSON.stringify(context));

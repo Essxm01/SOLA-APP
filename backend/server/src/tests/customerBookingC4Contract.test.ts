@@ -318,7 +318,32 @@ async function run() {
     assert.equal((raceRes.body as any).data.idempotentReplay, true);
     forceDuplicateKeyError = false;
 
+    // 30B. idempotency lookup DB failure fails closed with 500 IDEMPOTENCY_LOOKUP_FAILED and ZERO create calls
+    let forceGetByIdError = true;
+    const origGetById = (bookingDb as any).getById;
+    (bookingDb as any).getById = async (id: string) => {
+      if (forceGetByIdError) {
+        throw new Error('connection timeout querying bookings');
+      }
+      return origGetById(id);
+    };
+
+    const preLookupCount = createCallCount;
+    const lookupFailRes = await app.handleHttpRequest('POST', '/api/v1/customer/bookings', customerHeadersA, {
+      propertyId,
+      checkIn: '2026-10-10',
+      checkOut: '2026-10-13',
+      guests: 2,
+      requestId: crypto.randomUUID(),
+      reviewedQuoteFingerprint: quoteData.quoteFingerprint,
+    });
+    assert.equal(lookupFailRes.statusCode, 500, 'Req 30B: lookup DB error returns 500');
+    assert.equal((lookupFailRes.body as any).error.code, 'IDEMPOTENCY_LOOKUP_FAILED');
+    assert.equal(createCallCount, preLookupCount, 'Req 30B: bookingDb.create called ZERO times on lookup DB failure');
+    forceGetByIdError = false;
+
     // 31. availability conflict returns 409 DATE_OVERLAP without creating booking
+    const preOverlapCount = createCallCount;
     mockBlocks = [{ checkIn: '2026-10-10', checkOut: '2026-10-13', status: 'CONFIRMED' }];
     const overlapRes = await app.handleHttpRequest('POST', '/api/v1/customer/bookings', customerHeadersA, {
       propertyId,
@@ -330,6 +355,7 @@ async function run() {
     });
     assert.equal(overlapRes.statusCode, 409, 'Req 31: overlapping dates return 409');
     assert.equal((overlapRes.body as any).error.code, 'DATE_OVERLAP');
+    assert.equal(createCallCount, preOverlapCount, 'Req 31: bookingDb.create called ZERO times on DATE_OVERLAP');
     mockBlocks = [];
 
     // 33 & 34. atomic financial summary persistence and no client monetary values accepted

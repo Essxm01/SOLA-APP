@@ -3530,8 +3530,18 @@ export class ExpressServerApp {
                 },
               };
             }
-          } catch {
-            // Continues if getById fails (e.g. not found)
+          } catch (lookupErr: any) {
+            return {
+              statusCode: 500,
+              body: {
+                success: false,
+                error: {
+                  code: 'IDEMPOTENCY_LOOKUP_FAILED',
+                  message: 'تعذر التحقق من حالة الطلب السابقة في قاعدة البيانات',
+                },
+                timestamp,
+              },
+            };
           }
 
           const propWithPrice = {

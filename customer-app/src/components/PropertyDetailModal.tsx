@@ -119,7 +119,6 @@ interface PropertyDetailModalProps {
   property: CustomerPropertyItem;
   authToken?: string | null;
   onClose: () => void;
-  onInitiateBooking: (prop: CustomerPropertyItem, checkIn: string, checkOut: string, guests: number) => Promise<void>;
   onBookingSuccess?: (bookingData: any) => void;
   onRequireAuth: (interceptedAction: {
     propertyId: string;
@@ -164,7 +163,6 @@ export const PropertyDetailModal: React.FC<PropertyDetailModalProps> = ({
   property,
   authToken,
   onClose,
-  onInitiateBooking,
   onBookingSuccess,
   onRequireAuth,
   restoredBookingIntent,
@@ -447,8 +445,7 @@ export const PropertyDetailModal: React.FC<PropertyDetailModalProps> = ({
   useEffect(() => {
     if (!restoreBookingReview || !checkIn || !checkOut) return;
     setShowReviewSheet(true);
-    onBookingReviewRestored?.();
-  }, [restoreBookingReview, checkIn, checkOut, onBookingReviewRestored]);
+  }, [restoreBookingReview, checkIn, checkOut]);
 
   // ── 4. Continue CTA Handler ───────────────────────────────────────────────
   const handleCTAPress = async () => {
@@ -1080,7 +1077,7 @@ export const PropertyDetailModal: React.FC<PropertyDetailModalProps> = ({
         </div>
 
         {/* ── SCREEN 07: BOOKING REQUEST REVIEW (Dedicated Full-Screen Surface) ── */}
-        {showReviewSheet && quote && (
+        {showReviewSheet && (quote || restoredBookingIntent?.quoteSnapshot) && (
           <BookingRequestReviewScreen
             property={property}
             canonicalTitle={detail?.title || property.title}
@@ -1089,7 +1086,7 @@ export const PropertyDetailModal: React.FC<PropertyDetailModalProps> = ({
             checkIn={checkIn!}
             checkOut={checkOut!}
             guests={guests}
-            initialQuote={quote}
+            initialQuote={quote || restoredBookingIntent!.quoteSnapshot!}
             authToken={authToken}
             onBack={() => setShowReviewSheet(false)}
             onEditDetails={() => setShowReviewSheet(false)}
@@ -1101,11 +1098,7 @@ export const PropertyDetailModal: React.FC<PropertyDetailModalProps> = ({
             }}
             onSubmitSuccess={(bookingData) => {
               setShowReviewSheet(false);
-              if (onBookingSuccess) {
-                onBookingSuccess(bookingData);
-              } else {
-                onInitiateBooking(property, checkIn!, checkOut!, guests);
-              }
+              onBookingSuccess?.(bookingData);
             }}
             onAvailabilityConflict={() => {
               setShowReviewSheet(false);
@@ -1116,6 +1109,7 @@ export const PropertyDetailModal: React.FC<PropertyDetailModalProps> = ({
             }}
             restoredFromAuth={restoreBookingReview}
             existingRequestId={restoredBookingIntent?.requestId}
+            onContextCaptured={onBookingReviewRestored}
           />
         )}
 

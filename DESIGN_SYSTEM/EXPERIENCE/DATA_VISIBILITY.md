@@ -16,3 +16,10 @@
 | Audit | HIDDEN | HIDDEN | CONTEXTUAL | Technical/audit evidence belongs in an Admin investigation, not Customer/Owner routine UI. |
 
 The approved Admin chat visibility is a contextual product policy. Its authorization model and audit implementation remain future work; this document does not grant unrestricted conversation browsing.
+
+
+## Trust and public-detail truth
+
+A customer-facing trust statement is product data, not decoration. Do not derive marketing claims such as “موثقة”, “مضمونة” or “تم التحقق منها” from visual convention, publication status or an internal enum unless a customer-facing canonical contract explicitly authorizes that meaning.
+
+Public location presentation must use only the location granularity exposed by the canonical Customer/public contract. Missing location may be acknowledged honestly; fabricated fallback geography is not acceptable.

@@ -15,3 +15,9 @@ Cards are light: `surface.primary`, `border.default`, `radius.card`, `cardPaddin
 | BookingCard shell | booking identity, property, dates/status and contextual action | no raw enum label to users |
 
 Dark-card is not a normal variant. A hover effect may use neutral border/elevation changes, never a glow or decorative translation system.
+
+## Open-surface composition rule
+
+Do not use cards as the default visual separator. Prefer whitespace, typography, dividers and open rows when the content belongs to one continuous journey.
+
+Avoid **card soup**: a card inside a card, a rounded box for every fact, or repeated bordered containers that make a decision screen feel like a dashboard. Customer hospitality screens should remain photography-led and editorial; Owner cards should group operational objects/actions; Admin cards should not replace efficient tables/queues.

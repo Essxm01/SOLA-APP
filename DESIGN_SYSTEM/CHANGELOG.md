@@ -36,3 +36,12 @@
 ## 1.0.0 — 2026-08-15
 
 - Historical forensic extraction from the Owner App. Superseded as an authority model by v2.0.0.
+
+
+## Unreleased Design Lab addendum — 2026-09-18
+
+- Added a Founder-authorized cross-role Design Lab vision covering composition, interaction grammar, role personalities, state completeness, mobile ergonomics, truth/trust presentation and acceptance philosophy.
+- Added one consolidated current Customer Phase 5 screen model (01–26), including embedded surfaces and package boundaries.
+- Added the C3 Screen 06 Property Details / Booking Decision final design contract.
+- Extended relevant component/guideline contracts with card-soup prevention, state-aware recovery actions, canonical trust-claim rules, server-authoritative quote presentation, mobile touch/typography requirements and physical-device acceptance guidance.
+- Preserved historical audits, legacy drift, tokens, generated output and implementation evidence; no product code, backend, database, finance, booking or roadmap logic changed.

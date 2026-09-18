@@ -46,3 +46,12 @@ Before implementing any UI pattern:
 6. Only then implement it in an application.
 
 See [`GOVERNANCE.md`](./GOVERNANCE.md) for approval boundaries, [`EXPERIENCE/`](./EXPERIENCE) for role UX, and [`CHANGELOG.md`](./CHANGELOG.md) for releases.
+
+
+## Design Lab continuity layer — 2026-09-18
+
+The Founder-authorized Design Lab vision is centralized in [DESIGN_LAB_VISION.md](./DESIGN_LAB_VISION.md). It adds product-composition, role-personality, interaction, state-completeness and acceptance philosophy used by the current Phase 4–7 design program without replacing Business/Architecture authority.
+
+For the current Customer program, [EXPERIENCE/CUSTOMER_PHASE5_MASTER_UX.md](./EXPERIENCE/CUSTOMER_PHASE5_MASTER_UX.md) is the consolidated current screen model. Screen-specific final design contracts may live beside it, including [EXPERIENCE/C3_PROPERTY_DETAIL_BOOKING_DECISION.md](./EXPERIENCE/C3_PROPERTY_DETAIL_BOOKING_DECISION.md).
+
+Historical audits, drift files and snapshots remain evidence and are not rewritten merely to match newer design guidance.

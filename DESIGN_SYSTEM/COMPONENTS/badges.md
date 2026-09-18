@@ -11,3 +11,9 @@ A `StatusBadge` is a semantic presentation of a canonical status, not an indepen
 | Identity | UNVERIFIED → غير موثق; PENDING_VERIFICATION → قيد التحقق; VERIFIED → موثق; REJECTED → مرفوض | muted, warning, success, danger |
 
 Applications map internal enum values centrally and never expose them as user-facing English text. Exact wording may be refined centrally without changing business status semantics.
+
+## Status badge is not a marketing trust badge
+
+This contract maps canonical status to human presentation. It does **not** authorize customer-facing claims such as “إقامة موثقة من كونفرم”, “مضمونة” or similar marketing trust language.
+
+Any such trust claim requires an explicit customer-facing Product contract describing what was verified and what the claim means.

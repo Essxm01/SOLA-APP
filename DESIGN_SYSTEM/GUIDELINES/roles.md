@@ -11,3 +11,11 @@ Prioritize control, operational clarity, status visibility, financial clarity, a
 ## Admin
 
 Prioritize decision speed, review context, queue management, search/filter/sort and auditability. Admin may be denser and table-oriented on desktop, but never creates a separate visual language.
+
+## Role visual personalities
+
+**Customer:** premium hospitality editorial — photography-led, open light surfaces, strong decision hierarchy, calm trust and low hesitation.
+
+**Owner:** operational precision — attention-first, compact but readable, explicit next action and money/state clarity.
+
+**Admin:** operational clarity — desktop density, queue/review efficiency and auditability. Admin is preserve-first; do not redesign it for visual symmetry with mobile apps.

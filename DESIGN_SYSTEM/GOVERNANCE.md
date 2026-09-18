@@ -42,3 +42,12 @@ Run `npm run design:generate` after modifying canonical tokens, then `npm run de
 - Is Customer financial privacy preserved?
 - Does it stay light-first and avoid navy slabs, decorative gradients and glow?
 - Is the version bump and changelog entry appropriate?
+
+
+## Design Lab guidance and preservation — 2026-09-18 addendum
+
+The UI/UX Design Lab is the design-authority layer for the Phase 4–7 program inside the boundaries above. Founder-authorized Design Lab guidance is documented centrally rather than being copied ad hoc into application code.
+
+The current cross-role design vision lives in [DESIGN_LAB_VISION.md](./DESIGN_LAB_VISION.md). Customer screen architecture lives in [EXPERIENCE/CUSTOMER_PHASE5_MASTER_UX.md](./EXPERIENCE/CUSTOMER_PHASE5_MASTER_UX.md).
+
+This addendum is intentionally additive and does not itself bump the canonical Design System release version or change tokens. Do not erase historical audit, legacy drift, previous decision or implementation evidence simply because a newer design direction exists. Business, finance, booking, permission, privacy, database and architecture changes still require their own authority.

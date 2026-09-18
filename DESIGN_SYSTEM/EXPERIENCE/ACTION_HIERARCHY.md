@@ -22,3 +22,11 @@ Examples: a Customer’s valid booking/payment CTA is decision-primary; share/fa
 | Compact-desktop | Admin filters, tables and dense operations where readability and keyboard access remain intact. |
 
 No one-off control height is introduced outside component contracts.
+
+## State-aware decision actions
+
+A sticky decision CTA should communicate the **next valid action**, not merely remain disabled with generic wording.
+
+For example, a Customer property decision may move through: choose dates → choose checkout → loading availability → retry availability → calculating quote → retry quote → review booking request.
+
+Recovery actions may temporarily become decision-primary when the canonical prerequisite failed. A booking/payment CTA must never visually imply a lifecycle transition that the current canonical state does not permit.

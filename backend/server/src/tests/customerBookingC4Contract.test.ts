@@ -7,7 +7,7 @@ import { strict as assert } from 'node:assert';
 import crypto from 'node:crypto';
 import { ExpressServerApp } from '../app.js';
 import { signAccessToken } from '../services/jwtService.js';
-import { bookingDb, propertyDb, userDb, getUnifiedUnavailableBlocks } from '../services/dbRepository.js';
+import { bookingDb, propertyDb, userDb, propertyAvailabilityDb, getUnifiedUnavailableBlocks } from '../services/dbRepository.js';
 import { computeQuoteFingerprint, isValidUuid, isValidQuoteFingerprint } from '../utils/quoteFingerprint.js';
 
 const propertyId = '11111111-1111-4111-8111-111111111111';
@@ -55,6 +55,8 @@ const origUserGet = userDb.getById;
 const origBookingCreate = bookingDb.create;
 const origBookingGet = bookingDb.getById;
 const origBookingSummary = bookingDb.getFinancialSummary;
+const origBookingBlocks = bookingDb.getBlocksByPropertyId;
+const origAvailabilityGet = propertyAvailabilityDb.getByPropertyId;
 
 function setupMocks() {
   mockBookings.clear();
@@ -71,6 +73,8 @@ function setupMocks() {
     if (id === customerIdB) return { ...mockCustomerB };
     return null;
   };
+  (bookingDb as any).getBlocksByPropertyId = async (id: string) => (id === propertyId ? [...mockBlocks] : []);
+  (propertyAvailabilityDb as any).getByPropertyId = async () => [];
   (bookingDb as any).getById = async (id: string) => {
     const bk = mockBookings.get(id);
     if (!bk) return null;
@@ -136,10 +140,21 @@ function restoreMocks() {
   (bookingDb as any).create = origBookingCreate;
   (bookingDb as any).getById = origBookingGet;
   (bookingDb as any).getFinancialSummary = origBookingSummary;
+  (bookingDb as any).getBlocksByPropertyId = origBookingBlocks;
+  (propertyAvailabilityDb as any).getByPropertyId = origAvailabilityGet;
 }
 
 async function run() {
   console.log('Running Customer C4 Booking Review & Safety Contract Tests...');
+  const savedDbUrl = process.env.DATABASE_URL;
+  const savedSupaUrl = process.env.SUPABASE_URL;
+  const savedSupaKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const savedStorageProvider = process.env.OBJECT_STORAGE_PROVIDER;
+  delete process.env.DATABASE_URL;
+  delete process.env.SUPABASE_URL;
+  delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+  process.env.OBJECT_STORAGE_PROVIDER = 'local';
+
   setupMocks();
   const app = new ExpressServerApp();
 
@@ -303,6 +318,20 @@ async function run() {
     assert.equal((raceRes.body as any).data.idempotentReplay, true);
     forceDuplicateKeyError = false;
 
+    // 31. availability conflict returns 409 DATE_OVERLAP without creating booking
+    mockBlocks = [{ checkIn: '2026-10-10', checkOut: '2026-10-13', status: 'CONFIRMED' }];
+    const overlapRes = await app.handleHttpRequest('POST', '/api/v1/customer/bookings', customerHeadersA, {
+      propertyId,
+      checkIn: '2026-10-10',
+      checkOut: '2026-10-13',
+      guests: 2,
+      requestId: crypto.randomUUID(),
+      reviewedQuoteFingerprint: quoteData.quoteFingerprint,
+    });
+    assert.equal(overlapRes.statusCode, 409, 'Req 31: overlapping dates return 409');
+    assert.equal((overlapRes.body as any).error.code, 'DATE_OVERLAP');
+    mockBlocks = [];
+
     // 33 & 34. atomic financial summary persistence and no client monetary values accepted
     const tamperedMoneyRequestId = crypto.randomUUID();
     const tamperedRes = await app.handleHttpRequest('POST', '/api/v1/customer/bookings', customerHeadersA, {
@@ -320,9 +349,17 @@ async function run() {
     assert.equal(tamperedData.totalStay, 15000, 'Req 34: server total 15,000 used, client 10 ignored');
     assert.equal(tamperedData.depositAmount, 5000, 'Req 34: server deposit 5,000 used, client 5 ignored');
 
-    console.log('All Customer C4 Backend Contract Tests PASSED (18/18 assertions).');
+    console.log('All Customer C4 Backend Contract Tests PASSED (19/19 assertions).');
   } finally {
     restoreMocks();
+    if (savedDbUrl !== undefined) process.env.DATABASE_URL = savedDbUrl;
+    if (savedSupaUrl !== undefined) process.env.SUPABASE_URL = savedSupaUrl;
+    if (savedSupaKey !== undefined) process.env.SUPABASE_SERVICE_ROLE_KEY = savedSupaKey;
+    if (savedStorageProvider !== undefined) {
+      process.env.OBJECT_STORAGE_PROVIDER = savedStorageProvider;
+    } else {
+      delete process.env.OBJECT_STORAGE_PROVIDER;
+    }
   }
 }
 

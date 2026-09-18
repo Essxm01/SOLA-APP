@@ -7,7 +7,7 @@ EXECUTOR: Founder + Bridge + UI/UX Design Lab
 AUTHORITATIVE_BASELINE: 2d27553569c7962e62080d7ab471d16ef1c9e435
 TARGET_BRANCH: phase5/customer-explore-visual-remediation
 C4_SCREEN_07_STATUS: CLOSED / MERGED / MAIN-CI VERIFIED / PRODUCTION VERIFIED / FOUNDER APPROVED (PR #35 @ 2d27553569c7962e62080d7ab471d16ef1c9e435)
-ACTIVE_TARGET: Customer Screen 03 — Explore/Home Visual Quality Remediation (EXPLORE_FINAL_REDESIGN_SPEC)
+ACTIVE_TARGET: Customer Screen 03 — Explore/Home Visual Quality Remediation (EXPLORE_FINAL_REDESIGN_SPEC + EXPLORE_FINAL_POLISH_V2)
 NEXT_AFTER_EXPLORE: Screen 08 — Auth Phone (NOT STARTED)
 C5_STATUS: NOT STARTED
 SEARCH_INTENT_RESET: DEFERRED / UNCHANGED
@@ -15,7 +15,7 @@ SEARCH_INTENT_RESET: DEFERRED / UNCHANGED
 ## Phase 5 / C4 (Screen 07) Closure Summary
 - PR #35 merged into main at `2d27553569c7962e62080d7ab471d16ef1c9e435`.
 - Screen 07 Booking Request Review and Safety Contract fully verified:
-  - Strict 3-step timeline (طلبك يتبعت للمالك -> المالك يراجع خلال 24 ساعة -> التأكيد يبدأ بموافقة المالك).
+  - Truthful booking request lifecycle (طلب الحجز يُرسل إلى المالك → المالك يراجع الطلب → إذا وافق، يصبح دفع العربون هو الخطوة التالية → بعد نجاح دفع العربون يصبح الحجز مؤكدًا). No Owner-response SLA or duration is approved or stated.
   - Exact financial breakdown from calculation engine with zero client recalculation.
   - Fail-closed quote revalidation and price mismatch handling.
   - Zero payment collection / zero premature booking creation.
@@ -23,11 +23,13 @@ SEARCH_INTENT_RESET: DEFERRED / UNCHANGED
   - All CI and production verification passed.
 
 ## Current Task: Customer Screen 03 Explore Visual Quality Remediation
-- Implement the Founder/LAB-approved `EXPLORE_FINAL_REDESIGN_SPEC`.
+- Implement the Founder/LAB-approved `EXPLORE_FINAL_REDESIGN_SPEC` and `EXPLORE_FINAL_POLISH_V2`.
 - Visual + UX quality remediation while strictly preserving C2 functional truth.
 - Zero backend, DB, migration, or RPC changes.
 - Zero booking/finance/availability rule changes.
-- Shared `PropertyCard` anatomy across Explore, Search Results, and Favorites.
+- Shared `PropertyCard` anatomy across Explore, Search Results, and Favorites (Title before location, 1.4:1 ratio, compact 13px facts, clean price without redundant labels, independent favorite).
+- Explore Header is brand-only (Browse-first / Auth-late) with logo/wordmark only, omitting entry/account buttons on Explore.
+- 4-tab bottom navigation with updated icons (`Compass`, `Heart`, `CalendarDays`, `UserRound`), uniform 2.2 stroke width, and active state blue icon + blue label without bubble/pill background.
 - Local Explore state views (skeleton feed, empty state, error state).
 
 

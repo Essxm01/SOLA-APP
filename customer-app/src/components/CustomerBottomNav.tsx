@@ -1,5 +1,5 @@
 import React from 'react';
-import { Compass, Heart, CalendarCheck, User } from 'lucide-react';
+import { Compass, Heart, CalendarDays, UserRound } from 'lucide-react';
 
 export type CustomerTabType = 'EXPLORE' | 'FAVORITES' | 'BOOKINGS' | 'ACCOUNT';
 
@@ -18,14 +18,15 @@ const TABS: Array<{
 }> = [
   { id: 'EXPLORE', label: 'استكشف', Icon: Compass },
   { id: 'FAVORITES', label: 'المفضلة', Icon: Heart, badge: 'FAVORITES' },
-  { id: 'BOOKINGS', label: 'حجوزاتي', Icon: CalendarCheck, badge: 'ACTIVE_BOOKING' },
-  { id: 'ACCOUNT', label: 'الحساب', Icon: User },
+  { id: 'BOOKINGS', label: 'حجوزاتي', Icon: CalendarDays, badge: 'ACTIVE_BOOKING' },
+  { id: 'ACCOUNT', label: 'الحساب', Icon: UserRound },
 ];
 
-// Persistent Customer bottom navigation (Phase 5 / C1 hardening):
+// Persistent Customer bottom navigation (Phase 5 / LAB V2 polish):
 // - fixed to the viewport through long scrolls, safe-area aware;
-// - white/light surface, blue active state (NO active scale animation);
+// - white/light surface, blue active state (NO active scale animation, NO active bubble);
 // - icon + label with full accessible names and aria-current;
+// - consistent 2.2 stroke width across all tabs;
 // - every tab is a >=48px touch target.
 export const CustomerBottomNav: React.FC<CustomerBottomNavProps> = ({
   activeTab,
@@ -53,7 +54,7 @@ export const CustomerBottomNav: React.FC<CustomerBottomNavProps> = ({
               }`}
             >
               <span className="relative leading-none" aria-hidden="true">
-                <Icon className="w-[22px] h-[22px]" strokeWidth={isActive ? 2.4 : 2} />
+                <Icon className="w-[22px] h-[22px]" strokeWidth={2.2} />
                 {badge === 'FAVORITES' && favoritesCount > 0 && (
                   <span className="absolute -top-1 -right-2 bg-[#0059FF] text-white text-[9px] font-black min-w-4 h-4 px-0.5 rounded-full flex items-center justify-center border border-white">
                     {favoritesCount}
@@ -63,7 +64,7 @@ export const CustomerBottomNav: React.FC<CustomerBottomNavProps> = ({
                   <span className="absolute -top-1 -right-1.5 w-2.5 h-2.5 bg-emerald-500 rounded-full ring-2 ring-white" />
                 )}
               </span>
-              <span className={`text-[11px] leading-none ${isActive ? 'font-black' : 'font-bold'}`}>{label}</span>
+              <span className={`text-[11px] leading-none ${isActive ? 'font-bold' : 'font-semibold'}`}>{label}</span>
             </button>
           );
         })}

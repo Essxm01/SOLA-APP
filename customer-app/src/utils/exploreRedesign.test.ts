@@ -263,7 +263,110 @@ async function run() {
     'SearchResultsScreen must accept and forward isFavoritePending to PropertyCard'
   );
 
-  console.log('ALL CUSTOMER EXPLORE VISUAL REMEDIATION REGRESSION CHECKS PASSED (32/32)!');
+  // 33. Pre-Lab remediation: title renders BEFORE location in the card body
+  const titleIdx = cardCode.indexOf('text-[16px]');
+  const locationIdx = cardCode.indexOf('text-[13px] font-medium text-slate-500 line-clamp-2');
+  assert(
+    titleIdx !== -1 && locationIdx !== -1 && titleIdx < locationIdx,
+    'PropertyCard must render the title BEFORE the canonical location'
+  );
+
+  // 34. Pre-Lab remediation: location supports 2-line clamp
+  assert(
+    cardCode.includes('text-[13px] font-medium text-slate-500 line-clamp-2'),
+    'PropertyCard location must support line-clamp-2'
+  );
+
+  // 35. Pre-Lab remediation: facts row is 13px
+  assert(
+    cardCode.includes('text-[13px] font-medium text-slate-500 pt-0.5'),
+    'PropertyCard facts row must be 13px'
+  );
+
+  // 36. Pre-Lab remediation: multi-destination summary is truthful count form
+  assert(
+    searchBarCode.includes('وجهات محددة') &&
+    searchBarCode.includes('intent.destinations.length === 1') &&
+    searchBarCode.includes('intent.destinations.length > 1'),
+    'Search entry must summarize 1 destination by name and 2+ as "N وجهات محددة"'
+  );
+  assert(
+    !searchBarCode.includes('+ ${intent.destinations.length - 1}'),
+    'Search entry must NOT promote the first destination with a "+ N" suffix'
+  );
+
+  // 37. Pre-Lab remediation: active intent summary must not insert "أضف تواريخ" as selected state
+  assert(
+    !searchBarCode.includes('أضف تواريخ'),
+    'Search entry must never insert "أضف تواريخ" as selected-state content'
+  );
+
+  // 38. Pre-Lab remediation: CURRENT_TASK must NOT claim a 24-hour Owner SLA
+  assert(
+    !currentTaskCode.includes('24 ساعة') && !currentTaskCode.includes('24-hour'),
+    'CURRENT_TASK must NOT claim any Owner-response duration'
+  );
+  assert(
+    currentTaskCode.includes('المالك يراجع الطلب') &&
+    currentTaskCode.includes('دفع العربون') &&
+    currentTaskCode.includes('الحجز مؤكدًا'),
+    'CURRENT_TASK must preserve the truthful booking lifecycle wording'
+  );
+
+  // 39. Pre-Lab remediation: tsconfig.tsbuildinfo must match the base version
+  //     (2d275535…), proving the generated artifact is absent from the candidate
+  //     diff. Verified without spawning git: the worktree file's SHA-256 must
+  //     equal the base blob's SHA-256.
+  // @ts-ignore — node types are not part of the customer tsconfig
+  const { createHash } = await import('node:crypto');
+  const tsbuildInfoPath = new URL('../../tsconfig.tsbuildinfo', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1').replace(/%20/g, ' ');
+  const tsbuildInfoContent = readFileSync(tsbuildInfoPath);
+  const tsbuildInfoHash = createHash('sha256').update(tsbuildInfoContent).digest('hex');
+  assert(
+    tsbuildInfoHash === '8af1c64551cc0c68ec334045836a74d4c5926cee5cefeb46e7acbe86695df4db',
+    'customer-app/tsconfig.tsbuildinfo must match the base (2d275535…) version — regenerate-free candidate'
+  );
+
+  // 40. Explore Header is brand-only (Browse-first / Auth-late)
+  assert(
+    headerCode.includes("const isExplore = activeTab === 'EXPLORE';") &&
+    headerCode.includes('const shouldShowAction = showAccountAction !== undefined ? showAccountAction : !isExplore;') &&
+    headerCode.includes('{shouldShowAction ? ('),
+    'CustomerHeader must omit account/auth actions on Explore (brand-only header)'
+  );
+
+  // 41. Bottom Navigation updated icon set (LAB V2)
+  assert(
+    bottomNavCode.includes('CalendarDays') &&
+    bottomNavCode.includes('UserRound') &&
+    !bottomNavCode.includes('CalendarCheck') &&
+    !bottomNavCode.includes('User,') &&
+    !bottomNavCode.includes('User }'),
+    'CustomerBottomNav must use CalendarDays and UserRound, and omit CalendarCheck and User'
+  );
+
+  // 42. Bottom Navigation stroke width 2.2 and active state (Blue icon + label, no bubble)
+  assert(
+    bottomNavCode.includes('strokeWidth={2.2}'),
+    'CustomerBottomNav icons must use unified strokeWidth={2.2}'
+  );
+  assert(
+    !bottomNavCode.includes('rounded-full bg-[#0059FF]') &&
+    !bottomNavCode.includes('bg-blue-50') &&
+    !bottomNavCode.includes('bg-[#0059FF]/10'),
+    'CustomerBottomNav must NOT have active bubble/pill background'
+  );
+
+  // 43. Bottom Navigation exactly 4 tabs
+  assert(
+    bottomNavCode.includes("id: 'EXPLORE'") &&
+    bottomNavCode.includes("id: 'FAVORITES'") &&
+    bottomNavCode.includes("id: 'BOOKINGS'") &&
+    bottomNavCode.includes("id: 'ACCOUNT'"),
+    'CustomerBottomNav must contain exactly the 4 canonical tabs'
+  );
+
+  console.log('ALL CUSTOMER EXPLORE VISUAL REMEDIATION REGRESSION CHECKS PASSED (43/43)!');
 }
 
 run().catch((err) => {

@@ -110,24 +110,24 @@ export const PropertyCard: React.FC<PropertyCardProps> = ({
         </button>
       </div>
 
-      {/* Content Info (Zero dividers, clean typography, truthful hierarchy) */}
+      {/* Content Info (Zero dividers, clean typography, truthful hierarchy: title → location → facts) */}
       <div className="p-4 flex-1 flex flex-col justify-between pointer-events-none z-1 gap-2">
         <div className="space-y-1">
-          {/* Location row — only canonical geography; omitted entirely when none */}
-          {locationText && (
-            <div className="text-[13px] font-medium text-slate-500 line-clamp-1">
-              {locationText}
-            </div>
-          )}
-
-          {/* Title */}
+          {/* Title (LAB anatomy: identity before location) */}
           <h3 className="font-extrabold text-slate-900 text-[16px] leading-snug line-clamp-2 group-hover:text-[#0059FF] transition-colors">
             {property.title}
           </h3>
 
+          {/* Location row — only canonical geography; omitted entirely when none */}
+          {locationText && (
+            <div className="text-[13px] font-medium text-slate-500 line-clamp-2">
+              {locationText}
+            </div>
+          )}
+
           {/* Facts: clean bullet-separated text */}
           {facts.length > 0 && (
-            <div className="text-[12px] font-medium text-slate-500 pt-0.5">
+            <div className="text-[13px] font-medium text-slate-500 pt-0.5">
               {facts.join(' · ')}
             </div>
           )}

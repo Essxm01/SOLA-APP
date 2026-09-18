@@ -14,6 +14,7 @@ import {
   CANONICAL_PROPERTY_TYPE_LABELS,
   getPropertyTypeLabel,
   getLocalTodayISO,
+  formatArabicGuests,
   computePriceSliderCeiling,
   extractFilterMetadata,
   formatArabicDate,
@@ -274,6 +275,16 @@ assertEqual(validateStayRange(D('2026-12-20'), D('2026-12-20'), FIXED_TEST_TODAY
   assertEqual(getPropertyTypeLabel('PENTHOUSE'), 'بنتهاوس', 'PENTHOUSE -> بنتهاوس');
   assertEqual(getPropertyTypeLabel(''), '', 'empty returns empty string');
   assertEqual(getPropertyTypeLabel(null), '', 'null returns empty string');
+}
+
+// 19. formatArabicGuests: truthful Arabic guest summary (1/2/3+ forms)
+{
+  assertEqual(formatArabicGuests(1), 'ضيف واحد', '1 -> ضيف واحد');
+  assertEqual(formatArabicGuests(2), 'ضيفان', '2 -> ضيفان');
+  assertEqual(formatArabicGuests(3), '3 ضيوف', '3 -> ضيوف plural');
+  assertEqual(formatArabicGuests(12), '12 ضيوف', '12 -> ضيوف plural');
+  assertEqual(formatArabicGuests(0), '', '0 -> empty (no invented state)');
+  assertEqual(formatArabicGuests(-1), '', 'negative -> empty');
 }
 
 console.log('Customer search intent contract tests passed');

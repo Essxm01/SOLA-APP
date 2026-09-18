@@ -66,16 +66,20 @@ A native implementation may use internal routes where technically useful, but th
 
 ## Global navigation model
 
-Customer top-level destinations:
+Customer top-level destinations (4 tabs):
 
-- استكشف
-- المفضلة
-- حجوزاتي
-- الحساب
+- استكشف (`Compass`, strokeWidth 2.2)
+- المفضلة (`Heart`, strokeWidth 2.2)
+- حجوزاتي (`CalendarDays`, strokeWidth 2.2)
+- الحساب (`UserRound`, strokeWidth 2.2)
+
+Bottom navigation is fixed to the viewport, safe-area aware, >=48px touch targets, with an active state of Blue icon + Blue label (`#0059FF`) without background bubble/pill/fill.
 
 Chat remains contextual by default rather than a permanent bottom-navigation destination.
 
-Bottom navigation is fixed to the viewport, safe-area aware, touch-friendly and hidden where a full entity/temporary flow requires focus.
+Bottom navigation is hidden where a full entity/temporary flow requires focus.
+
+Screen 03 (Explore / Home) header is Brand-only (`/favicon.svg` with `alt="KONFRM"`), embracing the browse-first / auth-late principle. Authentication is accessed via the Account tab or when triggered by protected actions.
 
 ## Core booking journey
 

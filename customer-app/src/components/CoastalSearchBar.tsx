@@ -1,6 +1,6 @@
 import React from 'react';
 import { Search, SlidersHorizontal } from 'lucide-react';
-import { type SearchIntent, formatArabicStayRange } from '../utils/searchIntent';
+import { type SearchIntent, formatArabicStayRange, formatArabicGuests } from '../utils/searchIntent';
 
 // KONFRM Customer Explore search entry — Screen 03 (Phase 5 / C2 / LAB visual remediation).
 //
@@ -30,9 +30,13 @@ export const CoastalSearchBar: React.FC<CoastalSearchBarProps> = ({
   intent,
 }) => {
   const destTitle = React.useMemo(() => {
-    if (intent.destinations && intent.destinations.length > 0) {
-      if (intent.destinations.length === 1) return intent.destinations[0];
-      return `${intent.destinations[0]} + ${intent.destinations.length - 1}`;
+    if (intent.destinations && intent.destinations.length > 1) {
+      // Truthful multi-destination summary — never promote one destination
+      // as the main intent when several are actually selected.
+      return `${intent.destinations.length} وجهات محددة`;
+    }
+    if (intent.destinations && intent.destinations.length === 1) {
+      return intent.destinations[0];
     }
     if (intent.destination && intent.destination.trim() !== '') {
       return intent.destination.trim();
@@ -45,6 +49,8 @@ export const CoastalSearchBar: React.FC<CoastalSearchBarProps> = ({
 
   const mainCopy = destTitle || 'إلى أين تريد الذهاب؟';
 
+  // Secondary line is derived from ACTUAL state only: real dates when set,
+  // real guests summary; never inserts missing values as selected state.
   const secondaryCopy = React.useMemo(() => {
     if (!hasActiveIntent) {
       return 'الوجهة · التواريخ · الضيوف';
@@ -52,10 +58,8 @@ export const CoastalSearchBar: React.FC<CoastalSearchBarProps> = ({
     const parts: string[] = [];
     if (hasDates) {
       parts.push(formatArabicStayRange(intent.checkIn, intent.checkOut));
-    } else {
-      parts.push('أضف تواريخ');
     }
-    parts.push(`${intent.totalGuests || 1} أفراد`);
+    parts.push(formatArabicGuests(intent.totalGuests || 1));
     return parts.join(' · ');
   }, [hasActiveIntent, hasDates, intent.checkIn, intent.checkOut, intent.totalGuests]);
 

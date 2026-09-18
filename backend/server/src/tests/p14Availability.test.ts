@@ -1,7 +1,9 @@
 import { strict as assert } from 'node:assert';
+import crypto from 'node:crypto';
 import { ExpressServerApp } from '../app';
 import { signAccessToken } from '../services/jwtService';
 import { bookingDb, ownerDb, propertyAvailabilityDb, propertyDb, userDb } from '../services/dbRepository';
+import { computeQuoteFingerprint } from '../utils/quoteFingerprint.js';
 
 const ownerA = 'a1111111-1111-4111-8111-111111111111';
 const ownerB = 'b2222222-2222-4222-8222-222222222222';
@@ -138,9 +140,30 @@ try {
   assert.equal((created.body as any).error.code, 'DATE_OVERLAP');
   assert.equal(createdBookings.length, 0);
 
+  function makeBookingPayload(checkIn: string, checkOut: string, guests = 2) {
+    const fp = computeQuoteFingerprint({
+      propertyId,
+      checkIn,
+      checkOut,
+      guests,
+      nights: 2,
+      totalBookingValueInCents: 400000,
+      depositAmountInCents: 200000,
+      remainingBalanceInCents: 200000,
+    });
+    return {
+      propertyId,
+      checkIn,
+      checkOut,
+      guests,
+      requestId: crypto.randomUUID(),
+      reviewedQuoteFingerprint: fp,
+    };
+  }
+
   // --- PENDING_OWNER_APPROVAL alone remains non-blocking ---
   blockingBookings = [{ checkIn: '2026-12-10', checkOut: '2026-12-13', status: 'PENDING_OWNER_APPROVAL' }];
-  const pendingCreate = await app.handleHttpRequest('POST', '/api/v1/customer/bookings', customerHeaders, { propertyId, checkIn: '2026-12-10', checkOut: '2026-12-12', guests: 2 });
+  const pendingCreate = await app.handleHttpRequest('POST', '/api/v1/customer/bookings', customerHeaders, makeBookingPayload('2026-12-10', '2026-12-12', 2));
   assert.equal(pendingCreate.statusCode, 201, 'pending bookings do not block inventory');
   assert.equal(createdBookings.length, 1);
 
@@ -155,16 +178,16 @@ try {
   manualRows = [];
   createdBookings = [];
   bookingCreateError = new Error('REST_BOOKING_INSERT_FAILED: HTTP 400 — {"code":"P0001","message":"DATE_MANUALLY_BLOCKED"}');
-  const raceCreate = await app.handleHttpRequest('POST', '/api/v1/customer/bookings', customerHeaders, { propertyId, checkIn: '2026-12-20', checkOut: '2026-12-22', guests: 2 });
+  const raceCreate = await app.handleHttpRequest('POST', '/api/v1/customer/bookings', customerHeaders, makeBookingPayload('2026-12-20', '2026-12-22', 2));
   assert.equal(raceCreate.statusCode, 409, 'manual block winning the race before INSERT is a clean conflict');
   assert.equal((raceCreate.body as any).error.code, 'DATE_OVERLAP');
   bookingCreateError = new Error('REST_BOOKING_INSERT_FAILED: HTTP 503 — {"message":"connection refused"}');
-  const outageCreate = await app.handleHttpRequest('POST', '/api/v1/customer/bookings', customerHeaders, { propertyId, checkIn: '2026-12-20', checkOut: '2026-12-22', guests: 2 });
+  const outageCreate = await app.handleHttpRequest('POST', '/api/v1/customer/bookings', customerHeaders, makeBookingPayload('2026-12-20', '2026-12-22', 2));
   assert.equal(outageCreate.statusCode, 500, 'unrelated booking persistence failures stay truthful 5xx');
   assert.equal((outageCreate.body as any).error.code, 'BOOKING_PERSISTENCE_FAILED');
   bookingCreateError = null;
 
-  const pendingForApproval = await app.handleHttpRequest('POST', '/api/v1/customer/bookings', customerHeaders, { propertyId, checkIn: '2026-12-20', checkOut: '2026-12-22', guests: 2 });
+  const pendingForApproval = await app.handleHttpRequest('POST', '/api/v1/customer/bookings', customerHeaders, makeBookingPayload('2026-12-20', '2026-12-22', 2));
   assert.equal(pendingForApproval.statusCode, 201);
   approvalError = new Error("REST_BOOKING_STATUS_UPDATE_FAILED: HTTP 400 — {\"code\":\"P0001\",\"message\":\"DATE_MANUALLY_BLOCKED\"}");
   const raceApproval = await app.handleHttpRequest('POST', `/api/v1/owner/bookings/${createdBookings[0].id}/approve`, ownerHeaders(ownerA));

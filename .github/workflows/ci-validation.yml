@@ -104,6 +104,7 @@ jobs:
           npm run test:search-intent
           npm run test:api
           npm run test:c3
+          npm run test:c4
           npm run build
 
   # ----------------------------------------------------------------------------
@@ -148,6 +149,7 @@ jobs:
           npm run test:p1-6-wallet-ledger
           npm run test:p2-1-public-api
           npm run test:p2-2-renter-api
+          npm run test:c4-booking
           npm run test:auth-p02
           npm run test:p2-3-owner-api
           npm run test:r1-admin-security

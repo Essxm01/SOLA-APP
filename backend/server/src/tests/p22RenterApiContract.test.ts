@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import crypto from 'node:crypto';
 import {
   toCustomerProfileDto,
   toCustomerAccountSummaryDto,
@@ -7,6 +8,7 @@ import {
   toCustomerBookingCreateResponseDto,
   validateCustomerFavoriteRow,
 } from '../contracts/customerRenter.js';
+import { computeQuoteFingerprint } from '../utils/quoteFingerprint.js';
 
 // ---------------------------------------------------------------------------
 // 1. Task 1: Authenticated Customer DTO boundary tests
@@ -480,13 +482,29 @@ const origBookingBlocks = bookingDb.getBlocksByPropertyId;
     remainingBalance: 2000,
   },
 });
-try {
-  const res = await app.handleHttpRequest('POST', '/api/v1/customer/bookings', customerHeaders, {
+const makeBookingPayload = () => {
+  const fp = computeQuoteFingerprint({
     propertyId: 'e0000000-0000-4000-8000-000000000002',
     checkIn: '2026-12-20',
     checkOut: '2026-12-22',
     guests: 2,
+    nights: 2,
+    totalBookingValueInCents: 400000,
+    depositAmountInCents: 200000,
+    remainingBalanceInCents: 200000,
   });
+  return {
+    propertyId: 'e0000000-0000-4000-8000-000000000002',
+    checkIn: '2026-12-20',
+    checkOut: '2026-12-22',
+    guests: 2,
+    requestId: crypto.randomUUID(),
+    reviewedQuoteFingerprint: fp,
+  };
+};
+
+try {
+  const res = await app.handleHttpRequest('POST', '/api/v1/customer/bookings', customerHeaders, makeBookingPayload());
   assert.equal(res.statusCode, 201);
   const data = (res.body as any).data;
   assert.equal('financialSummary' in data, false, 'financialSummary in data must be false');
@@ -514,12 +532,7 @@ try {
   },
 });
 try {
-  const res = await app.handleHttpRequest('POST', '/api/v1/customer/bookings', customerHeaders, {
-    propertyId: 'e0000000-0000-4000-8000-000000000002',
-    checkIn: '2026-12-20',
-    checkOut: '2026-12-22',
-    guests: 2,
-  });
+  const res = await app.handleHttpRequest('POST', '/api/v1/customer/bookings', customerHeaders, makeBookingPayload());
   assert.equal(res.statusCode, 500, 'Missing persisted createdAt must return 500 fail-closed');
 } finally {
   (bookingDb as any).create = origBookingCreate;

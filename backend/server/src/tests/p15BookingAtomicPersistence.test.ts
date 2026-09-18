@@ -1,4 +1,5 @@
 import { strict as assert } from 'node:assert';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { ExpressServerApp } from '../app';
@@ -7,6 +8,7 @@ import { bookingDb, propertyAvailabilityDb, propertyDb, userDb } from '../servic
 import { queryDb } from '../services/dbClient';
 import { CustomerDomainController } from '../controllers/domainControllers.js';
 import { calculateBookingFinancials } from '../services/financialEngine.js';
+import { computeQuoteFingerprint } from '../utils/quoteFingerprint.js';
 
 const propertyId = 'd4444444-4444-4444-8444-444444444444';
 const ownerId = 'a1111111-1111-4111-8111-111111111111';
@@ -328,8 +330,29 @@ try {
 
   const app = new ExpressServerApp();
 
+  function makeBookingPayload(checkIn: string, checkOut: string, guests = 2) {
+    const fp = computeQuoteFingerprint({
+      propertyId,
+      checkIn,
+      checkOut,
+      guests,
+      nights: 2,
+      totalBookingValueInCents: 400000,
+      depositAmountInCents: 200000,
+      remainingBalanceInCents: 200000,
+    });
+    return {
+      propertyId,
+      checkIn,
+      checkOut,
+      guests,
+      requestId: crypto.randomUUID(),
+      reviewedQuoteFingerprint: fp,
+    };
+  }
+
   // Atomic success with canonical financial persistence integrity.
-  const created = await app.handleHttpRequest('POST', '/api/v1/customer/bookings', customerHeaders, { propertyId, checkIn: '2026-12-20', checkOut: '2026-12-22', guests: 2 });
+  const created = await app.handleHttpRequest('POST', '/api/v1/customer/bookings', customerHeaders, makeBookingPayload('2026-12-20', '2026-12-22', 2));
   assert.equal(created.statusCode, 201);
   const data = (created.body as any).data;
   assert.equal('financialSummary' in data, false, 'Customer response must not expose financialSummary property');
@@ -344,13 +367,13 @@ try {
 
   // Atomic failure of the transaction: truthful failure and NO compensating delete.
   createError = new Error('REST_BOOKING_REQUEST_CREATE_RPC_FAILED: HTTP 503 — {"message":"db down"}');
-  const atomicFailure = await app.handleHttpRequest('POST', '/api/v1/customer/bookings', customerHeaders, { propertyId, checkIn: '2026-12-27', checkOut: '2026-12-29', guests: 2 });
+  const atomicFailure = await app.handleHttpRequest('POST', '/api/v1/customer/bookings', customerHeaders, makeBookingPayload('2026-12-27', '2026-12-29', 2));
   assert.equal(atomicFailure.statusCode, 500);
   assert.equal((atomicFailure.body as any).error.code, 'BOOKING_PERSISTENCE_FAILED');
 
   // Migration 025 compatibility: manual-block conflict remains a 409 availability conflict.
   createError = new Error('REST_BOOKING_REQUEST_CREATE_RPC_FAILED: HTTP 400 — {"code":"P0001","message":"DATE_MANUALLY_BLOCKED"}');
-  const manualBlockConflict = await app.handleHttpRequest('POST', '/api/v1/customer/bookings', customerHeaders, { propertyId, checkIn: '2026-12-27', checkOut: '2026-12-29', guests: 2 });
+  const manualBlockConflict = await app.handleHttpRequest('POST', '/api/v1/customer/bookings', customerHeaders, makeBookingPayload('2026-12-27', '2026-12-29', 2));
   assert.equal(manualBlockConflict.statusCode, 409);
   assert.equal((manualBlockConflict.body as any).error.code, 'DATE_OVERLAP');
   createError = null;

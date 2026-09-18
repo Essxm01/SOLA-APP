@@ -117,6 +117,9 @@ export function App() {
     checkIn: string;
     checkOut: string;
     guests: number;
+    quoteSnapshot?: any;
+    quoteFingerprint?: string | null;
+    requestId?: string | null;
   } | null>(() => {
     const saved = localStorage.getItem('sola_customer_pending_booking_intent');
     try { return saved ? JSON.parse(saved) : null; } catch { return null; }
@@ -590,6 +593,25 @@ export function App() {
 
     await fetchBookings(authToken);
     setSelectedProperty(null);
+    setShowSuccessModal(true);
+  };
+
+  const handleBookingSuccess = async (bookingData: any) => {
+    try {
+      const record = toBookingRecord(bookingData);
+      setActiveBooking(toBookingDetails(record));
+    } catch {
+      // fallback
+    }
+    const token = authToken || localStorage.getItem('sola_customer_access_token');
+    if (token) {
+      void fetchBookings(token).catch(() => undefined);
+      void fetchAccountSummary(token).catch(() => undefined);
+    }
+    setSelectedProperty(null);
+    setRestoreBookingReview(false);
+    setInterceptedContext(null);
+    localStorage.removeItem('sola_customer_pending_booking_intent');
     setShowSuccessModal(true);
   };
 
@@ -1160,6 +1182,7 @@ export function App() {
           initialSearchIntent={searchIntent}
           onClose={() => setSelectedProperty(null)}
           onInitiateBooking={handleInitiateBooking}
+          onBookingSuccess={handleBookingSuccess}
           onRequireAuth={(context) => {
             localStorage.setItem('sola_customer_pending_booking_intent', JSON.stringify(context));
             setInterceptedContext(context);

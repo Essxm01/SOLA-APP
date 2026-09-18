@@ -907,7 +907,7 @@ try {
   // Exact allowlisted keys
   assert.deepEqual(Object.keys(quoteData).sort(), [
     'checkIn', 'checkOut', 'currency', 'depositAmount', 'guests', 'nights',
-    'pricePerNight', 'propertyId', 'remainingAmount', 'totalStay',
+    'pricePerNight', 'propertyId', 'quoteFingerprint', 'remainingAmount', 'totalStay',
   ].sort());
 
   // Must use canonical DB price (5000), not client-tampered price (1)

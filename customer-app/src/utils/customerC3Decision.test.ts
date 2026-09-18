@@ -15,6 +15,7 @@
  */
 
 import { resolvePropertyLocation, resolveEffectiveMaxGuests, clampGuests } from './customerTruthfulState.js';
+import { isCheckInViable } from '../components/AvailabilityCalendar.js';
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
@@ -130,7 +131,63 @@ async function run() {
     'C3-REG-10: BookingReviewSheet must consume canonical server quote finance values'
   );
 
-  console.log('ALL C3 REGRESSION CHECKS PASSED DETERMINISTICALLY (10/10)');
+  // ── 11. Founder Bug Remediated: Check-In Viability rejects dead-end candidates ──
+  const founderBlocked = [{ checkIn: '2026-09-21', checkOut: '2026-09-25' }];
+  assert(
+    isCheckInViable('2026-09-20', founderBlocked, 2, '2026-09-18') === false,
+    'C3-REG-11: Check-in candidate preceding a blocked range without minStay contiguous nights must be rejected as unviable'
+  );
+
+  // ── 12. Valid Boundary: Check-In candidate with exact minStay contiguous nights ─
+  const boundaryBlocked = [{ checkIn: '2026-09-22', checkOut: '2026-09-25' }];
+  assert(
+    isCheckInViable('2026-09-20', boundaryBlocked, 2, '2026-09-18') === true,
+    'C3-REG-12: Check-in candidate with exact minStay (Sep 20-22) before a blocked range starting Sep 22 must be viable'
+  );
+
+  // ── 13. After Blocked Range: Check-In on checkout date of prior reservation ─────
+  assert(
+    isCheckInViable('2026-09-25', founderBlocked, 2, '2026-09-18') === true,
+    'C3-REG-13: Check-in candidate on the checkout day of a prior blocked reservation must be viable'
+  );
+
+  // ── 14. Month Boundary Viability without timezone or day drift ─────────────────
+  const octBlocked = [{ checkIn: '2026-10-05', checkOut: '2026-10-10' }];
+  assert(
+    isCheckInViable('2026-09-30', octBlocked, 2, '2026-09-18') === true,
+    'C3-REG-14a: Month boundary crossing into next month (Sep 30 -> Oct 2) must be viable when nights are open'
+  );
+  const oct1Blocked = [{ checkIn: '2026-10-01', checkOut: '2026-10-05' }];
+  assert(
+    isCheckInViable('2026-09-30', oct1Blocked, 2, '2026-09-18') === false,
+    'C3-REG-14b: Month boundary crossing into next month must be rejected if stay interval overlaps next month blocked date'
+  );
+
+  // ── 15. Zero Blocks & Past Date Enforcement ────────────────────────────────────
+  assert(
+    isCheckInViable('2026-10-15', [], 3, '2026-09-18') === true,
+    'C3-REG-15a: Future date on open calendar with zero blocks must be viable'
+  );
+  assert(
+    isCheckInViable('2026-09-17', [], 2, '2026-09-18') === false,
+    'C3-REG-15b: Past date relative to today must not be viable as check-in'
+  );
+
+  // ── 16. Guaranteed Escape Action & In-line Notice Guard ─────────────────────────
+  assert(
+    calendarSource.includes('تغيير تاريخ الوصول'),
+    'C3-REG-16a: AvailabilityCalendar must provide explicit "تغيير تاريخ الوصول" escape action'
+  );
+  assert(
+    calendarSource.includes('هذا اليوم لا يتيح المدة الدنيا المطلوبة للإقامة بشكل متصل. اختر تاريخ وصول آخر.'),
+    'C3-REG-16b: AvailabilityCalendar must show canonical Arabic inline notice when tapping unviable check-in date'
+  );
+  assert(
+    calendarSource.includes('min-h-[44px]'),
+    'C3-REG-16c: AvailabilityCalendar touch targets must meet minimum 44px requirement'
+  );
+
+  console.log('ALL C3 REGRESSION CHECKS PASSED DETERMINISTICALLY (16/16)');
 }
 
 run().catch((err) => {

@@ -44,10 +44,53 @@ function toLocalDateStr(d: Date): string {
   return `${year}-${month}-${day}`;
 }
 
+function addDays(d: Date, days: number): Date {
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate() + days);
+}
+
 function daysBetween(a: Date, b: Date): number {
   const utcA = Date.UTC(a.getFullYear(), a.getMonth(), a.getDate());
   const utcB = Date.UTC(b.getFullYear(), b.getMonth(), b.getDate());
   return Math.round((utcB - utcA) / 86400000);
+}
+
+/**
+ * Computes whether candidate Check-In date D can produce at least one valid
+ * contiguous stay of length minStay before allowing it to be tapped as Check-In.
+ *
+ * Checks stay interval [D, D + minStay) against blocked ranges [b.checkIn, b.checkOut)
+ * using half-open interval semantics: candidate < b.checkOut && minCheckout > b.checkIn.
+ */
+export function isCheckInViable(
+  candidate: Date | string,
+  blockedRanges: BlockedRange[] = [],
+  minStay: number = 2,
+  today: Date | string = new Date()
+): boolean {
+  const candidateDate = typeof candidate === 'string' ? new Date(candidate + 'T00:00:00') : candidate;
+  const todayDate = typeof today === 'string' ? new Date(today + 'T00:00:00') : today;
+
+  const todayNormalized = new Date(todayDate.getFullYear(), todayDate.getMonth(), todayDate.getDate());
+  const candidateNormalized = new Date(candidateDate.getFullYear(), candidateDate.getMonth(), candidateDate.getDate());
+
+  if (candidateNormalized < todayNormalized) {
+    return false;
+  }
+
+  const candidateStr = toLocalDateStr(candidateNormalized);
+  const effectiveMinStay = Math.max(1, minStay);
+  const minCheckoutDate = addDays(candidateNormalized, effectiveMinStay);
+  const minCheckoutStr = toLocalDateStr(minCheckoutDate);
+
+  for (const b of blockedRanges) {
+    if (!b.checkIn || !b.checkOut || b.checkIn >= b.checkOut) continue;
+    // Half-open interval overlap: [candidateStr, minCheckoutStr) overlaps [b.checkIn, b.checkOut)
+    if (candidateStr < b.checkOut && minCheckoutStr > b.checkIn) {
+      return false;
+    }
+  }
+
+  return true;
 }
 
 const ARABIC_MONTHS = [
@@ -94,20 +137,6 @@ export const AvailabilityCalendar: React.FC<AvailabilityCalendarProps> = ({
   const checkInDate = useMemo(() => (checkIn ? new Date(checkIn + 'T00:00:00') : null), [checkIn]);
   const checkOutDate = useMemo(() => (checkOut ? new Date(checkOut + 'T00:00:00') : null), [checkOut]);
 
-  // Set of dates that cannot be chosen as checkIn because of an existing booking
-  const disabledCheckInDates = useMemo(() => {
-    const set = new Set<string>();
-    blockedRanges.forEach((range) => {
-      const start = new Date(range.checkIn + 'T00:00:00');
-      const end = new Date(range.checkOut + 'T00:00:00');
-      let curr = new Date(start);
-      while (curr < end) {
-        set.add(toLocalDateStr(curr));
-        curr.setDate(curr.getDate() + 1);
-      }
-    });
-    return set;
-  }, [blockedRanges]);
 
   // Check if a range [start, end] intersects any blocked booking
   const isOverlapping = (start: Date, end: Date): boolean => {
@@ -127,7 +156,10 @@ export const AvailabilityCalendar: React.FC<AvailabilityCalendarProps> = ({
 
     // Phase 1: Select Check-In
     if (!checkIn || (checkIn && checkOut)) {
-      if (disabledCheckInDates.has(dayStr)) return;
+      if (!isCheckInViable(day, blockedRanges, minStay, today)) {
+        setValidationNotice('هذا اليوم لا يتيح المدة الدنيا المطلوبة للإقامة بشكل متصل. اختر تاريخ وصول آخر.');
+        return;
+      }
       setValidationNotice(null);
       onRangeChange(dayStr, null);
       return;
@@ -138,7 +170,10 @@ export const AvailabilityCalendar: React.FC<AvailabilityCalendarProps> = ({
 
     // Tapping before or on check-in restarts check-in
     if (day <= cIn) {
-      if (disabledCheckInDates.has(dayStr)) return;
+      if (!isCheckInViable(day, blockedRanges, minStay, today)) {
+        setValidationNotice('هذا اليوم لا يتيح المدة الدنيا المطلوبة للإقامة بشكل متصل. اختر تاريخ وصول آخر.');
+        return;
+      }
       setValidationNotice(null);
       onRangeChange(dayStr, null);
       return;
@@ -204,11 +239,15 @@ export const AvailabilityCalendar: React.FC<AvailabilityCalendarProps> = ({
       return 'in-range';
     }
 
-    if (checkInDate && !checkOutDate && day > checkInDate) {
-      if (isOverlapping(checkInDate, day)) return 'unavailable';
+    if (checkInDate && !checkOutDate) {
+      if (day > checkInDate) {
+        if (isOverlapping(checkInDate, day)) return 'unavailable';
+      } else {
+        if (!isCheckInViable(day, blockedRanges, minStay, today)) return 'unavailable';
+      }
+    } else {
+      if (!isCheckInViable(day, blockedRanges, minStay, today)) return 'unavailable';
     }
-
-    if (disabledCheckInDates.has(dayStr)) return 'unavailable';
 
     if (dayStr === toLocalDateStr(today)) return 'today';
 
@@ -248,7 +287,21 @@ export const AvailabilityCalendar: React.FC<AvailabilityCalendarProps> = ({
               ? 'bg-blue-50/50 border-[#0059FF]/30 text-[#0059FF]'
               : 'bg-slate-50 border-slate-200/70 text-slate-700'
           }`}>
-            <span className="text-[11px] text-slate-400 block font-medium">الوصول</span>
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] text-slate-400 block font-medium">الوصول</span>
+              {checkIn && !checkOut && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setValidationNotice(null);
+                    onRangeChange(null, null);
+                  }}
+                  className="text-[11px] font-bold text-[#0059FF] hover:underline"
+                >
+                  تغيير
+                </button>
+              )}
+            </div>
             <span className="font-bold text-slate-800">{checkIn || 'اختر'}</span>
           </div>
 
@@ -313,7 +366,7 @@ export const AvailabilityCalendar: React.FC<AvailabilityCalendarProps> = ({
 
         {days.map((day) => {
           const state = getDayState(day);
-          const isClickable = state !== 'disabled' && state !== 'unavailable';
+          const isPast = state === 'disabled';
 
           let innerCircleClass = 'w-9 h-9 flex items-center justify-center rounded-full text-xs font-bold transition-all ';
           let rangeConnector = '';
@@ -346,8 +399,9 @@ export const AvailabilityCalendar: React.FC<AvailabilityCalendarProps> = ({
             >
               <button
                 type="button"
-                onClick={() => isClickable && handleDayPress(day)}
-                disabled={!isClickable}
+                onClick={() => !isPast && handleDayPress(day)}
+                disabled={isPast}
+                aria-disabled={state === 'unavailable' ? 'true' : undefined}
                 className="w-full h-11 min-w-[44px] min-h-[44px] p-0 flex items-center justify-center relative focus:outline-none"
                 aria-label={toLocalDateStr(day)}
               >
@@ -361,7 +415,7 @@ export const AvailabilityCalendar: React.FC<AvailabilityCalendarProps> = ({
       </div>
 
       {/* ── CALENDAR HELPER / VALIDATION STATUS ── */}
-      <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between text-xs min-h-[28px]">
+      <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between text-xs min-h-[44px] gap-2">
         <div className="flex-1 text-right">
           {validationNotice ? (
             <div className="flex items-center gap-1.5 text-amber-700 font-bold">
@@ -376,6 +430,20 @@ export const AvailabilityCalendar: React.FC<AvailabilityCalendarProps> = ({
             <span className="text-slate-600 font-medium">تم تحديد التواريخ</span>
           )}
         </div>
+
+        {checkIn && !checkOut && (
+          <button
+            type="button"
+            onClick={() => {
+              setValidationNotice(null);
+              onRangeChange(null, null);
+            }}
+            className="min-h-[44px] px-3 py-2 text-xs font-bold text-[#0059FF] hover:bg-blue-50 active:scale-95 rounded-xl transition-all inline-flex items-center justify-center shrink-0 border border-[#0059FF]/20"
+            aria-label="تغيير تاريخ الوصول"
+          >
+            تغيير تاريخ الوصول
+          </button>
+        )}
       </div>
 
     </div>

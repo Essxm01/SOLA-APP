@@ -103,6 +103,7 @@ jobs:
           npm run test:entry-state
           npm run test:search-intent
           npm run test:api
+          npm run test:c3
           npm run build
 
   # ----------------------------------------------------------------------------

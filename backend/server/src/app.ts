@@ -37,6 +37,11 @@ import {
   type OwnerBookingListItemDto,
 } from './contracts/ownerCore.js';
 import type { ApiSuccessResponse, ApiErrorResponse } from './types/server';
+import {
+  computeQuoteFingerprint,
+  isValidUuid,
+  isValidQuoteFingerprint,
+} from './utils/quoteFingerprint.js';
 
 export interface RouteHandlerResult {
   statusCode: number;
@@ -3369,6 +3374,17 @@ export class ExpressServerApp {
             const validated = CustomerDomainController.validateCustomerBookingRequest(propWithPrice, checkIn, checkOut, Number(guests));
             const breakdown = calculateBookingFinancials(validated.totalBookingValue, validated.firstNightPrice);
 
+            const quoteFingerprint = computeQuoteFingerprint({
+              propertyId,
+              checkIn,
+              checkOut,
+              guests: Number(guests),
+              nights: validated.nights,
+              totalBookingValueInCents: breakdown.totalBookingValueInCents,
+              depositAmountInCents: breakdown.depositAmountInCents,
+              remainingBalanceInCents: breakdown.remainingBalanceInCents,
+            });
+
             return {
               statusCode: 200,
               body: {
@@ -3384,6 +3400,7 @@ export class ExpressServerApp {
                   depositAmount: breakdown.depositAmountInCents / 100,
                   remainingAmount: breakdown.remainingBalanceInCents / 100,
                   currency: 'EGP',
+                  quoteFingerprint,
                 },
                 timestamp,
               },
@@ -3398,7 +3415,7 @@ export class ExpressServerApp {
 
         // 4.4 Customer Booking Request Creation — canonical intent only, revalidated on the server
         if (path === '/api/v1/customer/bookings' && method === 'POST') {
-          const { propertyId, checkIn, checkOut, guests } = bodyPayload || {};
+          const { propertyId, checkIn, checkOut, guests, reviewedQuoteFingerprint, requestId } = bodyPayload || {};
 
           if (!propertyId || !checkIn || !checkOut || !guests) {
             return {
@@ -3471,6 +3488,62 @@ export class ExpressServerApp {
             };
           }
 
+          if (!requestId || !isValidUuid(requestId) || !reviewedQuoteFingerprint || !isValidQuoteFingerprint(reviewedQuoteFingerprint)) {
+            return {
+              statusCode: 400,
+              body: { success: false, error: { code: 'INVALID_SAFETY_METADATA', message: 'بيانات أمان مراجعة الطلب غير مكتملة أو غير صالحة' }, timestamp },
+            };
+          }
+
+          // Idempotency pre-check: Check if booking with this requestId already exists
+          try {
+            const existing = await bookingDb.getById(requestId);
+            if (existing) {
+              const isSameCustomer = existing.customerId === customerId;
+              const isSameIntent =
+                existing.propertyId === propertyId &&
+                existing.checkIn === checkIn &&
+                existing.checkOut === checkOut &&
+                Number(existing.guestsCount) === Number(guests);
+
+              if (isSameCustomer && isSameIntent) {
+                const responseDto = toCustomerBookingCreateResponseDto(existing);
+                return {
+                  statusCode: 200,
+                  body: {
+                    success: true,
+                    data: {
+                      ...responseDto,
+                      idempotentReplay: true,
+                    },
+                    timestamp,
+                  },
+                };
+              }
+
+              return {
+                statusCode: 409,
+                body: {
+                  success: false,
+                  error: { code: 'IDEMPOTENCY_CONFLICT', message: 'معرف الطلب مستخدم مسبقاً في عملية حجز أخرى' },
+                  timestamp,
+                },
+              };
+            }
+          } catch (lookupErr: any) {
+            return {
+              statusCode: 500,
+              body: {
+                success: false,
+                error: {
+                  code: 'IDEMPOTENCY_LOOKUP_FAILED',
+                  message: 'تعذر التحقق من حالة الطلب السابقة في قاعدة البيانات',
+                },
+                timestamp,
+              },
+            };
+          }
+
           const propWithPrice = {
             ...prop,
             basePricePerNight: Number(rawPrice),
@@ -3480,7 +3553,48 @@ export class ExpressServerApp {
             const validated = CustomerDomainController.validateCustomerBookingRequest(propWithPrice, checkIn, checkOut, Number(guests));
             const breakdown = calculateBookingFinancials(validated.totalBookingValue, validated.firstNightPrice);
 
-            const bookingId = crypto.randomUUID();
+            // Compute current quoteFingerprint and compare against reviewedQuoteFingerprint
+            const currentFingerprint = computeQuoteFingerprint({
+              propertyId,
+              checkIn,
+              checkOut,
+              guests: Number(guests),
+              nights: validated.nights,
+              totalBookingValueInCents: breakdown.totalBookingValueInCents,
+              depositAmountInCents: breakdown.depositAmountInCents,
+              remainingBalanceInCents: breakdown.remainingBalanceInCents,
+            });
+
+            if (currentFingerprint !== reviewedQuoteFingerprint) {
+              return {
+                statusCode: 409,
+                body: {
+                  success: false,
+                  error: {
+                    code: 'QUOTE_CHANGED',
+                    message: 'السعر الحالي مختلف عن السعر الذي راجعته آخر مرة. راجع المبلغ الجديد قبل إرسال الطلب.',
+                  },
+                  data: {
+                    currentQuote: {
+                      propertyId,
+                      checkIn,
+                      checkOut,
+                      nights: validated.nights,
+                      guests: Number(guests),
+                      pricePerNight: validated.firstNightPrice,
+                      totalStay: breakdown.totalBookingValueInCents / 100,
+                      depositAmount: breakdown.depositAmountInCents / 100,
+                      remainingAmount: breakdown.remainingBalanceInCents / 100,
+                      currency: 'EGP',
+                      quoteFingerprint: currentFingerprint,
+                    },
+                  },
+                  timestamp,
+                },
+              };
+            }
+
+            const bookingId = requestId; // requestId is used as booking UUID PK
             const bookingNumber = `BK-${Date.now().toString().slice(-6)}`;
             let created: any;
 
@@ -3517,6 +3631,53 @@ export class ExpressServerApp {
                   body: { success: false, error: { code: 'DATE_OVERLAP', message: 'التواريخ المطلوبة محجوبة حاليًا من قبل مالك الوحدة' }, timestamp },
                 };
               }
+
+              // Race condition safety: if duplicate PK conflict occurred on booking insert
+              const isPkConflict =
+                String(dbErr?.message || '').includes('duplicate key') ||
+                String(dbErr?.message || '').includes('bookings_pkey') ||
+                String(dbErr?.message || '').includes('unique constraint');
+
+              if (isPkConflict) {
+                try {
+                  const existing = await bookingDb.getById(bookingId);
+                  if (existing) {
+                    const isSameCustomer = existing.customerId === customerId;
+                    const isSameIntent =
+                      existing.propertyId === propertyId &&
+                      existing.checkIn === checkIn &&
+                      existing.checkOut === checkOut &&
+                      Number(existing.guestsCount) === Number(guests);
+
+                    if (isSameCustomer && isSameIntent) {
+                      const responseDto = toCustomerBookingCreateResponseDto(existing);
+                      return {
+                        statusCode: 200,
+                        body: {
+                          success: true,
+                          data: {
+                            ...responseDto,
+                            idempotentReplay: true,
+                          },
+                          timestamp,
+                        },
+                      };
+                    }
+
+                    return {
+                      statusCode: 409,
+                      body: {
+                        success: false,
+                        error: { code: 'IDEMPOTENCY_CONFLICT', message: 'معرف الطلب مستخدم مسبقاً في عملية حجز أخرى' },
+                        timestamp,
+                      },
+                    };
+                  }
+                } catch {
+                  // fall through to generic error
+                }
+              }
+
               return {
                 statusCode: 500,
                 body: { success: false, error: { code: 'BOOKING_PERSISTENCE_FAILED', message: 'فشل حفظ طلب الحجز في قاعدة البيانات' }, timestamp },

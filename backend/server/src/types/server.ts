@@ -6,7 +6,7 @@
 
 export interface ApiErrorResponse {
   success: false;
-  data?: undefined;
+  data?: any;
   error: {
     code: string;
     message: string;

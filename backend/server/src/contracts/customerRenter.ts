@@ -98,6 +98,21 @@ export interface CustomerBookingCreateResponseDto {
   remainingAmount: number;
   currency: 'EGP';
   createdAt: string;
+  idempotentReplay?: boolean;
+}
+
+export interface CustomerBookingCalculateResponseDto {
+  propertyId: string;
+  checkIn: string;
+  checkOut: string;
+  nights: number;
+  guests: number;
+  pricePerNight: number;
+  totalStay: number;
+  depositAmount: number;
+  remainingAmount: number;
+  currency: 'EGP';
+  quoteFingerprint: string;
 }
 
 export interface CustomerFavoriteRow {

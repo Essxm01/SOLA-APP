@@ -10,6 +10,7 @@
     "test:search-intent": "npx tsx src/utils/searchIntent.test.ts",
     "test:api": "npx tsx src/utils/api.test.ts",
     "test:c3": "npx tsx src/utils/customerC3Decision.test.ts",
+    "test:c4": "npx tsx src/utils/customerC4Review.test.ts",
     "build": "tsc -b && vite build",
     "preview": "vite preview"
   },

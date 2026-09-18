@@ -4,7 +4,8 @@ Normal KONFRM surfaces are canvas, white/light card, sheet and neutral supportin
 
 `#0F172A` remains a high-contrast text token only. Semantic colours communicate genuine status and are not additional brand palettes. Yellow is a sparse accent, never the routine primary CTA.
 
-Use tokens and component contracts before utility-class or literal-value choices. Existing violations are tracked in [LEGACY_DRIFT.md](../LEGACY_DRIFT.md); their existence does not authorize future use.
+Use tokens and component contracts before utility-class or literal-value choices. Existing violations are tracked in [`LEGACY_DRIFT.md`](../LEGACY_DRIFT.md); their existence does not authorize future use.
+
 
 ## Composition and trust additions
 

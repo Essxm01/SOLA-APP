@@ -1,20 +1,10 @@
 # KONFRM Design System Changelog
 
-## 2.2.0 — 2026-09-18
-
-### Design Lab vision + Customer Phase 5 authority sync
-
-- Added a Founder-authorized cross-role Design Lab vision covering composition, interaction grammar, role personalities, state completeness, mobile ergonomics, truth/trust presentation and acceptance philosophy.
-- Added one consolidated current Customer Phase 5 screen model (01–26), including embedded surfaces and package boundaries.
-- Added the C3 Screen 06 Property Details / Booking Decision final design contract.
-- Extended relevant component/guideline contracts with card-soup prevention, state-aware recovery actions, canonical trust-claim rules, server-authoritative quote presentation, mobile touch/typography requirements and physical-device acceptance guidance.
-- Preserved historical audits, legacy drift, tokens, generated output and implementation evidence; no product code, backend, database, finance, booking or roadmap logic changed.
-
 ## 2.1.2 — 2026-08-23
 
 ### Founder entry and Owner UX decision sync
 
-- Recorded approval for first-run-only Customer and Owner Splash/onboarding policy (UX-ENTRY-01), Owner action-first Home (UX-OWNER-01) and role-specific navigation (UX-NAV-01).
+- Recorded approval for first-run-only Customer and Owner Splash/onboarding policy (`UX-ENTRY-01`), Owner action-first Home (`UX-OWNER-01`) and role-specific navigation (`UX-NAV-01`).
 - Separated first-run branded introduction from technical bootstrap/session loading and reconfirmed that Admin has no consumer Splash/onboarding model.
 - No runtime UI, business logic, backend or database changes.
 
@@ -22,7 +12,7 @@
 
 ### Founder decision-state sync
 
-- Recorded Founder approval for UX-NAV-02, UX-ADMIN-CHAT-01 and UX-ADMIN-LOGIN-01.
+- Recorded Founder approval for `UX-NAV-02`, `UX-ADMIN-CHAT-01` and `UX-ADMIN-LOGIN-01`.
 - Clarified that these approvals define capability/policy only; they do not implement Favorites persistence, Admin conversation authorization or Admin login changes.
 - No runtime UI, business logic, backend or database changes.
 
@@ -46,3 +36,12 @@
 ## 1.0.0 — 2026-08-15
 
 - Historical forensic extraction from the Owner App. Superseded as an authority model by v2.0.0.
+
+
+## Unreleased Design Lab addendum — 2026-09-18
+
+- Added a Founder-authorized cross-role Design Lab vision covering composition, interaction grammar, role personalities, state completeness, mobile ergonomics, truth/trust presentation and acceptance philosophy.
+- Added one consolidated current Customer Phase 5 screen model (01–26), including embedded surfaces and package boundaries.
+- Added the C3 Screen 06 Property Details / Booking Decision final design contract.
+- Extended relevant component/guideline contracts with card-soup prevention, state-aware recovery actions, canonical trust-claim rules, server-authoritative quote presentation, mobile touch/typography requirements and physical-device acceptance guidance.
+- Preserved historical audits, legacy drift, tokens, generated output and implementation evidence; no product code, backend, database, finance, booking or roadmap logic changed.

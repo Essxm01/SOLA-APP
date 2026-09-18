@@ -1,7 +1,7 @@
 # KONFRM — Customer Phase 5 Master UX
 
 **Status:** Current Customer design-program model  
-**Design System version:** 2.2.0  
+**Design System baseline:** 2.1.2  
 **Purpose:** Keep the current Customer screen architecture and Design Lab intent discoverable in one repository source.  
 **Authority boundary:** UX/design contract only. Business, finance, backend and roadmap rules remain governed by their canonical sources.
 

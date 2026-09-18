@@ -1,6 +1,6 @@
 # KONFRM — Design Lab Vision
 
-**Design System version:** 2.2.0  
+**Design System baseline:** 2.1.2  
 **Status:** Founder-authorized additive Design Lab guidance  
 **Scope:** Visual language, product experience, interaction grammar and UX quality across Customer, Owner and Admin.  
 **Non-goal:** This document does not change booking, finance, database, authorization, payment, privacy or roadmap rules.

@@ -1,6 +1,6 @@
 # Role data-visibility matrix
 
-VISIBLE = normally useful on the role’s primary screen; SUMMARY = aggregate/limited view; CONTEXTUAL = shown only in an applicable detail/decision; HIDDEN = not a product experience for that role. This describes presentation, not a change to backend authorization.
+`VISIBLE` = normally useful on the role’s primary screen; `SUMMARY` = aggregate/limited view; `CONTEXTUAL` = shown only in an applicable detail/decision; `HIDDEN` = not a product experience for that role. This describes presentation, not a change to backend authorization.
 
 | Domain | Customer | Owner | Admin | Reason / guardrail |
 |---|---|---|---|---|
@@ -16,6 +16,7 @@ VISIBLE = normally useful on the role’s primary screen; SUMMARY = aggregate/li
 | Audit | HIDDEN | HIDDEN | CONTEXTUAL | Technical/audit evidence belongs in an Admin investigation, not Customer/Owner routine UI. |
 
 The approved Admin chat visibility is a contextual product policy. Its authorization model and audit implementation remain future work; this document does not grant unrestricted conversation browsing.
+
 
 ## Trust and public-detail truth
 

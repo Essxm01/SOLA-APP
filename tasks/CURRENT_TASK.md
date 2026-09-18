@@ -29,6 +29,7 @@ SEARCH_INTENT_RESET: DEFERRED / UNCHANGED
 - Zero booking/finance/availability rule changes.
 - Shared `PropertyCard` anatomy across Explore, Search Results, and Favorites (Title before location, 1.4:1 ratio, compact 13px facts, clean price without redundant labels, independent favorite).
 - Explore Header is brand-only (Browse-first / Auth-late) with logo/wordmark only, omitting entry/account buttons on Explore.
+- Explore Hero: Headline "هتصيف فين؟", Subtitle: NONE (direct headline → search flow with 16–20px rhythm).
 - 4-tab bottom navigation with updated icons (`Compass`, `Heart`, `CalendarDays`, `UserRound`), uniform 2.2 stroke width, and active state blue icon + blue label without bubble/pill background.
 - Local Explore state views (skeleton feed, empty state, error state).
 

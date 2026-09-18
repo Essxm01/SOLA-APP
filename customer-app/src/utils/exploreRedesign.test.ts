@@ -39,42 +39,51 @@ async function run() {
     'CustomerHeader authenticated button must have 44-48px target (w-11 h-11 or w-12 h-12)'
   );
 
-  // 4. Hero Title: "هتصيف فين؟" without emoji
+  // 4. Hero Headline: "هتصيف فين؟" without emoji
   assert(
     appCode.includes('هتصيف فين؟'),
-    'App.tsx Explore hero title must be "هتصيف فين؟"'
+    'App.tsx Explore hero headline must be "هتصيف فين؟"'
   );
   assert(
     !appCode.includes('هتصيف فين؟ 🏖️') && !searchBarCode.includes('🏖️'),
-    'Hero title must NOT contain emoji 🏖️'
+    'Hero headline must NOT contain emoji 🏖️'
   );
 
-  // 5. Hero Subtitle: "اكتشف إقامة تناسب رحلتك." (14px, muted slate-500)
+  // 5. Hero Subtitle: Explicitly REMOVED by Founder (Subtitle: NONE)
   assert(
-    appCode.includes('اكتشف إقامة تناسب رحلتك.'),
-    'App.tsx Explore hero subtitle must be "اكتشف إقامة تناسب رحلتك."'
+    !appCode.includes('اكتشف إقامة تناسب رحلتك.') && !searchBarCode.includes('اكتشف إقامة تناسب رحلتك.'),
+    'The removed subtitle "اكتشف إقامة تناسب رحلتك." must be ABSENT from Explore implementation'
   );
+  const heroHeadlineIndex = appCode.indexOf('هتصيف فين؟');
+  const exploreHeroStartIndex = appCode.lastIndexOf('<div', heroHeadlineIndex);
+  const exploreSearchStartIndex = appCode.indexOf('<CoastalSearchBar', heroHeadlineIndex);
+  const exploreHeroSection = appCode.slice(exploreHeroStartIndex, exploreSearchStartIndex);
   assert(
-    appCode.includes('text-sm font-medium text-slate-500 mt-1.5'),
-    'Hero subtitle must have 14px (text-sm), font-medium, and muted text-slate-500'
+    !exploreHeroSection.includes('<p') && !exploreHeroSection.includes('<span'),
+    'No replacement Hero subtitle/support copy was added; Hero must have Subtitle: NONE'
   );
 
-  // 6. Spacing: Header to Hero 20-24px
+  // 6. Hero Direct Flow: headline → Search
+  const headlineIdx = exploreHeroSection.indexOf('هتصيف فين؟');
+  assert(
+    headlineIdx !== -1 && !exploreHeroSection.slice(headlineIdx).includes('</h2>') && !exploreHeroSection.slice(headlineIdx).includes('</h3>'),
+    'Hero must flow directly from headline to Search without intervening elements'
+  );
+
+  // 7. Spacing: Header to Hero 20-24px
   assert(
     appCode.includes("activeTab === 'EXPLORE' ? 'bg-[#F8FAFC] pt-5'"),
     'Explore canvas must have bg-[#F8FAFC] and pt-5 (20px) under header'
   );
 
-  // 7. Spacing: Title to Support 6-8px (mt-1.5 = 6px)
+  // 8. Spacing: Hero to Search 16-20px (mb-5 or mb-4), NO dead subtitle spacing
   assert(
-    appCode.includes('mt-1.5') || appCode.includes('mt-2'),
-    'Hero title to subtitle gap must be 6-8px (mt-1.5 or mt-2)'
+    exploreHeroSection.includes('mb-5') || exploreHeroSection.includes('mb-4'),
+    'Hero to search entry must have approved 16-20px spacing (mb-5 or mb-4)'
   );
-
-  // 8. Spacing: Support to Search 16-20px
   assert(
-    appCode.includes('mb-6') || appCode.includes('mb-5') || appCode.includes('mt-4'),
-    'Hero to search entry must have 16-24px vertical spacing'
+    !exploreHeroSection.includes('mt-1.5') && !exploreHeroSection.includes('mt-2'),
+    'Hero section must NOT preserve obsolete dead subtitle spacing (mt-1.5 / mt-2)'
   );
 
   // 9. Search Entry Surface Container: 60-64px height, radius 16px, quiet border, subtle shadow

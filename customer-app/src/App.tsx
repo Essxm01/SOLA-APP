@@ -726,14 +726,11 @@ export function App() {
         {/* Tab 1: EXPLORE */}
         {activeTab === 'EXPLORE' && (
           <div>
-            {/* Hero Section (24px/800 title, no emoji, 14px/500 subtitle) */}
-            <div className="mb-4">
+            {/* Hero Section (24px/800 title, no emoji, Subtitle: NONE) */}
+            <div className="mb-5">
               <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">
                 هتصيف فين؟
               </h1>
-              <p className="text-sm font-medium text-slate-500 mt-1.5">
-                اكتشف إقامة تناسب رحلتك.
-              </p>
             </div>
 
             {/* Mobile Coastal Search Entry (Screen 03 -> Screen 04) */}

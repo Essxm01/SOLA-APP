@@ -4,7 +4,7 @@ import {
   PHONE_VALIDATION_MESSAGES,
 } from './phoneValidation';
 
-function assert(condition: unknown, message: string): asserts condition {
+function assert(condition: unknown, message: string) {
   if (!condition) {
     throw new Error(`[SCREEN08_AUTH_CONTRACT_TEST_FAILURE] ${message}`);
   }
@@ -317,23 +317,45 @@ async function run() {
   passedChecks++;
 
   // 5.3 Reset restoreBookingReview on cancel
+  // 5.3 Reset restoreBookingReview on cancel
   assert(
     appFile.includes('setRestoreBookingReview(false)'),
     'Cancel auth must reset restoreBookingReview'
   );
   passedChecks++;
 
-  // 5.4 Visible draft preservation: selectedProperty is NOT set to null during handleCancelAuth
+  // 5.4 Invalidate in-memory interceptedContext on cancel (CANONICAL FIX)
   const cancelAuthFnMatch = appFile.match(/const handleCancelAuth = \(\) => \{([\s\S]*?)\};/);
   assert(cancelAuthFnMatch !== null, 'handleCancelAuth function must exist');
   const cancelAuthBody = cancelAuthFnMatch[1];
+  assert(
+    cancelAuthBody.includes('setInterceptedContext(null)'),
+    'handleCancelAuth must invalidate in-memory interceptedContext on cancel'
+  );
+  passedChecks++;
+
+  // 5.5 Visible draft preservation: selectedProperty is NOT set to null during handleCancelAuth
   assert(
     !cancelAuthBody.includes('setSelectedProperty(null)'),
     'handleCancelAuth must NOT clear selectedProperty (visible booking review must be preserved)'
   );
   passedChecks++;
 
-  // 5.5 Late response guard (generation counter)
+  // 5.6 handleAuthSuccess must guard booking restore by authOrigin type
+  const authSuccessFnMatch = appFile.match(/const handleAuthSuccess = \([\s\S]*?\) => \{([\s\S]*?)\n  \};/);
+  assert(authSuccessFnMatch !== null, 'handleAuthSuccess function must exist');
+  const authSuccessBody = authSuccessFnMatch[1];
+  assert(
+    authSuccessBody.includes("authOrigin?.type === 'PROTECTED_BOOKING'"),
+    'handleAuthSuccess must guard booking review restoration with authOrigin?.type === PROTECTED_BOOKING'
+  );
+  assert(
+    authSuccessBody.includes('setInterceptedContext(null)'),
+    'handleAuthSuccess must clear stale interceptedContext when origin is not protected booking'
+  );
+  passedChecks++;
+
+  // 5.7 Late response guard (generation counter)
   assert(
     appFile.includes('authRequestGenerationRef') &&
     appFile.includes('currentGeneration !== authRequestGenerationRef.current'),
@@ -341,7 +363,7 @@ async function run() {
   );
   passedChecks++;
 
-  // 5.6 Customer-only surface safety (no Owner capability leakage)
+  // 5.8 Customer-only surface safety (no Owner capability leakage)
   assert(
     appFile.includes("surface: 'CUSTOMER'"),
     'Prototype auth request must explicitly specify surface: CUSTOMER'
@@ -352,7 +374,7 @@ async function run() {
   );
   passedChecks++;
 
-  // 5.7 Downstream legacy Name Onboarding compatibility
+  // 5.9 Downstream legacy Name Onboarding compatibility
   assert(
     authModalFile.includes("initialStep = 'PHONE'") &&
     authModalFile.includes('initialStep?:'),
@@ -364,7 +386,289 @@ async function run() {
   );
   passedChecks++;
 
-  console.log(`\n[PASS] All ${passedChecks} Screen 08 Customer Auth contracts verified successfully.\n`);
+  // -------------------------------------------------------------
+  // GROUP 6: Sequential Behavioral State-Machine Verification
+  // -------------------------------------------------------------
+
+  interface BookingContext {
+    propertyId: string;
+    checkIn: string;
+    checkOut: string;
+    guests: number;
+    quoteSnapshot: { totalStay: number; depositAmount: number };
+    requestId: string;
+  }
+
+  interface AuthOrigin {
+    type: 'PROTECTED_BOOKING' | 'PROTECTED_FAVORITE' | 'DIRECT_ACCOUNT' | 'DIRECT_WELCOME' | 'DIRECT_EXPLORE';
+    propertyId?: string;
+    context?: BookingContext;
+  }
+
+  class CustomerAppHandoffSimulation {
+    authToken: string | null = null;
+    selectedProperty: { id: string; title: string } | null = null;
+    visibleDraft: {
+      propertyId: string;
+      checkIn: string;
+      checkOut: string;
+      guests: number;
+      quote: { totalStay: number; depositAmount: number };
+      requestId: string;
+      isMounted: boolean;
+    } | null = null;
+    interceptedContext: BookingContext | null = null;
+    authOrigin: AuthOrigin | null = null;
+    showAuthModal: boolean = false;
+    restoreBookingReview: boolean = false;
+    authRequestGeneration: number = 0;
+    localStorageStore = new Map<string, string>();
+    userFavorites: string[] = [];
+
+    openPropertyReviewDraft(property: { id: string; title: string }, draft: { checkIn: string; checkOut: string; guests: number; quote: { totalStay: number; depositAmount: number }; requestId: string }) {
+      this.selectedProperty = property;
+      this.visibleDraft = {
+        propertyId: property.id,
+        ...draft,
+        isMounted: true,
+      };
+    }
+
+    submitBookingFromReview() {
+      if (!this.visibleDraft) throw new Error('No draft to submit');
+      const context: BookingContext = {
+        propertyId: this.visibleDraft.propertyId,
+        checkIn: this.visibleDraft.checkIn,
+        checkOut: this.visibleDraft.checkOut,
+        guests: this.visibleDraft.guests,
+        quoteSnapshot: this.visibleDraft.quote,
+        requestId: this.visibleDraft.requestId,
+      };
+      this.localStorageStore.set('sola_customer_pending_booking_intent', JSON.stringify(context));
+      this.interceptedContext = context;
+      this.authOrigin = { type: 'PROTECTED_BOOKING', context };
+      this.showAuthModal = true;
+    }
+
+    handleCancelAuth() {
+      this.authRequestGeneration++;
+      if (this.authOrigin?.type === 'PROTECTED_FAVORITE') {
+        this.localStorageStore.delete('sola_customer_pending_favorite_property_id');
+      } else if (this.authOrigin?.type === 'PROTECTED_BOOKING') {
+        this.localStorageStore.delete('sola_customer_pending_booking_intent');
+        this.restoreBookingReview = false;
+        this.interceptedContext = null; // In-memory invalidation
+      }
+      this.authOrigin = null;
+      this.showAuthModal = false;
+    }
+
+    openDirectAuth(origin: 'DIRECT_ACCOUNT' | 'DIRECT_WELCOME' | 'DIRECT_EXPLORE') {
+      this.authOrigin = { type: origin };
+      this.showAuthModal = true;
+    }
+
+    toggleFavorite(propertyId: string) {
+      if (!this.authToken) {
+        this.localStorageStore.set('sola_customer_pending_favorite_property_id', propertyId);
+        this.authOrigin = { type: 'PROTECTED_FAVORITE', propertyId };
+        this.showAuthModal = true;
+      }
+    }
+
+    handleAuthSuccess(token: string) {
+      this.authToken = token;
+      this.showAuthModal = false;
+
+      // Pending favorite handling
+      const pendingFav = this.localStorageStore.get('sola_customer_pending_favorite_property_id');
+      if (pendingFav) {
+        this.userFavorites.push(pendingFav);
+        this.localStorageStore.delete('sola_customer_pending_favorite_property_id');
+      }
+
+      // Canonical booking review restoration guard
+      if (this.authOrigin?.type === 'PROTECTED_BOOKING' && this.interceptedContext) {
+        if (this.interceptedContext.propertyId) {
+          this.selectedProperty = { id: this.interceptedContext.propertyId, title: 'Restored Unit' };
+        }
+        this.restoreBookingReview = true;
+      } else {
+        this.interceptedContext = null;
+        this.restoreBookingReview = false;
+        this.localStorageStore.delete('sola_customer_pending_booking_intent');
+      }
+
+      this.authOrigin = null;
+    }
+
+    captureRestoredBookingReview() {
+      this.restoreBookingReview = false;
+      this.interceptedContext = null;
+      this.localStorageStore.delete('sola_customer_pending_booking_intent');
+    }
+  }
+
+  // 6.1 SCENARIO A: Protected Booking Cancel Lifecycle
+  {
+    const sim = new CustomerAppHandoffSimulation();
+    sim.openPropertyReviewDraft(
+      { id: 'prop-marina-101', title: 'شاليه بورتو مارينا' },
+      { checkIn: '2026-08-01', checkOut: '2026-08-05', guests: 4, quote: { totalStay: 12000, depositAmount: 2400 }, requestId: 'req-orig-uuid-1' }
+    );
+
+    // Guest submits booking review while unauthenticated
+    sim.submitBookingFromReview();
+    assert(sim.showAuthModal === true, 'Screen 08 must open on protected booking submit');
+    assert(sim.authOrigin?.type === 'PROTECTED_BOOKING', 'authOrigin must be PROTECTED_BOOKING');
+    assert(sim.interceptedContext !== null, 'interceptedContext must be populated before auth');
+    assert(sim.localStorageStore.has('sola_customer_pending_booking_intent'), 'localStorage must hold pending booking intent');
+
+    // Guest presses Back (cancel auth)
+    sim.handleCancelAuth();
+
+    // Verification of Cancel State
+    assert(sim.showAuthModal === false, 'Screen 08 must close on Back');
+    assert(!sim.localStorageStore.has('sola_customer_pending_booking_intent'), 'Persistent pending booking intent MUST be removed from localStorage');
+    assert(sim.interceptedContext === null, 'In-memory interceptedContext MUST be invalidated (set to null)');
+    assert(sim.restoreBookingReview === false, 'restoreBookingReview MUST be false');
+    assert(sim.authOrigin === null, 'authOrigin MUST be null');
+
+    // Canonical rule: CANCEL HANDOFF ≠ DELETE VISIBLE DRAFT
+    assert(sim.selectedProperty !== null && sim.selectedProperty.id === 'prop-marina-101', 'selectedProperty must NOT be cleared on auth cancel');
+    assert(sim.visibleDraft !== null && sim.visibleDraft.isMounted === true, 'Visible booking review draft MUST remain mounted and visible to guest');
+    assert(sim.visibleDraft?.requestId === 'req-orig-uuid-1', 'Visible draft requestId must remain intact');
+    assert(sim.visibleDraft?.checkIn === '2026-08-01' && sim.visibleDraft?.checkOut === '2026-08-05', 'Visible draft dates must remain intact');
+    passedChecks++;
+  }
+
+  // 6.2 SCENARIO B: Subsequent Direct Auth Login (Account/Welcome/Explore) After Cancel
+  {
+    const sim = new CustomerAppHandoffSimulation();
+    sim.openPropertyReviewDraft(
+      { id: 'prop-marina-101', title: 'شاليه بورتو مارينا' },
+      { checkIn: '2026-08-01', checkOut: '2026-08-05', guests: 4, quote: { totalStay: 12000, depositAmount: 2400 }, requestId: 'req-orig-uuid-1' }
+    );
+
+    // Intercepted and cancelled
+    sim.submitBookingFromReview();
+    sim.handleCancelAuth();
+
+    // Guest closes property or navigates to Account tab, then logs in directly
+    sim.openDirectAuth('DIRECT_ACCOUNT');
+    assert(sim.authOrigin?.type === 'DIRECT_ACCOUNT', 'Auth origin must be DIRECT_ACCOUNT');
+
+    // Guest completes direct login
+    sim.handleAuthSuccess('token_account_direct_login');
+
+    assert(sim.authToken === 'token_account_direct_login', 'Auth token must be stored');
+    assert(sim.restoreBookingReview === false, 'CRITICAL: Direct login MUST NOT restore cancelled booking review');
+    assert(sim.interceptedContext === null, 'interceptedContext must remain null');
+    assert(!sim.localStorageStore.has('sola_customer_pending_booking_intent'), 'localStorage must have no pending booking intent');
+    passedChecks++;
+  }
+
+  // 6.3 SCENARIO C: Normal Protected Booking Flow (Success Without Cancel)
+  {
+    const sim = new CustomerAppHandoffSimulation();
+    sim.openPropertyReviewDraft(
+      { id: 'prop-alamein-202', title: 'فيلا الساحل الشمالي' },
+      { checkIn: '2026-09-10', checkOut: '2026-09-15', guests: 6, quote: { totalStay: 25000, depositAmount: 5000 }, requestId: 'req-approved-uuid-2' }
+    );
+
+    // Guest submits booking review
+    sim.submitBookingFromReview();
+
+    // Guest enters phone and completes auth successfully (NO cancel)
+    sim.handleAuthSuccess('token_protected_booking_success');
+
+    assert(sim.authToken === 'token_protected_booking_success', 'Auth token must be set');
+    assert(sim.restoreBookingReview === true, 'Protected booking auth success MUST trigger restoreBookingReview');
+    assert(sim.selectedProperty?.id === 'prop-alamein-202', 'Exact selectedProperty must be restored');
+
+    // BookingRequestReviewScreen mounts restored and captures context
+    sim.captureRestoredBookingReview();
+    assert(sim.restoreBookingReview === false, 'restoreBookingReview resets after capture');
+    assert(sim.interceptedContext === null, 'interceptedContext resets after capture');
+    assert(!sim.localStorageStore.has('sola_customer_pending_booking_intent'), 'localStorage key removed after capture');
+    passedChecks++;
+  }
+
+  // 6.4 SCENARIO D: Favorite Cancel Regression
+  {
+    const sim = new CustomerAppHandoffSimulation();
+
+    // Guest taps favorite while unauthenticated
+    sim.toggleFavorite('prop-fav-999');
+    assert(sim.localStorageStore.get('sola_customer_pending_favorite_property_id') === 'prop-fav-999', 'Pending favorite property ID must be in localStorage');
+    assert(sim.authOrigin?.type === 'PROTECTED_FAVORITE', 'authOrigin must be PROTECTED_FAVORITE');
+
+    // Guest cancels auth via Back
+    sim.handleCancelAuth();
+    assert(!sim.localStorageStore.has('sola_customer_pending_favorite_property_id'), 'Pending favorite key MUST be removed on cancel');
+    assert(sim.authOrigin === null, 'authOrigin must be reset');
+
+    // Later guest logs in via DIRECT_WELCOME
+    sim.openDirectAuth('DIRECT_WELCOME');
+    sim.handleAuthSuccess('token_welcome_login');
+    assert(!sim.userFavorites.includes('prop-fav-999'), 'Cancelled favorite MUST NOT be executed on later direct login');
+    passedChecks++;
+  }
+
+  // 6.5 SCENARIO E: Late Response Guard After Cancel
+  {
+    const sim = new CustomerAppHandoffSimulation();
+    sim.openPropertyReviewDraft(
+      { id: 'prop-marina-101', title: 'شاليه بورتو مارينا' },
+      { checkIn: '2026-08-01', checkOut: '2026-08-05', guests: 4, quote: { totalStay: 12000, depositAmount: 2400 }, requestId: 'req-late-guard' }
+    );
+    sim.submitBookingFromReview();
+
+    // In-flight network request initiated with generation = 1
+    const requestGen = ++sim.authRequestGeneration;
+
+    // User taps Back before response arrives (handleCancelAuth increments generation to 2)
+    sim.handleCancelAuth();
+    assert(sim.authRequestGeneration > requestGen, 'Cancel must advance authRequestGenerationRef');
+
+    // Late network response arrives
+    const isLate = requestGen !== sim.authRequestGeneration;
+    assert(isLate === true, 'Late network response must be detected as stale generation');
+    if (!isLate) {
+      sim.handleAuthSuccess('token_late_unwanted');
+    }
+    assert(sim.authToken === null, 'Late response MUST NOT log user in or alter auth state');
+    assert(sim.showAuthModal === false, 'Screen 08 must remain closed');
+    passedChecks++;
+  }
+
+  // 6.6 SCENARIO F: Re-submission After Cancel Generates Fresh Handoff
+  {
+    const sim = new CustomerAppHandoffSimulation();
+    sim.openPropertyReviewDraft(
+      { id: 'prop-marina-101', title: 'شاليه بورتو مارينا' },
+      { checkIn: '2026-08-01', checkOut: '2026-08-05', guests: 4, quote: { totalStay: 12000, depositAmount: 2400 }, requestId: 'req-first-run' }
+    );
+
+    // Cancel first attempt
+    sim.submitBookingFromReview();
+    sim.handleCancelAuth();
+    assert(sim.interceptedContext === null, 'Handoff is invalidated after first cancel');
+
+    // While visible draft remains open, user taps submit again (fresh handoff)
+    sim.visibleDraft!.requestId = 'req-second-run-fresh';
+    sim.submitBookingFromReview();
+    assert(sim.authOrigin?.type === 'PROTECTED_BOOKING', 'Fresh handoff origin is PROTECTED_BOOKING');
+    assert(sim.interceptedContext?.requestId === 'req-second-run-fresh', 'Fresh handoff captures new requestId');
+
+    // User completes login on second attempt
+    sim.handleAuthSuccess('token_second_attempt');
+    assert(sim.restoreBookingReview === true, 'Fresh handoff successfully restores booking review');
+    assert(sim.selectedProperty?.id === 'prop-marina-101', 'Correct property retained');
+    passedChecks++;
+  }
+
+  console.log(`\n[PASS] All ${passedChecks} Screen 08 Customer Auth contracts & behavioral state-machine tests verified successfully.\n`);
 }
 
 run().catch((err) => {

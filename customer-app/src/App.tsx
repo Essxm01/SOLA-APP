@@ -491,6 +491,7 @@ export function App() {
     } else if (authOrigin?.type === 'PROTECTED_BOOKING') {
       localStorage.removeItem('sola_customer_pending_booking_intent');
       setRestoreBookingReview(false);
+      setInterceptedContext(null);
     }
 
     setPendingNameOnboardingPhone(null);
@@ -606,13 +607,18 @@ export function App() {
       setEntryPhase('APP');
     }
 
-    // Context Preservation: Return to exact same property & dates post-login
-    if (interceptedContext) {
+    // Context Preservation: Return to exact same property & dates post-login ONLY if auth origin was a protected booking
+    if (authOrigin?.type === 'PROTECTED_BOOKING' && interceptedContext) {
       const targetProp = properties.find((p) => p.id === interceptedContext.propertyId) || selectedProperty;
       if (targetProp) {
         setSelectedProperty(targetProp);
       }
       setRestoreBookingReview(true);
+    } else {
+      // Unrelated/direct login: invalidate any stale in-memory or persistent booking handoffs
+      setInterceptedContext(null);
+      setRestoreBookingReview(false);
+      localStorage.removeItem('sola_customer_pending_booking_intent');
     }
   };
 

@@ -28,6 +28,7 @@ export interface SearchResultsScreenProps {
   onBackToExplore: () => void;
   onSelectProperty: (id: string) => void;
   isFavorite: (id: string) => boolean;
+  isFavoritePending?: (id: string) => boolean;
   onToggleFavorite: (id: string, e: React.MouseEvent) => void;
   /** Scroll offset to restore on remount (Edit → Back flow). */
   restoreScrollTop?: number;
@@ -97,6 +98,7 @@ export const SearchResultsScreen: React.FC<SearchResultsScreenProps> = ({
   onBackToExplore,
   onSelectProperty,
   isFavorite,
+  isFavoritePending,
   onToggleFavorite,
   restoreScrollTop,
   onReportScrollTop,
@@ -225,6 +227,7 @@ export const SearchResultsScreen: React.FC<SearchResultsScreenProps> = ({
                     property={prop}
                     onSelect={onSelectProperty}
                     isFavorite={isFavorite(prop.id)}
+                    isFavoritePending={isFavoritePending ? isFavoritePending(prop.id) : false}
                     onToggleFavorite={onToggleFavorite}
                   />
                 ))}

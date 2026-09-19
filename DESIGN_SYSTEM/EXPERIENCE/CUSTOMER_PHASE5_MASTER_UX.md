@@ -66,16 +66,24 @@ A native implementation may use internal routes where technically useful, but th
 
 ## Global navigation model
 
-Customer top-level destinations:
+Customer top-level destinations (4 tabs):
 
-- استكشف
-- المفضلة
-- حجوزاتي
-- الحساب
+- استكشف (`Compass`, strokeWidth 2.2)
+- المفضلة (`Heart`, strokeWidth 2.2)
+- حجوزاتي (`CalendarDays`, strokeWidth 2.2)
+- الحساب (`UserRound`, strokeWidth 2.2)
+
+Bottom navigation is fixed to the viewport, safe-area aware, >=48px touch targets, with an active state of Blue icon + Blue label (`#0059FF`) without background bubble/pill/fill.
 
 Chat remains contextual by default rather than a permanent bottom-navigation destination.
 
-Bottom navigation is fixed to the viewport, safe-area aware, touch-friendly and hidden where a full entity/temporary flow requires focus.
+Bottom navigation is hidden where a full entity/temporary flow requires focus.
+
+Screen 03 (Explore / Home) header combines the standalone KONFRM mark (`/favicon.svg` with `alt="KONFRM"`) and exactly one account/identity affordance across open space:
+- Guest: `UserRoundPlus` icon button opening existing auth modal (`aria-label="تسجيل الدخول أو إنشاء حساب"`); closing auth leaves Explore intact.
+- Authenticated: Truthful identity affordance routing to Account (`setActiveTab('ACCOUNT')`) with fallback hierarchy: canonical `avatarUrl` → initials (real canonical `fullName` only) → `UserRound`.
+- Notifications: DEFERRED / no Bell icon.
+*(Supersedes the interim brand-only Explore header model while preserving browse-first ethos).*
 
 ## Core booking journey
 

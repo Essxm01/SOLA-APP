@@ -105,6 +105,7 @@ jobs:
           npm run test:api
           npm run test:c3
           npm run test:c4
+          npm run test:explore-redesign
           npm run build
 
   # ----------------------------------------------------------------------------

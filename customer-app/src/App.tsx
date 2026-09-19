@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useMemo } from 'react';
 import { CustomerHeader } from './components/CustomerHeader';
 import { CoastalSearchBar } from './components/CoastalSearchBar';
 import { PropertyCard, CustomerPropertyItem } from './components/PropertyCard';
+import { ExploreSkeletonFeed, ExploreEmptyView, ExploreErrorView } from './components/ExploreStateViews';
 import { PropertyDetailModal } from './components/PropertyDetailModal';
 import { CustomerAuthModal, type CustomerUserProfile } from './components/CustomerAuthModal';
 import { CustomerEditAccountPage } from './components/CustomerEditAccountPage';
@@ -14,7 +15,7 @@ import { CustomerBottomNav, CustomerTabType } from './components/CustomerBottomN
 import { CustomerSplashScreen } from './components/CustomerSplashScreen';
 import { CustomerWelcomeScreen } from './components/CustomerWelcomeScreen';
 import { hasSeenCustomerEntry, markCustomerEntrySeen } from './utils/customerEntryState';
-import { LoadingStateView, EmptyStateView, ErrorStateView } from './components/StateViews';
+import { LoadingStateView, ErrorStateView } from './components/StateViews';
 import { getApiUrl } from './utils/api';
 import { fetchCanonicalCollection } from './utils/customerTruthfulState';
 import { buildPublicPropertySearchPath } from './utils/publicPropertySearch';
@@ -669,6 +670,7 @@ export function App() {
               if (item) setSelectedProperty(item);
             }}
             isFavorite={(id) => favorites.includes(id)}
+            isFavoritePending={(id) => favoriteInFlightIds.has(id)}
             onToggleFavorite={handleToggleFavorite}
             restoreScrollTop={resultsScrollTopRef.current}
             onReportScrollTop={(offset) => { resultsScrollTopRef.current = offset; }}
@@ -698,7 +700,10 @@ export function App() {
           <>
             {/* Mobile White App Header */}
             <CustomerHeader
+              isAuthenticated={Boolean(authToken)}
               customerPhone={customerPhone}
+              customerFullName={userProfile?.fullName}
+              customerAvatarUrl={userProfile?.avatarUrl}
               activeTab={activeTab}
               onOpenAuthModal={() => setShowAuthModal(true)}
               onGoToAccount={() => {
@@ -709,7 +714,7 @@ export function App() {
             />
 
             {/* Main Container — Max Mobile Width */}
-            <main className="flex-1 w-full px-4 pt-3 pb-20">
+            <main className={`flex-1 w-full px-4 pb-20 ${activeTab === 'EXPLORE' ? 'bg-[#F8FAFC] pt-5' : 'pt-3'}`}>
               {favoritesActionError && (
                 <div className="mb-3 p-3 bg-rose-50 border border-rose-200 text-rose-800 rounded-2xl text-xs font-bold flex items-center justify-between shadow-xs">
                   <span>{favoritesActionError}</span>
@@ -724,43 +729,55 @@ export function App() {
         {/* Tab 1: EXPLORE */}
         {activeTab === 'EXPLORE' && (
           <div>
-            {/* Mobile Coastal Search & Destination Chips */}
-            <CoastalSearchBar
-              onOpenSearch={() => {
-                setRefineOrigin('EXPLORE');
-                setDiscoveryView('SEARCH_REFINE');
-              }}
-              activeDestination={activeDestination}
-              onSelectDestinationChip={handleSelectDestinationChip}
-              intent={searchIntent}
-            />
-
-            {/* Results Header */}
-            <div className="flex items-center justify-between my-3">
-              <h2 className="text-sm font-black text-slate-900">
-                الوحدات الساحلية المتاحة
-                {propertyLoadState === 'SUCCESS' && (
-                  <span className="mr-1 text-slate-500 font-bold">({filteredProperties.length})</span>
-                )}
-              </h2>
+            {/* Hero Section (24px/800 title, no emoji, Subtitle: NONE) */}
+            <div className="mb-5">
+              <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">
+                هتصيف فين؟
+              </h1>
             </div>
 
-            {/* Viewport States */}
+            {/* Mobile Coastal Search Entry (Screen 03 -> Screen 04) */}
+            <div className="mb-6">
+              <CoastalSearchBar
+                onOpenSearch={() => {
+                  setRefineOrigin('EXPLORE');
+                  setDiscoveryView('SEARCH_REFINE');
+                }}
+                activeDestination={activeDestination}
+                onSelectDestinationChip={handleSelectDestinationChip}
+                intent={searchIntent}
+              />
+            </div>
+
+            {/* Discovery Header (Truthful copy, no availability claim, no count during loading) */}
+            <div className="flex items-baseline justify-between mb-3.5">
+              <h2 className="text-[18px] font-bold text-slate-900">
+                اكتشف الإقامات
+              </h2>
+              {propertyLoadState === 'SUCCESS' && filteredProperties.length > 0 && (
+                <span className="text-[13px] font-medium text-slate-500">
+                  {filteredProperties.length === 1
+                    ? 'إقامة واحدة'
+                    : filteredProperties.length === 2
+                    ? 'إقامتان'
+                    : `${filteredProperties.length} إقامات`}
+                </span>
+              )}
+            </div>
+
+            {/* Viewport States & Feed */}
             {propertyLoadState === 'LOADING' ? (
-              <LoadingStateView message="جاري استكشاف إقامات الساحل الشمالي..." />
+              <ExploreSkeletonFeed />
             ) : propertyLoadState === 'ERROR' ? (
-              <ErrorStateView
-                title="تعذر تحميل أماكن الإقامة"
-                message={propertyLoadError || 'تحقق من الاتصال وحاول مرة أخرى.'}
+              <ExploreErrorView
+                title="تعذر تحميل الإقامات"
+                support={propertyLoadError || 'حاول مرة تانية.'}
                 onRetry={fetchProperties}
               />
             ) : filteredProperties.length === 0 ? (
-              <EmptyStateView
-                title={properties.length === 0 ? 'لا توجد أماكن إقامة متاحة حالياً' : undefined}
-                description={properties.length === 0
-                  ? 'لم تتوفر وحدات منشورة حالياً. يمكنك المحاولة لاحقاً.'
-                  : undefined}
-                onReset={properties.length > 0 ? () => setFilteredProperties(properties) : undefined}
+              <ExploreEmptyView
+                title="لسه مفيش إقامات هنا"
+                support="جرّب مرة تانية لاحقًا."
               />
             ) : (
               /* Mobile Vertical Feed */
@@ -771,6 +788,7 @@ export function App() {
                     property={prop}
                     onSelect={() => setSelectedProperty(prop)}
                     isFavorite={favorites.includes(prop.id)}
+                    isFavoritePending={favoriteInFlightIds.has(prop.id)}
                     onToggleFavorite={handleToggleFavorite}
                   />
                 ))}
@@ -834,6 +852,7 @@ export function App() {
                     property={prop}
                     onSelect={() => setSelectedProperty(prop)}
                     isFavorite={true}
+                    isFavoritePending={favoriteInFlightIds.has(prop.id)}
                     onToggleFavorite={handleToggleFavorite}
                   />
                 ))}

@@ -165,6 +165,15 @@ export function formatArabicStayRange(checkIn: string, checkOut: string): string
   return `${formatArabicDate(checkIn)} ← ${formatArabicDate(checkOut)}`;
 }
 
+// Arabic guest-count summary for truthful search-intent display.
+// 1 → ضيف واحد; 2 → ضيفان; 3+ → X ضيوف (deterministic, no invented state).
+export function formatArabicGuests(count: number): string {
+  if (!Number.isInteger(count) || count <= 0) return '';
+  if (count === 1) return 'ضيف واحد';
+  if (count === 2) return 'ضيفان';
+  return `${count} ضيوف`;
+}
+
 const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
 function isRealCalendarDate(iso: string): boolean {

@@ -62,6 +62,10 @@ async function run() {
     welcomeFile.includes('max-h-[52px]'),
     'CustomerWelcomeScreen must have bounded upper spacer between Hero and Content'
   );
+  assert(
+    welcomeFile.includes('max-h-[160px]'),
+    'CustomerWelcomeScreen must have bounded lower spacer between Content and Actions (max-h-[160px])'
+  );
 
   // 2. CustomerBottomNav Invariants
   assert(
@@ -121,7 +125,7 @@ async function run() {
     'PropertyCard price scale must remain unchanged'
   );
 
-  console.log('Customer cross-device responsive hardening contract tests passed (12/12)');
+  console.log('Customer cross-device responsive hardening contract tests passed (13/13)');
 }
 
 run().catch((err) => {

@@ -111,8 +111,8 @@ export const CustomerWelcomeScreen: React.FC<CustomerWelcomeScreenProps> = ({
           </div>
         </div>
 
-        {/* Deliberate flexible space: absorbs excess viewport height on tall screens while keeping actions anchored in bottom thumb reach zone */}
-        <div className="flex-1 min-h-[16px]" aria-hidden="true" />
+        {/* Deliberate flexible space: absorbs excess viewport height on tall screens, bounded to max 160px per LAB review to preserve visual connection */}
+        <div className="flex-1 min-h-[16px] max-h-[160px]" aria-hidden="true" />
 
         {/* Bottom actions — all >=44px, prioritized for immediate reachability */}
         <div className="px-5 pt-2 pb-6 sm:pt-3 flex flex-col gap-2 sm:gap-2.5 customer-welcome-stagger shrink-0">

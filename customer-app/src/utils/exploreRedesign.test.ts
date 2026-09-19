@@ -470,7 +470,25 @@ async function run() {
     'CustomerBottomNav must contain exactly the 4 canonical tabs'
   );
 
-  console.log('ALL CUSTOMER EXPLORE VISUAL REMEDIATION REGRESSION CHECKS PASSED (43/43)!');
+  // 44. PropertyCard Compact Layout: side-by-side main cluster and left price anchor
+  assert(
+    cardCode.includes('flex items-start justify-between gap-3') &&
+    cardCode.includes('shrink-0 text-left flex flex-col items-end') &&
+    cardCode.includes('text-[18px] font-black text-slate-900') &&
+    cardCode.includes('/ ليلة'),
+    'PropertyCard must use compact layout with side-by-side main cluster and left-aligned price anchor'
+  );
+
+  // 45. Single-column feed preserved: no list/grid toggle or multi-column mobile feed
+  assert(
+    !cardCode.includes('grid-cols-2') &&
+    !appCode.includes('grid-cols-2') &&
+    !appCode.includes('ListGridToggle') &&
+    !appCode.includes('LayoutToggle'),
+    'PropertyCard feed must remain strict single-column without grid toggles or layout switchers'
+  );
+
+  console.log('ALL CUSTOMER EXPLORE VISUAL REMEDIATION REGRESSION CHECKS PASSED (45/45)!');
 }
 
 run().catch((err) => {

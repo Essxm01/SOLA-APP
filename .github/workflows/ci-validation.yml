@@ -106,6 +106,7 @@ jobs:
           npm run test:c3
           npm run test:c4
           npm run test:explore-redesign
+          npm run test:responsive-hardening
           npm run build
 
   # ----------------------------------------------------------------------------

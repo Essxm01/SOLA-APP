@@ -336,12 +336,84 @@ async function run() {
     'customer-app/tsconfig.tsbuildinfo must match the base (2d275535…) version — regenerate-free candidate'
   );
 
-  // 40. Explore Header is brand-only (Browse-first / Auth-late)
+  // 40. Explore Header Account/Identity Affordance Contract (Supersedes interim brand-only)
+  // A. Explore still has KONFRM mark
   assert(
-    headerCode.includes("const isExplore = activeTab === 'EXPLORE';") &&
-    headerCode.includes('const shouldShowAction = showAccountAction !== undefined ? showAccountAction : !isExplore;') &&
-    headerCode.includes('{shouldShowAction ? ('),
-    'CustomerHeader must omit account/auth actions on Explore (brand-only header)'
+    headerCode.includes('alt="KONFRM"') && headerCode.includes('/favicon.svg'),
+    'Explore header must preserve the standalone KONFRM mark'
+  );
+
+  // B. Guest Explore renders UserRoundPlus account affordance
+  assert(
+    headerCode.includes('UserRoundPlus') && headerCode.includes('isExplore ? ('),
+    'Guest Explore must render UserRoundPlus account affordance'
+  );
+
+  // C. Guest Explore account action has accessible auth label
+  assert(
+    headerCode.includes('title="تسجيل الدخول أو إنشاء حساب"') &&
+    headerCode.includes('aria-label="تسجيل الدخول أو إنشاء حساب"'),
+    'Guest Explore account action must have accessible auth label "تسجيل الدخول أو إنشاء حساب"'
+  );
+
+  // D. Guest Explore account action invokes the EXISTING auth entry
+  assert(
+    headerCode.includes('onClick={onOpenAuthModal}') &&
+    appCode.includes('onOpenAuthModal={() => setShowAuthModal(true)}'),
+    'Guest Explore account action must invoke existing auth entry onOpenAuthModal'
+  );
+
+  // E. Authenticated Explore uses account identity affordance driven by canonical session
+  assert(
+    headerCode.includes('isAuthenticated ? (') &&
+    appCode.includes('isAuthenticated={Boolean(authToken)}'),
+    'Authenticated Explore must be driven by canonical session isAuthenticated authority'
+  );
+
+  // F. Authenticated display priority supports: avatarUrl → initials → UserRound
+  assert(
+    headerCode.includes('customerAvatarUrl && !avatarError') &&
+    headerCode.includes('initials') &&
+    headerCode.includes('<UserRound'),
+    'Authenticated display priority must support avatarUrl → initials → UserRound'
+  );
+
+  // G. Initials require actual non-empty canonical fullName
+  assert(
+    headerCode.includes('customerFullName.trim()') &&
+    !headerCode.includes('"ن"') &&
+    !headerCode.includes("'ن'"),
+    'Initials must require actual non-empty canonical fullName with zero fabricated fallbacks'
+  );
+
+  // H. Broken avatar has truthful fallback
+  assert(
+    headerCode.includes('onError={() => setAvatarError(true)}') &&
+    headerCode.includes('[customerAvatarUrl]'),
+    'Broken avatar must fail safely to initials/UserRound and reset when avatarUrl changes'
+  );
+
+  // I. Authenticated Header tap routes to existing Account destination
+  assert(
+    headerCode.includes('onClick={onGoToAccount}') &&
+    headerCode.includes('title="حسابي"') &&
+    appCode.includes("setActiveTab('ACCOUNT')"),
+    'Authenticated header tap must route to existing Account destination'
+  );
+
+  // J. No Bell / notification capability is added
+  assert(
+    !headerCode.includes('Bell') && !appCode.includes('<Bell'),
+    'Header must NOT contain Bell icon; notifications remain deferred'
+  );
+
+  // M. No Phone icon / text Login CTA is restored on Explore
+  const guestExploreIndex = headerCode.indexOf('isExplore ? (');
+  const guestOtherIndex = headerCode.indexOf('/* Guest on other tabs', guestExploreIndex);
+  const guestExploreBranch = headerCode.slice(guestExploreIndex, guestOtherIndex);
+  assert(
+    !guestExploreBranch.includes('PhoneCall') && !guestExploreBranch.includes('<span>دخول</span>'),
+    'Guest Explore must not restore PhoneCall icon or text Login CTA'
   );
 
   // 41. Bottom Navigation updated icon set (LAB V2)

@@ -700,7 +700,10 @@ export function App() {
           <>
             {/* Mobile White App Header */}
             <CustomerHeader
+              isAuthenticated={Boolean(authToken)}
               customerPhone={customerPhone}
+              customerFullName={userProfile?.fullName}
+              customerAvatarUrl={userProfile?.avatarUrl}
               activeTab={activeTab}
               onOpenAuthModal={() => setShowAuthModal(true)}
               onGoToAccount={() => {

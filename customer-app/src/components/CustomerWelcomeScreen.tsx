@@ -25,7 +25,7 @@ export const CustomerWelcomeScreen: React.FC<CustomerWelcomeScreenProps> = ({
   return (
     <div
       dir="rtl"
-      className="fixed inset-0 z-[80] bg-white overflow-y-auto overflow-x-hidden flex flex-col justify-between"
+      className="fixed inset-0 z-[80] bg-white overflow-y-auto overflow-x-hidden flex flex-col"
       style={{
         minHeight: '100dvh',
         height: '100dvh',
@@ -35,14 +35,16 @@ export const CustomerWelcomeScreen: React.FC<CustomerWelcomeScreenProps> = ({
       role="main"
       aria-label="مرحبًا بك في كونفرم"
     >
-      <div className="w-full max-w-md mx-auto flex-1 flex flex-col justify-between min-h-0">
-        {/* Top visual hero — full-width, dominant hospitality anchor.
+      <div className="w-full max-w-[430px] mx-auto flex-1 flex flex-col min-h-0">
+        {/* Top visual hero — bounded responsive width-aware sizing.
+            Preserves the Founder-approved ~1.22:1 A56 composition while remaining stable
+            on tall iPhones and constrained browser viewports without viewport-height distortion.
             The lower part dissolves smoothly via a multi-stop eased white gradient
-            into the pure white content background, eliminating any hard boundary. */}
+            into the pure white content background. */}
         <div
           className="w-full relative shrink-0 overflow-hidden"
           style={{
-            height: 'clamp(200px, 38dvh, 360px)',
+            height: 'clamp(220px, calc(min(100vw, 430px) / 1.22), 340px)',
           }}
         >
           <img
@@ -62,12 +64,14 @@ export const CustomerWelcomeScreen: React.FC<CustomerWelcomeScreenProps> = ({
             }}
           />
 
-          {/* Top bar: Skip — free text over hero, >=44px tap target, no button styling */}
+          {/* Top bar: Skip — free text over hero, >=44px tap target, no button styling.
+              Single safe-area ownership: outer container owns top safe-area padding;
+              Skip uses clean 12px offset from hero top, avoiding double-inset distortion. */}
           <button
             onClick={onGuestBrowse}
             className="absolute z-10 min-h-[44px] min-w-[44px] px-3 py-2 text-white text-sm sm:text-base font-bold drop-shadow-[0_1px_3px_rgba(0,0,0,0.6)] hover:opacity-90 active:opacity-75 transition-opacity flex items-center justify-center focus:outline-none focus-visible:ring-2 focus-visible:ring-white rounded-lg"
             style={{
-              top: 'max(env(safe-area-inset-top, 0px) + 12px, 12px)',
+              top: '12px',
               right: '16px',
             }}
             aria-label="تخطي والتصفح كضيف"
@@ -75,6 +79,9 @@ export const CustomerWelcomeScreen: React.FC<CustomerWelcomeScreenProps> = ({
             تخطي
           </button>
         </div>
+
+        {/* Stable spacer between Hero and Content: bounded to prevent section disconnection */}
+        <div className="flex-1 min-h-[16px] max-h-[52px]" aria-hidden="true" />
 
         {/* Middle content: Brand mark + headline + truthful copy */}
         <div className="shrink-0 flex flex-col justify-center">
@@ -103,6 +110,9 @@ export const CustomerWelcomeScreen: React.FC<CustomerWelcomeScreenProps> = ({
             </p>
           </div>
         </div>
+
+        {/* Deliberate flexible space: absorbs excess viewport height on tall screens while keeping actions anchored in bottom thumb reach zone */}
+        <div className="flex-1 min-h-[16px]" aria-hidden="true" />
 
         {/* Bottom actions — all >=44px, prioritized for immediate reachability */}
         <div className="px-5 pt-2 pb-6 sm:pt-3 flex flex-col gap-2 sm:gap-2.5 customer-welcome-stagger shrink-0">

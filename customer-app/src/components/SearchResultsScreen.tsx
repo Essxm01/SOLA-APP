@@ -132,7 +132,7 @@ export const SearchResultsScreen: React.FC<SearchResultsScreenProps> = ({
 
   return (
     <div ref={scrollContainerRef} dir="rtl" className="fixed inset-0 z-[45] bg-white overflow-y-auto">
-      <div className="w-full max-w-md mx-auto pb-24">
+      <div className="w-full max-w-[430px] mx-auto pb-24">
         {/* Header */}
         <div className="sticky top-0 bg-white/95 backdrop-blur-md border-b border-slate-100 px-4 py-3 flex items-center gap-3 z-10">
           <button

@@ -184,7 +184,7 @@ export const SearchRefineScreen: React.FC<SearchRefineScreenProps> = ({
 
   return (
     <div dir="rtl" className="fixed inset-0 z-[75] bg-white overflow-y-auto">
-      <div className="w-full max-w-md mx-auto pb-28">
+      <div className="w-full max-w-[430px] mx-auto pb-28">
         {/* Header */}
         <div className="sticky top-0 bg-white/95 backdrop-blur-md border-b border-slate-100 px-4 py-3 flex items-center gap-3 z-10">
           <button
@@ -503,7 +503,7 @@ export const SearchRefineScreen: React.FC<SearchRefineScreenProps> = ({
 
         {/* Sticky apply CTA */}
         <div className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t border-slate-200 p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
-          <div className="max-w-md mx-auto">
+          <div className="max-w-[430px] mx-auto">
             <button
               onClick={apply}
               disabled={!canApply}

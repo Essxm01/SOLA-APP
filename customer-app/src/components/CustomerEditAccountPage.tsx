@@ -193,7 +193,7 @@ export const CustomerEditAccountPage: React.FC<CustomerEditAccountPageProps> = (
     <div className="min-h-screen bg-slate-50 text-right animate-fade-in pb-24">
       {/* Top Header Bar with Clean Back Action */}
       <div className="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-slate-200 shadow-xs px-4 py-3.5">
-        <div className="max-w-md mx-auto flex items-center justify-between">
+        <div className="max-w-[430px] mx-auto flex items-center justify-between">
           <div className="flex items-center gap-3">
             <button
               onClick={onBack}
@@ -207,7 +207,7 @@ export const CustomerEditAccountPage: React.FC<CustomerEditAccountPageProps> = (
         </div>
       </div>
 
-      <div className="max-w-md mx-auto px-4 py-5 space-y-5">
+      <div className="max-w-[430px] mx-auto px-4 py-5 space-y-5">
         {/* Top Profile Summary Card */}
         <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-xs text-center space-y-3">
           <div className="w-20 h-20 bg-slate-900 text-white rounded-3xl flex items-center justify-center font-black text-2xl mx-auto shadow-sm">

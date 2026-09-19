@@ -125,7 +125,7 @@ export const PropertyCard: React.FC<PropertyCardProps> = ({
         )}
 
         {/* Final Comparison Row: Facts RIGHT ↔ Price LEFT */}
-        <div className="flex items-baseline justify-between gap-3 pt-0.5">
+        <div className="flex items-end justify-between gap-3 pt-0.5">
           {/* Facts: clean bullet-separated text, flexible and allowed to wrap */}
           <div className="text-[13px] font-medium text-slate-500 flex-1 min-w-0">
             {facts.length > 0 ? facts.join(' · ') : ''}

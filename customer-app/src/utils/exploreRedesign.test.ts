@@ -470,9 +470,9 @@ async function run() {
     'CustomerBottomNav must contain exactly the 4 canonical tabs'
   );
 
-  // 44. PropertyCard V3 Final Comparison Row: Facts RIGHT ↔ unified one-line Price LEFT
+  // 44. PropertyCard V3 Final Comparison Row: Facts RIGHT ↔ unified one-line Price LEFT (items-end bottom aligned)
   assert(
-    cardCode.includes('flex items-baseline justify-between gap-3') &&
+    cardCode.includes('flex items-end justify-between gap-3') &&
     cardCode.includes('shrink-0 text-left flex items-baseline gap-1 whitespace-nowrap') &&
     cardCode.includes('text-[18px] font-bold text-slate-900') &&
     cardCode.includes('text-[14px] font-bold text-slate-700') &&

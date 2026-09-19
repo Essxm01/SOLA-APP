@@ -25,7 +25,7 @@ export const ExploreSkeletonFeed: React.FC = () => {
             {/* Location skeleton */}
             <div className="h-3 bg-slate-100 animate-pulse rounded w-1/2" />
             {/* Final comparison row: Facts RIGHT ↔ Price LEFT */}
-            <div className="flex items-baseline justify-between gap-3 pt-0.5">
+            <div className="flex items-end justify-between gap-3 pt-0.5">
               <div className="h-3.5 bg-slate-100 animate-pulse rounded w-2/5" />
               <div className="h-4.5 bg-slate-200 animate-pulse rounded w-24 shrink-0" />
             </div>

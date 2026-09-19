@@ -288,7 +288,7 @@ async function run() {
 
   // 35. Pre-Lab remediation: facts row is 13px
   assert(
-    cardCode.includes('text-[13px] font-medium text-slate-500 pt-0.5'),
+    cardCode.includes('text-[13px] font-medium text-slate-500'),
     'PropertyCard facts row must be 13px'
   );
 
@@ -470,7 +470,27 @@ async function run() {
     'CustomerBottomNav must contain exactly the 4 canonical tabs'
   );
 
-  console.log('ALL CUSTOMER EXPLORE VISUAL REMEDIATION REGRESSION CHECKS PASSED (43/43)!');
+  // 44. PropertyCard V3 Final Comparison Row: Facts RIGHT ↔ unified one-line Price LEFT (items-end bottom aligned)
+  assert(
+    cardCode.includes('flex items-end justify-between gap-3') &&
+    cardCode.includes('shrink-0 text-left flex items-baseline gap-1 whitespace-nowrap') &&
+    cardCode.includes('text-[18px] font-bold text-slate-900') &&
+    cardCode.includes('text-[14px] font-bold text-slate-700') &&
+    cardCode.includes('text-[12px] font-medium text-slate-500') &&
+    cardCode.includes('/ ليلة'),
+    'PropertyCard must render final comparison row with Facts RIGHT and one-line Price LEFT'
+  );
+
+  // 45. Single-column feed preserved: no list/grid toggle or multi-column mobile feed
+  assert(
+    !cardCode.includes('grid-cols-2') &&
+    !appCode.includes('grid-cols-2') &&
+    !appCode.includes('ListGridToggle') &&
+    !appCode.includes('LayoutToggle'),
+    'PropertyCard feed must remain strict single-column without grid toggles or layout switchers'
+  );
+
+  console.log('ALL CUSTOMER EXPLORE VISUAL REMEDIATION REGRESSION CHECKS PASSED (45/45)!');
 }
 
 run().catch((err) => {

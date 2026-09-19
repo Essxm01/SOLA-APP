@@ -18,14 +18,17 @@ export const ExploreSkeletonFeed: React.FC = () => {
             <div className="w-9 h-9 rounded-full bg-white/70 absolute top-2 left-2" />
           </div>
 
-          {/* Content skeleton */}
-          <div className="p-4 flex-1 flex flex-col justify-between gap-2.5">
-            <div className="space-y-2">
-              <div className="h-3 bg-slate-100 animate-pulse rounded w-1/3" />
-              <div className="h-4 bg-slate-200 animate-pulse rounded w-3/4" />
-              <div className="h-3 bg-slate-100 animate-pulse rounded w-1/2" />
+          {/* Content skeleton matching final comparison-row layout */}
+          <div className="p-4 flex-1 pointer-events-none space-y-2">
+            {/* Title skeleton */}
+            <div className="h-4 bg-slate-200 animate-pulse rounded w-3/4" />
+            {/* Location skeleton */}
+            <div className="h-3 bg-slate-100 animate-pulse rounded w-1/2" />
+            {/* Final comparison row: Facts RIGHT ↔ Price LEFT */}
+            <div className="flex items-end justify-between gap-3 pt-0.5">
+              <div className="h-3.5 bg-slate-100 animate-pulse rounded w-2/5" />
+              <div className="h-4.5 bg-slate-200 animate-pulse rounded w-24 shrink-0" />
             </div>
-            <div className="h-5 bg-slate-200 animate-pulse rounded w-1/4 mt-1" />
           </div>
         </div>
       ))}

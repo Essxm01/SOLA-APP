@@ -288,7 +288,7 @@ async function run() {
 
   // 35. Pre-Lab remediation: facts row is 13px
   assert(
-    cardCode.includes('text-[13px] font-medium text-slate-500 pt-0.5'),
+    cardCode.includes('text-[13px] font-medium text-slate-500'),
     'PropertyCard facts row must be 13px'
   );
 
@@ -470,14 +470,15 @@ async function run() {
     'CustomerBottomNav must contain exactly the 4 canonical tabs'
   );
 
-  // 44. PropertyCard Compact Layout: side-by-side main cluster and left price anchor with unified single-line price and items-center
+  // 44. PropertyCard V3 Final Comparison Row: Facts RIGHT ↔ unified one-line Price LEFT
   assert(
-    cardCode.includes('flex items-center justify-between gap-3') &&
+    cardCode.includes('flex items-baseline justify-between gap-3') &&
     cardCode.includes('shrink-0 text-left flex items-baseline gap-1 whitespace-nowrap') &&
-    cardCode.includes('text-[20px] font-extrabold text-slate-900') &&
-    cardCode.includes('text-[16px] font-bold text-slate-700') &&
+    cardCode.includes('text-[18px] font-bold text-slate-900') &&
+    cardCode.includes('text-[14px] font-bold text-slate-700') &&
+    cardCode.includes('text-[12px] font-medium text-slate-500') &&
     cardCode.includes('/ ليلة'),
-    'PropertyCard must use compact layout with side-by-side main cluster and vertically centered single-line price anchor'
+    'PropertyCard must render final comparison row with Facts RIGHT and one-line Price LEFT'
   );
 
   // 45. Single-column feed preserved: no list/grid toggle or multi-column mobile feed

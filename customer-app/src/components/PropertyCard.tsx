@@ -110,38 +110,34 @@ export const PropertyCard: React.FC<PropertyCardProps> = ({
         </button>
       </div>
 
-      {/* Content Info (LAB Compact Layout: Right main cluster ↔ Left price anchor) */}
-      <div className="p-4 flex-1 pointer-events-none z-1">
-        <div className="flex items-center justify-between gap-3">
-          {/* Right / Main Cluster (~65-70%: title → location → facts) */}
-          <div className="flex-1 min-w-0 space-y-1">
-            {/* Title (LAB anatomy: identity before location) */}
-            <h3 className="font-extrabold text-slate-900 text-[16px] leading-snug line-clamp-2 group-hover:text-[#0059FF] transition-colors">
-              {property.title}
-            </h3>
+      {/* Content Info (Final Comparison-Row Layout: Title → Location → [Facts ↔ Price]) */}
+      <div className="p-4 flex-1 pointer-events-none z-1 space-y-1">
+        {/* Title (LAB anatomy: identity before location) */}
+        <h3 className="font-extrabold text-slate-900 text-[16px] leading-snug line-clamp-2 group-hover:text-[#0059FF] transition-colors">
+          {property.title}
+        </h3>
 
-            {/* Location row — only canonical geography; omitted entirely when none */}
-            {locationText && (
-              <div className="text-[13px] font-medium text-slate-500 line-clamp-2">
-                {locationText}
-              </div>
-            )}
+        {/* Location row — only canonical geography; omitted entirely when none */}
+        {locationText && (
+          <div className="text-[13px] font-medium text-slate-500 line-clamp-2">
+            {locationText}
+          </div>
+        )}
 
-            {/* Facts: clean bullet-separated text */}
-            {facts.length > 0 && (
-              <div className="text-[13px] font-medium text-slate-500 pt-0.5">
-                {facts.join(' · ')}
-              </div>
-            )}
+        {/* Final Comparison Row: Facts RIGHT ↔ Price LEFT */}
+        <div className="flex items-baseline justify-between gap-3 pt-0.5">
+          {/* Facts: clean bullet-separated text, flexible and allowed to wrap */}
+          <div className="text-[13px] font-medium text-slate-500 flex-1 min-w-0">
+            {facts.length > 0 ? facts.join(' · ') : ''}
           </div>
 
-          {/* Left / Price Anchor (Unified single line: Amount + Currency + / ليلة) */}
+          {/* Left / Price Anchor: 18px / 14px / 12px unified one-line */}
           <div className="shrink-0 text-left flex items-baseline gap-1 whitespace-nowrap">
-            <span className="text-[20px] font-extrabold text-slate-900 leading-none dir-ltr">
+            <span className="text-[18px] font-bold text-slate-900 leading-none dir-ltr">
               {property.basePricePerNight?.toLocaleString('ar-EG') || property.basePricePerNight?.toLocaleString()}
             </span>
-            <span className="text-[16px] font-bold text-slate-700">ج.م</span>
-            <span className="text-[13px] font-medium text-slate-500 mr-0.5">/ ليلة</span>
+            <span className="text-[14px] font-bold text-slate-700">ج.م</span>
+            <span className="text-[12px] font-medium text-slate-500 mr-0.5">/ ليلة</span>
           </div>
         </div>
       </div>

@@ -107,6 +107,7 @@ jobs:
           npm run test:c4
           npm run test:explore-redesign
           npm run test:responsive-hardening
+          npm run test:screen08-auth
           npm run build
 
   # ----------------------------------------------------------------------------

@@ -18,15 +18,19 @@ interface CustomerAuthModalProps {
   onClose: () => void;
   onSuccess: (token: string, phone: string, refreshToken?: string, user?: CustomerUserProfile) => void;
   interceptedContext?: { propertyId: string; checkIn: string; checkOut: string; guests: number } | null;
+  initialStep?: 'PHONE' | 'NAME_ONBOARDING';
+  initialPhone?: string;
 }
 
 export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
   onClose,
   onSuccess,
   interceptedContext,
+  initialStep = 'PHONE',
+  initialPhone = '',
 }) => {
-  const [step, setStep] = useState<'PHONE' | 'NAME_ONBOARDING'>('PHONE');
-  const [phone, setPhone] = useState<string>('');
+  const [step, setStep] = useState<'PHONE' | 'NAME_ONBOARDING'>(initialStep);
+  const [phone, setPhone] = useState<string>(initialPhone);
   const [fullName, setFullName] = useState<string>('');
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string>('');

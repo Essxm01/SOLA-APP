@@ -407,23 +407,27 @@ async function run() {
     'Header must NOT contain Bell icon; notifications remain deferred'
   );
 
-  // K. Circular Shape Contract: Explore account affordances use rounded-full (NOT rounded-xl)
-  // Outer touch target 44x44 (w-11 h-11), inner visual surface 40x40 (w-10 h-10 rounded-full)
+  // K. Control Radius Contract: Explore account affordances use canonical radius.control (12px / rounded-xl)
+  // Outer touch target 44x44 (w-11 h-11), inner visual surface 40x40 (w-10 h-10 rounded-xl)
   const exploreAffordanceBranch = headerCode.slice(
     headerCode.indexOf('isAuthenticated ? ('),
     headerCode.indexOf('/* Guest on other tabs')
   );
   assert(
-    exploreAffordanceBranch.includes('rounded-full') && !exploreAffordanceBranch.includes('rounded-xl'),
-    'Explore account/identity affordances must use circular rounded-full and NOT rounded-xl'
+    exploreAffordanceBranch.includes('rounded-xl') && !exploreAffordanceBranch.includes('rounded-full'),
+    'Explore account/identity affordances must use canonical control radius rounded-xl and NOT rounded-full'
   );
   assert(
     exploreAffordanceBranch.includes('w-11 h-11') && exploreAffordanceBranch.includes('w-10 h-10'),
-    'Explore account affordance must preserve 44x44 touch target with 40x40 inner circular surface'
+    'Explore account affordance must preserve 44x44 touch target with 40x40 inner surface'
   );
   assert(
-    headerCode.includes('className="w-full h-full object-cover rounded-full"'),
-    'Authenticated avatar image must use object-cover rounded-full'
+    headerCode.includes('className="w-full h-full object-cover rounded-xl"'),
+    'Authenticated avatar image must use object-cover rounded-xl'
+  );
+  assert(
+    !headerCode.includes('rounded-full'),
+    'Explore Header must NOT use rounded-full anywhere in its account affordance or brand mark'
   );
 
   // M. No Phone icon / text Login CTA is restored on Explore

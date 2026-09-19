@@ -57,7 +57,7 @@ export const CustomerHeader: React.FC<CustomerHeaderProps> = ({
           src={customerAvatarUrl}
           alt={customerFullName || 'حسابي'}
           onError={() => setAvatarError(true)}
-          className="w-full h-full object-cover rounded-full"
+          className="w-full h-full object-cover rounded-xl"
         />
       );
     }
@@ -90,7 +90,7 @@ export const CustomerHeader: React.FC<CustomerHeaderProps> = ({
                 aria-label="حسابي"
                 className="w-11 h-11 flex items-center justify-center cursor-pointer group"
               >
-                <div className="w-10 h-10 rounded-full bg-slate-100 group-hover:bg-slate-200 text-slate-700 flex items-center justify-center transition-colors border border-slate-200 overflow-hidden">
+                <div className="w-10 h-10 rounded-xl bg-slate-100 group-hover:bg-slate-200 text-slate-700 flex items-center justify-center transition-colors border border-slate-200 overflow-hidden">
                   {renderAuthenticatedAffordance()}
                 </div>
               </button>
@@ -103,7 +103,7 @@ export const CustomerHeader: React.FC<CustomerHeaderProps> = ({
                 aria-label="تسجيل الدخول أو إنشاء حساب"
                 className="w-11 h-11 flex items-center justify-center cursor-pointer group"
               >
-                <div className="w-10 h-10 rounded-full bg-slate-100 group-hover:bg-slate-200 text-slate-700 flex items-center justify-center transition-colors border border-slate-200">
+                <div className="w-10 h-10 rounded-xl bg-slate-100 group-hover:bg-slate-200 text-slate-700 flex items-center justify-center transition-colors border border-slate-200">
                   <UserRoundPlus className="w-5 h-5 text-slate-700" />
                 </div>
               </button>

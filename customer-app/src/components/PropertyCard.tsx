@@ -112,7 +112,7 @@ export const PropertyCard: React.FC<PropertyCardProps> = ({
 
       {/* Content Info (LAB Compact Layout: Right main cluster ↔ Left price anchor) */}
       <div className="p-4 flex-1 pointer-events-none z-1">
-        <div className="flex items-start justify-between gap-3">
+        <div className="flex items-center justify-between gap-3">
           {/* Right / Main Cluster (~65-70%: title → location → facts) */}
           <div className="flex-1 min-w-0 space-y-1">
             {/* Title (LAB anatomy: identity before location) */}
@@ -135,15 +135,13 @@ export const PropertyCard: React.FC<PropertyCardProps> = ({
             )}
           </div>
 
-          {/* Left / Price Anchor (~30-35%: nightly amount + currency / qualifier) */}
-          <div className="shrink-0 text-left flex flex-col items-end justify-start pt-0.5">
-            <div className="flex items-baseline gap-1">
-              <span className="text-[18px] font-black text-slate-900 leading-tight dir-ltr">
-                {property.basePricePerNight?.toLocaleString('ar-EG') || property.basePricePerNight?.toLocaleString()}
-              </span>
-              <span className="text-xs font-bold text-slate-700">ج.م</span>
-            </div>
-            <span className="text-xs font-medium text-slate-500">/ ليلة</span>
+          {/* Left / Price Anchor (Unified single line: Amount + Currency + / ليلة) */}
+          <div className="shrink-0 text-left flex items-baseline gap-1 whitespace-nowrap">
+            <span className="text-[20px] font-extrabold text-slate-900 leading-none dir-ltr">
+              {property.basePricePerNight?.toLocaleString('ar-EG') || property.basePricePerNight?.toLocaleString()}
+            </span>
+            <span className="text-[16px] font-bold text-slate-700">ج.م</span>
+            <span className="text-[13px] font-medium text-slate-500 mr-0.5">/ ليلة</span>
           </div>
         </div>
       </div>

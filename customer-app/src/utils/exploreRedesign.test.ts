@@ -470,13 +470,14 @@ async function run() {
     'CustomerBottomNav must contain exactly the 4 canonical tabs'
   );
 
-  // 44. PropertyCard Compact Layout: side-by-side main cluster and left price anchor
+  // 44. PropertyCard Compact Layout: side-by-side main cluster and left price anchor with unified single-line price and items-center
   assert(
-    cardCode.includes('flex items-start justify-between gap-3') &&
-    cardCode.includes('shrink-0 text-left flex flex-col items-end') &&
-    cardCode.includes('text-[18px] font-black text-slate-900') &&
+    cardCode.includes('flex items-center justify-between gap-3') &&
+    cardCode.includes('shrink-0 text-left flex items-baseline gap-1 whitespace-nowrap') &&
+    cardCode.includes('text-[20px] font-extrabold text-slate-900') &&
+    cardCode.includes('text-[16px] font-bold text-slate-700') &&
     cardCode.includes('/ ليلة'),
-    'PropertyCard must use compact layout with side-by-side main cluster and left-aligned price anchor'
+    'PropertyCard must use compact layout with side-by-side main cluster and vertically centered single-line price anchor'
   );
 
   // 45. Single-column feed preserved: no list/grid toggle or multi-column mobile feed

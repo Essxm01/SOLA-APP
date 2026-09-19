@@ -20,7 +20,7 @@ export const ExploreSkeletonFeed: React.FC = () => {
 
           {/* Content skeleton matching compact layout */}
           <div className="p-4 flex-1 pointer-events-none">
-            <div className="flex items-start justify-between gap-3">
+            <div className="flex items-center justify-between gap-3">
               {/* Right: Main content cluster skeleton */}
               <div className="flex-1 space-y-2">
                 <div className="h-4 bg-slate-200 animate-pulse rounded w-3/4" />
@@ -28,9 +28,8 @@ export const ExploreSkeletonFeed: React.FC = () => {
                 <div className="h-3 bg-slate-100 animate-pulse rounded w-2/3" />
               </div>
               {/* Left: Price anchor skeleton */}
-              <div className="shrink-0 flex flex-col items-end gap-1.5 pt-0.5">
-                <div className="h-5 bg-slate-200 animate-pulse rounded w-16" />
-                <div className="h-3 bg-slate-100 animate-pulse rounded w-10" />
+              <div className="shrink-0">
+                <div className="h-5 bg-slate-200 animate-pulse rounded w-24" />
               </div>
             </div>
           </div>

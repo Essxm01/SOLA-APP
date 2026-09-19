@@ -73,7 +73,7 @@ export const CustomerHeader: React.FC<CustomerHeaderProps> = ({
 
   return (
     <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-slate-100 shadow-xs">
-      <div className="max-w-md mx-auto px-4 py-3 flex items-center justify-between">
+      <div className="max-w-[430px] mx-auto px-4 py-3 flex items-center justify-between">
         {/* Standalone Brand Logo */}
         <div className="flex items-center">
           <img src="/favicon.svg" alt="KONFRM" className="w-8 h-8 object-contain" />

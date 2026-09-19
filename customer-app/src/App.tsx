@@ -713,8 +713,11 @@ export function App() {
               onLogout={handleLogout}
             />
 
-            {/* Main Container — Max Mobile Width */}
-            <main className={`flex-1 w-full px-4 pb-20 ${activeTab === 'EXPLORE' ? 'bg-[#F8FAFC] pt-5' : 'pt-3'}`}>
+            {/* Main Container — Max Mobile Width with dynamic safe-area aware BottomNav reservation */}
+            <main
+              className={`flex-1 w-full px-4 ${activeTab === 'EXPLORE' ? 'bg-[#F8FAFC] pt-5' : 'pt-3'}`}
+              style={{ paddingBottom: 'calc(5rem + env(safe-area-inset-bottom, 0px))' }}
+            >
               {favoritesActionError && (
                 <div className="mb-3 p-3 bg-rose-50 border border-rose-200 text-rose-800 rounded-2xl text-xs font-bold flex items-center justify-between shadow-xs">
                   <span>{favoritesActionError}</span>

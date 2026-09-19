@@ -188,7 +188,35 @@ async function run() {
   );
   passedChecks++;
 
-  // 2.8 Primary CTA height ~54px, 12px radius, KONFRM Blue (#0059FF), NOT bottom-pinned
+  // 2.8 Local Egyptian Phone-Entry UX Contract (No visible +20, no flag emoji, no divider)
+  assert(
+    screen08File.includes('placeholder={PHONE_VALIDATION_MESSAGES.phonePlaceholder}'),
+    'Screen 08 must use the approved local placeholder'
+  );
+  assert(
+    PHONE_VALIDATION_MESSAGES.phonePlaceholder === '01X XXXX XXXX',
+    'Approved placeholder must be 01X XXXX XXXX'
+  );
+  assert(
+    !screen08File.includes('+20'),
+    'Screen 08 UI must NOT render visible +20 country code prefix'
+  );
+  assert(
+    !screen08File.includes('🇪🇬'),
+    'Screen 08 UI must NOT render visible Egyptian flag emoji'
+  );
+  assert(
+    !screen08File.includes('border-l border-slate-200') &&
+    !screen08File.includes('Country Code Indicator'),
+    'Screen 08 must not retain country-code separator or indicator container'
+  );
+  assert(
+    screen08File.includes('maxLength={11}'),
+    'Screen 08 input must enforce 11-digit local phone entry limit'
+  );
+  passedChecks++;
+
+  // 2.9 Primary CTA height ~54px, 12px radius, KONFRM Blue (#0059FF), NOT bottom-pinned
   assert(
     screen08File.includes('bg-[#0059FF]'),
     'Primary CTA must use KONFRM Blue (#0059FF)'
@@ -199,14 +227,14 @@ async function run() {
   );
   passedChecks++;
 
-  // 2.9 Reserved vertical helper/error region (prevents layout jumping)
+  // 2.10 Reserved vertical helper/error region (prevents layout jumping)
   assert(
     screen08File.includes('min-h-[24px]'),
     'Helper/error container must reserve min-h-[24px] to prevent layout jumps'
   );
   passedChecks++;
 
-  // 2.10 Scrollable container when visual viewport contracts
+  // 2.11 Scrollable container when visual viewport contracts
   assert(
     screen08File.includes('overflow-y-auto'),
     'Screen 08 content area must be scrollable when viewport contracts (overflow-y-auto)'

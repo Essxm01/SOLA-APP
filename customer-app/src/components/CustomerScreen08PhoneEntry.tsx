@@ -179,13 +179,7 @@ export const CustomerScreen08PhoneEntry: React.FC<CustomerScreen08PhoneEntryProp
                   : 'border-slate-200 focus-within:border-[#0059FF]'
               }`}
             >
-              {/* Optional Country Code Indicator */}
-              <div className="flex items-center gap-1.5 pl-3 border-l border-slate-200 text-slate-500 select-none text-xs font-bold shrink-0">
-                <span>🇪🇬</span>
-                <span dir="ltr">+20</span>
-              </div>
-
-              {/* Number Input Field */}
+              {/* Local Egyptian Phone Number Input Field */}
               <input
                 id={phoneInputId}
                 type="tel"
@@ -198,7 +192,7 @@ export const CustomerScreen08PhoneEntry: React.FC<CustomerScreen08PhoneEntryProp
                 onBlur={handleBlur}
                 disabled={loading}
                 maxLength={11}
-                className="w-full h-full bg-transparent px-3 text-left font-bold text-base text-slate-900 placeholder:text-slate-400 placeholder:text-sm focus:outline-none tracking-wider"
+                className="w-full h-full bg-transparent text-left font-bold text-base text-slate-900 placeholder:text-slate-400 placeholder:text-sm focus:outline-none tracking-wider"
               />
             </div>
 

@@ -57,7 +57,7 @@ export const CustomerHeader: React.FC<CustomerHeaderProps> = ({
           src={customerAvatarUrl}
           alt={customerFullName || 'حسابي'}
           onError={() => setAvatarError(true)}
-          className="w-full h-full object-cover rounded-xl"
+          className="w-full h-full object-cover rounded-full"
         />
       );
     }
@@ -88,9 +88,11 @@ export const CustomerHeader: React.FC<CustomerHeaderProps> = ({
                 onClick={onGoToAccount}
                 title="حسابي"
                 aria-label="حسابي"
-                className="w-11 h-11 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl flex items-center justify-center transition-colors border border-slate-200 overflow-hidden cursor-pointer"
+                className="w-11 h-11 flex items-center justify-center cursor-pointer group"
               >
-                {renderAuthenticatedAffordance()}
+                <div className="w-10 h-10 rounded-full bg-slate-100 group-hover:bg-slate-200 text-slate-700 flex items-center justify-center transition-colors border border-slate-200 overflow-hidden">
+                  {renderAuthenticatedAffordance()}
+                </div>
               </button>
             ) : isExplore ? (
               /* Guest on Explore: UserRoundPlus affordance to open Auth modal */
@@ -99,9 +101,11 @@ export const CustomerHeader: React.FC<CustomerHeaderProps> = ({
                 onClick={onOpenAuthModal}
                 title="تسجيل الدخول أو إنشاء حساب"
                 aria-label="تسجيل الدخول أو إنشاء حساب"
-                className="w-11 h-11 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl flex items-center justify-center transition-colors border border-slate-200 cursor-pointer"
+                className="w-11 h-11 flex items-center justify-center cursor-pointer group"
               >
-                <UserRoundPlus className="w-5 h-5 text-slate-700" />
+                <div className="w-10 h-10 rounded-full bg-slate-100 group-hover:bg-slate-200 text-slate-700 flex items-center justify-center transition-colors border border-slate-200">
+                  <UserRoundPlus className="w-5 h-5 text-slate-700" />
+                </div>
               </button>
             ) : (
               /* Guest on other tabs (non-Explore): standard login entry */

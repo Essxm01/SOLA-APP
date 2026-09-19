@@ -407,6 +407,25 @@ async function run() {
     'Header must NOT contain Bell icon; notifications remain deferred'
   );
 
+  // K. Circular Shape Contract: Explore account affordances use rounded-full (NOT rounded-xl)
+  // Outer touch target 44x44 (w-11 h-11), inner visual surface 40x40 (w-10 h-10 rounded-full)
+  const exploreAffordanceBranch = headerCode.slice(
+    headerCode.indexOf('isAuthenticated ? ('),
+    headerCode.indexOf('/* Guest on other tabs')
+  );
+  assert(
+    exploreAffordanceBranch.includes('rounded-full') && !exploreAffordanceBranch.includes('rounded-xl'),
+    'Explore account/identity affordances must use circular rounded-full and NOT rounded-xl'
+  );
+  assert(
+    exploreAffordanceBranch.includes('w-11 h-11') && exploreAffordanceBranch.includes('w-10 h-10'),
+    'Explore account affordance must preserve 44x44 touch target with 40x40 inner circular surface'
+  );
+  assert(
+    headerCode.includes('className="w-full h-full object-cover rounded-full"'),
+    'Authenticated avatar image must use object-cover rounded-full'
+  );
+
   // M. No Phone icon / text Login CTA is restored on Explore
   const guestExploreIndex = headerCode.indexOf('isExplore ? (');
   const guestOtherIndex = headerCode.indexOf('/* Guest on other tabs', guestExploreIndex);

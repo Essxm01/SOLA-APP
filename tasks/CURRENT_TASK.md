@@ -28,9 +28,9 @@ SEARCH_INTENT_RESET: DEFERRED / UNCHANGED
 - Zero backend, DB, migration, or RPC changes.
 - Zero booking/finance/availability rule changes.
 - Shared `PropertyCard` anatomy across Explore, Search Results, and Favorites (Title before location, 1.4:1 ratio, compact 13px facts, clean price without redundant labels, independent favorite).
-- Explore Header: Standalone KONFRM mark + one account/identity affordance across open space:
-  - Guest Explore: `UserRoundPlus` button (opens existing auth modal, accessible label "تسجيل الدخول أو إنشاء حساب").
-  - Authenticated Explore: Truthful identity affordance routing to Account (`setActiveTab('ACCOUNT')`) with fallback hierarchy: canonical avatarUrl → initials (real canonical fullName only) → UserRound.
+- Explore Header: Standalone KONFRM mark + one circular account/identity affordance across open space:
+  - Guest Explore: Circular `UserRoundPlus` button (44px touch target, 40px `rounded-full` visual surface, opens existing auth modal, accessible label "تسجيل الدخول أو إنشاء حساب").
+  - Authenticated Explore: Truthful circular identity affordance routing to Account (`setActiveTab('ACCOUNT')`) with 44px target and 40px `rounded-full` visual surface; fallback hierarchy: canonical avatarUrl (circular) → initials (circular) → UserRound (circular).
   - Notifications: DEFERRED / zero Bell icon.
   *(Supersedes the interim brand-only Explore header model).*
 - Explore Hero: Headline "هتصيف فين؟", Subtitle: NONE (direct headline → search flow with 16–20px rhythm).

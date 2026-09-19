@@ -5,6 +5,7 @@ import { PropertyCard, CustomerPropertyItem } from './components/PropertyCard';
 import { ExploreSkeletonFeed, ExploreEmptyView, ExploreErrorView } from './components/ExploreStateViews';
 import { PropertyDetailModal } from './components/PropertyDetailModal';
 import { CustomerAuthModal, type CustomerUserProfile } from './components/CustomerAuthModal';
+import { CustomerScreen08PhoneEntry, type Screen08AuthOrigin } from './components/CustomerScreen08PhoneEntry';
 import { CustomerEditAccountPage } from './components/CustomerEditAccountPage';
 import { CustomerSupportModal } from './components/CustomerSupportModal';
 import { CustomerWalletModal } from './components/CustomerWalletModal';
@@ -107,6 +108,11 @@ export function App() {
   const resultsScrollTopRef = useRef<number>(0);
   const filterMetadata = useMemo(() => extractFilterMetadata(properties), [properties]);
   const [showAuthModal, setShowAuthModal] = useState<boolean>(false);
+  const [authOrigin, setAuthOrigin] = useState<Screen08AuthOrigin | null>(null);
+  const [authLoading, setAuthLoading] = useState<boolean>(false);
+  const [authServiceError, setAuthServiceError] = useState<string | null>(null);
+  const [pendingNameOnboardingPhone, setPendingNameOnboardingPhone] = useState<string | null>(null);
+  const authRequestGenerationRef = useRef<number>(0);
   const [showSupportModal, setShowSupportModal] = useState<boolean>(false);
   const [showWalletModal, setShowWalletModal] = useState<boolean>(false);
   const [showSuccessModal, setShowSuccessModal] = useState<boolean>(false);
@@ -440,6 +446,7 @@ export function App() {
     if (!authToken) {
       // Unauthenticated Guest Interception for Favorites
       localStorage.setItem('sola_customer_pending_favorite_property_id', id);
+      setAuthOrigin({ type: 'PROTECTED_FAVORITE', propertyId: id });
       setShowAuthModal(true);
       return;
     }
@@ -471,6 +478,77 @@ export function App() {
     }
   };
 
+  // Cancel Auth & Clear Stale Handoff (FOUNDER_AUTH_CANCEL_HANDOFF)
+  const handleCancelAuth = () => {
+    // 1. Guard against any in-flight late responses
+    authRequestGenerationRef.current++;
+    setAuthLoading(false);
+    setAuthServiceError(null);
+
+    // 2. Clear pending intent keys without destroying visible source state
+    if (authOrigin?.type === 'PROTECTED_FAVORITE') {
+      localStorage.removeItem('sola_customer_pending_favorite_property_id');
+    } else if (authOrigin?.type === 'PROTECTED_BOOKING') {
+      localStorage.removeItem('sola_customer_pending_booking_intent');
+      setRestoreBookingReview(false);
+    }
+
+    setPendingNameOnboardingPhone(null);
+    setAuthOrigin(null);
+    setShowAuthModal(false);
+  };
+
+  // TEMPORARY_PROTOTYPE_AUTH_BRIDGE — replace with Screen 09 OTP handoff when canonical OTP infrastructure is ready.
+  const handleScreen08SubmitPhone = async (canonicalPhone: string) => {
+    const currentGeneration = ++authRequestGenerationRef.current;
+    setAuthLoading(true);
+    setAuthServiceError(null);
+
+    try {
+      const res = await fetch(getApiUrl('/auth/prototype-login'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone: canonicalPhone, surface: 'CUSTOMER' }),
+      });
+
+      // Ignore late response if user exited while request was in-flight
+      if (currentGeneration !== authRequestGenerationRef.current) {
+        return;
+      }
+
+      const json = await res.json().catch(() => null);
+      if (!res.ok || !json?.success) {
+        throw new Error(json?.error?.message || 'تعذر المتابعة دلوقتي. حاول مرة تانية.');
+      }
+
+      const data = json.data;
+
+      // Downstream legacy Name Onboarding compatibility for new/missing-name users
+      if (data?.requiresNameOnboarding || !data?.user?.fullName) {
+        setPendingNameOnboardingPhone(canonicalPhone);
+        return;
+      }
+
+      const token = data?.tokens?.accessToken;
+      const refreshToken = data?.tokens?.refreshToken;
+      const user = data?.user as CustomerUserProfile;
+
+      if (!token) {
+        throw new Error('تعذر المتابعة دلوقتي. حاول مرة تانية.');
+      }
+
+      handleAuthSuccess(token, canonicalPhone, refreshToken, user);
+    } catch (err: any) {
+      if (currentGeneration === authRequestGenerationRef.current) {
+        setAuthServiceError('تعذر المتابعة دلوقتي. حاول مرة تانية.');
+      }
+    } finally {
+      if (currentGeneration === authRequestGenerationRef.current) {
+        setAuthLoading(false);
+      }
+    }
+  };
+
   // Auth Handlers
   const handleAuthSuccess = (
     token: string,
@@ -486,6 +564,11 @@ export function App() {
     setAuthToken(token);
     setCustomerAuthError(null);
     setCustomerPhone(phone);
+    setShowAuthModal(false);
+    setAuthOrigin(null);
+    setPendingNameOnboardingPhone(null);
+    setAuthLoading(false);
+    setAuthServiceError(null);
 
     if (user) {
       try {
@@ -515,8 +598,6 @@ export function App() {
     } else {
       loadFavorites(token);
     }
-
-    setShowAuthModal(false);
 
     // First-entry completion: any explicit exit (incl. a successful login or
     // account creation from Welcome) marks the entry seen for future launches.
@@ -564,6 +645,11 @@ export function App() {
     setBookingDetailId(null);
     setBookingsError(null);
     setCustomerAuthError(null);
+    setAuthOrigin(null);
+    setShowAuthModal(false);
+    setPendingNameOnboardingPhone(null);
+    setAuthLoading(false);
+    setAuthServiceError(null);
     setActiveTab('EXPLORE');
   };
 
@@ -613,6 +699,7 @@ export function App() {
     // the transition into the shell.
     const handoffToAuthFromWelcome = () => {
       markCustomerEntrySeen();
+      setAuthOrigin({ type: 'DIRECT_WELCOME' });
       setShowAuthModal(true);
     };
     return (
@@ -622,15 +709,25 @@ export function App() {
           onLogin={handoffToAuthFromWelcome}
           onCreateAccount={handoffToAuthFromWelcome}
         />
-        {/* Auth handoff uses the CURRENT prototype auth modal; C1 does not
-            redesign authentication. Cancel simply returns to Welcome without
-            touching the entry flag. */}
         {showAuthModal && (
-          <CustomerAuthModal
-            onClose={() => setShowAuthModal(false)}
-            onSuccess={handleAuthSuccess}
-            interceptedContext={interceptedContext}
-          />
+          pendingNameOnboardingPhone ? (
+            <CustomerAuthModal
+              onClose={handleCancelAuth}
+              onSuccess={handleAuthSuccess}
+              interceptedContext={interceptedContext}
+              initialStep="NAME_ONBOARDING"
+              initialPhone={pendingNameOnboardingPhone}
+            />
+          ) : (
+            <CustomerScreen08PhoneEntry
+              onBack={handleCancelAuth}
+              onSubmitPhone={handleScreen08SubmitPhone}
+              authOrigin={authOrigin || { type: 'DIRECT_WELCOME' }}
+              loading={authLoading}
+              serviceErrorMessage={authServiceError}
+              onClearServiceError={() => setAuthServiceError(null)}
+            />
+          )
         )}
       </>
     );
@@ -815,7 +912,10 @@ export function App() {
                   يمكنك حفظ ومتابعة الوحدات المفضلة بعد تسجيل الدخول إلى حسابك.
                 </p>
                 <button
-                  onClick={() => setShowAuthModal(true)}
+                  onClick={() => {
+                    setAuthOrigin({ type: 'DIRECT_FAVORITES_TAB' });
+                    setShowAuthModal(true);
+                  }}
                   className="px-5 py-2.5 bg-[#0059FF] text-white font-extrabold text-xs rounded-xl shadow-xs cursor-pointer"
                 >
                   تسجيل الدخول
@@ -1154,7 +1254,10 @@ export function App() {
                   </p>
                 </div>
                 <button
-                  onClick={() => setShowAuthModal(true)}
+                  onClick={() => {
+                    setAuthOrigin({ type: 'DIRECT_ACCOUNT' });
+                    setShowAuthModal(true);
+                  }}
                   className="w-full py-3.5 bg-[#0059FF] hover:bg-blue-600 active:scale-[0.99] text-white font-black text-xs rounded-xl shadow-lg shadow-blue-500/25 transition-all"
                 >
                   دخول برقم الجوال
@@ -1178,6 +1281,7 @@ export function App() {
           onRequireAuth={(context) => {
             localStorage.setItem('sola_customer_pending_booking_intent', JSON.stringify(context));
             setInterceptedContext(context);
+            setAuthOrigin({ type: 'PROTECTED_BOOKING', context });
             setShowAuthModal(true);
           }}
           restoredBookingIntent={interceptedContext}
@@ -1201,13 +1305,26 @@ export function App() {
         />
       )}
 
-      {/* Customer Auth OTP Modal */}
+      {/* Customer Screen 08 Full-Screen Auth Layer (or legacy Name Onboarding compatibility) */}
       {showAuthModal && (
-        <CustomerAuthModal
-          onClose={() => setShowAuthModal(false)}
-          onSuccess={handleAuthSuccess}
-          interceptedContext={interceptedContext}
-        />
+        pendingNameOnboardingPhone ? (
+          <CustomerAuthModal
+            onClose={handleCancelAuth}
+            onSuccess={handleAuthSuccess}
+            interceptedContext={interceptedContext}
+            initialStep="NAME_ONBOARDING"
+            initialPhone={pendingNameOnboardingPhone}
+          />
+        ) : (
+          <CustomerScreen08PhoneEntry
+            onBack={handleCancelAuth}
+            onSubmitPhone={handleScreen08SubmitPhone}
+            authOrigin={authOrigin || { type: 'DIRECT_EXPLORE' }}
+            loading={authLoading}
+            serviceErrorMessage={authServiceError}
+            onClearServiceError={() => setAuthServiceError(null)}
+          />
+        )
       )}
 
       {/* Customer Support Modal */}

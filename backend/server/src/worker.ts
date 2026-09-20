@@ -26,6 +26,7 @@ export interface Env {
   AUTH_DEVELOPMENT_OTP?: string;
   AUTH_OTP_HMAC_SECRET?: string;
   SUPABASE_PROJECT_REF?: string;
+  AUTH_V2_QA_WORKER_ONLY?: string;
   AUTH_REAL_SMS_PROVIDER_CONFIGURED?: string;
   AUTH_REAL_EMAIL_PROVIDER_CONFIGURED?: string;
   PAYMOB_API_KEY?: string;
@@ -57,6 +58,19 @@ export default {
 
     const url = new URL(request.url);
     const method = request.method.toUpperCase();
+
+    if (env.AUTH_V2_QA_WORKER_ONLY === 'true') {
+      const allowed = url.pathname === '/api/v1/health'
+        || url.pathname.startsWith('/api/v2/auth/')
+        || url.pathname === '/api/v1/auth/refresh'
+        || url.pathname === '/api/v1/auth/revoke';
+      if (!allowed) {
+        return new Response(JSON.stringify({ success: false, error: { code: 'QA_ROUTE_NOT_ALLOWED', message: 'هذا المسار غير متاح في بيئة الاختبار.' } }), {
+          status: 404,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+    }
 
     // 2. Handle Dynamic CORS Origin Validation & Preflight OPTIONS requests
     const rawOrigin = request.headers.get('origin') || '';

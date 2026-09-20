@@ -157,6 +157,146 @@ async function queryViaSupabaseRest(text: string, params: any[] | undefined, url
   const lowerSql = sql.toLowerCase();
   const normalizedSql = sql.replace(/\s+/g, ' ').trim().toLowerCase();
 
+  // AUTH-V2: the Worker has no pg pool. These narrow, exact repository
+  // mappings are intentionally placed before legacy compatibility branches so
+  // Auth V2 never falls through to getDbPool() when DATABASE_URL is absent.
+  const authResult = (rows: any[], command = 'SELECT'): pg.QueryResult<any> => ({
+    rows,
+    command,
+    rowCount: rows.length,
+    oid: 0,
+    fields: [],
+  });
+  const authJson = async (res: Response, code: string): Promise<any> => {
+    if (!res.ok) {
+      const body = await res.text().catch(() => '');
+      throw new Error(`${code}: HTTP ${res.status} — ${body.slice(0, 240)}`);
+    }
+    return res.json().catch(() => null);
+  };
+  const authArray = (raw: any, code: string): any[] => {
+    if (!Array.isArray(raw)) throw new Error(`${code}: expected a JSON array`);
+    return raw;
+  };
+  const authRow = (raw: any, code: string): any => {
+    const rows = authArray(raw, code);
+    if (rows.length > 1) throw new Error(`${code}: expected at most one row`);
+    return rows[0] || null;
+  };
+  const mapIdentifier = (r: any): any => ({
+    id: r?.id,
+    userId: r?.user_id ?? r?.userId,
+    identifierType: r?.identifier_type ?? r?.identifierType,
+    normalizedValue: r?.normalized_value ?? r?.normalizedValue,
+    verifiedAt: r?.verified_at ?? r?.verifiedAt ?? null,
+    createdAt: r?.created_at ?? r?.createdAt,
+    updatedAt: r?.updated_at ?? r?.updatedAt,
+  });
+  const mapChallenge = (r: any): any => ({
+    id: r?.id,
+    surface: r?.surface,
+    intent: r?.intent,
+    method: r?.method,
+    normalizedValue: r?.normalized_value ?? r?.normalizedValue,
+    otpDigest: r?.otp_digest ?? r?.otpDigest,
+    generation: r?.generation,
+    issuedAt: r?.issued_at ?? r?.issuedAt,
+    otpExpiresAt: r?.otp_expires_at ?? r?.otpExpiresAt,
+    challengeExpiresAt: r?.challenge_expires_at ?? r?.challengeExpiresAt,
+    resendAvailableAt: r?.resend_available_at ?? r?.resendAvailableAt,
+    failedAttempts: r?.failed_attempts ?? r?.failedAttempts,
+    issueCount: r?.issue_count ?? r?.issueCount,
+    status: r?.status,
+    verifiedAt: r?.verified_at ?? r?.verifiedAt ?? null,
+    consumedAt: r?.consumed_at ?? r?.consumedAt ?? null,
+    cancelledAt: r?.cancelled_at ?? r?.cancelledAt ?? null,
+    providerMetadata: r?.provider_metadata ?? r?.providerMetadata ?? {},
+    createdAt: r?.created_at ?? r?.createdAt,
+    updatedAt: r?.updated_at ?? r?.updatedAt,
+  });
+  const authRpc = async (name: string, body: Record<string, unknown>, code: string): Promise<any[]> => {
+    const raw = await authJson(await fetch(`${url}/rest/v1/rpc/${name}`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(body),
+    }), code);
+    return authArray(raw, code);
+  };
+
+  if (/^select id, user_id as "userid", identifier_type as "identifiertype", normalized_value as "normalizedvalue", verified_at as "verifiedat", created_at as "createdat", updated_at as "updatedat" from public\.user_identifiers where identifier_type = \$1 and normalized_value = \$2$/i.test(normalizedSql)) {
+    const raw = await authJson(await fetch(`${url}/rest/v1/user_identifiers?identifier_type=eq.${encodeURIComponent(params?.[0])}&normalized_value=eq.${encodeURIComponent(params?.[1])}`, { headers }), 'REST_AUTH_IDENTIFIER_LOOKUP_FAILED');
+    return authResult(authArray(raw, 'REST_AUTH_IDENTIFIER_LOOKUP_MALFORMED').map(mapIdentifier));
+  }
+  if (/^select id, user_id as "userid", identifier_type as "identifiertype", normalized_value as "normalizedvalue", verified_at as "verifiedat", created_at as "createdat", updated_at as "updatedat" from public\.user_identifiers where user_id = \$1$/i.test(normalizedSql)) {
+    const raw = await authJson(await fetch(`${url}/rest/v1/user_identifiers?user_id=eq.${encodeURIComponent(params?.[0])}`, { headers }), 'REST_AUTH_IDENTIFIER_BY_USER_FAILED');
+    return authResult(authArray(raw, 'REST_AUTH_IDENTIFIER_BY_USER_MALFORMED').map(mapIdentifier));
+  }
+  if (/^insert into public\.user_identifiers \(id, user_id, identifier_type, normalized_value, verified_at, created_at, updated_at\) values \(\$1, \$2, \$3, \$4, \$5, now\(\), now\(\)\) returning id, user_id as "userid", identifier_type as "identifiertype", normalized_value as "normalizedvalue", verified_at as "verifiedat", created_at as "createdat", updated_at as "updatedat"$/i.test(normalizedSql)) {
+    const raw = await authJson(await fetch(`${url}/rest/v1/user_identifiers`, { method: 'POST', headers: { ...headers, Prefer: 'return=representation' }, body: JSON.stringify({ id: params?.[0], user_id: params?.[1], identifier_type: params?.[2], normalized_value: params?.[3], verified_at: params?.[4] ?? null }) }), 'REST_AUTH_IDENTIFIER_CREATE_FAILED');
+    const row = authRow(raw, 'REST_AUTH_IDENTIFIER_CREATE_MALFORMED');
+    if (!row) throw new Error('REST_AUTH_IDENTIFIER_CREATE_ZERO_ROWS');
+    return authResult([mapIdentifier(row)], 'INSERT');
+  }
+  if (/^update public\.user_identifiers set verified_at = now\(\), updated_at = now\(\) where identifier_type = \$1 and normalized_value = \$2 returning id, user_id as "userid", identifier_type as "identifiertype", normalized_value as "normalizedvalue", verified_at as "verifiedat", created_at as "createdat", updated_at as "updatedat"$/i.test(normalizedSql)) {
+    const raw = await authJson(await fetch(`${url}/rest/v1/user_identifiers?identifier_type=eq.${encodeURIComponent(params?.[0])}&normalized_value=eq.${encodeURIComponent(params?.[1])}`, { method: 'PATCH', headers: { ...headers, Prefer: 'return=representation' }, body: JSON.stringify({ verified_at: new Date().toISOString(), updated_at: new Date().toISOString() }) }), 'REST_AUTH_IDENTIFIER_VERIFY_FAILED');
+    const row = authRow(raw, 'REST_AUTH_IDENTIFIER_VERIFY_MALFORMED');
+    return authResult(row ? [mapIdentifier(row)] : [], 'UPDATE');
+  }
+
+  const challengeSelect = /^select id, surface, intent, method, normalized_value as "normalizedvalue", otp_digest as "otpdigest", generation, issued_at as "issuedat", otp_expires_at as "otpexpiresat", challenge_expires_at as "challengeexpiresat", resend_available_at as "resendavailableat", failed_attempts as "failedattempts", issue_count as "issuecount", status, verified_at as "verifiedat", consumed_at as "consumedat", cancelled_at as "cancelledat", provider_metadata as "providermetadata", created_at as "createdat", updated_at as "updatedat" from public\.auth_challenges where id = \$1$/i;
+  if (challengeSelect.test(normalizedSql)) {
+    const raw = await authJson(await fetch(`${url}/rest/v1/auth_challenges?id=eq.${encodeURIComponent(params?.[0])}`, { headers }), 'REST_AUTH_CHALLENGE_LOOKUP_FAILED');
+    const row = authRow(raw, 'REST_AUTH_CHALLENGE_LOOKUP_MALFORMED');
+    return authResult(row ? [mapChallenge(row)] : []);
+  }
+  if (/^insert into public\.auth_challenges\s*\(\s*id, surface, intent, method, normalized_value, otp_digest, generation, issued_at, otp_expires_at, challenge_expires_at, resend_available_at, failed_attempts, issue_count, status, provider_metadata, created_at, updated_at\s*\) values \(\$1, \$2, \$3, \$4, \$5, \$6, \$7, now\(\), \$8, \$9, \$10, 0, 1, 'active', \$11, now\(\), now\(\)\) returning /i.test(normalizedSql)) {
+    const raw = await authJson(await fetch(`${url}/rest/v1/auth_challenges`, { method: 'POST', headers: { ...headers, Prefer: 'return=representation' }, body: JSON.stringify({ id: params?.[0], surface: params?.[1], intent: params?.[2], method: params?.[3], normalized_value: params?.[4], otp_digest: params?.[5], generation: params?.[6] || 1, otp_expires_at: params?.[7], challenge_expires_at: params?.[8], resend_available_at: params?.[9], failed_attempts: 0, issue_count: 1, status: 'ACTIVE', provider_metadata: JSON.parse(params?.[10] || '{}') }) }), 'REST_AUTH_CHALLENGE_CREATE_FAILED');
+    const row = authRow(raw, 'REST_AUTH_CHALLENGE_CREATE_MALFORMED');
+    if (!row) throw new Error('REST_AUTH_CHALLENGE_CREATE_ZERO_ROWS');
+    return authResult([mapChallenge(row)], 'INSERT');
+  }
+  if (normalizedSql.startsWith('update public.auth_challenges set generation = $2, otp_digest = $3, otp_expires_at = $4, resend_available_at = $5, issue_count = $6, updated_at = now() where id = $1 returning ')) {
+    const raw = await authJson(await fetch(`${url}/rest/v1/auth_challenges?id=eq.${encodeURIComponent(params?.[0])}`, { method: 'PATCH', headers: { ...headers, Prefer: 'return=representation' }, body: JSON.stringify({ generation: params?.[1], otp_digest: params?.[2], otp_expires_at: params?.[3], resend_available_at: params?.[4], issue_count: params?.[5], updated_at: new Date().toISOString() }) }), 'REST_AUTH_CHALLENGE_RESEND_UPDATE_FAILED');
+    const row = authRow(raw, 'REST_AUTH_CHALLENGE_RESEND_UPDATE_MALFORMED');
+    if (!row) throw new Error('REST_AUTH_CHALLENGE_RESEND_UPDATE_ZERO_ROWS');
+    return authResult([mapChallenge(row)], 'UPDATE');
+  }
+  if (normalizedSql.startsWith("update public.auth_challenges set status = 'cancelled', cancelled_at = now(), updated_at = now() where id = $1 returning ")) {
+    const raw = await authJson(await fetch(`${url}/rest/v1/auth_challenges?id=eq.${encodeURIComponent(params?.[0])}`, { method: 'PATCH', headers: { ...headers, Prefer: 'return=representation' }, body: JSON.stringify({ status: 'CANCELLED', cancelled_at: new Date().toISOString(), updated_at: new Date().toISOString() }) }), 'REST_AUTH_CHALLENGE_CANCEL_FAILED');
+    const row = authRow(raw, 'REST_AUTH_CHALLENGE_CANCEL_MALFORMED');
+    return authResult(row ? [mapChallenge(row)] : [], 'UPDATE');
+  }
+
+  const authRpcShapes: Array<{ name: string; prefix: string; body: (p: any[] | undefined) => Record<string, unknown>; code: string }> = [
+    { name: 'konfrm_consume_auth_challenge_v2', prefix: 'select * from public.konfrm_consume_auth_challenge_v2($1)', body: p => ({ p_challenge_id: p?.[0] }), code: 'REST_AUTH_CHALLENGE_CONSUME_RPC_FAILED' },
+    { name: 'konfrm_verify_auth_challenge_v2', prefix: 'select success, error_code as "errorcode", challenge_id as "challengeid", user_id as "userid", identifier_type as "identifiertype", normalized_value as "normalizedvalue", intent, surface, failed_attempts as "failedattempts", is_locked as "islocked" from public.konfrm_verify_auth_challenge_v2($1, $2, $3)', body: p => ({ p_challenge_id: p?.[0], p_candidate_digest: p?.[1], p_max_failed_attempts: p?.[2] }), code: 'REST_AUTH_VERIFY_RPC_FAILED' },
+    { name: 'konfrm_check_rate_limit_v2', prefix: 'select allowed, remaining_attempts as "remainingattempts", retry_after_seconds as "retryafterseconds" from public.konfrm_check_rate_limit_v2($1, $2, $3)', body: p => ({ p_bucket_key: p?.[0], p_window_seconds: p?.[1], p_max_attempts: p?.[2] }), code: 'REST_AUTH_RATE_LIMIT_RPC_FAILED' },
+    { name: 'konfrm_acquire_resend_lease_v2', prefix: 'select success, error_code as "errorcode", lease_token as "leasetoken", generation, normalized_value as "normalizedvalue", method, surface, intent from public.konfrm_acquire_resend_lease_v2($1, $2)', body: p => ({ p_challenge_id: p?.[0], p_lease_ttl_seconds: p?.[1] }), code: 'REST_AUTH_RESEND_ACQUIRE_RPC_FAILED' },
+    { name: 'konfrm_commit_resend_v2', prefix: 'select success, error_code as "errorcode", generation, otp_expires_at as "otpexpiresat", resend_available_at as "resendavailableat", challenge_expires_at as "challengeexpiresat" from public.konfrm_commit_resend_v2($1, $2, $3, $4, $5)', body: p => ({ p_challenge_id: p?.[0], p_lease_token: p?.[1], p_new_digest: p?.[2], p_new_generation: p?.[3], p_cooldown_seconds: p?.[4] }), code: 'REST_AUTH_RESEND_COMMIT_RPC_FAILED' },
+    { name: 'konfrm_release_resend_lease_v2', prefix: 'select success, error_code as "errorcode" from public.konfrm_release_resend_lease_v2($1, $2)', body: p => ({ p_challenge_id: p?.[0], p_lease_token: p?.[1] }), code: 'REST_AUTH_RESEND_RELEASE_RPC_FAILED' },
+  ];
+  for (const shape of authRpcShapes) {
+    if (normalizedSql === shape.prefix) {
+      const raw = await authRpc(shape.name, shape.body(params), shape.code);
+      return authResult(raw.map((r: any) => ({
+        ...r,
+        errorCode: r?.errorCode ?? r?.error_code,
+        challengeId: r?.challengeId ?? r?.challenge_id,
+        userId: r?.userId ?? r?.user_id,
+        identifierType: r?.identifierType ?? r?.identifier_type,
+        normalizedValue: r?.normalizedValue ?? r?.normalized_value,
+        failedAttempts: r?.failedAttempts ?? r?.failed_attempts,
+        isLocked: r?.isLocked ?? r?.is_locked,
+        leaseToken: r?.leaseToken ?? r?.lease_token,
+        remainingAttempts: r?.remainingAttempts ?? r?.remaining_attempts,
+        retryAfterSeconds: r?.retryAfterSeconds ?? r?.retry_after_seconds,
+        otpExpiresAt: r?.otpExpiresAt ?? r?.otp_expires_at,
+        resendAvailableAt: r?.resendAvailableAt ?? r?.resend_available_at,
+        challengeExpiresAt: r?.challengeExpiresAt ?? r?.challenge_expires_at,
+      })));
+    }
+  }
+
   // P1.5: booking request + canonical financial summary are created by ONE
   // Postgres transaction (migration 026). The matcher is exact and
   // collision-safe: only the canonical repository query shape

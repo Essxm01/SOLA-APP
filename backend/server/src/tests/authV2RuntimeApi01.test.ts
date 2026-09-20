@@ -23,6 +23,8 @@ const QA_ENV = {
   AUTH_OTP_HMAC_SECRET: 'runtime-api-test-hmac-secret-32-chars',
   JWT_ACCESS_SECRET: 'runtime-api-test-access-secret-32-chars',
   JWT_REFRESH_SECRET: 'runtime-api-test-refresh-secret-32-chars',
+  SUPABASE_PROJECT_REF: AUTH_V2_QA_PROJECT_REF,
+  SUPABASE_SERVICE_ROLE_KEY: 'runtime-api-test-service-role-key-32-chars',
   SUPABASE_URL: `https://${AUTH_V2_QA_PROJECT_REF}.supabase.co`,
 };
 
@@ -30,9 +32,10 @@ type TestResult = { name: string; passed: boolean; error?: string };
 
 function withQaEnvironment(): Record<string, string | undefined> {
   const previous: Record<string, string | undefined> = {};
-  for (const [key, value] of Object.entries(QA_ENV)) {
+  for (const [key, value] of Object.entries({ ...QA_ENV, DATABASE_URL: undefined })) {
     previous[key] = process.env[key];
-    process.env[key] = value;
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
   }
   return previous;
 }
@@ -109,7 +112,15 @@ export async function runAuthV2RuntimeApiSuite(): Promise<{ total: number; passe
     await record('Founder QA runtime guard rejects a production project ref', async () => {
       const decision = getAuthV2RuntimeDecision({ ...QA_ENV, SUPABASE_URL: `https://${AUTH_V2_PRODUCTION_PROJECT_REF}.supabase.co` });
       assert.strictEqual(decision.enabled, false);
-      assert.strictEqual(decision.errorCode, 'AUTH_V2_QA_PROJECT_MISMATCH');
+      assert.strictEqual(decision.errorCode, 'AUTH_V2_SUPABASE_PROJECT_IDENTITY_MISMATCH');
+    });
+
+    await record('Founder QA guard fails closed for identity mismatch, DATABASE_URL, or missing service role', async () => {
+      assert.strictEqual(getAuthV2RuntimeDecision({ ...QA_ENV, SUPABASE_PROJECT_REF: AUTH_V2_PRODUCTION_PROJECT_REF }).errorCode, 'AUTH_V2_SUPABASE_PROJECT_IDENTITY_MISMATCH');
+      assert.strictEqual(getAuthV2RuntimeDecision({ ...QA_ENV, DATABASE_URL: 'postgresql://qa-not-allowed' }).errorCode, 'AUTH_V2_QA_DATABASE_URL_FORBIDDEN');
+      const missingService = { ...QA_ENV };
+      delete (missingService as any).SUPABASE_SERVICE_ROLE_KEY;
+      assert.strictEqual(getAuthV2RuntimeDecision(missingService).errorCode, 'AUTH_V2_QA_SERVICE_ROLE_REQUIRED');
     });
 
     await record('Malformed challenge request is rejected before service dispatch', async () => {

@@ -9,8 +9,7 @@
     "AUTH_V2_ENABLED": "true",
     "AUTH_ENVIRONMENT": "founder_qa",
     "AUTH_DELIVERY_MODE": "DEVELOPMENT_FIXED_OTP",
-    "PAYMENT_MODE": "PROTOTYPE",
-    "OBJECT_STORAGE_PROVIDER": "supabase"
+    "AUTH_V2_QA_WORKER_ONLY": "true"
   },
   "observability": {
     "enabled": true,

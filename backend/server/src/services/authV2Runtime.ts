@@ -34,7 +34,12 @@ export function getAuthV2RuntimeDecision(env: NodeJS.ProcessEnv = process.env): 
 
   const authEnv = String(env.AUTH_ENVIRONMENT || '').trim().toLowerCase();
   const deliveryMode = String(env.AUTH_DELIVERY_MODE || '').trim().toUpperCase();
-  const projectRef = String(env.SUPABASE_PROJECT_REF || extractSupabaseProjectRef(env.SUPABASE_URL) || '').trim().toLowerCase();
+  const explicitProjectRef = String(env.SUPABASE_PROJECT_REF || '').trim().toLowerCase();
+  const urlProjectRef = extractSupabaseProjectRef(env.SUPABASE_URL);
+  if (explicitProjectRef && urlProjectRef && explicitProjectRef !== urlProjectRef) {
+    return { enabled: false, errorCode: 'AUTH_V2_SUPABASE_PROJECT_IDENTITY_MISMATCH' };
+  }
+  const projectRef = explicitProjectRef || urlProjectRef || '';
   const nodeEnv = String(env.NODE_ENV || '').trim().toLowerCase();
   const production = authEnv === 'production' || nodeEnv === 'production';
 
@@ -48,6 +53,15 @@ export function getAuthV2RuntimeDecision(env: NodeJS.ProcessEnv = process.env): 
   if (!projectRef) return { enabled: false, errorCode: 'SUPABASE_PROJECT_REF_REQUIRED' };
 
   if (authEnv === 'founder_qa') {
+    if (env.DATABASE_URL && env.DATABASE_URL.trim()) {
+      return { enabled: false, errorCode: 'AUTH_V2_QA_DATABASE_URL_FORBIDDEN' };
+    }
+    if (!hasSecret(env.SUPABASE_SERVICE_ROLE_KEY || env.SUPABASE_SECRET_KEY, 20)) {
+      return { enabled: false, errorCode: 'AUTH_V2_QA_SERVICE_ROLE_REQUIRED' };
+    }
+    if (!urlProjectRef || !explicitProjectRef) {
+      return { enabled: false, errorCode: 'AUTH_V2_QA_PROJECT_REF_AND_URL_REQUIRED' };
+    }
     if (projectRef !== AUTH_V2_QA_PROJECT_REF) {
       return { enabled: false, errorCode: 'AUTH_V2_QA_PROJECT_MISMATCH' };
     }

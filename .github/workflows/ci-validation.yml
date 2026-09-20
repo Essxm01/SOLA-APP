@@ -153,6 +153,7 @@ jobs:
           npm run test:auth-v2-postgres
           npm run test:auth-v2-qa-bootstrap
           npm run test:auth-v2-runtime-api-01
+          npm run test:auth-v2-worker-adapter
           npm run test:owner-registration-kyc-01
           npm run test:owner-identity-01
           npm run test:owner-property-wizard-01

@@ -43,7 +43,7 @@ import { AuthV2Service } from '../services/authV2Service.js';
 import { AuthV2ContinuationService } from '../services/authV2ContinuationService.js';
 import { verifyAccessToken } from '../services/jwtService.js';
 import { AuthService } from '../services/authService.js';
-import { isProductionDatabase } from '../utils/testDbGuard.js';
+import { isProductionDatabase, assertSafeTestDatabaseUrl } from '../utils/testDbGuard.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -116,7 +116,7 @@ export async function runAuthV2FoundationSuite(): Promise<{
         developmentOtp: options?.developmentOtp ?? TEST_FIXED_OTP,
         hmacSecret: options?.hmacSecret ?? TEST_HMAC_SECRET,
         nodeEnv: options?.nodeEnv,
-        authEnv: options?.authEnv,
+        authEnv: options?.authEnv ?? 'test',
         hasRealSmsProvider: options?.hasRealSmsProvider,
         hasRealEmailProvider: options?.hasRealEmailProvider,
       },
@@ -476,7 +476,7 @@ export async function runAuthV2FoundationSuite(): Promise<{
       async () => {
         await service.resendChallenge({ challengeId: issued.challengeId });
       },
-      /CHALLENGE_NOT_ACTIVE/
+      /CHALLENGE_CANCELLED|CHALLENGE_NOT_ACTIVE/
     );
   });
 
@@ -529,6 +529,73 @@ export async function runAuthV2FoundationSuite(): Promise<{
       if (r.status === 'rejected') {
         assert.match(r.reason.message, /CHALLENGE_ALREADY_VERIFIED/);
       }
+    }
+  });
+
+  await record('CHALLENGES', 'Concurrent resend: database lease ensures only ONE caller dispatches', async () => {
+    const { service, challengeRepo } = createIsolatedTestService();
+
+    const issued = await service.requestChallenge({
+      surface: 'CUSTOMER',
+      intent: 'LOGIN',
+      method: 'PHONE',
+      identifier: '01099997777',
+    });
+
+    // Advance resend cooldown on challenge to simulate cooldown expiry
+    const ch = await challengeRepo.getById(issued.challengeId);
+    assert.ok(ch);
+    ch.resendAvailableAt = new Date(Date.now() - 5000).toISOString();
+
+    // Fire 5 concurrent resend requests
+    const resendAttempts = await Promise.allSettled([
+      service.resendChallenge({ challengeId: issued.challengeId }),
+      service.resendChallenge({ challengeId: issued.challengeId }),
+      service.resendChallenge({ challengeId: issued.challengeId }),
+      service.resendChallenge({ challengeId: issued.challengeId }),
+      service.resendChallenge({ challengeId: issued.challengeId }),
+    ]);
+
+    const fulfilled = resendAttempts.filter((r) => r.status === 'fulfilled');
+    const rejected = resendAttempts.filter((r) => r.status === 'rejected');
+
+    assert.strictEqual(fulfilled.length, 1, `Expected exactly 1 resend winner, got ${fulfilled.length}`);
+    assert.strictEqual(rejected.length, 4, `Expected 4 rejected concurrent resends, got ${rejected.length}`);
+
+    for (const r of rejected) {
+      if (r.status === 'rejected') {
+        assert.match(r.reason.message, /RESEND_IN_PROGRESS|RESEND_COOLDOWN_ACTIVE/);
+      }
+    }
+  });
+
+  await record('CHALLENGES', 'Initial delivery failure cancels challenge without leaving orphan active row', async () => {
+    const { service, challengeRepo } = createIsolatedTestService();
+
+    // Inject failing SMS adapter
+    (service as any).smsAdapter = {
+      sendOtp: async () => {
+        throw new Error('TELEPHONY_PROVIDER_NETWORK_TIMEOUT');
+      },
+    };
+
+    await assert.rejects(
+      async () => {
+        await service.requestChallenge({
+          surface: 'CUSTOMER',
+          intent: 'LOGIN',
+          method: 'PHONE',
+          identifier: '01088887777',
+        });
+      },
+      /OTP_DELIVERY_FAILED/
+    );
+
+    // Verify created challenge was cancelled and not left active
+    const allChallenges = Array.from((challengeRepo as any).store.values() as IterableIterator<any>);
+    const created = allChallenges.find((c) => c.normalizedValue === '+201088887777');
+    if (created) {
+      assert.strictEqual(created.status, 'CANCELLED', 'Undelivered challenge must be cancelled');
     }
   });
 
@@ -596,7 +663,7 @@ export async function runAuthV2FoundationSuite(): Promise<{
     try {
       assert.throws(
         () => {
-          getDevelopmentOtpValue({ deliveryMode: 'DEVELOPMENT_FIXED_OTP', developmentOtp: undefined });
+          getDevelopmentOtpValue({ authEnv: 'test', deliveryMode: 'DEVELOPMENT_FIXED_OTP', developmentOtp: undefined });
         },
         /AUTH_DEVELOPMENT_OTP_CONFIG_REQUIRED/
       );
@@ -619,6 +686,98 @@ export async function runAuthV2FoundationSuite(): Promise<{
     } finally {
       if (savedSecret !== undefined) process.env.AUTH_OTP_HMAC_SECRET = savedSecret;
     }
+  });
+
+  // BLOCKER 3 HARDENING
+  await record('CONFIG_GUARDS', 'Fixed OTP environment allowlist: development, test, founder_preview allowed; production, unknown, blank rejected', () => {
+    // 1. development -> allowed
+    assert.strictEqual(
+      isFixedOtpAllowed({ authEnv: 'development', deliveryMode: 'DEVELOPMENT_FIXED_OTP' }),
+      true
+    );
+
+    // 2. test -> allowed
+    assert.strictEqual(
+      isFixedOtpAllowed({ authEnv: 'test', deliveryMode: 'DEVELOPMENT_FIXED_OTP' }),
+      true
+    );
+
+    // 3. founder_preview / founder_qa -> allowed
+    assert.strictEqual(
+      isFixedOtpAllowed({ authEnv: 'founder_preview', deliveryMode: 'DEVELOPMENT_FIXED_OTP' }),
+      true
+    );
+    assert.strictEqual(
+      isFixedOtpAllowed({ authEnv: 'founder_qa', deliveryMode: 'DEVELOPMENT_FIXED_OTP' }),
+      true
+    );
+
+    // 4. production -> rejected
+    assert.strictEqual(
+      isFixedOtpAllowed({ authEnv: 'production', deliveryMode: 'DEVELOPMENT_FIXED_OTP' }),
+      false
+    );
+    assert.strictEqual(
+      isFixedOtpAllowed({ nodeEnv: 'production', authEnv: 'development', deliveryMode: 'DEVELOPMENT_FIXED_OTP' }),
+      false
+    );
+
+    // 5. empty/blank -> rejected
+    assert.strictEqual(
+      isFixedOtpAllowed({ authEnv: '', deliveryMode: 'DEVELOPMENT_FIXED_OTP' }),
+      false
+    );
+
+    // 6. arbitrary/unknown -> rejected
+    assert.strictEqual(
+      isFixedOtpAllowed({ authEnv: 'staging', deliveryMode: 'DEVELOPMENT_FIXED_OTP' }),
+      false
+    );
+    assert.strictEqual(
+      isFixedOtpAllowed({ authEnv: 'qa_cluster', deliveryMode: 'DEVELOPMENT_FIXED_OTP' }),
+      false
+    );
+
+    // Calling getDevelopmentOtpValue in disallowed env throws
+    assert.throws(
+      () => {
+        getDevelopmentOtpValue({ authEnv: 'staging', deliveryMode: 'DEVELOPMENT_FIXED_OTP', developmentOtp: '123456' });
+      },
+      /FIXED_OTP_ENVIRONMENT_NOT_AUTHORIZED/
+    );
+  });
+
+  // BLOCKER 4 HARDENING
+  await record('CONFIG_GUARDS', 'assertSafeTestDatabaseUrl: local/disposable targets allowed, Supabase & remote targets strictly rejected', () => {
+    // Allowed local/disposable test targets
+    assert.doesNotThrow(() => {
+      assertSafeTestDatabaseUrl('postgresql://postgres:postgres@127.0.0.1:54329/sola_isolated_test');
+    });
+    assert.doesNotThrow(() => {
+      assertSafeTestDatabaseUrl('postgresql://postgres:postgres@localhost:5432/sola_ci_test');
+    });
+    assert.doesNotThrow(() => {
+      assertSafeTestDatabaseUrl('postgresql://postgres:postgres@postgres:5432/test_db');
+    });
+
+    // Rejected: Supabase pooler / project hosts
+    assert.throws(() => {
+      assertSafeTestDatabaseUrl('postgresql://postgres:pass@aws-0-eu-central-1.pooler.supabase.com:6543/postgres');
+    }, /REFUSING_TEST_MUTATION_AGAINST_NON_LOCAL_DB/);
+
+    assert.throws(() => {
+      assertSafeTestDatabaseUrl('postgresql://postgres:pass@zrbmbjgcsowfqklmxbyn.supabase.co:5432/postgres');
+    }, /REFUSING_TEST_MUTATION_AGAINST_NON_LOCAL_DB/);
+
+    // Rejected: Remote unknown host
+    assert.throws(() => {
+      assertSafeTestDatabaseUrl('postgresql://postgres:pass@db.production.sola.rentals:5432/production');
+    }, /REFUSING_TEST_MUTATION_AGAINST_NON_LOCAL_DB/);
+
+    // Rejected: Empty URL
+    assert.throws(() => {
+      assertSafeTestDatabaseUrl('');
+    }, /UNSAFE_TEST_DATABASE_URL/);
   });
 
   await record('ENVIRONMENT_SAFETY', 'Production fail-closed: fixed OTP strictly forbidden in production', () => {
@@ -888,8 +1047,9 @@ export async function runAuthV2FoundationSuite(): Promise<{
   });
 
   // BLOCKER 5 HARDENING
+  // BLOCKER 1 & BLOCKER 5 HARDENING: Canonical AuthService Integration Seam
   await record('SESSION_COMPATIBILITY', 'Auth V2 session uses SHA-256 hash and successfully integrates with canonical refresh/revoke', async () => {
-    const { service, sessionRepo, userRepo } = createIsolatedTestService();
+    const { service, sessionRepo, userRepo, userIdentifierRepo } = createIsolatedTestService();
 
     // Seed existing user
     const existingUserId = '11111111-2222-3333-4444-555555555555';
@@ -899,21 +1059,19 @@ export async function runAuthV2FoundationSuite(): Promise<{
       fullName: 'مستخدم متوافق الجلسات',
     });
 
-    const issued = await service.requestChallenge({
-      surface: 'CUSTOMER',
-      intent: 'LOGIN',
-      method: 'PHONE',
-      identifier: '01012349999',
-    });
-
     // Seed identifier
-    const { userIdentifierRepo } = createIsolatedTestService();
-    (service as any).userIdentifierRepo = userIdentifierRepo;
     await userIdentifierRepo.create({
       userId: existingUserId,
       identifierType: 'PHONE',
       normalizedValue: '+201012349999',
       verifiedAt: new Date().toISOString(),
+    });
+
+    const issued = await service.requestChallenge({
+      surface: 'CUSTOMER',
+      intent: 'LOGIN',
+      method: 'PHONE',
+      identifier: '01012349999',
     });
 
     const verifyRes = await service.verifyChallenge({
@@ -928,15 +1086,78 @@ export async function runAuthV2FoundationSuite(): Promise<{
     const expectedHash = hashRefreshToken(refreshToken);
 
     // Verify session was persisted in session repository with canonical SHA-256 hash
-    const storedSession = await sessionRepo.getByRefreshTokenHash?.(expectedHash);
+    const storedSession = await sessionRepo.getByRefreshTokenHash(expectedHash);
     assert.ok(storedSession, 'Session must be found by canonical SHA-256 refresh token hash');
     assert.strictEqual(storedSession.userId, existingUserId);
     assert.strictEqual(storedSession.isRevoked, false);
 
-    // Test canonical revocation
-    await sessionRepo.revokeByRefreshTokenHash?.(expectedHash);
-    const revokedSession = await sessionRepo.getByRefreshTokenHash?.(expectedHash);
-    assert.strictEqual(revokedSession.isRevoked, true, 'Session must be marked revoked');
+    // 1. Genuine Canonical AuthService Integration: refreshSession()
+    // Instantiates actual production AuthService class with injected isolated repository seam
+    const canonicalAuth = new AuthService(undefined, sessionRepo as any, userRepo as any);
+    const refreshed = await canonicalAuth.refreshSession(refreshToken);
+    assert.ok(refreshed.accessToken, 'Canonical refresh must issue a new access token');
+    const decodedNewToken = verifyAccessToken(refreshed.accessToken);
+    assert.strictEqual(decodedNewToken.sub, existingUserId, 'Access token subject must match user ID');
+    assert.strictEqual(decodedNewToken.role, 'ROLE_CUSTOMER', 'Access token role must be ROLE_CUSTOMER');
+
+    // 2. Genuine Canonical AuthService Integration: revokeSession()
+    const revoked = await canonicalAuth.revokeSession(refreshToken);
+    assert.strictEqual(revoked.success, true, 'Canonical revoke must succeed');
+
+    // 3. Genuine Canonical AuthService Integration: reject refresh after revoke
+    await assert.rejects(
+      async () => {
+        await canonicalAuth.refreshSession(refreshToken);
+      },
+      /SESSION_REVOKED/,
+      'Canonical refreshSession must reject revoked session with SESSION_REVOKED'
+    );
+
+    // Double-check repository state reflects revocation
+    const revokedSession = await sessionRepo.getByRefreshTokenHash(expectedHash);
+    assert.strictEqual(revokedSession.isRevoked, true, 'Session repository state must be isRevoked=true');
+  });
+
+  // MATERIAL 5 HARDENING: Customer-only Surface Restriction
+  await record('SURFACE_RESTRICTION', 'Auth V2 Foundation 01 runtime allows CUSTOMER and strictly rejects OWNER and ADMIN', async () => {
+    const { service } = createIsolatedTestService();
+
+    // 1. CUSTOMER: Allowed
+    const custRes = await service.requestChallenge({
+      surface: 'CUSTOMER',
+      intent: 'LOGIN',
+      method: 'PHONE',
+      identifier: '01012349999',
+    });
+    assert.ok(custRes.challengeId, 'CUSTOMER surface must be accepted');
+
+    // 2. OWNER: Strictly rejected
+    await assert.rejects(
+      async () => {
+        await service.requestChallenge({
+          surface: 'OWNER' as any,
+          intent: 'LOGIN',
+          method: 'PHONE',
+          identifier: '01012349999',
+        });
+      },
+      /UNAUTHORIZED_SURFACE/,
+      'OWNER surface must be rejected with UNAUTHORIZED_SURFACE'
+    );
+
+    // 3. ADMIN: Strictly rejected
+    await assert.rejects(
+      async () => {
+        await service.requestChallenge({
+          surface: 'ADMIN' as any,
+          intent: 'LOGIN',
+          method: 'PHONE',
+          identifier: '01012349999',
+        });
+      },
+      /UNAUTHORIZED_SURFACE/,
+      'ADMIN surface must be rejected with UNAUTHORIZED_SURFACE'
+    );
   });
 
   // ==========================================================================

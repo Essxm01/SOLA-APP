@@ -32,3 +32,45 @@ export function assertSafeTestDatabase(suiteName: string): void {
     );
   }
 }
+
+/**
+ * Validates that an explicit connection URL points strictly to a safe, disposable, local test database.
+ * Guards against connecting to production Supabase or remote hosts during integration tests.
+ */
+export function assertSafeTestDatabaseUrl(url: string, suiteName: string = 'IsolatedTest'): void {
+  if (!url || typeof url !== 'string' || url.trim().length === 0) {
+    throw new Error(`UNSAFE_TEST_DATABASE_URL: Suite "${suiteName}" received empty or invalid database connection URL.`);
+  }
+
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch (err: any) {
+    throw new Error(`UNSAFE_TEST_DATABASE_URL: Suite "${suiteName}" received malformed database connection URL: ${err.message}`);
+  }
+
+  const hostname = parsed.hostname.toLowerCase();
+  const lowerUrl = url.toLowerCase();
+
+  // Explicit allowed hostnames for safe isolated test database execution
+  const allowedTestHosts = new Set([
+    'localhost',
+    '127.0.0.1',
+    'postgres', // Standard Docker / CI GitHub Actions service container hostname
+  ]);
+
+  // Forbidden patterns: Supabase production hosts, cloud connection poolers, production project refs
+  const isForbidden =
+    lowerUrl.includes('supabase.co') ||
+    lowerUrl.includes('supabase.com') ||
+    lowerUrl.includes('pooler.supabase.com') ||
+    lowerUrl.includes('zrbmbjgcsowfqklmxbyn') ||
+    lowerUrl.includes('aws-1-eu-west-1');
+
+  if (isForbidden || !allowedTestHosts.has(hostname)) {
+    throw new Error(
+      `REFUSING_TEST_MUTATION_AGAINST_NON_LOCAL_DB: Suite "${suiteName}" attempted to connect to unsafe target "${hostname}". Tests may only connect to localhost, 127.0.0.1, or CI postgres service.`
+    );
+  }
+}
+

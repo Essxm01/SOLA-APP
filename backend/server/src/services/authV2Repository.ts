@@ -114,6 +114,30 @@ export interface IAuthChallengeRepository {
     candidateDigest: string,
     maxFailedAttempts?: number
   ): Promise<VerifyChallengeResult>;
+  acquireResendLease(
+    challengeId: string,
+    ttlSeconds?: number
+  ): Promise<{
+    success: boolean;
+    errorCode?: string;
+    leaseToken?: string;
+    generation?: number;
+    normalizedValue?: string;
+    method?: 'PHONE' | 'EMAIL';
+    surface?: 'CUSTOMER' | 'OWNER' | 'ADMIN';
+    intent?: 'LOGIN' | 'CREATE_ACCOUNT';
+  }>;
+  commitResend(
+    challengeId: string,
+    leaseToken: string,
+    newDigest: string,
+    newGeneration: number,
+    cooldownSeconds?: number
+  ): Promise<{ success: boolean; errorCode?: string }>;
+  releaseResendLease(
+    challengeId: string,
+    leaseToken: string
+  ): Promise<{ success: boolean; errorCode?: string }>;
 }
 
 export interface IAuthRateLimitRepository {
@@ -359,6 +383,55 @@ export class PostgresAuthChallengeRepository implements IAuthChallengeRepository
               failed_attempts AS "failedAttempts", is_locked AS "isLocked"
        FROM public.konfrm_verify_auth_challenge_v2($1, $2, $3)`,
       [challengeId, candidateDigest, maxFailedAttempts]
+    );
+    return res.rows[0];
+  }
+
+  async acquireResendLease(
+    challengeId: string,
+    ttlSeconds: number = 30
+  ): Promise<{
+    success: boolean;
+    errorCode?: string;
+    leaseToken?: string;
+    generation?: number;
+    normalizedValue?: string;
+    method?: 'PHONE' | 'EMAIL';
+    surface?: 'CUSTOMER' | 'OWNER' | 'ADMIN';
+    intent?: 'LOGIN' | 'CREATE_ACCOUNT';
+  }> {
+    const res = await queryDb(
+      `SELECT success, error_code AS "errorCode", lease_token AS "leaseToken",
+              generation, normalized_value AS "normalizedValue", method, surface, intent
+       FROM public.konfrm_acquire_resend_lease_v2($1, $2)`,
+      [challengeId, ttlSeconds]
+    );
+    return res.rows[0];
+  }
+
+  async commitResend(
+    challengeId: string,
+    leaseToken: string,
+    newDigest: string,
+    newGeneration: number,
+    cooldownSeconds: number = 60
+  ): Promise<{ success: boolean; errorCode?: string }> {
+    const res = await queryDb(
+      `SELECT success, error_code AS "errorCode"
+       FROM public.konfrm_commit_resend_v2($1, $2, $3, $4, $5)`,
+      [challengeId, leaseToken, newDigest, newGeneration, cooldownSeconds]
+    );
+    return res.rows[0];
+  }
+
+  async releaseResendLease(
+    challengeId: string,
+    leaseToken: string
+  ): Promise<{ success: boolean; errorCode?: string }> {
+    const res = await queryDb(
+      `SELECT success, error_code AS "errorCode"
+       FROM public.konfrm_release_resend_lease_v2($1, $2)`,
+      [challengeId, leaseToken]
     );
     return res.rows[0];
   }
@@ -654,6 +727,106 @@ export class InMemoryAuthChallengeRepository implements IAuthChallengeRepository
         failedAttempts: challenge.failedAttempts,
         isLocked: false,
       };
+    });
+  }
+
+  async acquireResendLease(
+    challengeId: string,
+    ttlSeconds: number = 30
+  ): Promise<{
+    success: boolean;
+    errorCode?: string;
+    leaseToken?: string;
+    generation?: number;
+    normalizedValue?: string;
+    method?: 'PHONE' | 'EMAIL';
+    surface?: 'CUSTOMER' | 'OWNER' | 'ADMIN';
+    intent?: 'LOGIN' | 'CREATE_ACCOUNT';
+  }> {
+    return await this.withLock(challengeId, async () => {
+      const challenge = this.store.get(challengeId);
+      if (!challenge) {
+        return { success: false, errorCode: 'CHALLENGE_NOT_FOUND' };
+      }
+      if (challenge.status !== 'ACTIVE') {
+        return { success: false, errorCode: `CHALLENGE_${challenge.status}` };
+      }
+      const nowMs = Date.now();
+      if (nowMs >= new Date(challenge.challengeExpiresAt).getTime()) {
+        return { success: false, errorCode: 'CHALLENGE_EXPIRED' };
+      }
+      if (new Date(challenge.resendAvailableAt).getTime() > nowMs) {
+        return { success: false, errorCode: 'RESEND_COOLDOWN_ACTIVE' };
+      }
+      const activeLease = (challenge as any).resendLeaseExpiresAt
+        ? new Date((challenge as any).resendLeaseExpiresAt).getTime() > nowMs
+        : false;
+      if (activeLease && (challenge as any).resendLeaseToken) {
+        return { success: false, errorCode: 'RESEND_IN_PROGRESS' };
+      }
+
+      const leaseToken = randomUUID();
+      const expiresAtIso = new Date(nowMs + ttlSeconds * 1000).toISOString();
+      (challenge as any).resendLeaseToken = leaseToken;
+      (challenge as any).resendLeaseExpiresAt = expiresAtIso;
+      challenge.updatedAt = new Date().toISOString();
+
+      return {
+        success: true,
+        leaseToken,
+        generation: challenge.generation,
+        normalizedValue: challenge.normalizedValue,
+        method: challenge.method,
+        surface: challenge.surface,
+        intent: challenge.intent,
+      };
+    });
+  }
+
+  async commitResend(
+    challengeId: string,
+    leaseToken: string,
+    newDigest: string,
+    newGeneration: number,
+    cooldownSeconds: number = 60
+  ): Promise<{ success: boolean; errorCode?: string }> {
+    return await this.withLock(challengeId, async () => {
+      const challenge = this.store.get(challengeId);
+      if (!challenge) return { success: false, errorCode: 'CHALLENGE_NOT_FOUND' };
+      if ((challenge as any).resendLeaseToken !== leaseToken) {
+        return { success: false, errorCode: 'INVALID_RESEND_LEASE' };
+      }
+
+      const now = new Date();
+      challenge.generation = newGeneration;
+      challenge.otpDigest = newDigest;
+      challenge.otpExpiresAt = new Date(now.getTime() + 5 * 60 * 1000).toISOString();
+      challenge.resendAvailableAt = new Date(now.getTime() + cooldownSeconds * 1000).toISOString();
+      delete (challenge as any).resendLeaseToken;
+      delete (challenge as any).resendLeaseExpiresAt;
+      challenge.issueCount = (challenge.issueCount || 1) + 1;
+      challenge.updatedAt = now.toISOString();
+
+      return { success: true };
+    });
+  }
+
+  async releaseResendLease(
+    challengeId: string,
+    leaseToken: string
+  ): Promise<{ success: boolean; errorCode?: string }> {
+    return await this.withLock(challengeId, async () => {
+      const challenge = this.store.get(challengeId);
+      if (!challenge) return { success: false, errorCode: 'CHALLENGE_NOT_FOUND' };
+      if ((challenge as any).resendLeaseToken !== leaseToken) {
+        return { success: false, errorCode: 'INVALID_RESEND_LEASE' };
+      }
+
+      delete (challenge as any).resendLeaseToken;
+      delete (challenge as any).resendLeaseExpiresAt;
+      challenge.updatedAt = new Date().toISOString();
+
+      return { success: true };
     });
   }
 

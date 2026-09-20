@@ -58,10 +58,15 @@ CREATE TABLE IF NOT EXISTS public.auth_challenges (
   verified_at TIMESTAMPTZ,
   consumed_at TIMESTAMPTZ,
   cancelled_at TIMESTAMPTZ,
+  resend_lease_token UUID,
+  resend_lease_expires_at TIMESTAMPTZ,
   provider_metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+ALTER TABLE public.auth_challenges ADD COLUMN IF NOT EXISTS resend_lease_token UUID;
+ALTER TABLE public.auth_challenges ADD COLUMN IF NOT EXISTS resend_lease_expires_at TIMESTAMPTZ;
 
 CREATE INDEX IF NOT EXISTS idx_auth_challenges_lookup
   ON public.auth_challenges(normalized_value, status);
@@ -327,7 +332,182 @@ REVOKE ALL ON FUNCTION public.konfrm_check_rate_limit_v2(VARCHAR, INT, INT) FROM
 GRANT EXECUTE ON FUNCTION public.konfrm_check_rate_limit_v2(VARCHAR, INT, INT) TO service_role;
 
 
--- 8. Record migration version
+-- 8. Atomic Resend Lease Acquisition Function (Multi-Isolate Race-Safe Resend Guard)
+CREATE OR REPLACE FUNCTION public.konfrm_acquire_resend_lease_v2(
+  p_challenge_id UUID,
+  p_lease_ttl_seconds INT DEFAULT 30
+)
+RETURNS TABLE (
+  success BOOLEAN,
+  error_code VARCHAR(100),
+  lease_token UUID,
+  generation INT,
+  normalized_value VARCHAR(255),
+  method VARCHAR(50),
+  surface VARCHAR(50),
+  intent VARCHAR(50)
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  v_challenge public.auth_challenges%ROWTYPE;
+  v_new_lease_token UUID;
+BEGIN
+  SELECT * INTO v_challenge
+  FROM public.auth_challenges
+  WHERE id = p_challenge_id
+  FOR UPDATE;
+
+  IF NOT FOUND THEN
+    RETURN QUERY SELECT FALSE, 'CHALLENGE_NOT_FOUND'::VARCHAR(100), NULL::UUID, NULL::INT, NULL::VARCHAR(255), NULL::VARCHAR(50), NULL::VARCHAR(50), NULL::VARCHAR(50);
+    RETURN;
+  END IF;
+
+  IF v_challenge.status <> 'ACTIVE' THEN
+    RETURN QUERY SELECT FALSE, ('CHALLENGE_' || v_challenge.status)::VARCHAR(100), NULL::UUID, NULL::INT, NULL::VARCHAR(255), NULL::VARCHAR(50), NULL::VARCHAR(50), NULL::VARCHAR(50);
+    RETURN;
+  END IF;
+
+  IF NOW() >= v_challenge.challenge_expires_at THEN
+    RETURN QUERY SELECT FALSE, 'CHALLENGE_EXPIRED'::VARCHAR(100), NULL::UUID, NULL::INT, NULL::VARCHAR(255), NULL::VARCHAR(50), NULL::VARCHAR(50), NULL::VARCHAR(50);
+    RETURN;
+  END IF;
+
+  IF v_challenge.resend_available_at > NOW() THEN
+    RETURN QUERY SELECT FALSE, 'RESEND_COOLDOWN_ACTIVE'::VARCHAR(100), NULL::UUID, NULL::INT, NULL::VARCHAR(255), NULL::VARCHAR(50), NULL::VARCHAR(50), NULL::VARCHAR(50);
+    RETURN;
+  END IF;
+
+  IF v_challenge.resend_lease_token IS NOT NULL AND v_challenge.resend_lease_expires_at > NOW() THEN
+    RETURN QUERY SELECT FALSE, 'RESEND_IN_PROGRESS'::VARCHAR(100), NULL::UUID, NULL::INT, NULL::VARCHAR(255), NULL::VARCHAR(50), NULL::VARCHAR(50), NULL::VARCHAR(50);
+    RETURN;
+  END IF;
+
+  v_new_lease_token := gen_random_uuid();
+
+  UPDATE public.auth_challenges
+  SET resend_lease_token = v_new_lease_token,
+      resend_lease_expires_at = NOW() + (p_lease_ttl_seconds || ' seconds')::INTERVAL,
+      updated_at = NOW()
+  WHERE id = p_challenge_id;
+
+  RETURN QUERY SELECT
+    TRUE,
+    NULL::VARCHAR(100),
+    v_new_lease_token,
+    v_challenge.generation,
+    v_challenge.normalized_value,
+    v_challenge.method,
+    v_challenge.surface,
+    v_challenge.intent;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.konfrm_acquire_resend_lease_v2(UUID, INT) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.konfrm_acquire_resend_lease_v2(UUID, INT) TO service_role;
+
+
+-- 9. Atomic Resend Commit Function (Advances generation & digest, releases lease)
+CREATE OR REPLACE FUNCTION public.konfrm_commit_resend_v2(
+  p_challenge_id UUID,
+  p_lease_token UUID,
+  p_new_digest VARCHAR(255),
+  p_new_generation INT,
+  p_cooldown_seconds INT DEFAULT 60
+)
+RETURNS TABLE (
+  success BOOLEAN,
+  error_code VARCHAR(100)
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  v_challenge public.auth_challenges%ROWTYPE;
+BEGIN
+  SELECT * INTO v_challenge
+  FROM public.auth_challenges
+  WHERE id = p_challenge_id
+  FOR UPDATE;
+
+  IF NOT FOUND THEN
+    RETURN QUERY SELECT FALSE, 'CHALLENGE_NOT_FOUND'::VARCHAR(100);
+    RETURN;
+  END IF;
+
+  IF v_challenge.resend_lease_token IS DISTINCT FROM p_lease_token THEN
+    RETURN QUERY SELECT FALSE, 'INVALID_RESEND_LEASE'::VARCHAR(100);
+    RETURN;
+  END IF;
+
+  UPDATE public.auth_challenges
+  SET generation = p_new_generation,
+      otp_digest = p_new_digest,
+      otp_expires_at = NOW() + interval '5 minutes',
+      resend_available_at = NOW() + (p_cooldown_seconds || ' seconds')::INTERVAL,
+      resend_lease_token = NULL,
+      resend_lease_expires_at = NULL,
+      issue_count = issue_count + 1,
+      updated_at = NOW()
+  WHERE id = p_challenge_id;
+
+  RETURN QUERY SELECT TRUE, NULL::VARCHAR(100);
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.konfrm_commit_resend_v2(UUID, UUID, VARCHAR, INT, INT) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.konfrm_commit_resend_v2(UUID, UUID, VARCHAR, INT, INT) TO service_role;
+
+
+-- 10. Atomic Resend Release Function (Delivery failure: preserves old secret, frees lease)
+CREATE OR REPLACE FUNCTION public.konfrm_release_resend_lease_v2(
+  p_challenge_id UUID,
+  p_lease_token UUID
+)
+RETURNS TABLE (
+  success BOOLEAN,
+  error_code VARCHAR(100)
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  v_challenge public.auth_challenges%ROWTYPE;
+BEGIN
+  SELECT * INTO v_challenge
+  FROM public.auth_challenges
+  WHERE id = p_challenge_id
+  FOR UPDATE;
+
+  IF NOT FOUND THEN
+    RETURN QUERY SELECT FALSE, 'CHALLENGE_NOT_FOUND'::VARCHAR(100);
+    RETURN;
+  END IF;
+
+  IF v_challenge.resend_lease_token IS DISTINCT FROM p_lease_token THEN
+    RETURN QUERY SELECT FALSE, 'INVALID_RESEND_LEASE'::VARCHAR(100);
+    RETURN;
+  END IF;
+
+  UPDATE public.auth_challenges
+  SET resend_lease_token = NULL,
+      resend_lease_expires_at = NULL,
+      updated_at = NOW()
+  WHERE id = p_challenge_id;
+
+  RETURN QUERY SELECT TRUE, NULL::VARCHAR(100);
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.konfrm_release_resend_lease_v2(UUID, UUID) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.konfrm_release_resend_lease_v2(UUID, UUID) TO service_role;
+
+
+-- 11. Record migration version
 INSERT INTO public.schema_migrations (version)
 VALUES ('031_auth_v2_identity_and_challenges.sql')
 ON CONFLICT (version) DO NOTHING;

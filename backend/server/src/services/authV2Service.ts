@@ -79,6 +79,7 @@ export interface ResendChallengeInput {
 export interface ResendChallengeOutput {
   success: boolean;
   challengeId: string;
+  generation?: number;
   resendAvailableAt: string;
   expiresAt: string;
 }
@@ -171,8 +172,9 @@ export class AuthV2Service {
    * Server-authoritative, persistent rate-limited, enumeration-free.
    */
   async requestChallenge(input: RequestChallengeInput): Promise<RequestChallengeOutput> {
-    if (!input.surface || (input.surface !== 'CUSTOMER' && input.surface !== 'OWNER' && input.surface !== 'ADMIN')) {
-      throw new Error('INVALID_AUTH_SURFACE');
+    // MATERIAL 5: Restrict Auth V2 Foundation 01 to CUSTOMER surface only
+    if (input.surface !== 'CUSTOMER') {
+      throw new Error(`UNAUTHORIZED_SURFACE: Auth V2 Foundation 01 is restricted to CUSTOMER surface only. Surface "${input.surface}" is rejected.`);
     }
     if (!input.intent || (input.intent !== 'LOGIN' && input.intent !== 'CREATE_ACCOUNT')) {
       throw new Error('INVALID_AUTH_INTENT');
@@ -240,11 +242,16 @@ export class AuthV2Service {
       resendAvailableAt,
     });
 
-    // Deliver OTP via method-specific adapter
-    if (input.method === 'PHONE') {
-      await this.smsAdapter.sendOtp(normalized, otp, this.config);
-    } else {
-      await this.emailAdapter.sendOtp(normalized, otp, this.config);
+    // Deliver OTP via method-specific adapter (truthful failure cleanup)
+    try {
+      if (input.method === 'PHONE') {
+        await this.smsAdapter.sendOtp(normalized, otp, this.config);
+      } else {
+        await this.emailAdapter.sendOtp(normalized, otp, this.config);
+      }
+    } catch (deliveryErr: any) {
+      await this.challengeRepo.cancel(challengeId).catch(() => null);
+      throw new Error(`OTP_DELIVERY_FAILED: Delivery adapter failed to dispatch verification code (${deliveryErr?.message || 'unknown error'})`);
     }
 
     // Enumeration-free uniform response: does NOT reveal whether account exists
@@ -260,81 +267,88 @@ export class AuthV2Service {
 
   /**
    * 2. Resend Challenge
-   * Enforces 60-second cooldown, rotates secret generation, preserves failed attempts.
-   * SAFE RESEND ORDERING: delivery dispatch is executed BEFORE invalidating old secret.
+   * Database-authoritative lease acquisition (Blocker 2):
+   * Guarantees only ONE concurrent request can acquire dispatch rights.
+   * Delivery adapter is invoked before committing secret rotation.
+   * If delivery fails, lease is released and previous valid OTP is preserved.
    */
   async resendChallenge(input: ResendChallengeInput): Promise<ResendChallengeOutput> {
-    const challenge = await this.challengeRepo.getById(input.challengeId);
-    if (!challenge) {
-      throw new Error('CHALLENGE_NOT_FOUND');
+    // 1. Acquire Database-Authoritative Resend Lease
+    const lease = await this.challengeRepo.acquireResendLease(input.challengeId, 30);
+    if (!lease.success) {
+      if (lease.errorCode === 'RESEND_COOLDOWN_ACTIVE') {
+        throw new Error('RESEND_COOLDOWN_ACTIVE: Resend cooldown is still active');
+      }
+      if (lease.errorCode === 'RESEND_IN_PROGRESS') {
+        throw new Error('RESEND_IN_PROGRESS: Resend already in progress for this challenge');
+      }
+      throw new Error(lease.errorCode || 'RESEND_FAILED');
     }
 
-    if (challenge.status !== 'ACTIVE') {
-      throw new Error(`CHALLENGE_NOT_ACTIVE: Current status is ${challenge.status}`);
-    }
+    const leaseToken = lease.leaseToken!;
+    const currentGen = lease.generation || 1;
+    const nextGeneration = currentGen + 1;
+    const normalizedValue = lease.normalizedValue!;
+    const method = lease.method!;
 
-    const now = Date.now();
-    const challengeExpiresMs = new Date(challenge.challengeExpiresAt).getTime();
-    if (now > challengeExpiresMs) {
-      throw new Error('CHALLENGE_EXPIRED');
-    }
-
-    const resendAvailableMs = new Date(challenge.resendAvailableAt).getTime();
-    if (now < resendAvailableMs) {
-      const waitSeconds = Math.ceil((resendAvailableMs - now) / 1000);
-      throw new Error(`RESEND_COOLDOWN_ACTIVE: Please wait ${waitSeconds} seconds`);
-    }
-
-    // Rate limiting
-    const rateLimitKey = `rate:resend:id:${challenge.id}`;
+    // 2. Persistent Rate Limiting check
+    const rateLimitKey = `rate:resend:id:${input.challengeId}`;
     const rateCheck = await this.rateLimitRepo.checkAndIncrement(
       rateLimitKey,
       OTP_POLICY.RATE_LIMIT_WINDOW_SECONDS,
       OTP_POLICY.RATE_LIMIT_MAX_ISSUES_PER_WINDOW
     );
     if (!rateCheck.allowed) {
+      await this.challengeRepo.releaseResendLease(input.challengeId, leaseToken);
       throw new Error(`RATE_LIMIT_EXCEEDED: Retry after ${rateCheck.retryAfterSeconds} seconds`);
     }
 
-    // Prepare next secret generation
-    const nextGeneration = challenge.generation + 1;
+    // 3. Resolve OTP & compute candidate HMAC digest
     const otp = this.resolveOtpForChallenge();
-
     const hmacSecret = getAuthHmacSecret(this.config);
     const newDigest = computeChallengeOtpDigest(
       hmacSecret,
-      challenge.id,
+      input.challengeId,
       nextGeneration,
-      challenge.normalizedValue,
+      normalizedValue,
       otp
     );
 
-    const newOtpExpiresMs = Math.min(now + OTP_POLICY.OTP_TTL_MS, challengeExpiresMs);
-    const newOtpExpiresAt = new Date(newOtpExpiresMs).toISOString();
-    const newResendAvailableAt = new Date(now + OTP_POLICY.RESEND_COOLDOWN_MS).toISOString();
-
-    // ORDERING GUARD: Deliver OTP via adapter FIRST
-    // If delivery fails, the challenge row remains in previous generation with valid code intact!
-    if (challenge.method === 'PHONE') {
-      await this.smsAdapter.sendOtp(challenge.normalizedValue, otp, this.config);
-    } else {
-      await this.emailAdapter.sendOtp(challenge.normalizedValue, otp, this.config);
+    // 4. Dispatch external delivery adapter
+    try {
+      if (method === 'PHONE') {
+        await this.smsAdapter.sendOtp(normalizedValue, otp, this.config);
+      } else {
+        await this.emailAdapter.sendOtp(normalizedValue, otp, this.config);
+      }
+    } catch (deliveryErr: any) {
+      // Delivery failed: release lease, leaving previous generation & valid code completely untouched!
+      await this.challengeRepo.releaseResendLease(input.challengeId, leaseToken);
+      throw new Error(`OTP_DELIVERY_FAILED: Resend delivery failed (${deliveryErr?.message || 'unknown error'})`);
     }
 
-    // Delivery succeeded! Now commit secret rotation to persistent repository
-    await this.challengeRepo.updateResend(challenge.id, {
-      generation: nextGeneration,
-      otpDigest: newDigest,
-      otpExpiresAt: newOtpExpiresAt,
-      resendAvailableAt: newResendAvailableAt,
-      issueCount: challenge.issueCount + 1,
-    });
+    // 5. Delivery succeeded: Commit new generation & digest, and release lease
+    const commit = await this.challengeRepo.commitResend(
+      input.challengeId,
+      leaseToken,
+      newDigest,
+      nextGeneration,
+      60
+    );
+    if (!commit.success) {
+      throw new Error(commit.errorCode || 'RESEND_COMMIT_FAILED');
+    }
+
+    const now = Date.now();
+    const otpExpiresAt = new Date(now + OTP_POLICY.OTP_TTL_MS).toISOString();
+    const resendAvailableAt = new Date(now + OTP_POLICY.RESEND_COOLDOWN_MS).toISOString();
 
     return {
       success: true,
-      challengeId: challenge.id,
-      resendAvailableAt: newResendAvailableAt,
-      expiresAt: newOtpExpiresAt,
+      challengeId: input.challengeId,
+      generation: nextGeneration,
+      resendAvailableAt,
+      expiresAt: otpExpiresAt,
     };
   }
 

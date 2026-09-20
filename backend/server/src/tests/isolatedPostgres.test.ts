@@ -17,7 +17,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import pg from 'pg';
 import { computeChallengeOtpDigest } from '../services/otpSecurity.js';
-import { isProductionDatabase } from '../utils/testDbGuard.js';
+import { isProductionDatabase, assertSafeTestDatabaseUrl } from '../utils/testDbGuard.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -43,7 +43,8 @@ export async function runIsolatedPostgresSuite(): Promise<{
     })();
   }
 
-  // FAIL-CLOSED GUARD: Refuse to run against production database
+  // FAIL-CLOSED GUARD: Strictly validate candidate test connection target (Blocker 4)
+  assertSafeTestDatabaseUrl(ISOLATED_PG_URL, 'IsolatedPostgresSuite');
   if (isProductionDatabase()) {
     throw new Error('REFUSING_TEST_EXECUTION_AGAINST_PRODUCTION_DB');
   }
@@ -259,6 +260,105 @@ export async function runIsolatedPostgresSuite(): Promise<{
           [bucketKey]
         );
         assert.strictEqual(row.rows[0].attempt_count, 4);
+      } finally {
+        client.release();
+      }
+    });
+
+    // --------------------------------------------------------------------------
+    // TEST 6: Real PostgreSQL Concurrent Resend Lease (Blocker 2)
+    // --------------------------------------------------------------------------
+    await record('Real PostgreSQL Resend Lease: 5 concurrent transactions acquire lease -> exactly 1 winner, delivery failure preserves secret', async () => {
+      const client = await pool.connect();
+      const challengeId = crypto.randomUUID();
+      const initialDigest = 'initial_otp_digest_gen_1';
+
+      try {
+        // 1. Insert an active challenge with cooldown already expired
+        await client.query(
+          `INSERT INTO public.auth_challenges (
+            id, surface, intent, method, normalized_value, otp_digest, generation,
+            created_at, otp_expires_at, challenge_expires_at, resend_available_at,
+            failed_attempts, issue_count, status
+          ) VALUES (
+            $1, 'CUSTOMER', 'LOGIN', 'PHONE', '+201099998888', $2, 1,
+            NOW(), NOW() + interval '5 minutes', NOW() + interval '10 minutes', NOW() - interval '5 seconds',
+            0, 1, 'ACTIVE'
+          )`,
+          [challengeId, initialDigest]
+        );
+
+        // 2. Fire 5 concurrent transactions attempting to acquire resend lease simultaneously
+        const leaseAttempts = await Promise.all(
+          Array.from({ length: 5 }).map(async () => {
+            const worker = await pool.connect();
+            try {
+              const res = await worker.query(
+                'SELECT * FROM public.konfrm_acquire_resend_lease_v2($1, $2)',
+                [challengeId, 30]
+              );
+              return res.rows[0];
+            } finally {
+              worker.release();
+            }
+          })
+        );
+
+        const winners = leaseAttempts.filter((a) => a.success === true);
+        const losers = leaseAttempts.filter((a) => a.success === false);
+
+        assert.strictEqual(winners.length, 1, `Expected exactly 1 lease winner, got ${winners.length}`);
+        assert.strictEqual(losers.length, 4, `Expected exactly 4 blocked attempts, got ${losers.length}`);
+
+        const winner = winners[0];
+        assert.ok(winner.lease_token, 'Winner must have a valid lease token');
+        assert.strictEqual(winner.generation, 1);
+        assert.strictEqual(winner.normalized_value, '+201099998888');
+
+        for (const loser of losers) {
+          assert.strictEqual(loser.error_code, 'RESEND_IN_PROGRESS');
+        }
+
+        // 3. Test delivery failure release: release lease without advancing generation
+        const releaseRes = await client.query(
+          'SELECT * FROM public.konfrm_release_resend_lease_v2($1, $2)',
+          [challengeId, winner.lease_token]
+        );
+        assert.strictEqual(releaseRes.rows[0].success, true);
+
+        // Verify challenge row state: generation intact, original digest intact, lease cleared
+        const chAfterRelease = await client.query(
+          'SELECT generation, otp_digest, resend_lease_token, resend_lease_expires_at FROM public.auth_challenges WHERE id = $1',
+          [challengeId]
+        );
+        assert.strictEqual(chAfterRelease.rows[0].generation, 1, 'Generation must still be 1 after delivery failure');
+        assert.strictEqual(chAfterRelease.rows[0].otp_digest, initialDigest, 'Original digest must be preserved');
+        assert.strictEqual(chAfterRelease.rows[0].resend_lease_token, null, 'Lease token must be cleared');
+
+        // 4. Re-acquire lease and commit successful resend
+        const reacquireRes = await client.query(
+          'SELECT * FROM public.konfrm_acquire_resend_lease_v2($1, $2)',
+          [challengeId, 30]
+        );
+        assert.strictEqual(reacquireRes.rows[0].success, true);
+        const newLeaseToken = reacquireRes.rows[0].lease_token;
+
+        const newDigest = 'new_otp_digest_gen_2';
+        const commitRes = await client.query(
+          'SELECT * FROM public.konfrm_commit_resend_v2($1, $2, $3, $4, $5)',
+          [challengeId, newLeaseToken, newDigest, 2, 60]
+        );
+        assert.strictEqual(commitRes.rows[0].success, true);
+
+        // Verify committed challenge row state: generation rotated to 2, new digest, lease cleared, issue_count=2
+        const chAfterCommit = await client.query(
+          'SELECT generation, otp_digest, resend_lease_token, issue_count FROM public.auth_challenges WHERE id = $1',
+          [challengeId]
+        );
+        assert.strictEqual(chAfterCommit.rows[0].generation, 2, 'Generation must be advanced to 2');
+        assert.strictEqual(chAfterCommit.rows[0].otp_digest, newDigest, 'New digest must be committed');
+        assert.strictEqual(chAfterCommit.rows[0].resend_lease_token, null, 'Lease must be cleared after commit');
+        assert.strictEqual(chAfterCommit.rows[0].issue_count, 2, 'Issue count must be incremented to 2');
       } finally {
         client.release();
       }

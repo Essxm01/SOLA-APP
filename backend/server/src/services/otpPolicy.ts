@@ -29,28 +29,49 @@ export interface AuthEnvironmentConfig {
   hasRealEmailProvider?: boolean;
 }
 
+export const ALLOWED_FIXED_OTP_ENVIRONMENTS = new Set<string>([
+  'development',
+  'test',
+  'founder_preview',
+  'founder_qa',
+]);
+
 export function isProductionEnvironment(config?: AuthEnvironmentConfig): boolean {
   const nodeEnv = (config?.nodeEnv ?? process.env.NODE_ENV ?? '').toLowerCase();
   const authEnv = (config?.authEnv ?? process.env.AUTH_ENVIRONMENT ?? '').toLowerCase();
   return nodeEnv === 'production' || authEnv === 'production';
 }
 
+/**
+ * Checks if Fixed OTP mode is authorized.
+ * STRICT RULE (Blocker 3): Fixed OTP mode requires BOTH:
+ *   1. explicit deliveryMode === 'DEVELOPMENT_FIXED_OTP'
+ *   2. explicit allowed authEnv in ALLOWED_FIXED_OTP_ENVIRONMENTS (development, test, founder_preview)
+ * Blank, unknown, or production environments fail closed (return false).
+ */
 export function isFixedOtpAllowed(config?: AuthEnvironmentConfig): boolean {
   if (isProductionEnvironment(config)) {
     return false;
   }
   const mode = (config?.deliveryMode ?? process.env.AUTH_DELIVERY_MODE ?? '').toUpperCase();
-  return mode === 'DEVELOPMENT_FIXED_OTP';
+  if (mode !== 'DEVELOPMENT_FIXED_OTP') {
+    return false;
+  }
+  const authEnv = (config?.authEnv ?? process.env.AUTH_ENVIRONMENT ?? '').trim().toLowerCase();
+  return ALLOWED_FIXED_OTP_ENVIRONMENTS.has(authEnv);
 }
 
 /**
  * Retrieves configured development OTP value.
  * STRICT RULE: No hardcoded fallback in application runtime.
- * Requires explicit AUTH_DEVELOPMENT_OTP configuration.
+ * Requires explicit authorized environment and explicit AUTH_DEVELOPMENT_OTP configuration.
  */
 export function getDevelopmentOtpValue(config?: AuthEnvironmentConfig): string {
   if (isProductionEnvironment(config)) {
     throw new Error('PRODUCTION_STATIC_OTP_FORBIDDEN');
+  }
+  if (!isFixedOtpAllowed(config)) {
+    throw new Error('FIXED_OTP_ENVIRONMENT_NOT_AUTHORIZED: Fixed OTP mode is only authorized in explicitly allowed environments (development, test, founder_preview)');
   }
   const otp = config?.developmentOtp ?? process.env.AUTH_DEVELOPMENT_OTP;
   if (!otp || typeof otp !== 'string' || !/^\d{6}$/.test(otp)) {

@@ -131,8 +131,10 @@ jobs:
         env:
           JWT_ACCESS_SECRET: test_ci_jwt_access_secret_only_for_unit_tests_32ch
           JWT_REFRESH_SECRET: test_ci_jwt_refresh_secret_only_for_unit_tests_32ch
+          AUTH_OTP_HMAC_SECRET: test_ci_hmac_secret_for_auth_v2_unit_tests
         run: |
           cd backend
+          npm run test:auth-v2-foundation
           npm run test:owner-registration-kyc-01
           npm run test:owner-identity-01
           npm run test:owner-property-wizard-01

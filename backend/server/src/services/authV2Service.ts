@@ -9,13 +9,15 @@
  *   2. Server-authoritative LOGIN / CREATE_ACCOUNT domain.
  *   3. Strict account enumeration protection (equivalent responses before verification).
  *   4. Single-winner atomic verification.
- *   5. Providerless Development Mode: Founder-approved '123456' for dev/test only.
- *   6. Production fails closed without configured provider or on fixed OTP attempt.
- *   7. Plaintext OTPs are NEVER logged, stored, or leaked in responses.
- *   8. users.phone_number NOT NULL preserved; owners.id = users.id preserved.
+ *   5. Single-use continuation tokens (atomically consumed; replay rejected).
+ *   6. Providerless Development Mode: Founder-approved fixed OTP from explicit config only.
+ *   7. Production fails closed without configured provider or on fixed OTP attempt.
+ *   8. Resend delivery failure ordering: does NOT invalidate prior secret if provider dispatch fails.
+ *   9. Canonical session compatibility: SHA-256 refresh token hashing & awaited persistence.
+ *  10. users.phone_number NOT NULL preserved; zero fake placeholder phones; owners.id = users.id preserved.
  */
 
-import { randomUUID, createHmac } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import { normalizePhoneNumber, maskPhoneNumber } from '../utils/phoneNormalizer.js';
 import { normalizeEmail, maskEmail } from '../utils/emailNormalizer.js';
 import {
@@ -36,9 +38,15 @@ import {
   type IOtpDeliveryAdapter,
 } from './otpDeliveryAdapter.js';
 import {
-  authChallengeDb,
   userIdentifierDb,
+  authChallengeDb,
   authRateLimitDb,
+  hashRefreshToken,
+  type IUserIdentifierRepository,
+  type IAuthChallengeRepository,
+  type IAuthRateLimitRepository,
+  type IUserRepository,
+  type ISessionRepository,
   type AuthChallengeRecord,
 } from './authV2Repository.js';
 import { AuthV2ContinuationService } from './authV2ContinuationService.js';
@@ -96,17 +104,30 @@ export interface VerifyChallengeOutput {
 }
 
 export class AuthV2Service {
+  private userIdentifierRepo: IUserIdentifierRepository;
+  private challengeRepo: IAuthChallengeRepository;
+  private rateLimitRepo: IAuthRateLimitRepository;
+  private userRepo: IUserRepository;
+  private sessionRepo: ISessionRepository;
   private smsAdapter: IOtpDeliveryAdapter;
   private emailAdapter: IOtpDeliveryAdapter;
   private config?: AuthEnvironmentConfig;
 
-  constructor(
-    options?: {
-      smsAdapter?: IOtpDeliveryAdapter;
-      emailAdapter?: IOtpDeliveryAdapter;
-      config?: AuthEnvironmentConfig;
-    }
-  ) {
+  constructor(options?: {
+    userIdentifierRepo?: IUserIdentifierRepository;
+    challengeRepo?: IAuthChallengeRepository;
+    rateLimitRepo?: IAuthRateLimitRepository;
+    userRepo?: IUserRepository;
+    sessionRepo?: ISessionRepository;
+    smsAdapter?: IOtpDeliveryAdapter;
+    emailAdapter?: IOtpDeliveryAdapter;
+    config?: AuthEnvironmentConfig;
+  }) {
+    this.userIdentifierRepo = options?.userIdentifierRepo ?? userIdentifierDb;
+    this.challengeRepo = options?.challengeRepo ?? authChallengeDb;
+    this.rateLimitRepo = options?.rateLimitRepo ?? authRateLimitDb;
+    this.userRepo = options?.userRepo ?? userDb;
+    this.sessionRepo = options?.sessionRepo ?? sessionDb;
     this.smsAdapter = options?.smsAdapter ?? new ProviderlessDevelopmentSmsAdapter();
     this.emailAdapter = options?.emailAdapter ?? new ProviderlessDevelopmentEmailAdapter();
     this.config = options?.config;
@@ -147,7 +168,7 @@ export class AuthV2Service {
 
   /**
    * 1. Request Challenge (Issue)
-   * Server-authoritative, rate-limited, enumeration-free.
+   * Server-authoritative, persistent rate-limited, enumeration-free.
    */
   async requestChallenge(input: RequestChallengeInput): Promise<RequestChallengeOutput> {
     if (!input.surface || (input.surface !== 'CUSTOMER' && input.surface !== 'OWNER' && input.surface !== 'ADMIN')) {
@@ -162,16 +183,29 @@ export class AuthV2Service {
 
     const { normalized, masked } = this.normalize(input.method, input.identifier);
 
-    // Rate limiting: throttle per normalized identifier
-    const rateLimitKey = `rate:issue:${input.method}:${normalized}`;
-    const rateCheck = await authRateLimitDb.checkAndIncrement(
-      rateLimitKey,
-      OTP_POLICY.RATE_LIMIT_WINDOW_MS,
+    // Persistent Rate limiting: throttle per normalized identifier
+    const idRateLimitKey = `rate:issue:id:${input.method}:${normalized}`;
+    const idRateCheck = await this.rateLimitRepo.checkAndIncrement(
+      idRateLimitKey,
+      OTP_POLICY.RATE_LIMIT_WINDOW_SECONDS,
       OTP_POLICY.RATE_LIMIT_MAX_ISSUES_PER_WINDOW
     );
 
-    if (!rateCheck.allowed) {
-      throw new Error(`RATE_LIMIT_EXCEEDED: Retry after ${rateCheck.retryAfterSeconds} seconds`);
+    if (!idRateCheck.allowed) {
+      throw new Error(`RATE_LIMIT_EXCEEDED: Retry after ${idRateCheck.retryAfterSeconds} seconds`);
+    }
+
+    // Persistent Rate limiting: throttle per IP if provided
+    if (input.ipAddress) {
+      const ipRateLimitKey = `rate:issue:ip:${input.ipAddress}`;
+      const ipRateCheck = await this.rateLimitRepo.checkAndIncrement(
+        ipRateLimitKey,
+        OTP_POLICY.RATE_LIMIT_WINDOW_SECONDS,
+        OTP_POLICY.RATE_LIMIT_MAX_ISSUES_PER_WINDOW * 2 // Allow reasonable concurrency per IP
+      );
+      if (!ipRateCheck.allowed) {
+        throw new Error(`RATE_LIMIT_EXCEEDED: Retry after ${ipRateCheck.retryAfterSeconds} seconds`);
+      }
     }
 
     const challengeId = randomUUID();
@@ -193,7 +227,7 @@ export class AuthV2Service {
     const resendAvailableAt = new Date(now + OTP_POLICY.RESEND_COOLDOWN_MS).toISOString();
 
     // Persist challenge record without plaintext OTP
-    await authChallengeDb.create({
+    await this.challengeRepo.create({
       id: challengeId,
       surface: input.surface,
       intent: input.intent,
@@ -227,9 +261,10 @@ export class AuthV2Service {
   /**
    * 2. Resend Challenge
    * Enforces 60-second cooldown, rotates secret generation, preserves failed attempts.
+   * SAFE RESEND ORDERING: delivery dispatch is executed BEFORE invalidating old secret.
    */
   async resendChallenge(input: ResendChallengeInput): Promise<ResendChallengeOutput> {
-    const challenge = await authChallengeDb.getById(input.challengeId);
+    const challenge = await this.challengeRepo.getById(input.challengeId);
     if (!challenge) {
       throw new Error('CHALLENGE_NOT_FOUND');
     }
@@ -251,17 +286,17 @@ export class AuthV2Service {
     }
 
     // Rate limiting
-    const rateLimitKey = `rate:resend:${challenge.id}`;
-    const rateCheck = await authRateLimitDb.checkAndIncrement(
+    const rateLimitKey = `rate:resend:id:${challenge.id}`;
+    const rateCheck = await this.rateLimitRepo.checkAndIncrement(
       rateLimitKey,
-      OTP_POLICY.RATE_LIMIT_WINDOW_MS,
+      OTP_POLICY.RATE_LIMIT_WINDOW_SECONDS,
       OTP_POLICY.RATE_LIMIT_MAX_ISSUES_PER_WINDOW
     );
     if (!rateCheck.allowed) {
       throw new Error(`RATE_LIMIT_EXCEEDED: Retry after ${rateCheck.retryAfterSeconds} seconds`);
     }
 
-    // Rotate secret generation
+    // Prepare next secret generation
     const nextGeneration = challenge.generation + 1;
     const otp = this.resolveOtpForChallenge();
 
@@ -274,25 +309,26 @@ export class AuthV2Service {
       otp
     );
 
-    // Reset OTP secret TTL (capped at overall challenge expiry)
     const newOtpExpiresMs = Math.min(now + OTP_POLICY.OTP_TTL_MS, challengeExpiresMs);
     const newOtpExpiresAt = new Date(newOtpExpiresMs).toISOString();
     const newResendAvailableAt = new Date(now + OTP_POLICY.RESEND_COOLDOWN_MS).toISOString();
 
-    await authChallengeDb.updateResend(challenge.id, {
+    // ORDERING GUARD: Deliver OTP via adapter FIRST
+    // If delivery fails, the challenge row remains in previous generation with valid code intact!
+    if (challenge.method === 'PHONE') {
+      await this.smsAdapter.sendOtp(challenge.normalizedValue, otp, this.config);
+    } else {
+      await this.emailAdapter.sendOtp(challenge.normalizedValue, otp, this.config);
+    }
+
+    // Delivery succeeded! Now commit secret rotation to persistent repository
+    await this.challengeRepo.updateResend(challenge.id, {
       generation: nextGeneration,
       otpDigest: newDigest,
       otpExpiresAt: newOtpExpiresAt,
       resendAvailableAt: newResendAvailableAt,
       issueCount: challenge.issueCount + 1,
     });
-
-    // Deliver via adapter
-    if (challenge.method === 'PHONE') {
-      await this.smsAdapter.sendOtp(challenge.normalizedValue, otp, this.config);
-    } else {
-      await this.emailAdapter.sendOtp(challenge.normalizedValue, otp, this.config);
-    }
 
     return {
       success: true,
@@ -307,7 +343,7 @@ export class AuthV2Service {
    * Idempotent cancellation.
    */
   async cancelChallenge(challengeId: string): Promise<{ success: boolean; challengeId: string }> {
-    await authChallengeDb.cancel(challengeId);
+    await this.challengeRepo.cancel(challengeId);
     return { success: true, challengeId };
   }
 
@@ -316,7 +352,7 @@ export class AuthV2Service {
    * Atomic, single-winner verification with server-authoritative LOGIN / CREATE_ACCOUNT domain.
    */
   async verifyChallenge(input: VerifyChallengeInput): Promise<VerifyChallengeOutput> {
-    const challenge = await authChallengeDb.getById(input.challengeId);
+    const challenge = await this.challengeRepo.getById(input.challengeId);
     if (!challenge) {
       throw new Error('CHALLENGE_NOT_FOUND');
     }
@@ -330,7 +366,7 @@ export class AuthV2Service {
       input.otp
     );
 
-    const verifyResult = await authChallengeDb.atomicVerify(
+    const verifyResult = await this.challengeRepo.atomicVerify(
       challenge.id,
       candidateDigest,
       OTP_POLICY.MAX_FAILED_ATTEMPTS
@@ -356,21 +392,21 @@ export class AuthV2Service {
     }
 
     // Ownership verified! Mark identifier verified if it was already in DB
-    const existingIdentifier = await userIdentifierDb.getByIdentifier(
+    const existingIdentifier = await this.userIdentifierRepo.getByIdentifier(
       challenge.method,
       challenge.normalizedValue
     );
 
     if (existingIdentifier) {
       if (!existingIdentifier.verifiedAt) {
-        await userIdentifierDb.markVerified(challenge.method, challenge.normalizedValue);
+        await this.userIdentifierRepo.markVerified(challenge.method, challenge.normalizedValue);
       }
 
       // Resolve canonical user
-      const user = await userDb.getById(existingIdentifier.userId);
+      const user = await this.userRepo.getById(existingIdentifier.userId);
       if (user) {
-        // Issue Customer session
-        const tokens = this.issueCustomerSession(user.id, input.deviceInfo, input.ipAddress);
+        // Issue Customer session (awaiting persistence)
+        const tokens = await this.issueCustomerSession(user.id, input.deviceInfo, input.ipAddress);
         return {
           success: true,
           challengeId: challenge.id,
@@ -422,7 +458,10 @@ export class AuthV2Service {
 
   /**
    * 5. Complete Account Creation (Screen 10 Backend Support)
-   * Validates purpose-bound continuation token and requires FULL NAME ONLY.
+   * Enforces:
+   *   - Single-use continuation token (replay rejected via challenge consumption).
+   *   - ZERO fake placeholder phones: EMAIL-only creation is deferred until nullable-phone boundary.
+   *   - Requires FULL NAME ONLY for Phone onboarding.
    */
   async completeAccountCreation(input: {
     continuationToken: string;
@@ -436,55 +475,63 @@ export class AuthV2Service {
 
     const payload = AuthV2ContinuationService.verifyToken(input.continuationToken, this.config);
 
-    // Invariant check: users.phone_number NOT NULL is preserved
-    // In Foundation 01, EMAIL-only user creation in production is not enabled
+    // BLOCKER 4: EMAIL + new account boundary guard
+    // Canonical user requires users.phone_number NOT NULL. Zero fake phones allowed.
     if (payload.method === 'EMAIL') {
-      // In production mode, email-only user creation boundary is preserved
-      if (isProductionEnvironment(this.config)) {
-        throw new Error('EMAIL_ONLY_USER_CREATION_NOT_ENABLED: users.phone_number NOT NULL invariant preserved');
-      }
+      throw new Error('EMAIL_ONLY_ACCOUNT_CREATION_NOT_ENABLED: Canonical user creation for email-only accounts is deferred until nullable-phone boundary. No fake phone numbers permitted.');
+    }
+
+    // BLOCKER 6: Replay Prevention Guard
+    const challenge = await this.challengeRepo.getById(payload.challengeId);
+    if (!challenge) {
+      throw new Error('CHALLENGE_NOT_FOUND');
+    }
+    if (challenge.status === 'CONSUMED') {
+      throw new Error('CONTINUATION_ALREADY_CONSUMED: Replay rejected');
+    }
+    if (challenge.status !== 'VERIFIED') {
+      throw new Error(`CHALLENGE_NOT_VERIFIED: Current challenge status is ${challenge.status}`);
     }
 
     // Check race condition: has this identifier been registered in the meantime?
-    const existing = await userIdentifierDb.getByIdentifier(payload.method, payload.normalizedValue);
+    const existing = await this.userIdentifierRepo.getByIdentifier(payload.method, payload.normalizedValue);
     if (existing) {
-      const existingUser = await userDb.getById(existing.userId);
+      const existingUser = await this.userRepo.getById(existing.userId);
       if (existingUser) {
-        const tokens = this.issueCustomerSession(existingUser.id, input.deviceInfo, input.ipAddress);
+        await this.challengeRepo.markConsumed(payload.challengeId);
+        const tokens = await this.issueCustomerSession(existingUser.id, input.deviceInfo, input.ipAddress);
         return { success: true, user: existingUser, tokens };
       }
     }
 
-    // Create new canonical user
+    // Create new canonical user with verified Egyptian phone
     const userId = randomUUID();
     const cleanName = input.fullName.trim();
-    const phoneValue = payload.method === 'PHONE' ? payload.normalizedValue : `+2010${Math.floor(10000000 + Math.random() * 90000000)}`;
-    const emailValue = payload.method === 'EMAIL' ? payload.normalizedValue : null;
+    const phoneValue = payload.normalizedValue; // 100% verified real phone, never a fake placeholder
 
-    const newUser = await userDb.create({
+    const newUser = await this.userRepo.create({
       id: userId,
       phoneNumber: phoneValue,
       fullName: cleanName,
-      email: emailValue,
       status: 'ACTIVE',
     });
 
     const canonicalUserId = newUser?.id || userId;
-
-    if (payload.method === 'PHONE') {
-      await userDb.updatePhoneVerified(canonicalUserId);
-    }
+    await this.userRepo.updatePhoneVerified(canonicalUserId);
 
     // Additive user_identifiers record
-    await userIdentifierDb.create({
+    await this.userIdentifierRepo.create({
       userId: canonicalUserId,
       identifierType: payload.method,
       normalizedValue: payload.normalizedValue,
       verifiedAt: payload.verifiedAt,
     });
 
+    // Atomically transition challenge to CONSUMED
+    await this.challengeRepo.markConsumed(payload.challengeId);
+
     // Issue Customer session
-    const tokens = this.issueCustomerSession(canonicalUserId, input.deviceInfo, input.ipAddress);
+    const tokens = await this.issueCustomerSession(canonicalUserId, input.deviceInfo, input.ipAddress);
 
     return {
       success: true,
@@ -493,7 +540,10 @@ export class AuthV2Service {
     };
   }
 
-  private issueCustomerSession(userId: string, deviceInfo?: string, ipAddress?: string): AuthSessionTokens {
+  /**
+   * Issues customer session with SHA-256 canonical refresh token hash and awaited persistence.
+   */
+  private async issueCustomerSession(userId: string, deviceInfo?: string, ipAddress?: string): Promise<AuthSessionTokens> {
     const accessToken = signAccessToken({
       sub: userId,
       role: 'ROLE_CUSTOMER',
@@ -504,20 +554,24 @@ export class AuthV2Service {
       role: 'ROLE_CUSTOMER',
     });
 
-    const refreshTokenHash = `sha256:${createHmac('sha256', 'session_salt').update(refreshToken).digest('hex')}`;
+    const refreshTokenHash = hashRefreshToken(refreshToken);
+    const expiresAtIso = new Date(Date.now() + OTP_POLICY.SESSION_EXPIRY_MS).toISOString();
 
-    // Persist session to sessionDb asynchronously
-    const sessionId = randomUUID();
-    sessionDb.create({
-      id: sessionId,
+    // Await session persistence before returning tokens (BLOCKER 5)
+    const sessionRecord = await this.sessionRepo.create({
+      id: randomUUID(),
       userId,
       surface: 'CUSTOMER',
       role: 'ROLE_CUSTOMER',
       refreshTokenHash,
       deviceInfo,
       ipAddress,
-      expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
-    }).catch(() => null);
+      expiresAt: expiresAtIso,
+    });
+
+    if (!sessionRecord) {
+      throw new Error('SESSION_PERSISTENCE_FAILED');
+    }
 
     return {
       accessToken,
@@ -525,5 +579,4 @@ export class AuthV2Service {
       expiresIn: 15 * 60, // 15 mins
     };
   }
-
 }

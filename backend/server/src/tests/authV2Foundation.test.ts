@@ -591,23 +591,34 @@ export async function runAuthV2FoundationSuite(): Promise<{
 
   // BLOCKER 8 HARDENING
   await record('CONFIG_GUARDS', 'Fixed OTP mode without explicit AUTH_DEVELOPMENT_OTP configuration fails closed', () => {
-    // Attempting getDevelopmentOtpValue without configured developmentOtp throws
-    assert.throws(
-      () => {
-        getDevelopmentOtpValue({ deliveryMode: 'DEVELOPMENT_FIXED_OTP', developmentOtp: undefined });
-      },
-      /AUTH_DEVELOPMENT_OTP_CONFIG_REQUIRED/
-    );
+    const savedOtp = process.env.AUTH_DEVELOPMENT_OTP;
+    delete process.env.AUTH_DEVELOPMENT_OTP;
+    try {
+      assert.throws(
+        () => {
+          getDevelopmentOtpValue({ deliveryMode: 'DEVELOPMENT_FIXED_OTP', developmentOtp: undefined });
+        },
+        /AUTH_DEVELOPMENT_OTP_CONFIG_REQUIRED/
+      );
+    } finally {
+      if (savedOtp !== undefined) process.env.AUTH_DEVELOPMENT_OTP = savedOtp;
+    }
   });
 
   // BLOCKER 9 HARDENING
   await record('CONFIG_GUARDS', 'Runtime missing AUTH_OTP_HMAC_SECRET fails closed without committed fallback', () => {
-    assert.throws(
-      () => {
-        getAuthHmacSecret({ hmacSecret: undefined });
-      },
-      /AUTH_OTP_HMAC_SECRET_REQUIRED/
-    );
+    const savedSecret = process.env.AUTH_OTP_HMAC_SECRET;
+    delete process.env.AUTH_OTP_HMAC_SECRET;
+    try {
+      assert.throws(
+        () => {
+          getAuthHmacSecret({ hmacSecret: undefined });
+        },
+        /AUTH_OTP_HMAC_SECRET_REQUIRED/
+      );
+    } finally {
+      if (savedSecret !== undefined) process.env.AUTH_OTP_HMAC_SECRET = savedSecret;
+    }
   });
 
   await record('ENVIRONMENT_SAFETY', 'Production fail-closed: fixed OTP strictly forbidden in production', () => {

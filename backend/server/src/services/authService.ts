@@ -130,10 +130,18 @@ export const TIMING_DECOY_HASH = generateTimingDecoyHash();
 
 export class AuthService {
   private smsProvider: ISmsProvider;
+  private sessionRepository: typeof sessionDb;
+  private userRepository: typeof userDb;
   private otpStore: Map<string, OtpRecord> = new Map();
 
-  constructor(smsProvider: ISmsProvider = new MockSmsProvider()) {
+  constructor(
+    smsProvider: ISmsProvider = new MockSmsProvider(),
+    sessionRepository: typeof sessionDb = sessionDb,
+    userRepository: typeof userDb = userDb
+  ) {
     this.smsProvider = smsProvider;
+    this.sessionRepository = sessionRepository;
+    this.userRepository = userRepository;
   }
 
   private hashToken(token: string): string {
@@ -826,9 +834,9 @@ export class AuthService {
     // Canonical database persistence is the authority. In-memory state is
     // retained only for explicit test/runtime bookkeeping and cannot refresh a
     // token after a canonical lookup misses or fails.
-    let session = await sessionDb.getByRefreshTokenHash(tokenHash);
+    let session = await this.sessionRepository.getByRefreshTokenHash(tokenHash);
     if (!session) {
-      session = await sessionDb.getByRefreshTokenHash(this.legacyHashToken(refreshToken));
+      session = await this.sessionRepository.getByRefreshTokenHash(this.legacyHashToken(refreshToken));
     }
     if (!session) throw new Error('SESSION_NOT_FOUND');
     if (session.isRevoked) throw new Error('SESSION_REVOKED');
@@ -843,7 +851,7 @@ export class AuthService {
 
     // Retrieve user phone to embed in access token
     let phone: string | undefined;
-    const user = await userDb.getById(userId);
+    const user = await this.userRepository.getById(userId);
     if (!user) throw new Error('SESSION_USER_NOT_FOUND');
     phone = user.phoneNumber;
     if (role === 'ROLE_OWNER') {
@@ -865,8 +873,8 @@ export class AuthService {
     if (!refreshToken) return { success: true };
 
     const tokenHash = this.hashToken(refreshToken);
-    let revoked = await sessionDb.revokeByRefreshTokenHash(tokenHash);
-    if (!revoked) revoked = await sessionDb.revokeByRefreshTokenHash(this.legacyHashToken(refreshToken));
+    let revoked = await this.sessionRepository.revokeByRefreshTokenHash(tokenHash);
+    if (!revoked) revoked = await this.sessionRepository.revokeByRefreshTokenHash(this.legacyHashToken(refreshToken));
 
     const session1 = dbUserSessionsStore.get(refreshToken);
     if (session1) session1.isRevoked = true;

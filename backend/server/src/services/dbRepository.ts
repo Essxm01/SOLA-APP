@@ -1764,3 +1764,16 @@ export const auditLogDb = {
     this._memFailures = [];
   }
 };
+
+// ----------------------------------------------------------------------------
+// 19. AUTH V2 REPOSITORIES (AUTH_V2_FOUNDATION_01)
+// ----------------------------------------------------------------------------
+export {
+  userIdentifierDb,
+  authChallengeDb,
+  authRateLimitDb,
+  type UserIdentifierRecord,
+  type AuthChallengeRecord,
+  type VerifyChallengeResult,
+} from './authV2Repository.js';
+

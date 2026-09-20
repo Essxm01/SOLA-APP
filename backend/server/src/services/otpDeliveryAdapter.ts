@@ -10,7 +10,7 @@
  *   5. Real SMS/Email providers remain DEFERRED_BY_FOUNDER.
  */
 
-import { isProductionEnvironment, type AuthEnvironmentConfig } from './otpPolicy.js';
+import { isProductionEnvironment, isProviderlessAllowed, type AuthEnvironmentConfig } from './otpPolicy.js';
 
 export interface DeliveryResult {
   success: boolean;
@@ -33,6 +33,9 @@ export class ProviderlessDevelopmentSmsAdapter implements IOtpDeliveryAdapter {
     if (isProductionEnvironment(config)) {
       throw new Error('PRODUCTION_PROVIDERLESS_ADAPTER_FORBIDDEN: Real SMS provider required in production');
     }
+    if (!isProviderlessAllowed(config)) {
+      throw new Error('PROVIDERLESS_ADAPTER_ENVIRONMENT_UNAUTHORIZED: Providerless delivery adapter is only authorized in explicitly allowed environments (development, test, founder_preview)');
+    }
 
     // In development mode: simulated delivery without network calls or OTP leakage
     const messageId = `dev_sms_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
@@ -51,6 +54,9 @@ export class ProviderlessDevelopmentEmailAdapter implements IOtpDeliveryAdapter 
   async sendOtp(recipient: string, _otp: string, config?: AuthEnvironmentConfig): Promise<DeliveryResult> {
     if (isProductionEnvironment(config)) {
       throw new Error('PRODUCTION_PROVIDERLESS_ADAPTER_FORBIDDEN: Real Email provider required in production');
+    }
+    if (!isProviderlessAllowed(config)) {
+      throw new Error('PROVIDERLESS_ADAPTER_ENVIRONMENT_UNAUTHORIZED: Providerless delivery adapter is only authorized in explicitly allowed environments (development, test, founder_preview)');
     }
 
     // In development mode: simulated delivery without network calls or OTP leakage

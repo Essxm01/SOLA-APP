@@ -133,7 +133,14 @@ export interface IAuthChallengeRepository {
     newDigest: string,
     newGeneration: number,
     cooldownSeconds?: number
-  ): Promise<{ success: boolean; errorCode?: string }>;
+  ): Promise<{
+    success: boolean;
+    errorCode?: string;
+    generation?: number;
+    otpExpiresAt?: string;
+    resendAvailableAt?: string;
+    challengeExpiresAt?: string;
+  }>;
   releaseResendLease(
     challengeId: string,
     leaseToken: string
@@ -415,13 +422,30 @@ export class PostgresAuthChallengeRepository implements IAuthChallengeRepository
     newDigest: string,
     newGeneration: number,
     cooldownSeconds: number = 60
-  ): Promise<{ success: boolean; errorCode?: string }> {
+  ): Promise<{
+    success: boolean;
+    errorCode?: string;
+    generation?: number;
+    otpExpiresAt?: string;
+    resendAvailableAt?: string;
+    challengeExpiresAt?: string;
+  }> {
     const res = await queryDb(
-      `SELECT success, error_code AS "errorCode"
+      `SELECT success, error_code AS "errorCode", generation,
+              otp_expires_at AS "otpExpiresAt", resend_available_at AS "resendAvailableAt",
+              challenge_expires_at AS "challengeExpiresAt"
        FROM public.konfrm_commit_resend_v2($1, $2, $3, $4, $5)`,
       [challengeId, leaseToken, newDigest, newGeneration, cooldownSeconds]
     );
-    return res.rows[0];
+    const row = res.rows[0];
+    return {
+      success: Boolean(row?.success),
+      errorCode: row?.errorCode,
+      generation: row?.generation,
+      otpExpiresAt: row?.otpExpiresAt ? new Date(row.otpExpiresAt).toISOString() : undefined,
+      resendAvailableAt: row?.resendAvailableAt ? new Date(row.resendAvailableAt).toISOString() : undefined,
+      challengeExpiresAt: row?.challengeExpiresAt ? new Date(row.challengeExpiresAt).toISOString() : undefined,
+    };
   }
 
   async releaseResendLease(
@@ -789,7 +813,14 @@ export class InMemoryAuthChallengeRepository implements IAuthChallengeRepository
     newDigest: string,
     newGeneration: number,
     cooldownSeconds: number = 60
-  ): Promise<{ success: boolean; errorCode?: string }> {
+  ): Promise<{
+    success: boolean;
+    errorCode?: string;
+    generation?: number;
+    otpExpiresAt?: string;
+    resendAvailableAt?: string;
+    challengeExpiresAt?: string;
+  }> {
     return await this.withLock(challengeId, async () => {
       const challenge = this.store.get(challengeId);
       if (!challenge) return { success: false, errorCode: 'CHALLENGE_NOT_FOUND' };
@@ -797,17 +828,29 @@ export class InMemoryAuthChallengeRepository implements IAuthChallengeRepository
         return { success: false, errorCode: 'INVALID_RESEND_LEASE' };
       }
 
-      const now = new Date();
+      const now = Date.now();
+      const rawOtpExpiresMs = now + 5 * 60 * 1000;
+      const challengeExpiresMs = new Date(challenge.challengeExpiresAt).getTime();
+      const effectiveOtpExpiresMs = Math.min(rawOtpExpiresMs, challengeExpiresMs);
+      const effectiveOtpExpiresAt = new Date(effectiveOtpExpiresMs).toISOString();
+      const resendAvailableAt = new Date(now + cooldownSeconds * 1000).toISOString();
+
       challenge.generation = newGeneration;
       challenge.otpDigest = newDigest;
-      challenge.otpExpiresAt = new Date(now.getTime() + 5 * 60 * 1000).toISOString();
-      challenge.resendAvailableAt = new Date(now.getTime() + cooldownSeconds * 1000).toISOString();
+      challenge.otpExpiresAt = effectiveOtpExpiresAt;
+      challenge.resendAvailableAt = resendAvailableAt;
       delete (challenge as any).resendLeaseToken;
       delete (challenge as any).resendLeaseExpiresAt;
       challenge.issueCount = (challenge.issueCount || 1) + 1;
-      challenge.updatedAt = now.toISOString();
+      challenge.updatedAt = new Date(now).toISOString();
 
-      return { success: true };
+      return {
+        success: true,
+        generation: newGeneration,
+        otpExpiresAt: effectiveOtpExpiresAt,
+        resendAvailableAt,
+        challengeExpiresAt: challenge.challengeExpiresAt,
+      };
     });
   }
 

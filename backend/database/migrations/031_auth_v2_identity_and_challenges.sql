@@ -410,6 +410,7 @@ GRANT EXECUTE ON FUNCTION public.konfrm_acquire_resend_lease_v2(UUID, INT) TO se
 
 
 -- 9. Atomic Resend Commit Function (Advances generation & digest, releases lease)
+DROP FUNCTION IF EXISTS public.konfrm_commit_resend_v2;
 CREATE OR REPLACE FUNCTION public.konfrm_commit_resend_v2(
   p_challenge_id UUID,
   p_lease_token UUID,
@@ -419,7 +420,11 @@ CREATE OR REPLACE FUNCTION public.konfrm_commit_resend_v2(
 )
 RETURNS TABLE (
   success BOOLEAN,
-  error_code VARCHAR(100)
+  error_code VARCHAR(100),
+  generation INT,
+  otp_expires_at TIMESTAMPTZ,
+  resend_available_at TIMESTAMPTZ,
+  challenge_expires_at TIMESTAMPTZ
 )
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -427,6 +432,9 @@ SET search_path = public, pg_temp
 AS $$
 DECLARE
   v_challenge public.auth_challenges%ROWTYPE;
+  v_now TIMESTAMPTZ := NOW();
+  v_otp_expires_at TIMESTAMPTZ;
+  v_resend_available_at TIMESTAMPTZ;
 BEGIN
   SELECT * INTO v_challenge
   FROM public.auth_challenges
@@ -434,27 +442,37 @@ BEGIN
   FOR UPDATE;
 
   IF NOT FOUND THEN
-    RETURN QUERY SELECT FALSE, 'CHALLENGE_NOT_FOUND'::VARCHAR(100);
+    RETURN QUERY SELECT FALSE, 'CHALLENGE_NOT_FOUND'::VARCHAR(100), NULL::INT, NULL::TIMESTAMPTZ, NULL::TIMESTAMPTZ, NULL::TIMESTAMPTZ;
     RETURN;
   END IF;
 
   IF v_challenge.resend_lease_token IS DISTINCT FROM p_lease_token THEN
-    RETURN QUERY SELECT FALSE, 'INVALID_RESEND_LEASE'::VARCHAR(100);
+    RETURN QUERY SELECT FALSE, 'INVALID_RESEND_LEASE'::VARCHAR(100), NULL::INT, NULL::TIMESTAMPTZ, NULL::TIMESTAMPTZ, NULL::TIMESTAMPTZ;
     RETURN;
   END IF;
+
+  -- Resend OTP expiry is strictly capped by challenge_expires_at (Server-Authoritative Truthful Expiry - Blocker 3)
+  v_otp_expires_at := LEAST(v_now + interval '5 minutes', v_challenge.challenge_expires_at);
+  v_resend_available_at := v_now + (p_cooldown_seconds || ' seconds')::INTERVAL;
 
   UPDATE public.auth_challenges
   SET generation = p_new_generation,
       otp_digest = p_new_digest,
-      otp_expires_at = NOW() + interval '5 minutes',
-      resend_available_at = NOW() + (p_cooldown_seconds || ' seconds')::INTERVAL,
+      otp_expires_at = v_otp_expires_at,
+      resend_available_at = v_resend_available_at,
       resend_lease_token = NULL,
       resend_lease_expires_at = NULL,
       issue_count = issue_count + 1,
-      updated_at = NOW()
+      updated_at = v_now
   WHERE id = p_challenge_id;
 
-  RETURN QUERY SELECT TRUE, NULL::VARCHAR(100);
+  RETURN QUERY SELECT
+    TRUE,
+    NULL::VARCHAR(100),
+    p_new_generation,
+    v_otp_expires_at,
+    v_resend_available_at,
+    v_challenge.challenge_expires_at;
 END;
 $$;
 

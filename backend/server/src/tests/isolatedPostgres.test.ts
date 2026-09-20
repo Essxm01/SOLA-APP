@@ -352,13 +352,96 @@ export async function runIsolatedPostgresSuite(): Promise<{
 
         // Verify committed challenge row state: generation rotated to 2, new digest, lease cleared, issue_count=2
         const chAfterCommit = await client.query(
-          'SELECT generation, otp_digest, resend_lease_token, issue_count FROM public.auth_challenges WHERE id = $1',
+          'SELECT generation, otp_digest, resend_lease_token, issue_count, otp_expires_at, challenge_expires_at FROM public.auth_challenges WHERE id = $1',
           [challengeId]
         );
         assert.strictEqual(chAfterCommit.rows[0].generation, 2, 'Generation must be advanced to 2');
         assert.strictEqual(chAfterCommit.rows[0].otp_digest, newDigest, 'New digest must be committed');
         assert.strictEqual(chAfterCommit.rows[0].resend_lease_token, null, 'Lease must be cleared after commit');
         assert.strictEqual(chAfterCommit.rows[0].issue_count, 2, 'Issue count must be incremented to 2');
+        assert.ok(commitRes.rows[0].otp_expires_at, 'Commit result must return authoritative otp_expires_at');
+        assert.ok(commitRes.rows[0].resend_available_at, 'Commit result must return authoritative resend_available_at');
+      } finally {
+        client.release();
+      }
+    });
+
+    // --------------------------------------------------------------------------
+    // TEST 7: Real PostgreSQL Resend Expiry Capped by Challenge Expiry (Blocker 3)
+    // --------------------------------------------------------------------------
+    await record('Real PostgreSQL Resend Expiry Capping: resend caps OTP expiry at challenge_expires_at when < 5 mins remain and never extends challenge lifecycle', async () => {
+      const client = await pool.connect();
+      const challengeId = crypto.randomUUID();
+      const initialDigest = 'initial_otp_digest_capping_test';
+
+      try {
+        // 1. Insert challenge near end of lifecycle: challenge expires in 45 seconds
+        await client.query(
+          `INSERT INTO public.auth_challenges (
+            id, surface, intent, method, normalized_value, otp_digest, generation,
+            created_at, otp_expires_at, challenge_expires_at, resend_available_at,
+            failed_attempts, issue_count, status
+          ) VALUES (
+            $1, 'CUSTOMER', 'LOGIN', 'PHONE', '+201099996666', $2, 1,
+            NOW() - interval '9 minutes' - interval '15 seconds',
+            NOW() - interval '4 minutes',
+            NOW() + interval '45 seconds',
+            NOW() - interval '10 seconds',
+            0, 1, 'ACTIVE'
+          )`,
+          [challengeId, initialDigest]
+        );
+
+        const chOriginal = await client.query(
+          'SELECT challenge_expires_at FROM public.auth_challenges WHERE id = $1',
+          [challengeId]
+        );
+        const originalChallengeExpiresAt = new Date(chOriginal.rows[0].challenge_expires_at).getTime();
+
+        // 2. Acquire resend lease
+        const leaseRes = await client.query(
+          'SELECT * FROM public.konfrm_acquire_resend_lease_v2($1, 30)',
+          [challengeId]
+        );
+        assert.strictEqual(leaseRes.rows[0].success, true);
+        const leaseToken = leaseRes.rows[0].lease_token;
+
+        // 3. Commit resend: 5-minute default window exceeds 45s remaining, so OTP expiry MUST cap at challenge expiry!
+        const commitRes = await client.query(
+          'SELECT * FROM public.konfrm_commit_resend_v2($1, $2, $3, $4, $5)',
+          [challengeId, leaseToken, 'new_digest_capped', 2, 60]
+        );
+        assert.strictEqual(commitRes.rows[0].success, true);
+
+        const row = commitRes.rows[0];
+        const returnOtpExpiresMs = new Date(row.otp_expires_at).getTime();
+        const returnChallengeExpiresMs = new Date(row.challenge_expires_at).getTime();
+
+        // Authoritative return values: otp_expires_at must match challenge_expires_at
+        assert.strictEqual(
+          returnOtpExpiresMs,
+          returnChallengeExpiresMs,
+          'Returned OTP expiry must be capped at challenge_expires_at when remaining lifecycle is < 5 mins'
+        );
+
+        // 4. Inspect persisted row in PostgreSQL
+        const chAfter = await client.query(
+          'SELECT otp_expires_at, challenge_expires_at FROM public.auth_challenges WHERE id = $1',
+          [challengeId]
+        );
+        const persistedOtpExpiresMs = new Date(chAfter.rows[0].otp_expires_at).getTime();
+        const persistedChallengeExpiresMs = new Date(chAfter.rows[0].challenge_expires_at).getTime();
+
+        assert.strictEqual(
+          persistedOtpExpiresMs,
+          persistedChallengeExpiresMs,
+          'Persisted otp_expires_at must equal challenge_expires_at'
+        );
+        assert.strictEqual(
+          persistedChallengeExpiresMs,
+          originalChallengeExpiresAt,
+          'Challenge lifecycle (challenge_expires_at) must NOT be extended by resend'
+        );
       } finally {
         client.release();
       }

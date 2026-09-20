@@ -12,9 +12,17 @@ export const OTP_POLICY = {
   MAX_CHALLENGE_LIFECYCLE_MS: 10 * 60 * 1000, // 10 minutes total lifecycle
   CONTINUATION_TOKEN_TTL_MS: 10 * 60 * 1000,  // 10 minutes
   SESSION_EXPIRY_MS: 7 * 24 * 60 * 60 * 1000, // 7 days canonical session refresh lifecycle
+  
+  // Unified Persistent Send Throttling Policy (Blocker 2)
+  RATE_LIMIT_SEND_WINDOW_SECONDS: 15 * 60,         // 15 minutes in seconds
+  RATE_LIMIT_SEND_WINDOW_MS: 15 * 60 * 1000,       // 15 minutes in milliseconds
+  RATE_LIMIT_MAX_SENDS_PER_IDENTIFIER: 5,          // 5 sends / 15 min per normalized identifier
+  RATE_LIMIT_MAX_SENDS_PER_IP: 30,                 // 30 sends / 15 min per request IP
+  
+  // Backward compatibility aliases
   RATE_LIMIT_MAX_ISSUES_PER_WINDOW: 5,
-  RATE_LIMIT_WINDOW_SECONDS: 15 * 60,         // 15 minutes in seconds
-  RATE_LIMIT_WINDOW_MS: 15 * 60 * 1000,       // 15 minutes
+  RATE_LIMIT_WINDOW_SECONDS: 15 * 60,
+  RATE_LIMIT_WINDOW_MS: 15 * 60 * 1000,
 } as const;
 
 export type AuthDeliveryMode = 'DEVELOPMENT_FIXED_OTP' | 'MOCK_ADAPTER' | 'REAL_PROVIDER';
@@ -40,6 +48,20 @@ export function isProductionEnvironment(config?: AuthEnvironmentConfig): boolean
   const nodeEnv = (config?.nodeEnv ?? process.env.NODE_ENV ?? '').toLowerCase();
   const authEnv = (config?.authEnv ?? process.env.AUTH_ENVIRONMENT ?? '').toLowerCase();
   return nodeEnv === 'production' || authEnv === 'production';
+}
+
+/**
+ * Checks if Providerless delivery (mock/development adapters) is authorized.
+ * STRICT RULE (Blocker 1): Providerless operations require explicitly allowed
+ * Auth environment (development, test, founder_preview, founder_qa).
+ * Production, staging, blank, or unknown environments fail closed.
+ */
+export function isProviderlessAllowed(config?: AuthEnvironmentConfig): boolean {
+  if (isProductionEnvironment(config)) {
+    return false;
+  }
+  const authEnv = (config?.authEnv ?? process.env.AUTH_ENVIRONMENT ?? '').trim().toLowerCase();
+  return ALLOWED_FIXED_OTP_ENVIRONMENTS.has(authEnv);
 }
 
 /**

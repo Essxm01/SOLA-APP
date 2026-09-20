@@ -599,6 +599,40 @@ export async function runAuthV2FoundationSuite(): Promise<{
     }
   });
 
+  // BLOCKER 3 HARDENING
+  await record('CHALLENGES', 'Resend OTP expiry capping: in-memory resend caps OTP expiry at challenge_expires_at when remaining TTL < 5m', async () => {
+    const { service, challengeRepo } = createIsolatedTestService();
+
+    const issued = await service.requestChallenge({
+      surface: 'CUSTOMER',
+      intent: 'LOGIN',
+      method: 'PHONE',
+      identifier: '01077771122',
+    });
+
+    const ch = await challengeRepo.getById(issued.challengeId);
+    assert.ok(ch);
+
+    // Set remaining challenge TTL to 30 seconds
+    const cappedExpiry = new Date(Date.now() + 30_000).toISOString();
+    ch.challengeExpiresAt = cappedExpiry;
+    ch.resendAvailableAt = new Date(Date.now() - 1000).toISOString();
+
+    const resendRes = await service.resendChallenge({ challengeId: issued.challengeId });
+    assert.strictEqual(resendRes.success, true);
+
+    // Authoritative return expiresAt must equal challengeExpiresAt
+    assert.strictEqual(
+      resendRes.expiresAt,
+      cappedExpiry,
+      'Returned OTP expiry must be capped at challenge_expires_at'
+    );
+
+    const chAfter = await challengeRepo.getById(issued.challengeId);
+    assert.strictEqual(chAfter?.otpExpiresAt, cappedExpiry);
+    assert.strictEqual(chAfter?.challengeExpiresAt, cappedExpiry, 'Challenge lifecycle must not be extended');
+  });
+
   // ==========================================================================
   // 3. PROVIDERLESS DEV MODE & CONFIG GUARDS (BLOCKER 8 & 9)
   // ==========================================================================
@@ -841,6 +875,200 @@ export async function runAuthV2FoundationSuite(): Promise<{
         await emailAdapter.sendOtp('user@example.com', '123456', { authEnv: 'production' });
       },
       /PRODUCTION_PROVIDERLESS_ADAPTER_FORBIDDEN/
+    );
+  });
+
+  // BLOCKER 1 HARDENING: Service & Adapter Level Fail-Closed
+  await record('CONFIG_GUARDS', 'Service-level requestChallenge fails closed when DEVELOPMENT_FIXED_OTP configured in unauthorized environment', async () => {
+    // 1. DEVELOPMENT_FIXED_OTP + test -> succeeds
+    const sTest = createIsolatedTestService({ deliveryMode: 'DEVELOPMENT_FIXED_OTP', authEnv: 'test' });
+    const resTest = await sTest.service.requestChallenge({
+      surface: 'CUSTOMER',
+      intent: 'LOGIN',
+      method: 'PHONE',
+      identifier: '01011112222',
+    });
+    assert.ok(resTest.challengeId);
+
+    // 2. DEVELOPMENT_FIXED_OTP + founder_preview -> succeeds
+    const sPreview = createIsolatedTestService({ deliveryMode: 'DEVELOPMENT_FIXED_OTP', authEnv: 'founder_preview' });
+    const resPreview = await sPreview.service.requestChallenge({
+      surface: 'CUSTOMER',
+      intent: 'LOGIN',
+      method: 'PHONE',
+      identifier: '01011112223',
+    });
+    assert.ok(resPreview.challengeId);
+
+    // 3. DEVELOPMENT_FIXED_OTP + blank authEnv ('') -> rejects
+    const sBlank = createIsolatedTestService({ deliveryMode: 'DEVELOPMENT_FIXED_OTP', authEnv: '' });
+    await assert.rejects(
+      async () => {
+        await sBlank.service.requestChallenge({
+          surface: 'CUSTOMER',
+          intent: 'LOGIN',
+          method: 'PHONE',
+          identifier: '01011112224',
+        });
+      },
+      /FIXED_OTP_ENVIRONMENT_NOT_AUTHORIZED/
+    );
+
+    // 4. DEVELOPMENT_FIXED_OTP + staging -> rejects
+    const sStaging = createIsolatedTestService({ deliveryMode: 'DEVELOPMENT_FIXED_OTP', authEnv: 'staging' });
+    await assert.rejects(
+      async () => {
+        await sStaging.service.requestChallenge({
+          surface: 'CUSTOMER',
+          intent: 'LOGIN',
+          method: 'PHONE',
+          identifier: '01011112225',
+        });
+      },
+      /FIXED_OTP_ENVIRONMENT_NOT_AUTHORIZED/
+    );
+
+    // 5. DEVELOPMENT_FIXED_OTP + unknown -> rejects
+    const sUnknown = createIsolatedTestService({ deliveryMode: 'DEVELOPMENT_FIXED_OTP', authEnv: 'unknown_env' });
+    await assert.rejects(
+      async () => {
+        await sUnknown.service.requestChallenge({
+          surface: 'CUSTOMER',
+          intent: 'LOGIN',
+          method: 'PHONE',
+          identifier: '01011112226',
+        });
+      },
+      /FIXED_OTP_ENVIRONMENT_NOT_AUTHORIZED/
+    );
+
+    // 6. DEVELOPMENT_FIXED_OTP + production -> rejects
+    const sProd = createIsolatedTestService({ deliveryMode: 'DEVELOPMENT_FIXED_OTP', authEnv: 'production' });
+    await assert.rejects(
+      async () => {
+        await sProd.service.requestChallenge({
+          surface: 'CUSTOMER',
+          intent: 'LOGIN',
+          method: 'PHONE',
+          identifier: '01011112227',
+        });
+      },
+      /PRODUCTION_STATIC_OTP_FORBIDDEN/
+    );
+  });
+
+  await record('CONFIG_GUARDS', 'Providerless adapters fail closed in unauthorized non-production environments', async () => {
+    const smsAdapter = new ProviderlessDevelopmentSmsAdapter();
+    const emailAdapter = new ProviderlessDevelopmentEmailAdapter();
+
+    for (const env of ['staging', '', 'unknown_cluster']) {
+      await assert.rejects(
+        async () => {
+          await smsAdapter.sendOtp('+201012345678', '123456', { authEnv: env });
+        },
+        /PROVIDERLESS_ADAPTER_ENVIRONMENT_UNAUTHORIZED/
+      );
+
+      await assert.rejects(
+        async () => {
+          await emailAdapter.sendOtp('user@example.com', '123456', { authEnv: env });
+        },
+        /PROVIDERLESS_ADAPTER_ENVIRONMENT_UNAUTHORIZED/
+      );
+    }
+  });
+
+  // BLOCKER 2 HARDENING: Unified Send Throttling
+  await record('RATE_LIMITING', 'Shared identifier send throttling: issue and resend consume same 5-send bucket and reject at 5', async () => {
+    const { service, challengeRepo } = createIsolatedTestService();
+    const phone = '01099991234';
+
+    // 1. Initial issue (send #1)
+    const issued = await service.requestChallenge({
+      surface: 'CUSTOMER',
+      intent: 'LOGIN',
+      method: 'PHONE',
+      identifier: phone,
+    });
+    assert.ok(issued.challengeId);
+
+    // 2. Resend 4 times (sends #2, #3, #4, #5)
+    for (let i = 2; i <= 5; i++) {
+      const ch = await challengeRepo.getById(issued.challengeId);
+      assert.ok(ch);
+      // bypass cooldown to simulate time passing
+      ch.resendAvailableAt = new Date(Date.now() - 1000).toISOString();
+      const resendRes = await service.resendChallenge({ challengeId: issued.challengeId });
+      assert.strictEqual(resendRes.success, true);
+      assert.strictEqual(resendRes.generation, i);
+    }
+
+    // 3. Resend #6 must be rejected by unified send rate limit!
+    const ch = await challengeRepo.getById(issued.challengeId);
+    assert.ok(ch);
+    ch.resendAvailableAt = new Date(Date.now() - 1000).toISOString();
+    await assert.rejects(
+      async () => {
+        await service.resendChallenge({ challengeId: issued.challengeId });
+      },
+      /RATE_LIMIT_EXCEEDED/
+    );
+
+    // 4. Also, a new issue attempt for the same identifier must be rejected!
+    await assert.rejects(
+      async () => {
+        await service.requestChallenge({
+          surface: 'CUSTOMER',
+          intent: 'LOGIN',
+          method: 'PHONE',
+          identifier: phone,
+        });
+      },
+      /RATE_LIMIT_EXCEEDED/
+    );
+  });
+
+  await record('RATE_LIMITING', 'Shared IP send throttling: issue and resend share 30-send IP bucket and reject above 30', async () => {
+    const { service, challengeRepo } = createIsolatedTestService();
+    const testIp = '198.51.100.42';
+
+    // Issue 15 challenges from same IP (15 sends)
+    const challengeIds: string[] = [];
+    for (let i = 0; i < 15; i++) {
+      const res = await service.requestChallenge({
+        surface: 'CUSTOMER',
+        intent: 'LOGIN',
+        method: 'PHONE',
+        identifier: `0105555${String(i).padStart(4, '0')}`,
+        ipAddress: testIp,
+      });
+      challengeIds.push(res.challengeId);
+    }
+
+    // Resend 15 times across those challenges from same IP (15 more sends = 30 sends total)
+    for (let i = 0; i < 15; i++) {
+      const ch = await challengeRepo.getById(challengeIds[i]);
+      assert.ok(ch);
+      ch.resendAvailableAt = new Date(Date.now() - 1000).toISOString();
+      const resendRes = await service.resendChallenge({
+        challengeId: challengeIds[i],
+        ipAddress: testIp,
+      });
+      assert.strictEqual(resendRes.success, true);
+    }
+
+    // 31st send from same IP (whether issue or resend) must be blocked!
+    await assert.rejects(
+      async () => {
+        await service.requestChallenge({
+          surface: 'CUSTOMER',
+          intent: 'LOGIN',
+          method: 'PHONE',
+          identifier: '01055559999',
+          ipAddress: testIp,
+        });
+      },
+      /RATE_LIMIT_EXCEEDED/
     );
   });
 

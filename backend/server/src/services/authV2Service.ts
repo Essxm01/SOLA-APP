@@ -24,6 +24,7 @@ import {
   OTP_POLICY,
   isProductionEnvironment,
   isFixedOtpAllowed,
+  isProviderlessAllowed,
   getDevelopmentOtpValue,
   getAuthHmacSecret,
   type AuthEnvironmentConfig,
@@ -147,10 +148,16 @@ export class AuthV2Service {
 
   private resolveOtpForChallenge(): string {
     const isProd = isProductionEnvironment(this.config);
+    const mode = (this.config?.deliveryMode ?? process.env.AUTH_DELIVERY_MODE ?? '').toUpperCase();
 
-    if (isFixedOtpAllowed(this.config)) {
+    // BLOCKER 1: Fixed OTP mode requires explicitly authorized environment.
+    // If configured as DEVELOPMENT_FIXED_OTP, it MUST fail closed on unauthorized envs.
+    if (mode === 'DEVELOPMENT_FIXED_OTP') {
       if (isProd) {
         throw new Error('PRODUCTION_STATIC_OTP_FORBIDDEN');
+      }
+      if (!isFixedOtpAllowed(this.config)) {
+        throw new Error('FIXED_OTP_ENVIRONMENT_NOT_AUTHORIZED: Fixed OTP mode is only authorized in explicitly allowed environments (development, test, founder_preview)');
       }
       return getDevelopmentOtpValue(this.config);
     }
@@ -161,6 +168,10 @@ export class AuthV2Service {
         (this.config?.hasRealEmailProvider ?? false);
       if (!hasRealProvider) {
         throw new Error('PRODUCTION_AUTH_PROVIDER_UNAVAILABLE: Real SMS/Email providers deferred by Founder');
+      }
+    } else {
+      if (!isProviderlessAllowed(this.config)) {
+        throw new Error('PROVIDERLESS_MODE_NOT_AUTHORIZED: Providerless delivery is only authorized in explicitly allowed environments (development, test, founder_preview)');
       }
     }
 
@@ -185,25 +196,25 @@ export class AuthV2Service {
 
     const { normalized, masked } = this.normalize(input.method, input.identifier);
 
-    // Persistent Rate limiting: throttle per normalized identifier
-    const idRateLimitKey = `rate:issue:id:${input.method}:${normalized}`;
+    // BLOCKER 2: Persistent Send Throttling: unified bucket across issue and resend
+    const idRateLimitKey = `rate:send:id:${input.method}:${normalized}`;
     const idRateCheck = await this.rateLimitRepo.checkAndIncrement(
       idRateLimitKey,
-      OTP_POLICY.RATE_LIMIT_WINDOW_SECONDS,
-      OTP_POLICY.RATE_LIMIT_MAX_ISSUES_PER_WINDOW
+      OTP_POLICY.RATE_LIMIT_SEND_WINDOW_SECONDS,
+      OTP_POLICY.RATE_LIMIT_MAX_SENDS_PER_IDENTIFIER
     );
 
     if (!idRateCheck.allowed) {
       throw new Error(`RATE_LIMIT_EXCEEDED: Retry after ${idRateCheck.retryAfterSeconds} seconds`);
     }
 
-    // Persistent Rate limiting: throttle per IP if provided
+    // Persistent Send Throttling: throttle per IP if provided (shared bucket across issue and resend)
     if (input.ipAddress) {
-      const ipRateLimitKey = `rate:issue:ip:${input.ipAddress}`;
+      const ipRateLimitKey = `rate:send:ip:${input.ipAddress}`;
       const ipRateCheck = await this.rateLimitRepo.checkAndIncrement(
         ipRateLimitKey,
-        OTP_POLICY.RATE_LIMIT_WINDOW_SECONDS,
-        OTP_POLICY.RATE_LIMIT_MAX_ISSUES_PER_WINDOW * 2 // Allow reasonable concurrency per IP
+        OTP_POLICY.RATE_LIMIT_SEND_WINDOW_SECONDS,
+        OTP_POLICY.RATE_LIMIT_MAX_SENDS_PER_IP
       );
       if (!ipRateCheck.allowed) {
         throw new Error(`RATE_LIMIT_EXCEEDED: Retry after ${ipRateCheck.retryAfterSeconds} seconds`);
@@ -291,16 +302,30 @@ export class AuthV2Service {
     const normalizedValue = lease.normalizedValue!;
     const method = lease.method!;
 
-    // 2. Persistent Rate Limiting check
-    const rateLimitKey = `rate:resend:id:${input.challengeId}`;
-    const rateCheck = await this.rateLimitRepo.checkAndIncrement(
-      rateLimitKey,
-      OTP_POLICY.RATE_LIMIT_WINDOW_SECONDS,
-      OTP_POLICY.RATE_LIMIT_MAX_ISSUES_PER_WINDOW
+    // 2. BLOCKER 2: Persistent Send Throttling: shared identifier send bucket across issue and resend
+    const idRateLimitKey = `rate:send:id:${method}:${normalizedValue}`;
+    const idRateCheck = await this.rateLimitRepo.checkAndIncrement(
+      idRateLimitKey,
+      OTP_POLICY.RATE_LIMIT_SEND_WINDOW_SECONDS,
+      OTP_POLICY.RATE_LIMIT_MAX_SENDS_PER_IDENTIFIER
     );
-    if (!rateCheck.allowed) {
+    if (!idRateCheck.allowed) {
       await this.challengeRepo.releaseResendLease(input.challengeId, leaseToken);
-      throw new Error(`RATE_LIMIT_EXCEEDED: Retry after ${rateCheck.retryAfterSeconds} seconds`);
+      throw new Error(`RATE_LIMIT_EXCEEDED: Retry after ${idRateCheck.retryAfterSeconds} seconds`);
+    }
+
+    // Persistent Send Throttling: shared IP send bucket across issue and resend
+    if (input.ipAddress) {
+      const ipRateLimitKey = `rate:send:ip:${input.ipAddress}`;
+      const ipRateCheck = await this.rateLimitRepo.checkAndIncrement(
+        ipRateLimitKey,
+        OTP_POLICY.RATE_LIMIT_SEND_WINDOW_SECONDS,
+        OTP_POLICY.RATE_LIMIT_MAX_SENDS_PER_IP
+      );
+      if (!ipRateCheck.allowed) {
+        await this.challengeRepo.releaseResendLease(input.challengeId, leaseToken);
+        throw new Error(`RATE_LIMIT_EXCEEDED: Retry after ${ipRateCheck.retryAfterSeconds} seconds`);
+      }
     }
 
     // 3. Resolve OTP & compute candidate HMAC digest
@@ -339,16 +364,13 @@ export class AuthV2Service {
       throw new Error(commit.errorCode || 'RESEND_COMMIT_FAILED');
     }
 
-    const now = Date.now();
-    const otpExpiresAt = new Date(now + OTP_POLICY.OTP_TTL_MS).toISOString();
-    const resendAvailableAt = new Date(now + OTP_POLICY.RESEND_COOLDOWN_MS).toISOString();
-
+    // BLOCKER 3: Return database-authoritative timestamps, capped by challenge_expires_at
     return {
       success: true,
       challengeId: input.challengeId,
-      generation: nextGeneration,
-      resendAvailableAt,
-      expiresAt: otpExpiresAt,
+      generation: commit.generation ?? nextGeneration,
+      resendAvailableAt: commit.resendAvailableAt!,
+      expiresAt: commit.otpExpiresAt!,
     };
   }
 

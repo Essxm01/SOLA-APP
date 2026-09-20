@@ -187,9 +187,9 @@ export async function runIsolatedPostgresSuite(): Promise<{
     });
 
     // --------------------------------------------------------------------------
-    // TEST 4: Real PostgreSQL Atomic Challenge Consumption
+    // TEST 4: Real PostgreSQL Concurrent Atomic Challenge Consumption
     // --------------------------------------------------------------------------
-    await record('Real PostgreSQL Challenge Consumption: konfrm_consume_auth_challenge_v2 enforces single-use replay guard', async () => {
+    await record('Real PostgreSQL Challenge Consumption: konfrm_consume_auth_challenge_v2 enforces single-use replay guard under concurrency', async () => {
       const challengeId = crypto.randomUUID();
       const client = await pool.connect();
       try {
@@ -207,16 +207,39 @@ export async function runIsolatedPostgresSuite(): Promise<{
           [challengeId]
         );
 
-        // First consumption succeeds
-        const c1 = await client.query('SELECT * FROM public.konfrm_consume_auth_challenge_v2($1)', [challengeId]);
-        assert.strictEqual(c1.rows[0].success, true);
+        // Fire 5 genuine concurrent database client transactions against the same verified challenge
+        const concurrentWorkers = Array.from({ length: 5 }, async () => {
+          const c = await pool.connect();
+          try {
+            const res = await c.query(
+              'SELECT * FROM public.konfrm_consume_auth_challenge_v2($1)',
+              [challengeId]
+            );
+            return res.rows[0];
+          } finally {
+            c.release();
+          }
+        });
 
-        // Second consumption fails with CONTINUATION_ALREADY_CONSUMED
-        const c2 = await client.query('SELECT * FROM public.konfrm_consume_auth_challenge_v2($1)', [challengeId]);
-        assert.strictEqual(c2.rows[0].success, false);
-        assert.strictEqual(c2.rows[0].error_code, 'CONTINUATION_ALREADY_CONSUMED');
+        const responses = await Promise.all(concurrentWorkers);
+        const winners = responses.filter((r) => r.success === true);
+        const losers = responses.filter((r) => r.success === false);
 
-        // Check DB row
+        // Exactly 1 winner in PostgreSQL!
+        assert.strictEqual(winners.length, 1, `Expected exactly 1 winner in PostgreSQL, got ${winners.length}`);
+        assert.strictEqual(losers.length, 4, `Expected exactly 4 losers in PostgreSQL, got ${losers.length}`);
+
+        // Losers must receive CONTINUATION_ALREADY_CONSUMED
+        for (const loser of losers) {
+          assert.strictEqual(loser.error_code, 'CONTINUATION_ALREADY_CONSUMED');
+        }
+
+        // Subsequent sequential attempt also fails with CONTINUATION_ALREADY_CONSUMED
+        const cSeq = await client.query('SELECT * FROM public.konfrm_consume_auth_challenge_v2($1)', [challengeId]);
+        assert.strictEqual(cSeq.rows[0].success, false);
+        assert.strictEqual(cSeq.rows[0].error_code, 'CONTINUATION_ALREADY_CONSUMED');
+
+        // Check DB row: final status is CONSUMED and consumed_at is set
         const check = await client.query('SELECT status, consumed_at FROM public.auth_challenges WHERE id = $1', [challengeId]);
         assert.strictEqual(check.rows[0].status, 'CONSUMED');
         assert.ok(check.rows[0].consumed_at);

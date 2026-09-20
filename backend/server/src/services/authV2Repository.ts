@@ -630,19 +630,21 @@ export class InMemoryAuthChallengeRepository implements IAuthChallengeRepository
   }
 
   async markConsumed(challengeId: string): Promise<AuthChallengeRecord> {
-    const record = this.store.get(challengeId);
-    if (!record) throw new Error('CHALLENGE_NOT_FOUND');
-    if (record.status === 'CONSUMED') {
-      throw new Error('CONTINUATION_ALREADY_CONSUMED');
-    }
-    if (record.status !== 'VERIFIED') {
-      throw new Error('CHALLENGE_NOT_VERIFIED');
-    }
-    const now = new Date().toISOString();
-    record.status = 'CONSUMED';
-    record.consumedAt = now;
-    record.updatedAt = now;
-    return record;
+    return await this.withLock(challengeId, async () => {
+      const record = this.store.get(challengeId);
+      if (!record) throw new Error('CHALLENGE_NOT_FOUND');
+      if (record.status === 'CONSUMED') {
+        throw new Error('CONTINUATION_ALREADY_CONSUMED');
+      }
+      if (record.status !== 'VERIFIED') {
+        throw new Error('CHALLENGE_NOT_VERIFIED');
+      }
+      const now = new Date().toISOString();
+      record.status = 'CONSUMED';
+      record.consumedAt = now;
+      record.updatedAt = now;
+      return record;
+    });
   }
 
   async atomicVerify(

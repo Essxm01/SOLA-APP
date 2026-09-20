@@ -1274,6 +1274,90 @@ export async function runAuthV2FoundationSuite(): Promise<{
     );
   });
 
+  // FINAL BLOCKER HARDENING: Race-Safe Continuation Claim Before Mutation
+  await record('DOMAIN', 'Concurrent continuation completion: same token allows exactly one account-completion winner', async () => {
+    const { service, userRepo, userIdentifierRepo, sessionRepo } = createIsolatedTestService();
+
+    const phone = '01088880055';
+    const normalizedPhone = '+201088880055';
+
+    // 1. Issue CREATE_ACCOUNT PHONE challenge
+    const issued = await service.requestChallenge({
+      surface: 'CUSTOMER',
+      intent: 'CREATE_ACCOUNT',
+      method: 'PHONE',
+      identifier: phone,
+    });
+
+    // 2. Verify OTP
+    const verified = await service.verifyChallenge({
+      challengeId: issued.challengeId,
+      otp: TEST_FIXED_OTP,
+    });
+    assert.strictEqual(verified.success, true);
+    assert.ok(verified.continuationToken);
+
+    const continuationToken = verified.continuationToken!;
+
+    // 3. Fire 5 simultaneous completeAccountCreation calls with DIFFERENT full names
+    const candidateNames = [
+      'فائز الأول صولا',
+      'منافس ثاني صولا',
+      'منافس ثالث صولا',
+      'منافس رابع صولا',
+      'منافس خامس صولا',
+    ];
+
+    const attempts = await Promise.allSettled(
+      candidateNames.map((fullName) =>
+        service.completeAccountCreation({
+          continuationToken,
+          fullName,
+        })
+      )
+    );
+
+    const fulfilled = attempts.filter((a): a is PromiseFulfilledResult<any> => a.status === 'fulfilled');
+    const rejected = attempts.filter((a): a is PromiseRejectedResult => a.status === 'rejected');
+
+    // Exactly 1 winner, 4 losers
+    assert.strictEqual(fulfilled.length, 1, `Expected exactly 1 winner, got ${fulfilled.length}`);
+    assert.strictEqual(rejected.length, 4, `Expected exactly 4 losers, got ${rejected.length}`);
+
+    // All 4 losers fail with continuation-consumed semantics
+    for (const r of rejected) {
+      assert.match(
+        r.reason.message,
+        /CONTINUATION_ALREADY_CONSUMED/,
+        `Expected loser to fail with CONTINUATION_ALREADY_CONSUMED, got: ${r.reason.message}`
+      );
+    }
+
+    const winningName = fulfilled[0].value.user.fullName;
+    assert.ok(candidateNames.includes(winningName), 'Winner name must be one of the candidate names');
+
+    // Exactly 1 canonical User in repository with the winning full name
+    const storedUser = await userRepo.getByPhone(normalizedPhone);
+    assert.ok(storedUser, 'Canonical user must exist');
+    assert.strictEqual(storedUser.fullName, winningName, 'Final User full name must equal the winning request');
+
+    const distinctUsersForPhone = Array.from(
+      new Set(Array.from((userRepo as any).users.values()).filter((u: any) => u.phoneNumber === normalizedPhone))
+    );
+    assert.strictEqual(distinctUsersForPhone.length, 1, 'Must have exactly 1 canonical user in DB');
+
+    // Exactly 1 user_identifier
+    const ident = await userIdentifierRepo.getByIdentifier('PHONE', normalizedPhone);
+    assert.ok(ident, 'Identifier must exist');
+    assert.strictEqual(ident.userId, storedUser.id);
+
+    // Exactly 1 session issued
+    const distinctSessions = Array.from(
+      new Set(Array.from((sessionRepo as any).sessions.values()).filter((s: any) => s.userId === storedUser.id))
+    );
+    assert.strictEqual(distinctSessions.length, 1, 'Must have exactly 1 session issued');
+  });
+
   // BLOCKER 5 HARDENING
   // BLOCKER 1 & BLOCKER 5 HARDENING: Canonical AuthService Integration Seam
   await record('SESSION_COMPATIBILITY', 'Auth V2 session uses SHA-256 hash and successfully integrates with canonical refresh/revoke', async () => {

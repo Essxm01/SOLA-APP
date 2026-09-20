@@ -517,16 +517,14 @@ export class AuthV2Service {
       throw new Error('EMAIL_ONLY_ACCOUNT_CREATION_NOT_ENABLED: Canonical user creation for email-only accounts is deferred until nullable-phone boundary. No fake phone numbers permitted.');
     }
 
-    // BLOCKER 6: Replay Prevention Guard
-    const challenge = await this.challengeRepo.getById(payload.challengeId);
-    if (!challenge) {
-      throw new Error('CHALLENGE_NOT_FOUND');
-    }
-    if (challenge.status === 'CONSUMED') {
-      throw new Error('CONTINUATION_ALREADY_CONSUMED: Replay rejected');
-    }
-    if (challenge.status !== 'VERIFIED') {
-      throw new Error(`CHALLENGE_NOT_VERIFIED: Current challenge status is ${challenge.status}`);
+    // FINAL BLOCKER: Atomic challenge consumption BEFORE any account/profile mutation
+    // Atomically claim the verified challenge before User creation/mutation, phone verification,
+    // user_identifier creation, or session issuance.
+    // Only the single winning claimant proceeds; all concurrent replay attempts fail immediately
+    // with CONTINUATION_ALREADY_CONSUMED producing zero account or session side effects.
+    const challenge = await this.challengeRepo.markConsumed(payload.challengeId);
+    if (challenge.normalizedValue !== payload.normalizedValue || challenge.method !== payload.method) {
+      throw new Error('CHALLENGE_BINDING_MISMATCH: Continuation token does not match challenge identity');
     }
 
     // Check race condition: has this identifier been registered in the meantime?
@@ -534,7 +532,6 @@ export class AuthV2Service {
     if (existing) {
       const existingUser = await this.userRepo.getById(existing.userId);
       if (existingUser) {
-        await this.challengeRepo.markConsumed(payload.challengeId);
         const tokens = await this.issueCustomerSession(existingUser.id, input.deviceInfo, input.ipAddress);
         return { success: true, user: existingUser, tokens };
       }
@@ -562,9 +559,6 @@ export class AuthV2Service {
       normalizedValue: payload.normalizedValue,
       verifiedAt: payload.verifiedAt,
     });
-
-    // Atomically transition challenge to CONSUMED
-    await this.challengeRepo.markConsumed(payload.challengeId);
 
     // Issue Customer session
     const tokens = await this.issueCustomerSession(canonicalUserId, input.deviceInfo, input.ipAddress);

@@ -27,7 +27,7 @@ BEGIN;
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
 CREATE TABLE IF NOT EXISTS public.schema_migrations (
-  version VARCHAR(255) PRIMARY KEY,
+  version VARCHAR(100) PRIMARY KEY,
   executed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
@@ -51,7 +51,7 @@ CREATE INDEX IF NOT EXISTS idx_users_status
   ON public.users(status) WHERE deleted_at IS NULL;
 
 CREATE TABLE IF NOT EXISTS public.owners (
-  id UUID PRIMARY KEY REFERENCES public.users(id) ON DELETE RESTRICT,
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid() REFERENCES public.users(id) ON DELETE RESTRICT,
   phone_number VARCHAR(20) UNIQUE NOT NULL,
   full_name VARCHAR(100) NOT NULL,
   email VARCHAR(150),
@@ -65,9 +65,6 @@ CREATE TABLE IF NOT EXISTS public.owners (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   deleted_at TIMESTAMPTZ
 );
-
-CREATE INDEX IF NOT EXISTS idx_owners_phone
-  ON public.owners(phone_number) WHERE deleted_at IS NULL;
 
 CREATE TABLE IF NOT EXISTS public.user_sessions (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -92,11 +89,19 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_user_sessions_refresh_token_hash
   ON public.user_sessions(refresh_token_hash);
 CREATE INDEX IF NOT EXISTS idx_user_sessions_active_user_surface
   ON public.user_sessions(user_id, surface) WHERE is_revoked IS FALSE;
+CREATE INDEX IF NOT EXISTS idx_user_sessions_owner
+  ON public.user_sessions(owner_id) WHERE is_revoked IS FALSE;
+CREATE INDEX IF NOT EXISTS idx_user_sessions_refresh_token_hash
+  ON public.user_sessions(refresh_token_hash);
 
+ALTER TABLE public.schema_migrations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.owners ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.user_sessions ENABLE ROW LEVEL SECURITY;
 
+-- EXPECTED_QA_SECURITY_HARDENING: unlike the broader current production
+-- table ACLs, this isolated QA baseline exposes Auth persistence only through
+-- the service_role backend path while RLS remains enabled.
 REVOKE ALL ON TABLE public.users FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON TABLE public.owners FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON TABLE public.user_sessions FROM PUBLIC, anon, authenticated;

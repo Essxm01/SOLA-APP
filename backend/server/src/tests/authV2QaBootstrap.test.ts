@@ -142,7 +142,7 @@ export async function runAuthV2QaBootstrapSuite(): Promise<{ total: number; pass
       }
     });
 
-    await record('Pre-031 structure: Auth-critical tables, constraints, indexes, RLS, and grants are exact', async () => {
+    await record('Pre-031 structure: AUTH_CRITICAL_STRUCTURAL_EQUIVALENCE with EXPECTED_QA_SECURITY_HARDENING', async () => {
       const client = await pool.connect();
       try {
         const columns = await client.query(`
@@ -152,11 +152,13 @@ export async function runAuthV2QaBootstrapSuite(): Promise<{ total: number; pass
             AND table_name IN ('schema_migrations', 'users', 'owners', 'user_sessions')
         `);
         const column = (table: string, name: string) => columns.rows.find((r) => r.table_name === table && r.column_name === name);
+        assert.strictEqual(column('schema_migrations', 'version')?.character_maximum_length, 100);
         assert.strictEqual(column('users', 'id')?.data_type, 'uuid');
         assert.strictEqual(column('users', 'phone_number')?.data_type, 'character varying');
         assert.strictEqual(column('users', 'phone_number')?.is_nullable, 'NO');
         assert.match(String(column('users', 'status')?.column_default), /ACTIVE/);
         assert.strictEqual(column('owners', 'owner_onboarding_completed_at')?.data_type, 'timestamp with time zone');
+        assert.match(String(column('owners', 'id')?.column_default), /gen_random_uuid\(\)/i);
         assert.strictEqual(column('user_sessions', 'user_id')?.is_nullable, 'NO');
         assert.strictEqual(column('user_sessions', 'owner_id')?.is_nullable, 'YES');
         assert.strictEqual(column('user_sessions', 'refresh_token_hash')?.is_nullable, 'NO');
@@ -177,13 +179,18 @@ export async function runAuthV2QaBootstrapSuite(): Promise<{ total: number; pass
         assert.match(definition('user_sessions_owner_user_same_uuid_check'), /owner_id = user_id/);
         assert.match(definition('user_sessions_owner_role_requires_owner_check'), /ROLE_OWNER/);
 
-        const indexes = await client.query(`SELECT indexname FROM pg_indexes WHERE schemaname = 'public' AND tablename IN ('users', 'owners', 'user_sessions')`);
+        const indexes = await client.query(`SELECT tablename, indexname FROM pg_indexes WHERE schemaname = 'public' AND tablename IN ('users', 'owners', 'user_sessions')`);
         const names = new Set(indexes.rows.map((r) => r.indexname));
-        for (const name of ['idx_users_phone', 'idx_users_status', 'idx_owners_phone', 'uq_user_sessions_refresh_token_hash', 'idx_user_sessions_active_user_surface']) {
-          assert.ok(names.has(name), `required index ${name} missing`);
-        }
+        const expectedIndexes = new Set([
+          'users_pkey', 'users_phone_number_key', 'idx_users_phone', 'idx_users_status',
+          'owners_pkey', 'owners_phone_number_key',
+          'user_sessions_pkey', 'uq_user_sessions_refresh_token_hash', 'idx_user_sessions_active_user_surface',
+          'idx_user_sessions_owner', 'idx_user_sessions_refresh_token_hash',
+        ]);
+        assert.deepStrictEqual([...names].sort(), [...expectedIndexes].sort(), 'Auth-critical index set must match the approved equivalence contract');
+        assert.ok(!names.has('idx_owners_phone'), 'QA baseline must not invent an owners phone index');
 
-        const rls = await client.query(`SELECT relname, relrowsecurity FROM pg_class WHERE oid IN ('public.users'::regclass, 'public.owners'::regclass, 'public.user_sessions'::regclass)`);
+        const rls = await client.query(`SELECT relname, relrowsecurity FROM pg_class WHERE oid IN ('public.schema_migrations'::regclass, 'public.users'::regclass, 'public.owners'::regclass, 'public.user_sessions'::regclass)`);
         assert.ok(rls.rows.every((r) => r.relrowsecurity === true), 'baseline tables must have RLS enabled');
 
         const grants = await client.query(`
@@ -191,6 +198,9 @@ export async function runAuthV2QaBootstrapSuite(): Promise<{ total: number; pass
           WHERE table_schema = 'public' AND table_name IN ('users', 'owners', 'user_sessions')
         `);
         assert.ok(grants.rows.some((r) => r.grantee === 'service_role' && r.table_name === 'user_sessions' && r.privilege_type === 'INSERT'));
+        // Production ACLs are broader, but the dedicated QA baseline intentionally
+        // hardens Auth persistence exposure. This is EXPECTED_QA_SECURITY_HARDENING,
+        // not a claim of byte-for-byte production ACL equality.
         assert.ok(!grants.rows.some((r) => (r.grantee === 'anon' || r.grantee === 'authenticated') && r.privilege_type !== ''));
 
         const ownerUserId = randomUUID();

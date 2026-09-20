@@ -42,6 +42,8 @@ import {
   isValidUuid,
   isValidQuoteFingerprint,
 } from './utils/quoteFingerprint.js';
+import { AuthV2Service } from './services/authV2Service.js';
+import { getAuthV2RuntimeDecision, mapAuthV2Error, safeAuthUser } from './services/authV2Runtime.js';
 
 export interface RouteHandlerResult {
   statusCode: number;
@@ -52,11 +54,13 @@ export class ExpressServerApp {
   private authController: AuthController;
   private storageService: IObjectStorageProvider;
   private verificationStorageService: IObjectStorageProvider;
+  private authV2ServiceFactory: (config?: any) => AuthV2Service;
 
-  constructor() {
+  constructor(options?: { authV2ServiceFactory?: (config?: any) => AuthV2Service }) {
     this.authController = new AuthController();
     this.storageService = createStorageProvider();
     this.verificationStorageService = createStorageProvider({ bucketName: process.env.OWNER_VERIFICATION_BUCKET || 'owner-verification', public: false });
+    this.authV2ServiceFactory = options?.authV2ServiceFactory ?? ((config) => new AuthV2Service({ config }));
   }
 
   /**
@@ -230,6 +234,101 @@ export class ExpressServerApp {
             timestamp,
           },
         };
+      }
+
+      // ----------------------------------------------------------------------
+      // 1A. AUTH V2 RUNTIME API (/api/v2/auth/*)
+      // ----------------------------------------------------------------------
+      const authV2Decision = getAuthV2RuntimeDecision();
+      const authV2Unavailable = (): RouteHandlerResult => ({
+        statusCode: 404,
+        body: { success: false, error: { code: 'AUTH_V2_UNAVAILABLE', message: 'خدمة تسجيل الدخول الجديدة غير متاحة حاليًا. حاول مرة أخرى لاحقًا.' }, timestamp },
+      });
+      const authV2ErrorResponse = (error: unknown): RouteHandlerResult => {
+        const mapped = mapAuthV2Error(error);
+        return { statusCode: mapped.statusCode, body: { success: false, error: { code: mapped.code, message: mapped.message }, timestamp } };
+      };
+      const isPlainBody = bodyPayload !== null && typeof bodyPayload === 'object' && !Array.isArray(bodyPayload);
+      const authV2Service = () => this.authV2ServiceFactory(authV2Decision.config);
+      const challengePath = path.match(/^\/api\/v2\/auth\/challenges\/([^/]+)(?:\/(verify|resend))?$/);
+      const validChallengeId = (value: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+      const clientIp = typeof headers['cf-connecting-ip'] === 'string' ? headers['cf-connecting-ip'] : undefined;
+
+      if (path.startsWith('/api/v2/auth/')) {
+        if (!authV2Decision.enabled) return authV2Unavailable();
+
+        if (path === '/api/v2/auth/challenges' && method === 'POST') {
+          if (!isPlainBody || bodyPayload.surface !== 'CUSTOMER' || !['LOGIN', 'CREATE_ACCOUNT'].includes(bodyPayload.intent) || !['PHONE', 'EMAIL'].includes(bodyPayload.method) || typeof bodyPayload.identifier !== 'string' || bodyPayload.identifier.trim().length === 0) {
+            return authV2ErrorResponse(new Error('INVALID_AUTH_REQUEST'));
+          }
+          try {
+            const result = await authV2Service().requestChallenge({
+              surface: 'CUSTOMER',
+              intent: bodyPayload.intent,
+              method: bodyPayload.method,
+              identifier: bodyPayload.identifier,
+              ipAddress: clientIp,
+            });
+            return { statusCode: 200, body: { success: true, data: result, timestamp } };
+          } catch (error) {
+            return authV2ErrorResponse(error);
+          }
+        }
+
+        if (challengePath && challengePath[1] && !validChallengeId(challengePath[1])) {
+          return authV2ErrorResponse(new Error('INVALID_CHALLENGE_ID'));
+        }
+        if (challengePath && challengePath[1] && challengePath[2] === 'verify' && method === 'POST') {
+          if (!isPlainBody || typeof bodyPayload.otp !== 'string' || !/^\d{6}$/.test(bodyPayload.otp)) return authV2ErrorResponse(new Error('INVALID_OTP'));
+          try {
+            const result = await authV2Service().verifyChallenge({ challengeId: challengePath[1], otp: bodyPayload.otp, deviceInfo: typeof bodyPayload.deviceInfo === 'string' ? bodyPayload.deviceInfo : undefined, ipAddress: clientIp });
+            const data: Record<string, unknown> = {
+              success: true,
+              challengeId: result.challengeId,
+              method: result.method,
+              intent: result.intent,
+              isExistingUser: result.isExistingUser,
+              requiresFullName: result.requiresFullName,
+              requiresSignup: result.requiresSignup,
+            };
+            if (result.user) data.user = safeAuthUser(result.user);
+            if (result.tokens) data.tokens = result.tokens;
+            if (result.method === 'EMAIL' && !result.isExistingUser) {
+              data.accountCreation = 'DEFERRED_EMAIL_ONLY';
+            } else if (result.continuationToken) {
+              data.continuationToken = result.continuationToken;
+            }
+            return { statusCode: 200, body: { success: true, data, timestamp } };
+          } catch (error) {
+            return authV2ErrorResponse(error);
+          }
+        }
+        if (challengePath && challengePath[1] && challengePath[2] === 'resend' && method === 'POST') {
+          try {
+            const result = await authV2Service().resendChallenge({ challengeId: challengePath[1], ipAddress: clientIp });
+            return { statusCode: 200, body: { success: true, data: result, timestamp } };
+          } catch (error) {
+            return authV2ErrorResponse(error);
+          }
+        }
+        if (challengePath && challengePath[1] && !challengePath[2] && method === 'DELETE') {
+          try {
+            const result = await authV2Service().cancelChallenge(challengePath[1]);
+            return { statusCode: 200, body: { success: true, data: result, timestamp } };
+          } catch (error) {
+            return authV2ErrorResponse(error);
+          }
+        }
+        if (path === '/api/v2/auth/registration/complete' && method === 'POST') {
+          if (!isPlainBody || typeof bodyPayload.continuationToken !== 'string' || typeof bodyPayload.fullName !== 'string') return authV2ErrorResponse(new Error('INVALID_FULL_NAME'));
+          try {
+            const result = await authV2Service().completeAccountCreation({ continuationToken: bodyPayload.continuationToken, fullName: bodyPayload.fullName, deviceInfo: typeof bodyPayload.deviceInfo === 'string' ? bodyPayload.deviceInfo : undefined, ipAddress: clientIp });
+            return { statusCode: 201, body: { success: true, data: { user: safeAuthUser(result.user), tokens: result.tokens }, timestamp } };
+          } catch (error) {
+            return authV2ErrorResponse(error);
+          }
+        }
+        return authV2Unavailable();
       }
 
 

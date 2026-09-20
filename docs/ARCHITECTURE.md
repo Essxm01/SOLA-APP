@@ -23,10 +23,11 @@ flowchart LR
 
 ## Backend
 
-- `backend/server/src/app.ts` is the route dispatcher for `/api/v1` and is used by both the Node HTTP entry (`index.ts`) and Worker entry (`worker.ts`).
+- `backend/server/src/app.ts` is the route dispatcher for `/api/v1` and the gated `/api/v2/auth/*` runtime API, and is used by both the Node HTTP entry (`index.ts`) and Worker entry (`worker.ts`). Auth V2 routes are dark unless `AUTH_V2_ENABLED=true` and the centralized environment/project guard accepts the configuration.
 - `backend/server/src/services/dbRepository.ts` holds domain repositories. `dbClient.ts` provides the database access layer.
 - The Worker path uses a deliberately narrow SQL-to-Supabase REST/RPC compatibility adapter. It is not a general SQL parser or transaction engine. Matchers must be strict: a prior `owner_id` versus `id` collision is why predicate matching must never rely on unsafe substrings.
 - Authentication middleware verifies role-scoped tokens. Protected owner/customer/admin routes derive authority from the verified subject rather than request-provided owner/customer IDs.
+- Auth V2 runtime endpoints are thin adapters over `AuthV2Service`: challenge issue/verify/resend/cancel and phone registration completion. The current runtime scope is Customer only; Founder QA fixed OTP is permitted only against the dedicated QA Supabase project reference, while the production Worker remains unchanged unless explicitly enabled with real providers.
 - Public Property Discovery Contract (P2.1):
   - Dedicated public read paths (`propertyDb.searchPublic`, `propertyDb.getPublicById`) enforce publication invariants (`deleted_at IS NULL AND status = 'PUBLISHED' AND verification_status = 'VERIFIED'`).
   - Strict privacy-safe DTO mappers (`toPublicPropertySearchItem`, `toPublicPropertyDetail`) in `backend/server/src/contracts/publicProperty.ts` guarantee no Owner contact/identity details, admin review metadata, internal finances (commission, owner net), or wallet/ledger keys are ever serialized on public routes.
@@ -37,6 +38,7 @@ flowchart LR
 
 - Supabase PostgreSQL is the canonical persistent store; Supabase Storage stores public property media and private Owner KYC evidence through separate paths. Worker operations requiring database atomicity use narrow PostgreSQL RPCs rather than composing REST writes. P1.3's atomic property-media RPC (`public.konfrm_commit_property_media`, migration 024) is published at `fb38414…` and verified applied live in Supabase.
 - `backend/wrangler.json` is the Worker configuration used by the GitHub Actions deployment (`workingDirectory: backend`). The root `wrangler.json` also exists; treat it as an alternate/legacy configuration until a deployment task verifies which configuration is active.
+- `backend/wrangler.auth-v2-qa.json` is a separate non-production QA Worker configuration. Its secrets are intentionally not tracked; deployment requires explicit external credentials and QA-only secret bindings.
 - `.github/workflows/ci-validation.yml` builds changed app areas and deploys the backend Worker on pushes to `main`. Cloudflare Pages project linkage is external to this repository and must be verified after frontend deployment work.
 - Vercel configuration artifacts exist in the repository. The current source alone does not prove that Vercel is an active production deployment path.
 

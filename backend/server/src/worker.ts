@@ -20,6 +20,14 @@ export interface Env {
   SUPABASE_ANON_KEY?: string;
   JWT_ACCESS_SECRET?: string;
   JWT_REFRESH_SECRET?: string;
+  AUTH_V2_ENABLED?: string;
+  AUTH_ENVIRONMENT?: string;
+  AUTH_DELIVERY_MODE?: string;
+  AUTH_DEVELOPMENT_OTP?: string;
+  AUTH_OTP_HMAC_SECRET?: string;
+  SUPABASE_PROJECT_REF?: string;
+  AUTH_REAL_SMS_PROVIDER_CONFIGURED?: string;
+  AUTH_REAL_EMAIL_PROVIDER_CONFIGURED?: string;
   PAYMOB_API_KEY?: string;
   PAYMOB_HMAC_SECRET?: string;
   PAYMENT_MODE?: string;

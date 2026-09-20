@@ -1,0 +1,19 @@
+{
+  "name": "sola-backend-auth-v2-qa",
+  "main": "server/src/worker.ts",
+  "compatibility_date": "2026-08-17",
+  "compatibility_flags": ["nodejs_compat"],
+  "vars": {
+    "SUPABASE_URL": "https://vlowzglqruozxstiqzgn.supabase.co",
+    "SUPABASE_PROJECT_REF": "vlowzglqruozxstiqzgn",
+    "AUTH_V2_ENABLED": "true",
+    "AUTH_ENVIRONMENT": "founder_qa",
+    "AUTH_DELIVERY_MODE": "DEVELOPMENT_FIXED_OTP",
+    "PAYMENT_MODE": "PROTOTYPE",
+    "OBJECT_STORAGE_PROVIDER": "supabase"
+  },
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1
+  }
+}

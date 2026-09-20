@@ -146,7 +146,7 @@ export async function runAuthV2QaBootstrapSuite(): Promise<{ total: number; pass
       const client = await pool.connect();
       try {
         const columns = await client.query(`
-          SELECT table_name, column_name, data_type, is_nullable, column_default
+          SELECT table_name, column_name, data_type, is_nullable, column_default, character_maximum_length
           FROM information_schema.columns
           WHERE table_schema = 'public'
             AND table_name IN ('schema_migrations', 'users', 'owners', 'user_sessions')

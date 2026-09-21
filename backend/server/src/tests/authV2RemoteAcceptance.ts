@@ -36,7 +36,9 @@ const issue = async (identifier: string, intent: 'LOGIN' | 'CREATE_ACCOUNT' = 'L
 };
 const verify = (id: string, code = otp) => request(`/api/v2/auth/challenges/${id}/verify`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ otp: code }) });
 const complete = (token: string, name: string) => request('/api/v2/auth/registration/complete', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ continuationToken: token, fullName: name }) });
-const assert = (condition: unknown, code: string): asserts condition => { if (!condition) throw new Error(code); };
+const assert: (condition: unknown, code: string) => asserts condition = (condition, code) => {
+  if (!condition) throw new Error(code);
+};
 
 async function ensureExistingFixtures(): Promise<void> {
   const existingPhone = '+201000000001';

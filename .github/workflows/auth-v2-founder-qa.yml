@@ -47,11 +47,11 @@ jobs:
       - name: Backend typecheck and Auth V2 gates
         working-directory: backend
         env:
-          JWT_ACCESS_SECRET: founder-qa-generated-access-secret-${{ github.run_id }}-not-production
-          JWT_REFRESH_SECRET: founder-qa-generated-refresh-secret-${{ github.run_id }}-not-production
-          AUTH_OTP_HMAC_SECRET: founder-qa-generated-hmac-secret-${{ github.run_id }}-not-production
           ISOLATED_PG_URL: postgresql://postgres:postgrespassword@localhost:5432/sola_isolated_ci_test
         run: |
+          export JWT_ACCESS_SECRET="$(openssl rand -hex 32)"
+          export JWT_REFRESH_SECRET="$(openssl rand -hex 32)"
+          export AUTH_OTP_HMAC_SECRET="$(openssl rand -hex 32)"
           npm run check
           npm run test:auth-v2-foundation
           npm run test:auth-v2-postgres
@@ -75,11 +75,6 @@ jobs:
           echo "::add-mask::$QA_JWT_ACCESS"
           echo "::add-mask::$QA_JWT_REFRESH"
           echo "::add-mask::$QA_HMAC"
-          {
-            echo "QA_JWT_ACCESS=$QA_JWT_ACCESS"
-            echo "QA_JWT_REFRESH=$QA_JWT_REFRESH"
-            echo "QA_HMAC=$QA_HMAC"
-          } >> "$GITHUB_ENV"
           printf '%s' "$AUTH_V2_QA_SUPABASE_SERVICE_ROLE_KEY" | npx wrangler secret put SUPABASE_SERVICE_ROLE_KEY --config wrangler.auth-v2-qa.json
           printf '%s' "$AUTH_V2_QA_DEVELOPMENT_OTP" | npx wrangler secret put AUTH_DEVELOPMENT_OTP --config wrangler.auth-v2-qa.json
           printf '%s' "$QA_JWT_ACCESS" | npx wrangler secret put JWT_ACCESS_SECRET --config wrangler.auth-v2-qa.json

@@ -359,7 +359,7 @@ async function run() {
   // D. Guest Explore account action invokes the EXISTING auth entry
   assert(
     headerCode.includes('onClick={onOpenAuthModal}') &&
-    appCode.includes('onOpenAuthModal={() => setShowAuthModal(true)}'),
+    appCode.includes('onOpenAuthModal={() => openAuthEntry('),
     'Guest Explore account action must invoke existing auth entry onOpenAuthModal'
   );
 

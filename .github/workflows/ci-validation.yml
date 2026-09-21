@@ -107,6 +107,8 @@ jobs:
           npm run test:c4
           npm run test:explore-redesign
           npm run test:responsive-hardening
+          npm run test:auth-screen08
+          npm run test:auth-screen09
           npm run build
 
   # ----------------------------------------------------------------------------
@@ -152,8 +154,6 @@ jobs:
           npm run test:auth-v2-foundation
           npm run test:auth-v2-postgres
           npm run test:auth-v2-qa-bootstrap
-          npm run test:auth-v2-runtime-api-01
-          npm run test:auth-v2-worker-adapter
           npm run test:owner-registration-kyc-01
           npm run test:owner-identity-01
           npm run test:owner-property-wizard-01

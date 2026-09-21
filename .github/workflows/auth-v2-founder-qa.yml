@@ -1,0 +1,93 @@
+name: Auth V2 Founder QA
+
+on:
+  workflow_dispatch:
+  pull_request:
+    types: [labeled]
+
+permissions:
+  contents: read
+
+jobs:
+  auth-v2-founder-qa:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgrespassword
+          POSTGRES_DB: sola_isolated_ci_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 5
+    if: >-
+      (github.event_name == 'pull_request' &&
+       github.repository == 'Essxm01/SOLA-APP' &&
+       github.event.pull_request.number == 45 &&
+       github.event.pull_request.head.ref == 'phase5/auth-v2-runtime-api-01' &&
+       github.event.pull_request.head.repo.full_name == github.repository &&
+       github.event.label.name == 'founder-qa-deploy') ||
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
+    env:
+      AUTH_V2_QA_WORKER_URL: https://sola-backend-auth-v2-qa.essxm01.workers.dev
+      AUTH_V2_QA_SUPABASE_URL: https://vlowzglqruozxstiqzgn.supabase.co
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+      - name: Install backend
+        working-directory: backend
+        run: npm ci
+      - name: Backend typecheck and Auth V2 gates
+        working-directory: backend
+        env:
+          ISOLATED_PG_URL: postgresql://postgres:postgrespassword@localhost:5432/sola_isolated_ci_test
+        run: |
+          export JWT_ACCESS_SECRET="$(openssl rand -hex 32)"
+          export JWT_REFRESH_SECRET="$(openssl rand -hex 32)"
+          export AUTH_OTP_HMAC_SECRET="$(openssl rand -hex 32)"
+          npm run check
+          npm run test:auth-v2-foundation
+          npm run test:auth-v2-postgres
+          npm run test:auth-v2-qa-bootstrap
+          npm run test:auth-v2-runtime-api-01
+          npm run test:auth-v2-worker-adapter
+      - name: Bind generated QA-only secrets
+        working-directory: backend
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          AUTH_V2_QA_SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.AUTH_V2_QA_SUPABASE_SERVICE_ROLE_KEY }}
+          AUTH_V2_QA_DEVELOPMENT_OTP: ${{ secrets.AUTH_V2_QA_DEVELOPMENT_OTP }}
+        run: |
+          set +x
+          test -n "$AUTH_V2_QA_SUPABASE_SERVICE_ROLE_KEY" || { echo "FOUNDER_MANUAL_SECRET_SETUP_REQUIRED: AUTH_V2_QA_SUPABASE_SERVICE_ROLE_KEY"; exit 1; }
+          test -n "$AUTH_V2_QA_DEVELOPMENT_OTP" || { echo "FOUNDER_MANUAL_SECRET_SETUP_REQUIRED: AUTH_V2_QA_DEVELOPMENT_OTP"; exit 1; }
+          test -n "$CLOUDFLARE_API_TOKEN" || { echo "FOUNDER_MANUAL_SECRET_SETUP_REQUIRED: CLOUDFLARE_API_TOKEN"; exit 1; }
+          QA_JWT_REFRESH="$(openssl rand -hex 32)"
+          QA_HMAC="$(openssl rand -hex 32)"
+          QA_JWT_ACCESS="$(openssl rand -hex 32)"
+          echo "::add-mask::$QA_JWT_ACCESS"
+          echo "::add-mask::$QA_JWT_REFRESH"
+          echo "::add-mask::$QA_HMAC"
+          printf '%s' "$AUTH_V2_QA_SUPABASE_SERVICE_ROLE_KEY" | npx wrangler secret put SUPABASE_SERVICE_ROLE_KEY --config wrangler.auth-v2-qa.json
+          printf '%s' "$AUTH_V2_QA_DEVELOPMENT_OTP" | npx wrangler secret put AUTH_DEVELOPMENT_OTP --config wrangler.auth-v2-qa.json
+          printf '%s' "$QA_JWT_ACCESS" | npx wrangler secret put JWT_ACCESS_SECRET --config wrangler.auth-v2-qa.json
+          printf '%s' "$QA_JWT_REFRESH" | npx wrangler secret put JWT_REFRESH_SECRET --config wrangler.auth-v2-qa.json
+          printf '%s' "$QA_HMAC" | npx wrangler secret put AUTH_OTP_HMAC_SECRET --config wrangler.auth-v2-qa.json
+      - name: Deploy QA Worker only
+        working-directory: backend
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: npx wrangler deploy --config wrangler.auth-v2-qa.json
+      - name: Remote QA acceptance
+        working-directory: backend
+        env:
+          AUTH_V2_QA_SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.AUTH_V2_QA_SUPABASE_SERVICE_ROLE_KEY }}
+          AUTH_V2_QA_DEVELOPMENT_OTP: ${{ secrets.AUTH_V2_QA_DEVELOPMENT_OTP }}
+        run: npm run qa:auth-v2-remote

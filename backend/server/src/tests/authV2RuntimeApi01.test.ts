@@ -147,6 +147,26 @@ export async function runAuthV2RuntimeApiSuite(): Promise<{ total: number; passe
       assert.ok(!JSON.stringify(verified.body).includes('phoneNumber'));
     });
 
+    await record('Verified challenge replay and concurrent losers use canonical 409 conflict semantics', async () => {
+      const replayFixture = createFixture({ existingPhone: '+201011111116' });
+      await (replayFixture.app as any).__seed();
+      const issued = await request(replayFixture.app, 'POST', '/api/v2/auth/challenges', { surface: 'CUSTOMER', intent: 'LOGIN', method: 'PHONE', identifier: '+201011111116' });
+      const first = await request(replayFixture.app, 'POST', `/api/v2/auth/challenges/${issued.body.data.challengeId}/verify`, { otp: '123456' });
+      assert.strictEqual(first.status, 200);
+      const replay = await request(replayFixture.app, 'POST', `/api/v2/auth/challenges/${issued.body.data.challengeId}/verify`, { otp: '123456' });
+      assert.strictEqual(replay.status, 409);
+      assert.strictEqual(replay.body.error.code, 'CHALLENGE_ALREADY_VERIFIED');
+
+      const concurrentFixture = createFixture({ existingPhone: '+201011111117' });
+      await (concurrentFixture.app as any).__seed();
+      const concurrentIssue = await request(concurrentFixture.app, 'POST', '/api/v2/auth/challenges', { surface: 'CUSTOMER', intent: 'LOGIN', method: 'PHONE', identifier: '+201011111117' });
+      const responses = await Promise.all(Array.from({ length: 5 }, () => request(concurrentFixture.app, 'POST', `/api/v2/auth/challenges/${concurrentIssue.body.data.challengeId}/verify`, { otp: '123456' })));
+      assert.strictEqual(responses.filter((response) => response.status === 200).length, 1);
+      const losers = responses.filter((response) => response.status !== 200);
+      assert.strictEqual(losers.length, 4);
+      assert(losers.every((response) => response.status === 409 && response.body.error.code === 'CHALLENGE_ALREADY_VERIFIED'));
+    });
+
     await record('Unknown phone creates only through verified continuation and never exposes OTP', async () => {
       const fixture = createFixture();
       const issued = await request(fixture.app, 'POST', '/api/v2/auth/challenges', { surface: 'CUSTOMER', intent: 'CREATE_ACCOUNT', method: 'PHONE', identifier: '+201011111113' });

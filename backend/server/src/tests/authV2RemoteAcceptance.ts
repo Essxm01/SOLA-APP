@@ -101,34 +101,43 @@ async function run(): Promise<void> {
 
   const lockIssue = await issue(phone('lock'));
   for (let attempt = 0; attempt < 5; attempt++) assert((await verify(lockIssue.body.data.challengeId, '000000')).status === 400, 'REMOTE_WRONG_OTP_NOT_REJECTED');
-  assert((await verify(lockIssue.body.data.challengeId, otp)).status === 400, 'REMOTE_LOCKOUT_BYPASSED');
+  const locked = await verify(lockIssue.body.data.challengeId, otp);
+  assert(locked.status === 400 && locked.body?.error?.code === 'CHALLENGE_LOCKED_MAX_ATTEMPTS_EXCEEDED', 'REMOTE_LOCKOUT_CONTRACT_FAILED');
 
   const cancelIssue = await issue(phone('cancel'));
   assert((await request(`/api/v2/auth/challenges/${cancelIssue.body.data.challengeId}`, { method: 'DELETE' })).status === 200, 'REMOTE_CANCEL_FAILED');
-  assert((await verify(cancelIssue.body.data.challengeId)).status === 400, 'REMOTE_CANCEL_VERIFY_ALLOWED');
+  const cancelledVerify = await verify(cancelIssue.body.data.challengeId);
+  assert(cancelledVerify.status === 400 && cancelledVerify.body?.error?.code === 'CHALLENGE_CANCELLED', 'REMOTE_CANCEL_VERIFY_ALLOWED');
 
   const replayIssue = await issue(existingPhone);
-  assert((await verify(replayIssue.body.data.challengeId)).status === 200, 'REMOTE_VERIFY_REPLAY_SETUP_FAILED');
-  assert((await verify(replayIssue.body.data.challengeId)).status === 400, 'REMOTE_VERIFY_REPLAY_ALLOWED');
+  const replayFirst = await verify(replayIssue.body.data.challengeId);
+  assert(replayFirst.status === 200, 'REMOTE_VERIFY_REPLAY_SETUP_FAILED');
+  const replaySecond = await verify(replayIssue.body.data.challengeId);
+  assert(replaySecond.status === 409 && replaySecond.body?.error?.code === 'CHALLENGE_ALREADY_VERIFIED' && !replaySecond.body?.data?.tokens, 'REMOTE_VERIFY_REPLAY_ALLOWED');
 
   const continuationIssue = await issue(phone('continuation'), 'CREATE_ACCOUNT');
   const continuationVerified = await verify(continuationIssue.body.data.challengeId);
   const continuationResult = await complete(continuationVerified.body.data.continuationToken, 'QA Continuation User');
   assert(continuationResult.status === 201, 'REMOTE_CONTINUATION_COMPLETION_FAILED');
-  assert((await complete(continuationVerified.body.data.continuationToken, 'QA Continuation User')).status === 409, 'REMOTE_CONTINUATION_REPLAY_ALLOWED');
+  const continuationReplay = await complete(continuationVerified.body.data.continuationToken, 'QA Continuation User');
+  assert(continuationReplay.status === 409 && continuationReplay.body?.error?.code === 'CONTINUATION_ALREADY_CONSUMED', 'REMOTE_CONTINUATION_REPLAY_ALLOWED');
 
   const verifyConcurrentIssue = await issue(existingPhone);
   const verifyConcurrent = await Promise.all(Array.from({ length: 5 }, () => verify(verifyConcurrentIssue.body.data.challengeId)));
   assert(verifyConcurrent.filter((r) => r.status === 200).length === 1, 'REMOTE_VERIFY_CONCURRENCY_WINNER_COUNT');
-  assert(verifyConcurrent.every((r) => r.status === 200 || r.status === 400), 'REMOTE_VERIFY_CONCURRENCY_UNSAFE_RESULT');
+  const verifyLosers = verifyConcurrent.filter((r) => r.status !== 200);
+  assert(verifyLosers.length === 4 && verifyLosers.every((r) => r.status === 409 && r.body?.error?.code === 'CHALLENGE_ALREADY_VERIFIED'), 'REMOTE_VERIFY_CONCURRENCY_UNSAFE_RESULT');
 
   const continuationConcurrentIssue = await issue(phone('concurrency'), 'CREATE_ACCOUNT');
   const continuationConcurrentVerified = await verify(continuationConcurrentIssue.body.data.challengeId);
   const continuationConcurrent = await Promise.all(Array.from({ length: 5 }, () => complete(continuationConcurrentVerified.body.data.continuationToken, 'QA Concurrent User')));
   assert(continuationConcurrent.filter((r) => r.status === 201).length === 1, 'REMOTE_CONTINUATION_CONCURRENCY_WINNER_COUNT');
+  const continuationLosers = continuationConcurrent.filter((r) => r.status !== 201);
+  assert(continuationLosers.length === 4 && continuationLosers.every((r) => r.status === 409 && r.body?.error?.code === 'CONTINUATION_ALREADY_CONSUMED'), 'REMOTE_CONTINUATION_CONCURRENCY_CONTRACT_FAILED');
 
   const resendIssue = await issue(phone('resend'));
-  assert((await request(`/api/v2/auth/challenges/${resendIssue.body.data.challengeId}/resend`, { method: 'POST' })).status === 429, 'REMOTE_RESEND_COOLDOWN_NOT_ENFORCED');
+  const resendCooldown = await request(`/api/v2/auth/challenges/${resendIssue.body.data.challengeId}/resend`, { method: 'POST' });
+  assert(resendCooldown.status === 429 && resendCooldown.body?.error?.code === 'RESEND_COOLDOWN_ACTIVE', 'REMOTE_RESEND_COOLDOWN_NOT_ENFORCED');
   const beforeResend = (await rest(`auth_challenges?id=eq.${resendIssue.body.data.challengeId}&select=id,generation,otp_digest,challenge_expires_at,provider_metadata`))[0];
   await rest(`auth_challenges?id=eq.${resendIssue.body.data.challengeId}`, 'PATCH', { resend_available_at: new Date(Date.now() - 1000).toISOString() });
   const resend = await request(`/api/v2/auth/challenges/${resendIssue.body.data.challengeId}/resend`, { method: 'POST' });
@@ -138,10 +147,11 @@ async function run(): Promise<void> {
   await rest(`auth_challenges?id=eq.${resendIssue.body.data.challengeId}`, 'PATCH', { resend_available_at: new Date(Date.now() - 1000).toISOString(), resend_lease_token: null });
   const resendConcurrent = await Promise.all(Array.from({ length: 5 }, () => request(`/api/v2/auth/challenges/${resendIssue.body.data.challengeId}/resend`, { method: 'POST' })));
   assert(resendConcurrent.filter((r) => r.status === 200).length === 1, 'REMOTE_RESEND_CONCURRENCY_WINNER_COUNT');
+  assert(resendConcurrent.filter((r) => r.status !== 200).every((r) => r.status === 429 && ['RESEND_IN_PROGRESS', 'RESEND_COOLDOWN_ACTIVE', 'RATE_LIMIT_EXCEEDED'].includes(r.body?.error?.code)), 'REMOTE_RESEND_CONCURRENCY_CONTRACT_FAILED');
 
   const ratePhone = phone('rate');
   const rateResults = await Promise.all(Array.from({ length: 6 }, () => issue(ratePhone)));
-  assert(rateResults.filter((r) => r.status === 200).length <= 5 && rateResults.some((r) => r.status === 429), 'REMOTE_IDENTIFIER_RATE_LIMIT_FAILED');
+  assert(rateResults.filter((r) => r.status === 200).length <= 5 && rateResults.some((r) => r.status === 429 && r.body?.error?.code === 'RATE_LIMIT_EXCEEDED'), 'REMOTE_IDENTIFIER_RATE_LIMIT_FAILED');
 
   const refreshed = await request('/api/v1/auth/refresh', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ refreshToken: phoneVerified.body.data.tokens.refreshToken }) });
   assert(refreshed.status === 200 && refreshed.body?.data?.accessToken, 'REMOTE_REFRESH_FAILED');

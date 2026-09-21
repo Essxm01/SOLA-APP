@@ -17,6 +17,11 @@ import { CustomerWelcomeScreen } from './components/CustomerWelcomeScreen';
 import { hasSeenCustomerEntry, markCustomerEntrySeen } from './utils/customerEntryState';
 import { LoadingStateView, ErrorStateView } from './components/StateViews';
 import { getApiUrl } from './utils/api';
+import { isCustomerAuthV2Enabled, type AuthChallengeIssued, type AuthOrigin, type AuthIntent, type AuthV2VerifyResult } from './utils/customerAuthV2';
+import { canResumeCustomerBooking, canResumeCustomerFavorite, createCustomerAuthResumePermission, createScreen10Handoff, createScreen10HandoffFromMissingLogin, resolveCustomerAuthEntry, cancelCustomerAuthV2, type CustomerAuthResumePermission, type CustomerBookingReviewContext, type Screen10Handoff } from './utils/customerAuthV2Flow';
+import { restoreScreen08PhoneValue, type AuthV2FlowState, type Screen08FormState } from './utils/customerScreen08AuthV2';
+import { CustomerAuthScreen08 } from './components/CustomerAuthScreen08';
+import { CustomerAuthScreen09 } from './components/CustomerAuthScreen09';
 import { fetchCanonicalCollection } from './utils/customerTruthfulState';
 import { buildPublicPropertySearchPath } from './utils/publicPropertySearch';
 import { SearchRefineScreen } from './components/SearchRefineScreen';
@@ -51,6 +56,7 @@ import {
 } from 'lucide-react';
 
 export function App() {
+  const authV2Enabled = isCustomerAuthV2Enabled(import.meta.env.VITE_CUSTOMER_AUTH_V2_ENABLED);
   // Persisted credentials are only candidates. Public browsing can render while
   // restoration runs, but protected Customer UI waits for canonical validation.
   const [authToken, setAuthToken] = useState<string | null>(null);
@@ -107,24 +113,54 @@ export function App() {
   const resultsScrollTopRef = useRef<number>(0);
   const filterMetadata = useMemo(() => extractFilterMetadata(properties), [properties]);
   const [showAuthModal, setShowAuthModal] = useState<boolean>(false);
+  const [authV2Flow, setAuthV2Flow] = useState<AuthV2FlowState | null>(null);
+  const [authV2Challenge, setAuthV2Challenge] = useState<AuthChallengeIssued | null>(null);
+  const [authV2Screen08Draft, setAuthV2Screen08Draft] = useState<Screen08FormState | null>(null);
+  const [screen10Handoff, setScreen10Handoff] = useState<Screen10Handoff | null>(null);
+  const [authResumePermission, setAuthResumePermission] = useState<CustomerAuthResumePermission | null>(null);
   const [showSupportModal, setShowSupportModal] = useState<boolean>(false);
   const [showWalletModal, setShowWalletModal] = useState<boolean>(false);
   const [showSuccessModal, setShowSuccessModal] = useState<boolean>(false);
   const [restoreBookingReview, setRestoreBookingReview] = useState<boolean>(false);
 
   // Intercepted Guest Context
-  const [interceptedContext, setInterceptedContext] = useState<{
-    propertyId: string;
-    checkIn: string;
-    checkOut: string;
-    guests: number;
-    quoteSnapshot?: any;
-    quoteFingerprint?: string | null;
-    requestId?: string | null;
-  } | null>(() => {
+  const [interceptedContext, setInterceptedContext] = useState<CustomerBookingReviewContext | null>(() => {
     const saved = localStorage.getItem('sola_customer_pending_booking_intent');
     try { return saved ? JSON.parse(saved) : null; } catch { return null; }
   });
+
+  const openAuthEntry = (origin: AuthOrigin, intent?: AuthIntent): void => {
+    const entry = resolveCustomerAuthEntry(authV2Enabled, origin, intent);
+    setAuthResumePermission(createCustomerAuthResumePermission(origin));
+    if (entry.surface === 'AUTH_V2') {
+      setShowAuthModal(false);
+      setAuthV2Challenge(null);
+      setAuthV2Screen08Draft(null);
+      setScreen10Handoff(null);
+      setAuthV2Flow({ origin: entry.origin, intent: entry.intent });
+      return;
+    }
+    setShowAuthModal(true);
+  };
+
+  const clearAuthResumePermission = (): void => {
+    if (authResumePermission?.type === 'FAVORITE') localStorage.removeItem('sola_customer_pending_favorite_property_id');
+    if (authResumePermission?.type === 'BOOKING') localStorage.removeItem('sola_customer_pending_booking_intent');
+    setAuthResumePermission(null);
+  };
+
+  const closeAuthV2 = (): void => {
+    if (authV2Flow) {
+      const handoff = cancelCustomerAuthV2(authV2Flow.origin);
+      if (handoff.clearFavoriteHandoff) localStorage.removeItem('sola_customer_pending_favorite_property_id');
+      if (handoff.clearBookingHandoff) localStorage.removeItem('sola_customer_pending_booking_intent');
+    }
+    clearAuthResumePermission();
+    setAuthV2Challenge(null);
+    setAuthV2Screen08Draft(null);
+    setScreen10Handoff(null);
+    setAuthV2Flow(null);
+  };
 
   // Active Booking State for Checkout / Details
   const [activeBooking, setActiveBooking] = useState<BookingDetails | null>(null);
@@ -236,6 +272,13 @@ export function App() {
         const canonicalProfile = mergeCustomerProfile(json.data);
         setUserProfile(canonicalProfile as any);
         localStorage.setItem('sola_customer_profile', JSON.stringify(canonicalProfile));
+        // Only the canonical profile may populate the legacy phone display
+        // field.  Never persist an email identifier as `sola_customer_phone`.
+        const canonicalPhone = (canonicalProfile as { phoneNumber?: unknown }).phoneNumber;
+        if (typeof canonicalPhone === 'string' && canonicalPhone.trim()) {
+          setCustomerPhone(canonicalPhone);
+          localStorage.setItem('sola_customer_phone', canonicalPhone);
+        }
       } else {
         setUserProfile(null);
         localStorage.removeItem('sola_customer_profile');
@@ -354,6 +397,11 @@ export function App() {
             const canonicalProfile = mergeCustomerProfile(profileJson.data);
             setUserProfile(canonicalProfile as any);
             localStorage.setItem('sola_customer_profile', JSON.stringify(canonicalProfile));
+            const canonicalPhone = (canonicalProfile as { phoneNumber?: unknown }).phoneNumber;
+            if (typeof canonicalPhone === 'string' && canonicalPhone.trim()) {
+              setCustomerPhone(canonicalPhone);
+              localStorage.setItem('sola_customer_phone', canonicalPhone);
+            }
             setAuthToken(storedToken);
             setCustomerAuthError(null);
             fetchAccountSummary(storedToken);
@@ -440,7 +488,7 @@ export function App() {
     if (!authToken) {
       // Unauthenticated Guest Interception for Favorites
       localStorage.setItem('sola_customer_pending_favorite_property_id', id);
-      setShowAuthModal(true);
+      openAuthEntry({ type: 'PROTECTED_FAVORITE', propertyId: id });
       return;
     }
 
@@ -503,16 +551,20 @@ export function App() {
 
     // Check pending favorite intent
     const pendingFavId = localStorage.getItem('sola_customer_pending_favorite_property_id');
-    if (pendingFavId) {
+    if (pendingFavId && canResumeCustomerFavorite(authResumePermission, pendingFavId)) {
       addCustomerFavorite(token, pendingFavId)
         .then(() => {
           localStorage.removeItem('sola_customer_pending_favorite_property_id');
           loadFavorites(token);
         })
         .catch(() => {
+          localStorage.removeItem('sola_customer_pending_favorite_property_id');
+          setAuthResumePermission(null);
+          setFavoritesActionError('تعذر حفظ الوحدة في المفضلة. يُرجى المحاولة مرة أخرى.');
           loadFavorites(token);
         });
     } else {
+      if (pendingFavId) localStorage.removeItem('sola_customer_pending_favorite_property_id');
       loadFavorites(token);
     }
 
@@ -526,13 +578,104 @@ export function App() {
     }
 
     // Context Preservation: Return to exact same property & dates post-login
-    if (interceptedContext) {
-      const targetProp = properties.find((p) => p.id === interceptedContext.propertyId) || selectedProperty;
+    const bookingResumeContext = interceptedContext;
+    if (canResumeCustomerBooking(authResumePermission, bookingResumeContext) && bookingResumeContext) {
+      const targetProp = properties.find((p) => p.id === bookingResumeContext.propertyId) || selectedProperty;
       if (targetProp) {
         setSelectedProperty(targetProp);
       }
       setRestoreBookingReview(true);
     }
+    setAuthResumePermission(null);
+  };
+
+  /**
+   * Screen 09 is the only place that can establish an Auth V2 Customer
+   * session.  The server response is treated as an outcome, never as client
+   * authority for account/profile data; canonical profile reads remain the
+   * source of truth after tokens are persisted.
+   */
+  const handleAuthV2Verified = (result: AuthV2VerifyResult): void => {
+    if (result.kind === 'CREATE_ACCOUNT_NEW_PHONE') {
+      if (authV2Challenge && screen10Handoff?.continuationToken !== result.continuationToken) {
+        setScreen10Handoff(createScreen10Handoff(result, authV2Challenge));
+      }
+      return;
+    }
+    if (result.kind !== 'AUTHENTICATED_EXISTING_ACCOUNT') return;
+
+    const { accessToken, refreshToken } = result.tokens;
+    localStorage.setItem('sola_customer_access_token', accessToken);
+    localStorage.setItem('sola_customer_refresh_token', refreshToken);
+    if (result.method === 'EMAIL') {
+      // Email authentication must never be persisted in a phone-named key.
+      localStorage.removeItem('sola_customer_phone');
+      setCustomerPhone(null);
+    }
+    setAuthToken(accessToken);
+    setCustomerAuthError(null);
+
+    void fetchCustomerProfile(accessToken);
+    void fetchAccountSummary(accessToken);
+    void fetchBookings(accessToken).catch(() => undefined);
+
+    const pendingFavId = localStorage.getItem('sola_customer_pending_favorite_property_id');
+    if (pendingFavId && canResumeCustomerFavorite(authResumePermission, pendingFavId)) {
+      void addCustomerFavorite(accessToken, pendingFavId)
+        .then(() => {
+          localStorage.removeItem('sola_customer_pending_favorite_property_id');
+          return loadFavorites(accessToken);
+        })
+        .catch(() => {
+          localStorage.removeItem('sola_customer_pending_favorite_property_id');
+          setAuthResumePermission(null);
+          setFavoritesActionError('تعذر حفظ الوحدة في المفضلة. يُرجى المحاولة مرة أخرى.');
+          void loadFavorites(accessToken);
+        });
+    } else {
+      if (pendingFavId) localStorage.removeItem('sola_customer_pending_favorite_property_id');
+      void loadFavorites(accessToken);
+    }
+
+    const bookingResumeContext = interceptedContext;
+    if (canResumeCustomerBooking(authResumePermission, bookingResumeContext) && bookingResumeContext) {
+      const targetProp = properties.find((p) => p.id === bookingResumeContext.propertyId) || selectedProperty;
+      if (targetProp) setSelectedProperty(targetProp);
+      setRestoreBookingReview(true);
+    }
+
+    setScreen10Handoff(null);
+    setAuthResumePermission(null);
+    setAuthV2Challenge(null);
+    setAuthV2Flow(null);
+    if (entryPhase === 'WELCOME') {
+      markCustomerEntrySeen();
+      setEntryPhase('APP');
+    }
+  };
+
+  /** Store the verified, purpose-bound continuation for the future Screen 10
+   * implementation without presenting an unimplemented UI or making a
+   * second account-creation request from Screen 09. */
+  const handleAuthV2CreateFromMissing = (
+    result: Extract<AuthV2VerifyResult, { kind: 'LOGIN_ACCOUNT_MISSING' }>,
+  ): void => {
+    if (!authV2Challenge) return;
+    const handoff = createScreen10HandoffFromMissingLogin(result, authV2Challenge);
+    if (handoff && screen10Handoff?.continuationToken !== handoff.continuationToken) {
+      setScreen10Handoff(handoff);
+      setAuthV2Screen08Draft((current) => ({ intent: 'CREATE_ACCOUNT', method: 'PHONE', phone: restoreScreen08PhoneValue(authV2Challenge.identifier), email: current?.email ?? '' }));
+    }
+  };
+
+  const continueWithPhoneCreateAccount = (): void => {
+    setAuthV2Screen08Draft((current) => ({
+      intent: 'CREATE_ACCOUNT',
+      method: 'PHONE',
+      phone: '',
+      email: current?.email ?? '',
+    }));
+    setAuthV2Challenge(null);
   };
 
   const handleLogout = async () => {
@@ -564,6 +707,10 @@ export function App() {
     setBookingDetailId(null);
     setBookingsError(null);
     setCustomerAuthError(null);
+    setAuthResumePermission(null);
+    setScreen10Handoff(null);
+    setAuthV2Challenge(null);
+    setAuthV2Flow(null);
     setActiveTab('EXPLORE');
   };
 
@@ -583,6 +730,7 @@ export function App() {
     setSelectedProperty(null);
     setRestoreBookingReview(false);
     setInterceptedContext(null);
+    setAuthResumePermission(null);
     localStorage.removeItem('sola_customer_pending_booking_intent');
     setShowSuccessModal(true);
   };
@@ -613,21 +761,44 @@ export function App() {
     // the transition into the shell.
     const handoffToAuthFromWelcome = () => {
       markCustomerEntrySeen();
-      setShowAuthModal(true);
+      openAuthEntry({ type: 'WELCOME_LOGIN' }, 'LOGIN');
+    };
+    const handoffToCreateFromWelcome = () => {
+      markCustomerEntrySeen();
+      openAuthEntry({ type: 'WELCOME_CREATE_ACCOUNT' }, 'CREATE_ACCOUNT');
     };
     return (
       <>
         <CustomerWelcomeScreen
           onGuestBrowse={exitEntry}
           onLogin={handoffToAuthFromWelcome}
-          onCreateAccount={handoffToAuthFromWelcome}
+          onCreateAccount={handoffToCreateFromWelcome}
         />
         {/* Auth handoff uses the CURRENT prototype auth modal; C1 does not
             redesign authentication. Cancel simply returns to Welcome without
             touching the entry flag. */}
-        {showAuthModal && (
+        {authV2Flow && authV2Challenge && (
+          <CustomerAuthScreen09
+            challenge={authV2Challenge}
+            onBackToScreen08={() => setAuthV2Challenge(null)}
+            onVerified={handleAuthV2Verified}
+            onCreateAccountFromMissing={handleAuthV2CreateFromMissing}
+            onContinueWithPhoneCreateAccount={continueWithPhoneCreateAccount}
+          />
+        )}
+        {authV2Flow && !authV2Challenge && (
+          <CustomerAuthScreen08
+            initialIntent={authV2Flow.intent}
+            initialForm={authV2Screen08Draft ?? undefined}
+            authOrigin={authV2Flow.origin}
+            onBack={closeAuthV2}
+            onFormChange={setAuthV2Screen08Draft}
+            onChallengeIssued={setAuthV2Challenge}
+          />
+        )}
+        {!authV2Enabled && showAuthModal && (
           <CustomerAuthModal
-            onClose={() => setShowAuthModal(false)}
+            onClose={() => { setShowAuthModal(false); clearAuthResumePermission(); }}
             onSuccess={handleAuthSuccess}
             interceptedContext={interceptedContext}
           />
@@ -705,7 +876,7 @@ export function App() {
               customerFullName={userProfile?.fullName}
               customerAvatarUrl={userProfile?.avatarUrl}
               activeTab={activeTab}
-              onOpenAuthModal={() => setShowAuthModal(true)}
+              onOpenAuthModal={() => openAuthEntry({ type: activeTab === 'ACCOUNT' ? 'ACCOUNT_TAB' : 'EXPLORE_ACCOUNT' })}
               onGoToAccount={() => {
                 setIsEditingAccount(false);
                 setActiveTab('ACCOUNT');
@@ -815,7 +986,7 @@ export function App() {
                   يمكنك حفظ ومتابعة الوحدات المفضلة بعد تسجيل الدخول إلى حسابك.
                 </p>
                 <button
-                  onClick={() => setShowAuthModal(true)}
+                  onClick={() => openAuthEntry({ type: 'FAVORITES_TAB' })}
                   className="px-5 py-2.5 bg-[#0059FF] text-white font-extrabold text-xs rounded-xl shadow-xs cursor-pointer"
                 >
                   تسجيل الدخول
@@ -1154,7 +1325,7 @@ export function App() {
                   </p>
                 </div>
                 <button
-                  onClick={() => setShowAuthModal(true)}
+                  onClick={() => openAuthEntry({ type: 'ACCOUNT_TAB' })}
                   className="w-full py-3.5 bg-[#0059FF] hover:bg-blue-600 active:scale-[0.99] text-white font-black text-xs rounded-xl shadow-lg shadow-blue-500/25 transition-all"
                 >
                   دخول برقم الجوال
@@ -1178,13 +1349,14 @@ export function App() {
           onRequireAuth={(context) => {
             localStorage.setItem('sola_customer_pending_booking_intent', JSON.stringify(context));
             setInterceptedContext(context);
-            setShowAuthModal(true);
+            openAuthEntry({ type: 'PROTECTED_BOOKING', context });
           }}
           restoredBookingIntent={interceptedContext}
           restoreBookingReview={restoreBookingReview}
           onBookingReviewRestored={() => {
             setRestoreBookingReview(false);
             setInterceptedContext(null);
+            setAuthResumePermission(null);
             localStorage.removeItem('sola_customer_pending_booking_intent');
           }}
           isFavorite={favorites.includes(selectedProperty.id)}
@@ -1202,9 +1374,28 @@ export function App() {
       )}
 
       {/* Customer Auth OTP Modal */}
-      {showAuthModal && (
+      {authV2Flow && authV2Challenge && (
+        <CustomerAuthScreen09
+          challenge={authV2Challenge}
+          onBackToScreen08={() => setAuthV2Challenge(null)}
+          onVerified={handleAuthV2Verified}
+          onCreateAccountFromMissing={handleAuthV2CreateFromMissing}
+          onContinueWithPhoneCreateAccount={continueWithPhoneCreateAccount}
+        />
+      )}
+      {authV2Flow && !authV2Challenge && (
+        <CustomerAuthScreen08
+          initialIntent={authV2Flow.intent}
+          initialForm={authV2Screen08Draft ?? undefined}
+          authOrigin={authV2Flow.origin}
+          onBack={closeAuthV2}
+          onFormChange={setAuthV2Screen08Draft}
+          onChallengeIssued={setAuthV2Challenge}
+        />
+      )}
+      {!authV2Enabled && showAuthModal && (
         <CustomerAuthModal
-          onClose={() => setShowAuthModal(false)}
+          onClose={() => { setShowAuthModal(false); clearAuthResumePermission(); }}
           onSuccess={handleAuthSuccess}
           interceptedContext={interceptedContext}
         />

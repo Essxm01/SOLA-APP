@@ -12,6 +12,9 @@ const QA_ENV: Record<string, string> = {
 };
 const UUID = () => randomUUID();
 const json = (value: unknown, status = 200): Response => new Response(JSON.stringify(value), { status, headers: { 'content-type': 'application/json' } });
+const assertExactRpcBody = (body: Record<string, unknown>, expected: string[]): void => {
+  assert.deepStrictEqual(Object.keys(body).sort(), [...expected].sort());
+};
 
 export async function runAuthV2WorkerAdapterSuite(): Promise<void> {
   const oldEnv: Record<string, string | undefined> = {};
@@ -49,17 +52,19 @@ export async function runAuthV2WorkerAdapterSuite(): Promise<void> {
     const body = init?.body ? JSON.parse(String(init.body)) : undefined;
     if (url.pathname.startsWith('/rest/v1/rpc/')) {
       const name = url.pathname.split('/').pop();
-      if (name === 'konfrm_check_rate_limit_v2') return json([{ allowed: true, remaining_attempts: 9, retry_after_seconds: 0 }]);
-      if (name === 'konfrm_acquire_resend_lease_v2') return json([{ success: true, lease_token: 'qa-lease', generation: 1, normalized_value: challenges.get(body.p_challenge_id)?.normalized_value, method: 'PHONE', surface: 'CUSTOMER', intent: 'LOGIN' }]);
-      if (name === 'konfrm_commit_resend_v2') return json([{ success: true, generation: 2, otp_expires_at: new Date(Date.now() + 600000).toISOString(), resend_available_at: new Date(Date.now() + 60000).toISOString(), challenge_expires_at: new Date(Date.now() + 1800000).toISOString() }]);
-      if (name === 'konfrm_release_resend_lease_v2') return json([{ success: true }]);
+      if (name === 'konfrm_check_rate_limit_v2') { assertExactRpcBody(body, ['p_bucket_key', 'p_window_seconds', 'p_max_attempts']); return json([{ allowed: true, remaining_attempts: 9, retry_after_seconds: 0 }]); }
+      if (name === 'konfrm_acquire_resend_lease_v2') { assertExactRpcBody(body, ['p_challenge_id', 'p_lease_ttl_seconds']); return json([{ success: true, lease_token: 'qa-lease', generation: 1, normalized_value: challenges.get(body.p_challenge_id)?.normalized_value, method: 'PHONE', surface: 'CUSTOMER', intent: 'LOGIN' }]); }
+      if (name === 'konfrm_commit_resend_v2') { assertExactRpcBody(body, ['p_challenge_id', 'p_lease_token', 'p_new_digest', 'p_new_generation', 'p_cooldown_seconds']); return json([{ success: true, generation: 2, otp_expires_at: new Date(Date.now() + 600000).toISOString(), resend_available_at: new Date(Date.now() + 60000).toISOString(), challenge_expires_at: new Date(Date.now() + 1800000).toISOString() }]); }
+      if (name === 'konfrm_release_resend_lease_v2') { assertExactRpcBody(body, ['p_challenge_id', 'p_lease_token']); return json([{ success: true }]); }
       if (name === 'konfrm_verify_auth_challenge_v2') {
+        assertExactRpcBody(body, ['p_challenge_id', 'p_otp_digest', 'p_max_failed_attempts']);
         const c = challenges.get(body.p_challenge_id); if (!c) return json([{ success: false, error_code: 'CHALLENGE_NOT_FOUND', challenge_id: body.p_challenge_id, failed_attempts: 0, is_locked: false }]);
         c.status = 'VERIFIED'; c.verified_at = new Date().toISOString();
         const id = identifiers.get(`PHONE:${c.normalized_value}`);
         return json([{ success: true, error_code: null, challenge_id: c.id, user_id: id?.user_id || null, identifier_type: c.method, normalized_value: c.normalized_value, intent: c.intent, surface: c.surface, failed_attempts: 0, is_locked: false }]);
       }
       if (name === 'konfrm_consume_auth_challenge_v2') {
+        assertExactRpcBody(body, ['p_challenge_id']);
         const c = challenges.get(body.p_challenge_id); if (!c || c.status !== 'VERIFIED') return json([{ success: false, error_code: 'CONTINUATION_ALREADY_CONSUMED' }]);
         c.status = 'CONSUMED'; c.consumed_at = new Date().toISOString(); return json([{ success: true, error_code: null }]);
       }

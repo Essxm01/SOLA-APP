@@ -7,7 +7,9 @@ const supabaseUrl = String(process.env.AUTH_V2_QA_SUPABASE_URL || '').replace(/\
 const serviceKey = String(process.env.AUTH_V2_QA_SUPABASE_SERVICE_ROLE_KEY || '');
 const otp = String(process.env.AUTH_V2_QA_DEVELOPMENT_OTP || '');
 const expectedWorkerUrl = 'https://sola-backend-auth-v2-qa.essxm01.workers.dev';
-if (workerUrl !== expectedWorkerUrl || !supabaseUrl.includes('vlowzglqruozxstiqzgn.supabase.co')) throw new Error('FOUNDER_QA_TARGET_REQUIRED');
+const expectedSupabaseUrl = 'https://vlowzglqruozxstiqzgn.supabase.co';
+const expectedQaProjectRef = 'vlowzglqruozxstiqzgn';
+if (workerUrl !== expectedWorkerUrl || supabaseUrl !== expectedSupabaseUrl || !supabaseUrl.includes(expectedQaProjectRef)) throw new Error('FOUNDER_QA_TARGET_REQUIRED');
 if (!serviceKey || !/^\d{6}$/.test(otp)) throw new Error('FOUNDER_MANUAL_SECRET_SETUP_REQUIRED');
 
 type Result = { status: number; body: any };
@@ -40,6 +42,18 @@ const assert: (condition: unknown, code: string) => asserts condition = (conditi
   if (!condition) throw new Error(code);
 };
 
+async function cleanupFixedQaState(): Promise<void> {
+  if (supabaseUrl !== expectedSupabaseUrl || supabaseUrl.includes('zrbmbjgcsowfqklmxbyn')) {
+    throw new Error('FOUNDER_QA_CLEANUP_TARGET_REQUIRED');
+  }
+  const phone = '+201000000001';
+  const email = 'existing-email@konfrm.test';
+  await rest(`auth_challenges?normalized_value=eq.${encodeURIComponent(phone)}`, 'DELETE');
+  await rest(`auth_challenges?normalized_value=eq.${encodeURIComponent(email)}`, 'DELETE');
+  await rest(`auth_rate_limits?bucket_key=eq.${encodeURIComponent(`rate:send:id:PHONE:${phone}`)}`, 'DELETE');
+  await rest(`auth_rate_limits?bucket_key=eq.${encodeURIComponent(`rate:send:id:EMAIL:${email}`)}`, 'DELETE');
+}
+
 async function ensureExistingFixtures(): Promise<void> {
   const existingPhone = '+201000000001';
   const existingEmail = 'existing-email@konfrm.test';
@@ -56,6 +70,7 @@ async function ensureExistingFixtures(): Promise<void> {
 }
 
 async function run(): Promise<void> {
+  await cleanupFixedQaState();
   await ensureExistingFixtures();
   const health = await request('/api/v1/health');
   assert(health.status === 200 && health.body?.data?.status === 'healthy', 'QA_HEALTH_FAILED');

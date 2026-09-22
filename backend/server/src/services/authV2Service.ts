@@ -54,6 +54,7 @@ import { AuthV2ContinuationService } from './authV2ContinuationService.js';
 import { signAccessToken, signRefreshToken } from './jwtService.js';
 import { userDb, sessionDb } from './dbRepository.js';
 import type { AuthSessionTokens } from '../types/server.js';
+import { createCanonicalEmailCustomer, type EmailCustomerRegistrationInput, type EmailCustomerRegistrationResult } from './emailCustomerRegistration.js';
 
 export interface RequestChallengeInput {
   surface: 'CUSTOMER' | 'OWNER' | 'ADMIN';
@@ -114,6 +115,7 @@ export class AuthV2Service {
   private smsAdapter: IOtpDeliveryAdapter;
   private emailAdapter: IOtpDeliveryAdapter;
   private config?: AuthEnvironmentConfig;
+  private emailCustomerRegistration: (input: EmailCustomerRegistrationInput) => Promise<EmailCustomerRegistrationResult>;
 
   constructor(options?: {
     userIdentifierRepo?: IUserIdentifierRepository;
@@ -123,6 +125,7 @@ export class AuthV2Service {
     sessionRepo?: ISessionRepository;
     smsAdapter?: IOtpDeliveryAdapter;
     emailAdapter?: IOtpDeliveryAdapter;
+    emailCustomerRegistration?: (input: EmailCustomerRegistrationInput) => Promise<EmailCustomerRegistrationResult>;
     config?: AuthEnvironmentConfig;
   }) {
     this.userIdentifierRepo = options?.userIdentifierRepo ?? userIdentifierDb;
@@ -132,6 +135,7 @@ export class AuthV2Service {
     this.sessionRepo = options?.sessionRepo ?? sessionDb;
     this.smsAdapter = options?.smsAdapter ?? new ProviderlessDevelopmentSmsAdapter();
     this.emailAdapter = options?.emailAdapter ?? new ProviderlessDevelopmentEmailAdapter();
+    this.emailCustomerRegistration = options?.emailCustomerRegistration ?? createCanonicalEmailCustomer;
     this.config = options?.config;
   }
 
@@ -496,8 +500,9 @@ export class AuthV2Service {
    * 5. Complete Account Creation (Screen 10 Backend Support)
    * Enforces:
    *   - Single-use continuation token (replay rejected via challenge consumption).
-   *   - ZERO fake placeholder phones: EMAIL-only creation is deferred until nullable-phone boundary.
-   *   - Requires FULL NAME ONLY for Phone onboarding.
+   *   - PHONE and EMAIL are equal verified Customer account-creation methods.
+   *   - Email-only creation uses the migration-032 atomic user + identifier boundary.
+   *   - Requires FULL NAME ONLY for Customer onboarding.
    */
   async completeAccountCreation(input: {
     continuationToken: string;
@@ -511,23 +516,13 @@ export class AuthV2Service {
 
     const payload = AuthV2ContinuationService.verifyToken(input.continuationToken, this.config);
 
-    // BLOCKER 4: EMAIL + new account boundary guard
-    // Canonical user requires users.phone_number NOT NULL. Zero fake phones allowed.
-    if (payload.method === 'EMAIL') {
-      throw new Error('EMAIL_ONLY_ACCOUNT_CREATION_NOT_ENABLED: Canonical user creation for email-only accounts is deferred until nullable-phone boundary. No fake phone numbers permitted.');
-    }
-
-    // FINAL BLOCKER: Atomic challenge consumption BEFORE any account/profile mutation
-    // Atomically claim the verified challenge before User creation/mutation, phone verification,
-    // user_identifier creation, or session issuance.
-    // Only the single winning claimant proceeds; all concurrent replay attempts fail immediately
-    // with CONTINUATION_ALREADY_CONSUMED producing zero account or session side effects.
+    // Atomically claim the verified challenge BEFORE any account/profile mutation.
     const challenge = await this.challengeRepo.markConsumed(payload.challengeId);
     if (challenge.normalizedValue !== payload.normalizedValue || challenge.method !== payload.method) {
       throw new Error('CHALLENGE_BINDING_MISMATCH: Continuation token does not match challenge identity');
     }
 
-    // Check race condition: has this identifier been registered in the meantime?
+    // Registration may have completed between OTP verification and Screen 10.
     const existing = await this.userIdentifierRepo.getByIdentifier(payload.method, payload.normalizedValue);
     if (existing) {
       const existingUser = await this.userRepo.getById(existing.userId);
@@ -537,11 +532,28 @@ export class AuthV2Service {
       }
     }
 
-    // Create new canonical user with verified Egyptian phone
-    const userId = randomUUID();
-    const cleanName = input.fullName.trim();
-    const phoneValue = payload.normalizedValue; // 100% verified real phone, never a fake placeholder
+    const cleanName = input.fullName.trim().replace(/\s+/g, ' ');
 
+    if (payload.method === 'EMAIL') {
+      // The database RPC serializes the exact normalized email, re-checks the
+      // canonical identifier owner, and creates users + user_identifiers in one
+      // transaction. A concurrent winner is returned instead of duplicated.
+      const registration = await this.emailCustomerRegistration({
+        userId: randomUUID(),
+        email: payload.normalizedValue,
+        fullName: cleanName,
+        verifiedAt: payload.verifiedAt,
+      });
+      const canonicalUserId = registration.user?.id;
+      if (!canonicalUserId) throw new Error('EMAIL_CUSTOMER_REGISTRATION_USER_MALFORMED');
+      const tokens = await this.issueCustomerSession(canonicalUserId, input.deviceInfo, input.ipAddress);
+      return { success: true, user: registration.user, tokens };
+    }
+
+    // Existing PHONE path remains unchanged: no fake phone, verified phone is
+    // persisted canonically and then represented as an additive identifier.
+    const userId = randomUUID();
+    const phoneValue = payload.normalizedValue;
     const newUser = await this.userRepo.create({
       id: userId,
       phoneNumber: phoneValue,
@@ -551,18 +563,14 @@ export class AuthV2Service {
 
     const canonicalUserId = newUser?.id || userId;
     await this.userRepo.updatePhoneVerified(canonicalUserId);
-
-    // Additive user_identifiers record
     await this.userIdentifierRepo.create({
       userId: canonicalUserId,
-      identifierType: payload.method,
+      identifierType: 'PHONE',
       normalizedValue: payload.normalizedValue,
       verifiedAt: payload.verifiedAt,
     });
 
-    // Issue Customer session
     const tokens = await this.issueCustomerSession(canonicalUserId, input.deviceInfo, input.ipAddress);
-
     return {
       success: true,
       user: newUser || { id: canonicalUserId, phoneNumber: phoneValue, fullName: cleanName },

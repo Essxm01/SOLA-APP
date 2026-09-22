@@ -1,8 +1,8 @@
 import {
-  isValidEgyptianPhone,
   verifyCustomerAuthChallenge,
   type AuthChallengeIssued,
 } from './customerAuthV2';
+import { isAllowedCustomerPhone } from './customerScreen08AuthV2';
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
@@ -49,13 +49,12 @@ async function run(): Promise<void> {
   assert((screen09.match(/id="customer-auth-otp"/g) ?? []).length === 1, 'Screen 09 has exactly one semantic OTP input');
   assert(screen09.includes('Array.from({ length: 6 }'), 'Screen 09 keeps six visual OTP cells');
 
-  // Founder acceptance: Customer phone login is Egypt-only with the explicitly approved
-  // mobile prefixes 010 / 012 / 015. Invalid values must be rejected before network I/O.
-  assert(isValidEgyptianPhone('01012345678'), '010 customer numbers are accepted');
-  assert(isValidEgyptianPhone('01212345678'), '012 customer numbers are accepted');
-  assert(isValidEgyptianPhone('01512345678'), '015 customer numbers are accepted');
-  assert(!isValidEgyptianPhone('01112345678'), '011 customer numbers are rejected by the founder-approved contract');
-  assert(!isValidEgyptianPhone('0507078581'), 'non-Egyptian/local Saudi-style input is rejected');
+  // Founder acceptance: Customer Screen 08 is intentionally limited to 010 / 012 / 015.
+  assert(isAllowedCustomerPhone('01012345678'), '010 customer numbers are accepted');
+  assert(isAllowedCustomerPhone('01212345678'), '012 customer numbers are accepted');
+  assert(isAllowedCustomerPhone('01512345678'), '015 customer numbers are accepted');
+  assert(!isAllowedCustomerPhone('01112345678'), '011 customer numbers are rejected by the founder-approved Screen 08 contract');
+  assert(!isAllowedCustomerPhone('0507078581'), 'non-Egyptian/local Saudi-style input is rejected');
 
   // Screen 08 must make +20 obvious as a fixed, non-editable visual prefix and must not
   // silently disable submission merely because the current phone value is invalid.
@@ -91,7 +90,7 @@ async function run(): Promise<void> {
   }), { status: 200, headers: { 'content-type': 'application/json' } })) as typeof fetch;
   const missingEmailResult = await verifyCustomerAuthChallenge(
     emailChallenge,
-    '123456',
+    '654321',
     { baseUrl: 'https://qa.example/api/v2', fetchImpl: missingEmailFetch },
   );
   assert(missingEmailResult.kind === 'LOGIN_ACCOUNT_MISSING', 'missing verified email returns LOGIN_ACCOUNT_MISSING rather than INVALID_RESPONSE');

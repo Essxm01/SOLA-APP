@@ -4,6 +4,7 @@ import {
   getScreen10OriginMessage,
   isValidCustomerFullName,
   normalizeCustomerFullName,
+  shouldSuppressScreen10Back,
 } from './customerScreen10AuthV2';
 import * as screen10Module from './customerScreen10AuthV2';
 
@@ -34,6 +35,15 @@ equal(getScreen10FailureDisposition('CONTINUATION_TOKEN_EXPIRED'), 'REVERIFY', '
 equal(getScreen10FailureDisposition('CONTINUATION_ALREADY_CONSUMED'), 'REVERIFY', 'consumed continuation requires re-verification');
 equal(getScreen10FailureDisposition('CONTINUATION_INVALID'), 'REVERIFY', 'invalid continuation requires re-verification');
 equal(getScreen10FailureDisposition('REQUEST_FAILED'), 'RETRY', 'transient request failure stays retryable');
+
+// Back suppression is intentionally narrow: only after registration succeeded
+// and canonical/session finalization is waiting for a retry.
+equal(shouldSuppressScreen10Back(false, 'ENTRY'), false, 'normal entry keeps Back');
+equal(shouldSuppressScreen10Back(false, 'RETRY_ERROR'), false, 'pre-registration retry keeps Back');
+equal(shouldSuppressScreen10Back(true, 'ENTRY'), false, 'successful registration without retry state does not suppress Back');
+equal(shouldSuppressScreen10Back(true, 'SUBMITTING'), false, 'submitting finalization alone does not suppress Back');
+equal(shouldSuppressScreen10Back(true, 'REVERIFY_REQUIRED'), false, 'reverification state remains governed by its explicit recovery path');
+equal(shouldSuppressScreen10Back(true, 'RETRY_ERROR'), true, 'post-registration finalization failure suppresses Back');
 
 const guard = createScreen10SubmissionGuard();
 const first = guard.begin();
@@ -78,6 +88,12 @@ async function runAsyncTests(): Promise<void> {
   await coordinator.attempt(register, finalize);
   equal(registrationCalls, 1, 'retry does not reuse the consumed continuation token');
   equal(finalizationCalls, 2, 'retry repeats canonical finalization only');
+
+  // A completed coordinator remains stable: another UI invocation neither
+  // recreates the account nor reruns canonical finalization.
+  await coordinator.attempt(register, finalize);
+  equal(registrationCalls, 1, 'completed recovery never reissues registration');
+  equal(finalizationCalls, 2, 'completed recovery never reruns finalization');
 
   const orchestrateFinalization = (screen10Module as Record<string, unknown>).orchestrateScreen10SessionFinalization;
   assert(typeof orchestrateFinalization === 'function', 'Screen 10 exposes the complete finalization lifecycle');

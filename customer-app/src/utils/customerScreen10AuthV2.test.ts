@@ -14,7 +14,7 @@ function equal(actual: unknown, expected: unknown, message: string): void {
 }
 
 equal(normalizeCustomerFullName('  أحمد   محمد  '), 'أحمد محمد', 'full name trims and collapses whitespace');
-equal(isValidCustomerFullName(' أ '), true, 'two-character names are accepted');
+equal(isValidCustomerFullName('آب'), true, 'two-character names are accepted');
 equal(isValidCustomerFullName(' '), false, 'blank names are rejected');
 
 equal(

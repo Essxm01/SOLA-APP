@@ -17,11 +17,12 @@ import { CustomerWelcomeScreen } from './components/CustomerWelcomeScreen';
 import { hasSeenCustomerEntry, markCustomerEntrySeen } from './utils/customerEntryState';
 import { LoadingStateView, ErrorStateView } from './components/StateViews';
 import { getApiUrl } from './utils/api';
-import { isCustomerAuthV2Enabled, type AuthChallengeIssued, type AuthOrigin, type AuthIntent, type AuthV2VerifyResult } from './utils/customerAuthV2';
+import { isCustomerAuthV2Enabled, type AuthChallengeIssued, type AuthOrigin, type AuthIntent, type AuthV2RegistrationResult, type AuthV2VerifyResult } from './utils/customerAuthV2';
 import { canResumeCustomerBooking, canResumeCustomerFavorite, createCustomerAuthResumePermission, createScreen10Handoff, createScreen10HandoffFromMissingLogin, resolveCustomerAuthEntry, cancelCustomerAuthV2, type CustomerAuthResumePermission, type CustomerBookingReviewContext, type Screen10Handoff } from './utils/customerAuthV2Flow';
 import { restoreScreen08PhoneValue, type AuthV2FlowState, type Screen08FormState } from './utils/customerScreen08AuthV2';
 import { CustomerAuthScreen08 } from './components/CustomerAuthScreen08';
 import { CustomerAuthScreen09 } from './components/CustomerAuthScreen09';
+import { CustomerAuthScreen10 } from './components/CustomerAuthScreen10';
 import { fetchCanonicalCollection } from './utils/customerTruthfulState';
 import { buildPublicPropertySearchPath } from './utils/publicPropertySearch';
 import { SearchRefineScreen } from './components/SearchRefineScreen';
@@ -590,24 +591,18 @@ export function App() {
   };
 
   /**
-   * Screen 09 is the only place that can establish an Auth V2 Customer
-   * session.  The server response is treated as an outcome, never as client
-   * authority for account/profile data; canonical profile reads remain the
-   * source of truth after tokens are persisted.
+   * Finalize a server-issued Auth V2 Customer session. Canonical profile,
+   * favorites, bookings, and account summary remain server-authoritative.
    */
-  const handleAuthV2Verified = (result: AuthV2VerifyResult): void => {
-    if (result.kind === 'CREATE_ACCOUNT_NEW_PHONE') {
-      if (authV2Challenge && screen10Handoff?.continuationToken !== result.continuationToken) {
-        setScreen10Handoff(createScreen10Handoff(result, authV2Challenge));
-      }
-      return;
-    }
-    if (result.kind !== 'AUTHENTICATED_EXISTING_ACCOUNT') return;
-
-    const { accessToken, refreshToken } = result.tokens;
+  const finalizeAuthV2Session = (
+    tokens: { accessToken: string; refreshToken: string; expiresIn: number },
+    method: 'PHONE' | 'EMAIL',
+    origin: AuthOrigin,
+  ): void => {
+    const { accessToken, refreshToken } = tokens;
     localStorage.setItem('sola_customer_access_token', accessToken);
     localStorage.setItem('sola_customer_refresh_token', refreshToken);
-    if (result.method === 'EMAIL') {
+    if (method === 'EMAIL') {
       // Email authentication must never be persisted in a phone-named key.
       localStorage.removeItem('sola_customer_phone');
       setCustomerPhone(null);
@@ -644,6 +639,12 @@ export function App() {
       setRestoreBookingReview(true);
     }
 
+    if (origin.type === 'WELCOME_CREATE_ACCOUNT') {
+      setActiveTab('EXPLORE');
+      setDiscoveryView('EXPLORE');
+      setIsEditingAccount(false);
+    }
+
     setScreen10Handoff(null);
     setAuthResumePermission(null);
     setAuthV2Challenge(null);
@@ -654,9 +655,42 @@ export function App() {
     }
   };
 
-  /** Store the verified, purpose-bound continuation for the future Screen 10
-   * implementation without presenting an unimplemented UI or making a
-   * second account-creation request from Screen 09. */
+  /**
+   * Screen 09 establishes existing-account sessions and hands verified new
+   * phone registrations to Screen 10 without creating an account itself.
+   */
+  const handleAuthV2Verified = (result: AuthV2VerifyResult): void => {
+    if (result.kind === 'CREATE_ACCOUNT_NEW_PHONE') {
+      if (authV2Challenge && screen10Handoff?.continuationToken !== result.continuationToken) {
+        setScreen10Handoff(createScreen10Handoff(result, authV2Challenge));
+      }
+      return;
+    }
+    if (result.kind !== 'AUTHENTICATED_EXISTING_ACCOUNT') return;
+    finalizeAuthV2Session(result.tokens, result.method, result.authOrigin);
+  };
+
+  const handleAuthV2Screen10Completed = (result: AuthV2RegistrationResult): void => {
+    if (!screen10Handoff) return;
+    finalizeAuthV2Session(result.tokens, 'PHONE', screen10Handoff.authOrigin);
+  };
+
+  const restartScreen10Verification = (): void => {
+    if (!screen10Handoff) return;
+    const preservedPhone = restoreScreen08PhoneValue(screen10Handoff.identifier);
+    setAuthV2Screen08Draft((current) => ({
+      intent: 'CREATE_ACCOUNT',
+      method: 'PHONE',
+      phone: current?.phone || preservedPhone,
+      email: current?.email ?? '',
+    }));
+    setAuthV2Flow((current) => current ? { ...current, intent: 'CREATE_ACCOUNT' } : current);
+    setScreen10Handoff(null);
+    setAuthV2Challenge(null);
+  };
+
+  /** Store the verified, purpose-bound continuation for Screen 10 without
+   * making a second account-creation request from Screen 09. */
   const handleAuthV2CreateFromMissing = (
     result: Extract<AuthV2VerifyResult, { kind: 'LOGIN_ACCOUNT_MISSING' }>,
   ): void => {
@@ -777,7 +811,14 @@ export function App() {
         {/* Auth handoff uses the CURRENT prototype auth modal; C1 does not
             redesign authentication. Cancel simply returns to Welcome without
             touching the entry flag. */}
-        {authV2Flow && authV2Challenge && (
+        {authV2Flow && screen10Handoff && (
+          <CustomerAuthScreen10
+            handoff={screen10Handoff}
+            onBackToScreen08={restartScreen10Verification}
+            onCompleted={handleAuthV2Screen10Completed}
+          />
+        )}
+        {authV2Flow && !screen10Handoff && authV2Challenge && (
           <CustomerAuthScreen09
             challenge={authV2Challenge}
             onBackToScreen08={() => setAuthV2Challenge(null)}
@@ -786,7 +827,7 @@ export function App() {
             onContinueWithPhoneCreateAccount={continueWithPhoneCreateAccount}
           />
         )}
-        {authV2Flow && !authV2Challenge && (
+        {authV2Flow && !screen10Handoff && !authV2Challenge && (
           <CustomerAuthScreen08
             initialIntent={authV2Flow.intent}
             initialForm={authV2Screen08Draft ?? undefined}
@@ -1374,7 +1415,14 @@ export function App() {
       )}
 
       {/* Customer Auth OTP Modal */}
-      {authV2Flow && authV2Challenge && (
+      {authV2Flow && screen10Handoff && (
+        <CustomerAuthScreen10
+          handoff={screen10Handoff}
+          onBackToScreen08={restartScreen10Verification}
+          onCompleted={handleAuthV2Screen10Completed}
+        />
+      )}
+      {authV2Flow && !screen10Handoff && authV2Challenge && (
         <CustomerAuthScreen09
           challenge={authV2Challenge}
           onBackToScreen08={() => setAuthV2Challenge(null)}
@@ -1383,7 +1431,7 @@ export function App() {
           onContinueWithPhoneCreateAccount={continueWithPhoneCreateAccount}
         />
       )}
-      {authV2Flow && !authV2Challenge && (
+      {authV2Flow && !screen10Handoff && !authV2Challenge && (
         <CustomerAuthScreen08
           initialIntent={authV2Flow.intent}
           initialForm={authV2Screen08Draft ?? undefined}

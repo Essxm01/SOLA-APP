@@ -1,39 +1,42 @@
-/// <reference types="node" />
-import { readFileSync } from 'node:fs';
-
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
 }
 
-const readSource = (url: URL): string => readFileSync(url, 'utf8').replace(/\r\n/g, '\n');
-const app = readSource(new URL('../App.tsx', import.meta.url));
-const screen10 = readSource(new URL('../components/CustomerAuthScreen10.tsx', import.meta.url));
-const flow = readSource(new URL('./customerAuthV2Flow.ts', import.meta.url));
+async function run(): Promise<void> {
+  // @ts-expect-error Node's test-only module is intentionally outside the browser app type surface.
+  const { readFileSync } = await import('node:fs');
+  const readSource = (url: URL): string => readFileSync(url, 'utf8').replace(/\r\n/g, '\n');
+  const app = readSource(new URL('../App.tsx', import.meta.url));
+  const screen10 = readSource(new URL('../components/CustomerAuthScreen10.tsx', import.meta.url));
+  const flow = readSource(new URL('./customerAuthV2Flow.ts', import.meta.url));
 
-assert(app.includes("import { CustomerAuthScreen10 } from './components/CustomerAuthScreen10';"), 'App imports Screen 10');
-assert(app.includes('authV2Flow && screen10Handoff && ('), 'Screen 10 is gated by the verified handoff');
-assert(app.includes('!screen10Handoff && authV2Challenge'), 'Screen 09 is not rendered over Screen 10');
-assert(app.includes('!screen10Handoff && !authV2Challenge'), 'Screen 08 is not rendered over Screen 10');
-assert(app.includes('onCompleted={handleAuthV2Screen10Completed}'), 'Screen 10 completion is wired to session finalization');
-assert(app.includes("origin.type === 'WELCOME_CREATE_ACCOUNT'"), 'Welcome create origin has an explicit success destination');
-assert(app.includes("setActiveTab('EXPLORE')"), 'Welcome create success returns to Explore');
-assert(app.includes('canResumeCustomerBooking(authResumePermission, bookingResumeContext)'), 'booking resume remains permission-scoped');
-assert(app.includes('canResumeCustomerFavorite(authResumePermission, pendingFavId)'), 'favorite resume remains permission-scoped');
+  assert(app.includes("import { CustomerAuthScreen10 } from './components/CustomerAuthScreen10';"), 'App imports Screen 10');
+  assert(app.includes('authV2Flow && screen10Handoff && ('), 'Screen 10 is gated by the verified handoff');
+  assert(app.includes('!screen10Handoff && authV2Challenge'), 'Screen 09 is not rendered over Screen 10');
+  assert(app.includes('!screen10Handoff && !authV2Challenge'), 'Screen 08 is not rendered over Screen 10');
+  assert(app.includes('onCompleted={handleAuthV2Screen10Completed}'), 'Screen 10 completion is wired to session finalization');
+  assert(app.includes("origin.type === 'WELCOME_CREATE_ACCOUNT'"), 'Welcome create origin has an explicit success destination');
+  assert(app.includes("setActiveTab('EXPLORE')"), 'Welcome create success returns to Explore');
+  assert(app.includes('canResumeCustomerBooking(authResumePermission, bookingResumeContext)'), 'booking resume remains permission-scoped');
+  assert(app.includes('canResumeCustomerFavorite(authResumePermission, pendingFavId)'), 'favorite resume remains permission-scoped');
 
-assert(screen10.includes('<CustomerAuthAppBar'), 'Screen 10 uses the shared Auth app bar');
-assert(screen10.includes('max-w-[430px]'), 'Screen 10 keeps the approved mobile width');
-assert(screen10.includes('أكمل إنشاء حسابك'), 'Screen 10 approved heading is present');
-assert(screen10.includes('أدخل اسمك الكامل للمتابعة.'), 'Screen 10 approved support copy is present');
-assert(screen10.includes('placeholder="أحمد محمد"'), 'Screen 10 approved placeholder is present');
-assert(screen10.includes('إكمال إنشاء الحساب'), 'Screen 10 approved CTA is present');
-assert(screen10.includes('جارٍ إنشاء الحساب…'), 'Screen 10 loading copy is present');
-assert(screen10.includes('إعادة التحقق من رقم الهاتف'), 'Screen 10 has safe continuation recovery');
-assert((screen10.match(/id="customer-auth-full-name"/g) ?? []).length === 1, 'Screen 10 has one semantic full-name input');
-assert(screen10.includes('controllerRef.current?.abort()'), 'Screen 10 aborts in-flight work on exit');
-assert(screen10.includes('guardRef.current.begin()'), 'Screen 10 has double-submit protection');
+  assert(screen10.includes('<CustomerAuthAppBar'), 'Screen 10 uses the shared Auth app bar');
+  assert(screen10.includes('max-w-[430px]'), 'Screen 10 keeps the approved mobile width');
+  assert(screen10.includes('أكمل إنشاء حسابك'), 'Screen 10 approved heading is present');
+  assert(screen10.includes('أدخل اسمك الكامل للمتابعة.'), 'Screen 10 approved support copy is present');
+  assert(screen10.includes('placeholder="أحمد محمد"'), 'Screen 10 approved placeholder is present');
+  assert(screen10.includes('إكمال إنشاء الحساب'), 'Screen 10 approved CTA is present');
+  assert(screen10.includes('جارٍ إنشاء الحساب…'), 'Screen 10 loading copy is present');
+  assert(screen10.includes('إعادة التحقق من رقم الهاتف'), 'Screen 10 has safe continuation recovery');
+  assert((screen10.match(/id="customer-auth-full-name"/g) ?? []).length === 1, 'Screen 10 has one semantic full-name input');
+  assert(screen10.includes('controllerRef.current?.abort()'), 'Screen 10 aborts in-flight work on exit');
+  assert(screen10.includes('guardRef.current.begin()'), 'Screen 10 has double-submit protection');
 
-const sensitiveSources = app + '\n' + screen10 + '\n' + flow;
-assert(!/(localStorage|sessionStorage)\.setItem\([^\n;]*continuation/i.test(sensitiveSources), 'continuation token is never persisted in browser storage');
-assert(!/URLSearchParams\([^)]*continuation/i.test(sensitiveSources), 'continuation token is never placed in a URL');
+  const sensitiveSources = app + '\n' + screen10 + '\n' + flow;
+  assert(!/(localStorage|sessionStorage)\.setItem\([^\n;]*continuation/i.test(sensitiveSources), 'continuation token is never persisted in browser storage');
+  assert(!/URLSearchParams\([^)]*continuation/i.test(sensitiveSources), 'continuation token is never placed in a URL');
 
-console.log('customerAuthV2 Screen 10 source-contract tests passed');
+  console.log('customerAuthV2 Screen 10 source-contract tests passed');
+}
+
+void run();

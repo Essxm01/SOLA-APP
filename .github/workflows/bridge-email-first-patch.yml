@@ -25,12 +25,12 @@ jobs:
           node-version: '22'
       - name: Apply exact bounded replacements
         run: node tools/bridge-email-first-backend-patch.mjs
-      - name: Commit only intended source patch
+      - name: Commit only intended backend contract patches
         run: |
           git diff --check
-          git diff -- backend/server/src/services/authV2Service.ts
+          git diff -- backend/server/src/app.ts backend/server/src/tests/authV2Foundation.test.ts backend/server/src/tests/authV2RuntimeApi01.test.ts
           git config user.name "KONFRM Bridge"
           git config user.email "actions@users.noreply.github.com"
-          git add backend/server/src/services/authV2Service.ts
-          git commit -m "feat(auth): enable atomic email customer completion"
+          git add backend/server/src/app.ts backend/server/src/tests/authV2Foundation.test.ts backend/server/src/tests/authV2RuntimeApi01.test.ts
+          git commit -m "feat(auth): expose email account creation through Auth V2 API"
           git push origin HEAD:phase5/customer-auth-v2-email-first

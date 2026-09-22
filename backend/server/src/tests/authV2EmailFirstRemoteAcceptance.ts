@@ -91,7 +91,7 @@ async function cleanup(): Promise<void> {
     await rest(`auth_challenges?normalized_value=eq.${encodeURIComponent(email)}`, 'DELETE').catch(() => []);
     const users = await rest(`users?email=eq.${encodeURIComponent(email)}&select=id`).catch(() => []);
     for (const user of users) {
-      await rest(`sessions?user_id=eq.${encodeURIComponent(user.id)}`, 'DELETE').catch(() => []);
+      await rest(`user_sessions?user_id=eq.${encodeURIComponent(user.id)}`, 'DELETE').catch(() => []);
       await rest(`user_identifiers?user_id=eq.${encodeURIComponent(user.id)}`, 'DELETE').catch(() => []);
       await rest(`users?id=eq.${encodeURIComponent(user.id)}`, 'DELETE').catch(() => []);
     }
@@ -100,7 +100,7 @@ async function cleanup(): Promise<void> {
     await rest(`auth_challenges?normalized_value=eq.${encodeURIComponent(phone)}`, 'DELETE').catch(() => []);
     const users = await rest(`users?phone_number=eq.${encodeURIComponent(phone)}&select=id`).catch(() => []);
     for (const user of users) {
-      await rest(`sessions?user_id=eq.${encodeURIComponent(user.id)}`, 'DELETE').catch(() => []);
+      await rest(`user_sessions?user_id=eq.${encodeURIComponent(user.id)}`, 'DELETE').catch(() => []);
       await rest(`user_identifiers?user_id=eq.${encodeURIComponent(user.id)}`, 'DELETE').catch(() => []);
       await rest(`users?id=eq.${encodeURIComponent(user.id)}`, 'DELETE').catch(() => []);
     }
@@ -165,7 +165,8 @@ async function run(): Promise<void> {
       complete(raceVerifyA.body.data.continuationToken, 'Race A'),
       complete(raceVerifyB.body.data.continuationToken, 'Race B'),
     ]);
-    assert(raceA.status === 201 && raceB.status === 201, 'EMAIL_FIRST_RACE_COMPLETION_FAILED');
+    const raceDiagnostic = `EMAIL_FIRST_RACE_COMPLETION_FAILED:${raceA.status}:${String(raceA.body?.error?.code || 'none')}:${raceB.status}:${String(raceB.body?.error?.code || 'none')}`;
+    assert(raceA.status === 201 && raceB.status === 201, raceDiagnostic);
     const raceRows = await rest(`users?email=eq.${encodeURIComponent(raceEmail)}&select=id,phone_number,email`);
     assert(raceRows.length === 1 && raceRows[0].phone_number === null, 'EMAIL_FIRST_RACE_DUPLICATE_USER');
     assert(raceA.body?.data?.user?.id === raceRows[0].id && raceB.body?.data?.user?.id === raceRows[0].id, 'EMAIL_FIRST_RACE_DID_NOT_CONVERGE');

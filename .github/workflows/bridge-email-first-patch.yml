@@ -25,12 +25,12 @@ jobs:
           node-version: '22'
       - name: Apply exact bounded replacements
         run: node tools/bridge-email-first-backend-patch.mjs
-      - name: Commit only intended Customer profile contract patches
+      - name: Commit only intended Customer multi-identifier patches
         run: |
           git diff --check
-          git diff -- backend/server/src/contracts/customerRenter.ts backend/server/src/tests/p22RenterApiContract.test.ts
+          git diff -- customer-app/src/utils/customerAuthV2.ts customer-app/src/utils/customerAuthV2Flow.ts customer-app/src/components/CustomerAuthScreen09.tsx customer-app/src/components/CustomerAuthScreen10.tsx customer-app/src/App.tsx customer-app/src/utils/customerScreen09AuthV2.test.ts customer-app/src/utils/customerAuthV2Flow.test.ts customer-app/src/utils/customerAuthV2Screen10Contract.test.ts
           git config user.name "KONFRM Bridge"
           git config user.email "actions@users.noreply.github.com"
-          git add backend/server/src/contracts/customerRenter.ts backend/server/src/tests/p22RenterApiContract.test.ts
-          git commit -m "feat(customer): allow email-only profile without fake phone"
+          git add customer-app/src/utils/customerAuthV2.ts customer-app/src/utils/customerAuthV2Flow.ts customer-app/src/components/CustomerAuthScreen09.tsx customer-app/src/components/CustomerAuthScreen10.tsx customer-app/src/App.tsx customer-app/src/utils/customerScreen09AuthV2.test.ts customer-app/src/utils/customerAuthV2Flow.test.ts customer-app/src/utils/customerAuthV2Screen10Contract.test.ts
+          git commit -m "feat(customer): make email and phone equal Auth V2 identifiers"
           git push origin HEAD:phase5/customer-auth-v2-email-first

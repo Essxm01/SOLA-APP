@@ -11,113 +11,23 @@ function patchFile(path, transforms) {
   fs.writeFileSync(path, source);
 }
 
-patchFile('backend/server/src/app.ts', [{
-  label: 'verified email response must expose continuation',
-  oldValue: `            if (result.user) data.user = safeAuthUser(result.user);
-            if (result.tokens) data.tokens = result.tokens;
-            if (result.method === 'EMAIL' && !result.isExistingUser) {
-              data.accountCreation = 'DEFERRED_EMAIL_ONLY';
-            } else if (result.continuationToken) {
-              data.continuationToken = result.continuationToken;
-            }`,
-  newValue: `            if (result.user) data.user = safeAuthUser(result.user);
-            if (result.tokens) data.tokens = result.tokens;
-            if (result.continuationToken) data.continuationToken = result.continuationToken;`,
+patchFile('backend/server/src/contracts/customerRenter.ts', [
+  {
+    label: 'CustomerProfileDto phone becomes nullable',
+    oldValue: `export interface CustomerProfileDto {\n  id: string;\n  phoneNumber: string;`,
+    newValue: `export interface CustomerProfileDto {\n  id: string;\n  phoneNumber: string | null;`,
+  },
+  {
+    label: 'Customer profile parser accepts null phone only',
+    oldValue: `  const phoneNumber = requiredString(raw.phoneNumber ?? raw.phone_number, 'CUSTOMER_PROFILE_DATA', 'phoneNumber');`,
+    newValue: `  const phoneNumber = optionalString(raw.phoneNumber ?? raw.phone_number, 'CUSTOMER_PROFILE_DATA', 'phoneNumber');`,
+  },
+]);
+
+patchFile('backend/server/src/tests/p22RenterApiContract.test.ts', [{
+  label: 'Customer profile nullable phone coverage',
+  oldValue: `// Profile fail closed on malformed required fields\nassert.throws(() => toCustomerProfileDto({ ...rawUser, id: '' }), /MALFORMED_CUSTOMER_PROFILE_DATA/);\nassert.throws(() => toCustomerProfileDto({ ...rawUser, phoneNumber: '' }), /MALFORMED_CUSTOMER_PROFILE_DATA/);\nassert.throws(() => toCustomerProfileDto({ ...rawUser, status: '' }), /MALFORMED_CUSTOMER_PROFILE_DATA/);\n\n// Canonical null profile fields remain null\nconst nullProfileDto = toCustomerProfileDto({\n  ...rawUser,\n  fullName: null,\n  email: null,\n  phoneVerifiedAt: null,\n});\nassert.equal(nullProfileDto.fullName, null);\nassert.equal(nullProfileDto.email, null);\nassert.equal(nullProfileDto.phoneVerifiedAt, null);`,
+  newValue: `// Profile fail closed on malformed required fields / malformed non-null phone.\nassert.throws(() => toCustomerProfileDto({ ...rawUser, id: '' }), /MALFORMED_CUSTOMER_PROFILE_DATA/);\nassert.throws(() => toCustomerProfileDto({ ...rawUser, phoneNumber: { invalid: true }, phone_number: undefined }), /MALFORMED_CUSTOMER_PROFILE_DATA/);\nassert.throws(() => toCustomerProfileDto({ ...rawUser, status: '' }), /MALFORMED_CUSTOMER_PROFILE_DATA/);\n\n// Canonical nullable Customer identity fields remain null. Email-only accounts\n// are valid after migration 032 and must not need a fake phone.\nconst nullProfileDto = toCustomerProfileDto({\n  ...rawUser,\n  phoneNumber: null,\n  phone_number: null,\n  fullName: 'عميل بريد',\n  email: 'email.only@example.com',\n  phoneVerifiedAt: null,\n});\nassert.equal(nullProfileDto.phoneNumber, null);\nassert.equal(nullProfileDto.email, 'email.only@example.com');\nassert.equal(nullProfileDto.phoneVerifiedAt, null);`,
 }]);
 
-patchFile('backend/server/src/tests/authV2Foundation.test.ts', [{
-  label: 'replace deferred email domain test',
-  oldValue: `  // BLOCKER 4 HARDENING
-  await record('DOMAIN', 'EMAIL + new account: verifies identifier but blocks account creation without fake phone', async () => {
-    const { service } = createIsolatedTestService();
-
-    // 1. Request challenge for EMAIL + CREATE_ACCOUNT
-    const issued = await service.requestChallenge({
-      surface: 'CUSTOMER',
-      intent: 'CREATE_ACCOUNT',
-      method: 'EMAIL',
-      identifier: 'new.guest@sola.com',
-    });
-
-    // 2. Verification succeeds normally
-    const verified = await service.verifyChallenge({
-      challengeId: issued.challengeId,
-      otp: TEST_FIXED_OTP,
-    });
-    assert.strictEqual(verified.success, true);
-    assert.strictEqual(verified.method, 'EMAIL');
-    assert.ok(verified.continuationToken);
-
-    // 3. Attempting to complete account creation for EMAIL must FAIL CLOSED
-    // Proves ZERO fake phone numbers are created!
-    await assert.rejects(
-      async () => {
-        await service.completeAccountCreation({
-          continuationToken: verified.continuationToken!,
-          fullName: 'عميل إيميل جديد',
-        });
-      },
-      /EMAIL_ONLY_ACCOUNT_CREATION_NOT_ENABLED/
-    );
-  });`,
-  newValue: `  await record('DOMAIN', 'EMAIL + new account creates canonical Customer without fake phone', async () => {
-    const { service, userIdentifierRepo } = createIsolatedTestService();
-    const issued = await service.requestChallenge({
-      surface: 'CUSTOMER',
-      intent: 'CREATE_ACCOUNT',
-      method: 'EMAIL',
-      identifier: 'new.guest@sola.com',
-    });
-    const verified = await service.verifyChallenge({
-      challengeId: issued.challengeId,
-      otp: TEST_FIXED_OTP,
-    });
-    assert.strictEqual(verified.success, true);
-    assert.strictEqual(verified.method, 'EMAIL');
-    assert.strictEqual(verified.requiresFullName, true);
-    assert.ok(verified.continuationToken);
-
-    const completed = await service.completeAccountCreation({
-      continuationToken: verified.continuationToken!,
-      fullName: 'عميل إيميل جديد',
-    });
-    assert.strictEqual(completed.success, true);
-    assert.strictEqual(completed.user.phoneNumber ?? null, null);
-    assert.strictEqual(completed.user.email, 'new.guest@sola.com');
-    const identifier = await userIdentifierRepo.getByIdentifier('EMAIL', 'new.guest@sola.com');
-    assert.ok(identifier);
-    assert.strictEqual(identifier.userId, completed.user.id);
-    assert.ok(completed.tokens.accessToken);
-  });`,
-}]);
-
-patchFile('backend/server/src/tests/authV2RuntimeApi01.test.ts', [{
-  label: 'replace deferred email runtime API test',
-  oldValue: `    await record('Unknown email remains truthful and deferred without fake phone/user/session', async () => {
-      const fixture = createFixture();
-      const issued = await request(fixture.app, 'POST', '/api/v2/auth/challenges', { surface: 'CUSTOMER', intent: 'CREATE_ACCOUNT', method: 'EMAIL', identifier: 'new@example.com' });
-      const verified = await request(fixture.app, 'POST', \`/api/v2/auth/challenges/\${issued.body.data.challengeId}/verify\`, { otp: '123456' });
-      assert.strictEqual(verified.status, 200);
-      assert.strictEqual(verified.body.data.accountCreation, 'DEFERRED_EMAIL_ONLY');
-      assert.ok(!('continuationToken' in verified.body.data));
-      const complete = await request(fixture.app, 'POST', '/api/v2/auth/registration/complete', { continuationToken: 'not-exposed', fullName: 'Should Not Exist' });
-      assert.notStrictEqual(complete.status, 201);
-    });`,
-  newValue: `    await record('Unknown verified email creates an email-only Customer without fake phone', async () => {
-      const fixture = createFixture();
-      const issued = await request(fixture.app, 'POST', '/api/v2/auth/challenges', { surface: 'CUSTOMER', intent: 'CREATE_ACCOUNT', method: 'EMAIL', identifier: 'new@example.com' });
-      const verified = await request(fixture.app, 'POST', \`/api/v2/auth/challenges/\${issued.body.data.challengeId}/verify\`, { otp: '123456' });
-      assert.strictEqual(verified.status, 200);
-      assert.strictEqual(verified.body.data.requiresFullName, true);
-      assert.ok(typeof verified.body.data.continuationToken === 'string');
-      const complete = await request(fixture.app, 'POST', '/api/v2/auth/registration/complete', { continuationToken: verified.body.data.continuationToken, fullName: 'Email Customer' });
-      assert.strictEqual(complete.status, 201);
-      assert.strictEqual(complete.body.data.user.fullName, 'Email Customer');
-      assert.ok(!('phoneNumber' in complete.body.data.user));
-      assert.ok(complete.body.data.tokens.accessToken);
-      const replay = await request(fixture.app, 'POST', '/api/v2/auth/registration/complete', { continuationToken: verified.body.data.continuationToken, fullName: 'Email Customer' });
-      assert.strictEqual(replay.status, 409);
-    });`,
-}]);
-
-console.log('Applied bounded backend email-first contract patches');
+console.log('Applied bounded nullable Customer profile patches');

@@ -24,6 +24,11 @@ export function getScreen10FailureDisposition(kind: string): Screen10FailureDisp
     : 'RETRY';
 }
 
+/** Hide Back only after registration has succeeded and finalization is awaiting retry. */
+export function shouldSuppressScreen10Back(registrationCompleted: boolean, state: string): boolean {
+  return registrationCompleted && state === 'RETRY_ERROR';
+}
+
 export function createScreen10SubmissionGuard(): {
   begin: () => number | null;
   cancel: () => void;

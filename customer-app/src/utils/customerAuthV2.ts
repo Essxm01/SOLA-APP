@@ -34,10 +34,8 @@ export interface AuthV2RegistrationResult {
 
 export type AuthV2VerifyResult =
   | { kind: 'AUTHENTICATED_EXISTING_ACCOUNT'; challengeId: string; method: AuthMethod; intent: AuthIntent; authOrigin: AuthOrigin; tokens: AuthV2SessionTokens; user?: unknown }
-  | { kind: 'LOGIN_ACCOUNT_MISSING'; challengeId: string; method: 'PHONE'; intent: 'LOGIN'; authOrigin: AuthOrigin; continuationToken: string }
-  | { kind: 'LOGIN_ACCOUNT_MISSING'; challengeId: string; method: 'EMAIL'; intent: 'LOGIN'; authOrigin: AuthOrigin }
-  | { kind: 'CREATE_ACCOUNT_NEW_PHONE'; challengeId: string; method: 'PHONE'; intent: 'CREATE_ACCOUNT'; authOrigin: AuthOrigin; continuationToken: string; requiresFullName: true }
-  | { kind: 'EMAIL_ACCOUNT_CREATION_DEFERRED'; challengeId: string; method: 'EMAIL'; intent: AuthIntent; authOrigin: AuthOrigin };
+  | { kind: 'LOGIN_ACCOUNT_MISSING'; challengeId: string; method: AuthMethod; intent: 'LOGIN'; authOrigin: AuthOrigin; continuationToken: string }
+  | { kind: 'CREATE_ACCOUNT_NEW_IDENTIFIER'; challengeId: string; method: AuthMethod; intent: 'CREATE_ACCOUNT'; authOrigin: AuthOrigin; continuationToken: string; requiresFullName: true };
 
 export interface IssueAuthChallengeInput {
   intent: AuthIntent;
@@ -106,6 +104,17 @@ export function formatMaskedCustomerPhone(identifier: string): string {
   const local = digits.startsWith('20') ? `0${digits.slice(2)}` : digits;
   if (!/^01\d{9}$/.test(local)) return '••••••';
   return `${local.slice(0, 3)}••••••${local.slice(-2)}`;
+}
+
+/** Render a verified EMAIL identifier without exposing the full address. */
+export function formatMaskedCustomerEmail(identifier: string): string {
+  const normalized = normalizeCustomerEmail(identifier);
+  const at = normalized.lastIndexOf('@');
+  if (at <= 0 || at === normalized.length - 1) return '••••••';
+  const local = normalized.slice(0, at);
+  const domain = normalized.slice(at + 1);
+  const visibleLocal = local.length <= 2 ? local.slice(0, 1) : local.slice(0, 2);
+  return `${visibleLocal}•••@${domain}`;
 }
 
 export function getAuthOriginMessage(origin?: AuthOrigin): string | null {
@@ -263,17 +272,10 @@ export async function verifyCustomerAuthChallenge(
     if (!tokens) throw new CustomerAuthV2Error('INVALID_RESPONSE');
     return { kind: 'AUTHENTICATED_EXISTING_ACCOUNT', challengeId: challenge.challengeId, method, intent, authOrigin: challenge.authOrigin, tokens, user: data.user };
   }
-  if (method === 'EMAIL') {
-    if (data.accountCreation !== 'DEFERRED_EMAIL_ONLY') throw new CustomerAuthV2Error('INVALID_RESPONSE');
-    if (intent === 'LOGIN') {
-      return { kind: 'LOGIN_ACCOUNT_MISSING', challengeId: challenge.challengeId, method, intent, authOrigin: challenge.authOrigin };
-    }
-    return { kind: 'EMAIL_ACCOUNT_CREATION_DEFERRED', challengeId: challenge.challengeId, method, intent, authOrigin: challenge.authOrigin };
-  }
   if (typeof data.continuationToken !== 'string' || data.continuationToken.length === 0) throw new CustomerAuthV2Error('INVALID_RESPONSE');
   if (intent === 'LOGIN') return { kind: 'LOGIN_ACCOUNT_MISSING', challengeId: challenge.challengeId, method, intent, authOrigin: challenge.authOrigin, continuationToken: data.continuationToken };
   if (data.requiresFullName !== true) throw new CustomerAuthV2Error('INVALID_RESPONSE');
-  return { kind: 'CREATE_ACCOUNT_NEW_PHONE', challengeId: challenge.challengeId, method, intent, authOrigin: challenge.authOrigin, continuationToken: data.continuationToken, requiresFullName: true };
+  return { kind: 'CREATE_ACCOUNT_NEW_IDENTIFIER', challengeId: challenge.challengeId, method, intent, authOrigin: challenge.authOrigin, continuationToken: data.continuationToken, requiresFullName: true };
 }
 
 export async function completeCustomerAccountRegistration(

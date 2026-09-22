@@ -4,6 +4,7 @@ import { CustomerAuthAppBar } from './CustomerAuthAppBar';
 import {
   completeCustomerAccountRegistration,
   CustomerAuthV2Error,
+  formatMaskedCustomerEmail,
   formatMaskedCustomerPhone,
   getConfiguredAuthV2BaseUrl,
   type AuthV2RegistrationResult,
@@ -28,11 +29,13 @@ export interface CustomerAuthScreen10Props {
 
 type Screen10State = 'ENTRY' | 'SUBMITTING' | 'RETRY_ERROR' | 'REVERIFY_REQUIRED';
 
-function screen10ErrorMessage(error: unknown): string {
+function screen10ErrorMessage(error: unknown, method: 'PHONE' | 'EMAIL'): string {
   if (!(error instanceof CustomerAuthV2Error)) return 'تعذر إنشاء الحساب. حاول مرة أخرى.';
   if (error.kind === 'INVALID_FULL_NAME') return 'أدخل اسمك الكامل.';
   if (getScreen10FailureDisposition(error.kind) === 'REVERIFY') {
-    return 'انتهت خطوة التحقق. تحقق من رقم الهاتف مرة أخرى لإكمال إنشاء الحساب.';
+    return method === 'PHONE'
+      ? 'انتهت خطوة التحقق. تحقق من رقم الهاتف مرة أخرى لإكمال إنشاء الحساب.'
+      : 'انتهت خطوة التحقق. تحقق من البريد الإلكتروني مرة أخرى لإكمال إنشاء الحساب.';
   }
   if (error.kind === 'UNAVAILABLE' || error.kind === 'REQUEST_FAILED') {
     return 'تعذر إنشاء الحساب حاليًا. حاول مرة أخرى.';
@@ -115,7 +118,7 @@ export const CustomerAuthScreen10: React.FC<CustomerAuthScreen10Props> = ({
       setError(
         registrationCompletedRef.current
           ? 'تم إنشاء حسابك، لكن تعذر إكمال الدخول الآن. حاول المتابعة مرة أخرى.'
-          : screen10ErrorMessage(caught),
+          : screen10ErrorMessage(caught, handoff.method),
       );
       setState(
         caught instanceof CustomerAuthV2Error && getScreen10FailureDisposition(caught.kind) === 'REVERIFY'
@@ -153,10 +156,10 @@ export const CustomerAuthScreen10: React.FC<CustomerAuthScreen10Props> = ({
             </p>
 
             <p className="mt-5 flex items-center gap-2 text-sm font-semibold text-slate-500">
-              <span>تم التحقق من رقم الهاتف</span>
+              <span>{handoff.method === 'PHONE' ? 'تم التحقق من رقم الهاتف' : 'تم التحقق من البريد الإلكتروني'}</span>
               <span aria-hidden="true">·</span>
               <span dir="ltr" className="font-extrabold text-slate-700">
-                {formatMaskedCustomerPhone(handoff.identifier)}
+                {handoff.method === 'PHONE' ? formatMaskedCustomerPhone(handoff.identifier) : formatMaskedCustomerEmail(handoff.identifier)}
               </span>
             </p>
 
@@ -201,7 +204,7 @@ export const CustomerAuthScreen10: React.FC<CustomerAuthScreen10Props> = ({
                 onClick={returnToScreen08}
                 className="flex min-h-[54px] w-full items-center justify-center rounded-xl bg-[var(--sola-primary-blue)] px-4 text-base font-extrabold text-white"
               >
-                إعادة التحقق من رقم الهاتف
+                {handoff.method === 'PHONE' ? 'إعادة التحقق من رقم الهاتف' : 'إعادة التحقق من البريد الإلكتروني'}
               </button>
             ) : (
               <button

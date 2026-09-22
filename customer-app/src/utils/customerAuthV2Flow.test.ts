@@ -48,7 +48,7 @@ const challenge = {
   authOrigin: { type: 'WELCOME_CREATE_ACCOUNT' as const },
 };
 const createResult = {
-  kind: 'CREATE_ACCOUNT_NEW_PHONE' as const,
+  kind: 'CREATE_ACCOUNT_NEW_IDENTIFIER' as const,
   challengeId: challenge.challengeId,
   method: 'PHONE' as const,
   intent: 'CREATE_ACCOUNT' as const,
@@ -68,6 +68,8 @@ const missingResult = {
 const missingHandoff = createScreen10HandoffFromMissingLogin(missingResult, { ...challenge, challengeId: 'challenge-login-missing', intent: 'LOGIN', authOrigin: missingResult.authOrigin });
 assert(missingHandoff, 'phone missing-login creates a future handoff');
 equal(missingHandoff.originalIntent, 'CREATE_ACCOUNT', 'explicit create choice changes future handoff intent');
-equal(createScreen10HandoffFromMissingLogin({ ...missingResult, method: 'EMAIL' as const }, { ...challenge, method: 'EMAIL' as const, authOrigin: missingResult.authOrigin }), null, 'email missing-login cannot enter phone-only Screen 10');
+const emailMissingHandoff = createScreen10HandoffFromMissingLogin({ ...missingResult, method: 'EMAIL' as const }, { ...challenge, method: 'EMAIL' as const, identifier: 'new@example.com', authOrigin: missingResult.authOrigin });
+equal(emailMissingHandoff.method, 'EMAIL', 'verified missing email can enter identifier-agnostic Screen 10');
+equal(emailMissingHandoff.identifier, 'new@example.com', 'email handoff preserves the verified identifier');
 
 console.log('customerAuthV2Flow tests passed');

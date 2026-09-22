@@ -32,7 +32,6 @@ export interface CustomerAuthScreen09Props {
   onBackToScreen08: () => void;
   onVerified: (result: AuthV2VerifyResult) => void;
   onCreateAccountFromMissing?: (result: Extract<AuthV2VerifyResult, { kind: 'LOGIN_ACCOUNT_MISSING' }>) => void;
-  onContinueWithPhoneCreateAccount?: () => void;
 }
 
 const genericVerifyError = 'تعذر التحقق من الرمز. حاول مرة أخرى.';
@@ -61,7 +60,6 @@ export const CustomerAuthScreen09: React.FC<CustomerAuthScreen09Props> = ({
   onBackToScreen08,
   onVerified,
   onCreateAccountFromMissing,
-  onContinueWithPhoneCreateAccount,
 }) => {
   const [challenge, setChallenge] = useState(initialChallenge);
   const [otp, setOtp] = useState('');
@@ -178,8 +176,7 @@ export const CustomerAuthScreen09: React.FC<CustomerAuthScreen09Props> = ({
   };
 
   const missingLogin = outcome?.kind === 'LOGIN_ACCOUNT_MISSING' ? outcome : null;
-  const isEmailDeferred = outcome?.kind === 'EMAIL_ACCOUNT_CREATION_DEFERRED';
-  const screen10Pending = outcome?.kind === 'CREATE_ACCOUNT_NEW_PHONE';
+  const screen10Pending = outcome?.kind === 'CREATE_ACCOUNT_NEW_IDENTIFIER' ? outcome : null;
 
   return (
     <main dir="rtl" className="fixed inset-0 z-[95] min-h-[100dvh] overflow-y-auto overflow-x-hidden bg-white text-slate-900">
@@ -227,9 +224,8 @@ export const CustomerAuthScreen09: React.FC<CustomerAuthScreen09Props> = ({
           ) : (
             <div aria-live="polite">
               <h1 id="customer-auth-screen09-title" className="text-2xl font-black tracking-tight text-slate-950">تم التحقق من الرمز</h1>
-              {missingLogin && <><p className="mt-3 text-sm font-semibold leading-7 text-slate-600">{missingLogin.method === 'PHONE' ? 'لا يوجد حساب مرتبط بهذا الرقم.' : 'لا يوجد حساب مرتبط بهذا البريد الإلكتروني.'}</p>{missingLogin.method === 'PHONE' ? <button type="button" onClick={() => { onCreateAccountFromMissing?.(missingLogin); returnToScreen08(); }} className="mt-8 min-h-[54px] w-full rounded-xl bg-[var(--sola-primary-blue)] px-4 text-base font-extrabold text-white">إنشاء حساب</button> : <button type="button" onClick={onContinueWithPhoneCreateAccount} className="mt-8 min-h-[54px] w-full rounded-xl bg-[var(--sola-primary-blue)] px-4 text-base font-extrabold text-white">استخدام رقم الهاتف</button>}<button type="button" onClick={returnToScreen08} className="mt-3 min-h-11 w-full rounded-xl px-3 text-sm font-extrabold text-slate-600">استخدام رقم آخر</button></>}
-              {screen10Pending && <p className="mt-3 text-sm font-semibold leading-7 text-slate-600">تم التحقق من ملكية الرقم. أكمل بيانات الحساب في الخطوة التالية.</p>}
-              {isEmailDeferred && <><p className="mt-3 text-sm font-semibold leading-7 text-slate-600">إنشاء الحساب بالبريد الإلكتروني غير متاح حاليًا.</p><button type="button" onClick={onContinueWithPhoneCreateAccount} className="mt-8 min-h-[54px] w-full rounded-xl bg-[var(--sola-primary-blue)] px-4 text-base font-extrabold text-white">استخدام رقم الهاتف</button></>}
+              {missingLogin && <><p className="mt-3 text-sm font-semibold leading-7 text-slate-600">{missingLogin.method === 'PHONE' ? 'لا يوجد حساب مرتبط بهذا الرقم.' : 'لا يوجد حساب مرتبط بهذا البريد الإلكتروني.'}</p><button type="button" onClick={() => { onCreateAccountFromMissing?.(missingLogin); returnToScreen08(); }} className="mt-8 min-h-[54px] w-full rounded-xl bg-[var(--sola-primary-blue)] px-4 text-base font-extrabold text-white">إنشاء حساب</button><button type="button" onClick={returnToScreen08} className="mt-3 min-h-11 w-full rounded-xl px-3 text-sm font-extrabold text-slate-600">استخدام وسيلة أخرى</button></>}
+              {screen10Pending && <p className="mt-3 text-sm font-semibold leading-7 text-slate-600">{screen10Pending.method === 'PHONE' ? 'تم التحقق من ملكية الرقم. أكمل بيانات الحساب في الخطوة التالية.' : 'تم التحقق من ملكية البريد الإلكتروني. أكمل بيانات الحساب في الخطوة التالية.'}</p>}
             </div>
           )}
         </section>

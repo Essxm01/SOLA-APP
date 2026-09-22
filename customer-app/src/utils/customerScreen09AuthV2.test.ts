@@ -145,19 +145,20 @@ async function run(): Promise<void> {
     '482731',
     { baseUrl: 'https://qa.example/api/v2', fetchImpl: outcomeFetch({ challengeId: challenge.challengeId, method: 'PHONE', intent: 'CREATE_ACCOUNT', isExistingUser: false, requiresFullName: true, continuationToken: 'create-token' }) },
   );
-  equal(create.kind, 'CREATE_ACCOUNT_NEW_PHONE', 'new phone outcome requires the future full-name step');
+  equal(create.kind, 'CREATE_ACCOUNT_NEW_IDENTIFIER', 'new phone outcome requires the full-name step');
   const missing = await verifyCustomerAuthChallenge(
     challenge,
     '482731',
     { baseUrl: 'https://qa.example/api/v2', fetchImpl: outcomeFetch({ challengeId: challenge.challengeId, method: 'PHONE', intent: 'LOGIN', isExistingUser: false, requiresSignup: true, continuationToken: 'login-token' }) },
   );
     equal(missing.kind, 'LOGIN_ACCOUNT_MISSING', 'missing login outcome remains on Screen 09');
-  const deferred = await verifyCustomerAuthChallenge(
-    { ...challenge, intent: 'CREATE_ACCOUNT', method: 'EMAIL' },
+  const emailCreate = await verifyCustomerAuthChallenge(
+    { ...challenge, intent: 'CREATE_ACCOUNT', method: 'EMAIL', identifier: 'new@example.com' },
     '482731',
-    { baseUrl: 'https://qa.example/api/v2', fetchImpl: outcomeFetch({ challengeId: challenge.challengeId, method: 'EMAIL', intent: 'CREATE_ACCOUNT', isExistingUser: false, accountCreation: 'DEFERRED_EMAIL_ONLY' }) },
+    { baseUrl: 'https://qa.example/api/v2', fetchImpl: outcomeFetch({ challengeId: challenge.challengeId, method: 'EMAIL', intent: 'CREATE_ACCOUNT', isExistingUser: false, requiresFullName: true, continuationToken: 'email-create-token' }) },
   );
-  equal(deferred.kind, 'EMAIL_ACCOUNT_CREATION_DEFERRED', 'email creation remains explicitly deferred');
+  equal(emailCreate.kind, 'CREATE_ACCOUNT_NEW_IDENTIFIER', 'new verified email proceeds to the full-name step');
+  equal(emailCreate.method, 'EMAIL', 'email creation preserves the verified method');
   const malformed = outcomeFetch({ challengeId: challenge.challengeId, method: 'PHONE', intent: 'LOGIN', isExistingUser: false });
   try {
     await verifyCustomerAuthChallenge(challenge, '482731', { baseUrl: 'https://qa.example/api/v2', fetchImpl: malformed });

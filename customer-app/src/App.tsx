@@ -746,7 +746,7 @@ export function App() {
    * phone registrations to Screen 10 without creating an account itself.
    */
   const handleAuthV2Verified = (result: AuthV2VerifyResult): void => {
-    if (result.kind === 'CREATE_ACCOUNT_NEW_PHONE') {
+    if (result.kind === 'CREATE_ACCOUNT_NEW_IDENTIFIER') {
       if (authV2Challenge && screen10Handoff?.continuationToken !== result.continuationToken) {
         setScreen10Handoff(createScreen10Handoff(result, authV2Challenge));
       }
@@ -761,17 +761,18 @@ export function App() {
     signal: AbortSignal,
   ): Promise<void> => {
     if (!screen10Handoff) return;
-    await finalizeAuthV2Session(result.tokens, 'PHONE', screen10Handoff.authOrigin, signal);
+    await finalizeAuthV2Session(result.tokens, screen10Handoff.method, screen10Handoff.authOrigin, signal);
   };
 
   const restartScreen10Verification = (): void => {
     if (!screen10Handoff) return;
-    const preservedPhone = restoreScreen08PhoneValue(screen10Handoff.identifier);
+    const preservedPhone = screen10Handoff.method === 'PHONE' ? restoreScreen08PhoneValue(screen10Handoff.identifier) : '';
+    const preservedEmail = screen10Handoff.method === 'EMAIL' ? screen10Handoff.identifier : '';
     setAuthV2Screen08Draft((current) => ({
       intent: 'CREATE_ACCOUNT',
-      method: 'PHONE',
-      phone: current?.phone || preservedPhone,
-      email: current?.email ?? '',
+      method: screen10Handoff.method,
+      phone: screen10Handoff.method === 'PHONE' ? (current?.phone || preservedPhone) : (current?.phone ?? ''),
+      email: screen10Handoff.method === 'EMAIL' ? (current?.email || preservedEmail) : (current?.email ?? ''),
     }));
     setAuthV2Flow((current) => current ? { ...current, intent: 'CREATE_ACCOUNT' } : current);
     setScreen10Handoff(null);
@@ -787,19 +788,15 @@ export function App() {
     const handoff = createScreen10HandoffFromMissingLogin(result, authV2Challenge);
     if (handoff && screen10Handoff?.continuationToken !== handoff.continuationToken) {
       setScreen10Handoff(handoff);
-      setAuthV2Screen08Draft((current) => ({ intent: 'CREATE_ACCOUNT', method: 'PHONE', phone: restoreScreen08PhoneValue(authV2Challenge.identifier), email: current?.email ?? '' }));
+      setAuthV2Screen08Draft((current) => ({
+        intent: 'CREATE_ACCOUNT',
+        method: result.method,
+        phone: result.method === 'PHONE' ? restoreScreen08PhoneValue(authV2Challenge.identifier) : (current?.phone ?? ''),
+        email: result.method === 'EMAIL' ? authV2Challenge.identifier : (current?.email ?? ''),
+      }));
     }
   };
 
-  const continueWithPhoneCreateAccount = (): void => {
-    setAuthV2Screen08Draft((current) => ({
-      intent: 'CREATE_ACCOUNT',
-      method: 'PHONE',
-      phone: '',
-      email: current?.email ?? '',
-    }));
-    setAuthV2Challenge(null);
-  };
 
   const handleLogout = async () => {
     const refreshToken = localStorage.getItem('sola_customer_refresh_token');
@@ -913,7 +910,6 @@ export function App() {
             onBackToScreen08={() => setAuthV2Challenge(null)}
             onVerified={handleAuthV2Verified}
             onCreateAccountFromMissing={handleAuthV2CreateFromMissing}
-            onContinueWithPhoneCreateAccount={continueWithPhoneCreateAccount}
           />
         )}
         {authV2Flow && !screen10Handoff && !authV2Challenge && (
@@ -1517,7 +1513,6 @@ export function App() {
           onBackToScreen08={() => setAuthV2Challenge(null)}
           onVerified={handleAuthV2Verified}
           onCreateAccountFromMissing={handleAuthV2CreateFromMissing}
-          onContinueWithPhoneCreateAccount={continueWithPhoneCreateAccount}
         />
       )}
       {authV2Flow && !screen10Handoff && !authV2Challenge && (

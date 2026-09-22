@@ -28,7 +28,8 @@ async function run(): Promise<void> {
   assert(screen10.includes('placeholder="أحمد محمد"'), 'Screen 10 approved placeholder is present');
   assert(screen10.includes('إكمال إنشاء الحساب'), 'Screen 10 approved CTA is present');
   assert(screen10.includes('جارٍ إنشاء الحساب…'), 'Screen 10 loading copy is present');
-  assert(screen10.includes('إعادة التحقق من رقم الهاتف'), 'Screen 10 has safe continuation recovery');
+  assert(screen10.includes("handoff.method === 'PHONE' ? 'إعادة التحقق من رقم الهاتف' : 'إعادة التحقق من البريد الإلكتروني'"), 'Screen 10 has method-aware safe continuation recovery');
+  assert(screen10.includes('formatMaskedCustomerEmail(handoff.identifier)'), 'Screen 10 shows verified email context without requiring a phone');
   assert((screen10.match(/id="customer-auth-full-name"/g) ?? []).length === 1, 'Screen 10 has one semantic full-name input');
   assert(screen10.includes('controllerRef.current?.abort()'), 'Screen 10 aborts in-flight work on exit');
   assert(screen10.includes('guardRef.current.begin()'), 'Screen 10 has double-submit protection');

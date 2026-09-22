@@ -31,6 +31,9 @@ jobs:
       - name: Re-run focused Auth gates before QA deploy
         working-directory: backend
         run: |
+          export JWT_ACCESS_SECRET="$(openssl rand -hex 32)"
+          export JWT_REFRESH_SECRET="$(openssl rand -hex 32)"
+          export AUTH_OTP_HMAC_SECRET="$(openssl rand -hex 32)"
           npm run check
           npm run test:auth-v2-foundation
           npm run test:auth-v2-runtime-api-01

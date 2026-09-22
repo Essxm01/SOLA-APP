@@ -130,12 +130,13 @@ export const CustomerAuthScreen10: React.FC<CustomerAuthScreen10Props> = ({
               أدخل اسمك الكامل للمتابعة.
             </p>
 
-            <div className="mt-5 flex items-center justify-between gap-3 rounded-xl bg-slate-50 px-4 py-3 text-sm">
-              <span className="font-semibold text-slate-500">تم التحقق من رقم الهاتف</span>
-              <span dir="ltr" className="font-extrabold text-slate-800">
+            <p className="mt-5 flex items-center gap-2 text-sm font-semibold text-slate-500">
+              <span>تم التحقق من رقم الهاتف</span>
+              <span aria-hidden="true">·</span>
+              <span dir="ltr" className="font-extrabold text-slate-700">
                 {formatMaskedCustomerPhone(handoff.identifier)}
               </span>
-            </div>
+            </p>
 
             <div className="mt-8">
               <label htmlFor="customer-auth-full-name" className="mb-2 block text-sm font-extrabold text-slate-800">

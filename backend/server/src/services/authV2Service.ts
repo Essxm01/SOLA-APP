@@ -135,7 +135,44 @@ export class AuthV2Service {
     this.sessionRepo = options?.sessionRepo ?? sessionDb;
     this.smsAdapter = options?.smsAdapter ?? new ProviderlessDevelopmentSmsAdapter();
     this.emailAdapter = options?.emailAdapter ?? new ProviderlessDevelopmentEmailAdapter();
-    this.emailCustomerRegistration = options?.emailCustomerRegistration ?? createCanonicalEmailCustomer;
+    this.emailCustomerRegistration = options?.emailCustomerRegistration ?? (options?.userRepo
+      ? async (input) => {
+          // Isolated repository fallback for unit tests only. Runtime AuthV2Service
+          // uses createCanonicalEmailCustomer(), which is backed by migration 032's
+          // database-atomic RPC. No fake phone is generated in either path.
+          const before = await this.userIdentifierRepo.getByIdentifier('EMAIL', input.email);
+          if (before) {
+            const existingUser = await this.userRepo.getById(before.userId);
+            if (!existingUser) throw new Error('EMAIL_IDENTIFIER_USER_MISSING');
+            return { user: existingUser, created: false };
+          }
+
+          const candidate = await this.userRepo.create({
+            id: input.userId,
+            phoneNumber: null as unknown as string,
+            email: input.email,
+            fullName: input.fullName,
+            status: 'ACTIVE',
+          });
+          const candidateId = candidate?.id;
+          if (!candidateId) throw new Error('EMAIL_CUSTOMER_REGISTRATION_USER_MALFORMED');
+          try {
+            await this.userIdentifierRepo.create({
+              userId: candidateId,
+              identifierType: 'EMAIL',
+              normalizedValue: input.email,
+              verifiedAt: input.verifiedAt,
+            });
+            return { user: candidate, created: true };
+          } catch (error) {
+            const winner = await this.userIdentifierRepo.getByIdentifier('EMAIL', input.email);
+            if (!winner) throw error;
+            const winnerUser = await this.userRepo.getById(winner.userId);
+            if (!winnerUser) throw error;
+            return { user: winnerUser, created: false };
+          }
+        }
+      : createCanonicalEmailCustomer);
     this.config = options?.config;
   }
 

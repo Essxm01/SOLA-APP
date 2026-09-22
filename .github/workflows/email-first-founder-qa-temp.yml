@@ -1,0 +1,64 @@
+name: Email-First Founder QA TEMP
+
+on:
+  push:
+    branches:
+      - phase5/customer-auth-v2-email-first
+    paths:
+      - .github/workflows/email-first-founder-qa-temp.yml
+
+permissions:
+  contents: read
+
+jobs:
+  email-first-founder-qa:
+    runs-on: ubuntu-latest
+    env:
+      AUTH_V2_QA_WORKER_URL: https://sola-backend-auth-v2-qa.essxm01.workers.dev
+      AUTH_V2_QA_SUPABASE_URL: https://vlowzglqruozxstiqzgn.supabase.co
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: phase5/customer-auth-v2-email-first
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+      - name: Install backend
+        working-directory: backend
+        run: npm ci
+      - name: Re-run focused Auth gates before QA deploy
+        working-directory: backend
+        run: |
+          npm run check
+          npm run test:auth-v2-foundation
+          npm run test:auth-v2-runtime-api-01
+          npm run test:p2-2-renter-api
+      - name: Prepare QA-only full-backend config
+        working-directory: backend
+        run: |
+          node - <<'NODE'
+          const fs = require('node:fs');
+          const source = JSON.parse(fs.readFileSync('wrangler.auth-v2-qa.json', 'utf8'));
+          if (source.name !== 'sola-backend-auth-v2-qa') throw new Error('QA_WORKER_NAME_MISMATCH');
+          if (source.vars?.SUPABASE_PROJECT_REF !== 'vlowzglqruozxstiqzgn') throw new Error('QA_SUPABASE_REF_MISMATCH');
+          source.vars.AUTH_V2_QA_WORKER_ONLY = 'false';
+          fs.writeFileSync('wrangler.auth-v2-email-first-qa.tmp.json', JSON.stringify(source, null, 2));
+          NODE
+      - name: Deploy feature branch to dedicated QA Worker only
+        working-directory: backend
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          test -n "$CLOUDFLARE_API_TOKEN" || { echo "CLOUDFLARE_API_TOKEN_REQUIRED"; exit 1; }
+          npx wrangler deploy --config wrangler.auth-v2-email-first-qa.tmp.json
+      - name: Run email-first remote acceptance against QA only
+        working-directory: backend
+        env:
+          AUTH_V2_QA_SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.AUTH_V2_QA_SUPABASE_SERVICE_ROLE_KEY }}
+          AUTH_V2_QA_DEVELOPMENT_OTP: ${{ secrets.AUTH_V2_QA_DEVELOPMENT_OTP }}
+        run: |
+          test -n "$AUTH_V2_QA_SUPABASE_SERVICE_ROLE_KEY" || { echo "QA_SERVICE_ROLE_REQUIRED"; exit 1; }
+          test -n "$AUTH_V2_QA_DEVELOPMENT_OTP" || { echo "QA_FIXED_OTP_SECRET_REQUIRED"; exit 1; }
+          npx tsx server/src/tests/authV2EmailFirstRemoteAcceptance.ts

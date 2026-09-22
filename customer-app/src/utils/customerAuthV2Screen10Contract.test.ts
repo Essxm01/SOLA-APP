@@ -8,6 +8,7 @@ async function run(): Promise<void> {
   const readSource = (url: URL): string => readFileSync(url, 'utf8').replace(/\r\n/g, '\n');
   const app = readSource(new URL('../App.tsx', import.meta.url));
   const screen10 = readSource(new URL('../components/CustomerAuthScreen10.tsx', import.meta.url));
+  const appBar = readSource(new URL('../components/CustomerAuthAppBar.tsx', import.meta.url));
   const flow = readSource(new URL('./customerAuthV2Flow.ts', import.meta.url));
 
   assert(app.includes("import { CustomerAuthScreen10 } from './components/CustomerAuthScreen10';"), 'App imports Screen 10');
@@ -36,7 +37,17 @@ async function run(): Promise<void> {
   assert(screen10.includes('onCompleted(result, controller.signal)'), 'Screen 10 cancellation reaches canonical-session reads');
   assert(screen10.includes('!registrationCompletedRef.current && !validName'), 'initial registration validates the full name');
   assert(screen10.includes('registrationCompletedRef.current || state ==='), 'post-registration retry locks the already-submitted name');
-  assert(screen10.includes('تم إنشاء الحساب، لكن تعذر تحميل بياناته.'), 'post-registration retry copy does not falsely claim account creation failed');
+  assert(screen10.includes('تم إنشاء حسابك، لكن تعذر إكمال الدخول الآن. حاول المتابعة مرة أخرى.'), 'post-registration retry copy clearly states account creation succeeded');
+  assert(!screen10.includes('تم إنشاء الحساب، لكن تعذر تحميل بياناته. حاول المتابعة مرة أخرى.'), 'old implementation-oriented recovery copy is removed');
+  assert(screen10.includes('shouldSuppressScreen10Back(registrationCompletedRef.current, state)'), 'Screen 10 derives recovery-only Back suppression from the tested helper');
+  assert(screen10.includes('suppressBack={recoveryMode}'), 'Screen 10 suppresses Back only in recovery mode');
+  assert(!screen10.includes('mt-auto'), 'Screen 10 CTA is no longer pushed to the bottom of the viewport');
+  assert(screen10.includes('className="mt-6"'), 'Screen 10 keeps the CTA connected to the task with 24px spacing');
+  assert(screen10.includes('className="flex-1" aria-hidden="true"'), 'open whitespace follows the task instead of splitting field and CTA');
+  assert(appBar.includes('suppressBack?: boolean'), 'shared Auth App Bar supports optional Back suppression');
+  assert(appBar.includes('suppressBack = false'), 'shared Auth App Bar preserves Screens 08/09 behavior by default');
+  assert(appBar.includes('<span className="h-11 w-11" aria-hidden="true" />'), 'suppressed Back preserves header geometry without a focusable control');
+
   assert(app.includes('orchestrateScreen10SessionFinalization'), 'App uses the tested Screen 10 finalization lifecycle');
   assert(app.includes('persistSession: (canonicalSession) => persistAuthV2Session'), 'App wires canonical persistence into the lifecycle');
   assert(app.includes('resumeOrigin: (completedOrigin) => resumeAuthV2Origin'), 'App wires permission-scoped resume after persistence');

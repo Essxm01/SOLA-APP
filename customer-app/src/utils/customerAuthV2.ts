@@ -27,6 +27,11 @@ export interface AuthV2SessionTokens {
   expiresIn: number;
 }
 
+export interface AuthV2RegistrationResult {
+  tokens: AuthV2SessionTokens;
+  user?: unknown;
+}
+
 export type AuthV2VerifyResult =
   | { kind: 'AUTHENTICATED_EXISTING_ACCOUNT'; challengeId: string; method: AuthMethod; intent: AuthIntent; authOrigin: AuthOrigin; tokens: AuthV2SessionTokens; user?: unknown }
   | { kind: 'LOGIN_ACCOUNT_MISSING'; challengeId: string; method: AuthMethod; intent: 'LOGIN'; authOrigin: AuthOrigin; continuationToken: string }
@@ -46,7 +51,7 @@ export interface CustomerAuthV2ClientConfig {
 }
 
 export class CustomerAuthV2Error extends Error {
-  readonly kind: 'CONFIGURATION' | 'RATE_LIMIT' | 'OTP_DELIVERY_FAILED' | 'INVALID_MOBILE' | 'INVALID_EMAIL' | 'UNAVAILABLE' | 'INVALID_RESPONSE' | 'REQUEST_FAILED' | 'INVALID_OTP' | 'OTP_EXPIRED' | 'CHALLENGE_EXPIRED' | 'CHALLENGE_LOCKED_MAX_ATTEMPTS_EXCEEDED' | 'CHALLENGE_CANCELLED' | 'CHALLENGE_NOT_FOUND' | 'CHALLENGE_ALREADY_VERIFIED' | 'RESEND_COOLDOWN_ACTIVE' | 'RESEND_IN_PROGRESS' | 'RATE_LIMIT_EXCEEDED';
+  readonly kind: 'CONFIGURATION' | 'RATE_LIMIT' | 'OTP_DELIVERY_FAILED' | 'INVALID_MOBILE' | 'INVALID_EMAIL' | 'INVALID_FULL_NAME' | 'UNAVAILABLE' | 'INVALID_RESPONSE' | 'REQUEST_FAILED' | 'INVALID_OTP' | 'OTP_EXPIRED' | 'CHALLENGE_EXPIRED' | 'CHALLENGE_LOCKED_MAX_ATTEMPTS_EXCEEDED' | 'CHALLENGE_CANCELLED' | 'CHALLENGE_NOT_FOUND' | 'CHALLENGE_ALREADY_VERIFIED' | 'RESEND_COOLDOWN_ACTIVE' | 'RESEND_IN_PROGRESS' | 'RATE_LIMIT_EXCEEDED' | 'CONTINUATION_TOKEN_EXPIRED' | 'CONTINUATION_ALREADY_CONSUMED' | 'CONTINUATION_INVALID';
 
   constructor(kind: CustomerAuthV2Error['kind'], message = 'AUTH_V2_ISSUE_FAILED') {
     super(message);
@@ -140,6 +145,7 @@ function throwMappedAuthV2Error(code: string | null, fallback: CustomerAuthV2Err
     OTP_DELIVERY_FAILED: 'OTP_DELIVERY_FAILED',
     INVALID_EGYPTIAN_MOBILE_NUMBER: 'INVALID_MOBILE',
     INVALID_EMAIL: 'INVALID_EMAIL',
+    INVALID_FULL_NAME: 'INVALID_FULL_NAME',
     AUTH_V2_UNAVAILABLE: 'UNAVAILABLE',
     INVALID_OTP: 'INVALID_OTP',
     OTP_EXPIRED: 'OTP_EXPIRED',
@@ -153,6 +159,14 @@ function throwMappedAuthV2Error(code: string | null, fallback: CustomerAuthV2Err
     RESEND_COOLDOWN_ACTIVE: 'RESEND_COOLDOWN_ACTIVE',
     RESEND_IN_PROGRESS: 'RESEND_IN_PROGRESS',
     RATE_LIMIT_EXCEEDED: 'RATE_LIMIT_EXCEEDED',
+    CONTINUATION_TOKEN_EXPIRED: 'CONTINUATION_TOKEN_EXPIRED',
+    CONTINUATION_ALREADY_CONSUMED: 'CONTINUATION_ALREADY_CONSUMED',
+    INVALID_CONTINUATION_TOKEN: 'CONTINUATION_INVALID',
+    MALFORMED_CONTINUATION_TOKEN: 'CONTINUATION_INVALID',
+    INVALID_CONTINUATION_TOKEN_SIGNATURE: 'CONTINUATION_INVALID',
+    CORRUPT_CONTINUATION_TOKEN_PAYLOAD: 'CONTINUATION_INVALID',
+    CHALLENGE_NOT_VERIFIED: 'CONTINUATION_INVALID',
+    CHALLENGE_BINDING_MISMATCH: 'CONTINUATION_INVALID',
   };
   throw new CustomerAuthV2Error(map[code ?? ''] ?? fallback);
 }
@@ -252,6 +266,46 @@ export async function verifyCustomerAuthChallenge(
   if (intent === 'LOGIN') return { kind: 'LOGIN_ACCOUNT_MISSING', challengeId: challenge.challengeId, method, intent, authOrigin: challenge.authOrigin, continuationToken: data.continuationToken };
   if (method !== 'PHONE' || data.requiresFullName !== true) throw new CustomerAuthV2Error('INVALID_RESPONSE');
   return { kind: 'CREATE_ACCOUNT_NEW_PHONE', challengeId: challenge.challengeId, method, intent, authOrigin: challenge.authOrigin, continuationToken: data.continuationToken, requiresFullName: true };
+}
+
+
+export async function completeCustomerAccountRegistration(
+  continuationToken: string,
+  fullName: string,
+  config: CustomerAuthV2ClientConfig,
+  signal?: AbortSignal,
+): Promise<AuthV2RegistrationResult> {
+  const cleanName = fullName.trim().replace(/\s+/g, ' ');
+  if (cleanName.length < 2) throw new CustomerAuthV2Error('INVALID_FULL_NAME');
+  if (!continuationToken || typeof continuationToken !== 'string') throw new CustomerAuthV2Error('CONTINUATION_INVALID');
+
+  let response: Response;
+  try {
+    response = await (config.fetchImpl ?? fetch)(getAuthV2ApiUrl('/auth/registration/complete', config.baseUrl), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ continuationToken, fullName: cleanName }),
+      signal,
+    });
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') throw error;
+    throw new CustomerAuthV2Error('REQUEST_FAILED');
+  }
+
+  const json = await response.json().catch(() => null) as Record<string, unknown> | null;
+  if (!response.ok) throwMappedAuthV2Error(readResponseErrorCode(json));
+
+  if (!json || json.success !== true || !json.data || typeof json.data !== 'object') {
+    throw new CustomerAuthV2Error('INVALID_RESPONSE');
+  }
+  const data = json.data as Record<string, unknown>;
+  const tokens = readAuthTokens(data.tokens);
+  if (!tokens) throw new CustomerAuthV2Error('INVALID_RESPONSE');
+  if (data.user !== undefined && (typeof data.user !== 'object' || data.user === null)) {
+    throw new CustomerAuthV2Error('INVALID_RESPONSE');
+  }
+
+  return { tokens, user: data.user };
 }
 
 export async function resendCustomerAuthChallenge(

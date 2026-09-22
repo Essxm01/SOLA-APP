@@ -6,7 +6,6 @@ import {
   getAuthOriginMessage,
   getConfiguredAuthV2BaseUrl,
   isValidCustomerEmail,
-  isValidEgyptianPhone,
   issueCustomerAuthChallenge,
   normalizeArabicDigits,
   normalizeCustomerEmail,
@@ -21,6 +20,7 @@ import {
   createScreen08FormStateFromDraft,
   createScreen08HandoffGuard,
   createScreen08IssueGuard,
+  isAllowedCustomerPhone,
   switchScreen08Intent,
   switchScreen08Method,
   updateScreen08Identifier,
@@ -84,10 +84,11 @@ export const CustomerAuthScreen08: React.FC<CustomerAuthScreen08Props> = ({
   const originMessage = useMemo(() => getAuthOriginMessage(authOrigin), [authOrigin]);
   const activeValue = form.method === 'PHONE' ? form.phone : form.email;
   const canonicalEmail = normalizeCustomerEmail(form.email);
-  const canSubmit = form.method === 'PHONE' ? isValidEgyptianPhone(form.phone) : isValidCustomerEmail(canonicalEmail);
+  const localPhone = normalizeEgyptianPhone(form.phone);
+  const phoneValid = isAllowedCustomerPhone(localPhone);
   const validationMessage = submitted
     ? (form.method === 'PHONE'
-      ? (isValidEgyptianPhone(form.phone) ? null : invalidPhoneMessage)
+      ? (phoneValid ? null : invalidPhoneMessage)
       : (isValidCustomerEmail(canonicalEmail) ? null : invalidEmailMessage))
     : null;
 
@@ -111,9 +112,8 @@ export const CustomerAuthScreen08: React.FC<CustomerAuthScreen08Props> = ({
 
   const submit = async (): Promise<void> => {
     setSubmitted(true);
-    const localPhone = normalizeEgyptianPhone(form.phone);
     const identifier = form.method === 'PHONE' ? toEgyptianE164(localPhone) : canonicalEmail;
-    const valid = form.method === 'PHONE' ? isValidEgyptianPhone(localPhone) : isValidCustomerEmail(identifier);
+    const valid = form.method === 'PHONE' ? isAllowedCustomerPhone(localPhone) : isValidCustomerEmail(identifier);
     if (!valid || loading || handoffIssued) return;
 
     controllerRef.current?.abort();
@@ -200,32 +200,68 @@ export const CustomerAuthScreen08: React.FC<CustomerAuthScreen08Props> = ({
             <label htmlFor="customer-auth-identifier" className="mb-2 block text-sm font-extrabold text-slate-800">
               {form.method === 'PHONE' ? 'رقم الهاتف' : 'البريد الإلكتروني'}
             </label>
-            <input
-              id="customer-auth-identifier"
-              dir="ltr"
-              type={form.method === 'PHONE' ? 'tel' : 'email'}
-              inputMode={form.method === 'PHONE' ? 'numeric' : 'email'}
-              autoComplete={form.method === 'PHONE' ? 'tel-national' : 'email'}
-              placeholder={form.method === 'PHONE' ? '01XXXXXXXXX' : 'name@example.com'}
-              value={activeValue}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter') {
-                  event.preventDefault();
-                  void submit();
-                }
-              }}
-              onChange={(event) => {
-                const value = form.method === 'PHONE'
-                  ? normalizeArabicDigits(event.target.value).replace(/\D/g, '').slice(0, 11)
-                  : event.target.value;
-                invalidateIssue();
-                updateForm(updateScreen08Identifier(form, value));
-                if (error) setError(null);
-              }}
-              aria-invalid={Boolean(validationMessage)}
-              aria-describedby={validationMessage || error ? 'customer-auth-feedback' : undefined}
-              className={`min-h-[54px] w-full rounded-xl border bg-white px-4 text-left text-base font-semibold text-slate-950 outline-none transition-colors placeholder:text-slate-400 focus:border-[var(--sola-primary-blue)] focus:ring-2 focus:ring-[var(--sola-primary-blue-soft)] ${validationMessage || error ? 'border-rose-300' : 'border-slate-200'}`}
-            />
+            {form.method === 'PHONE' ? (
+              <div
+                dir="ltr"
+                className={`flex min-h-[54px] w-full overflow-hidden rounded-xl border bg-white transition-colors focus-within:border-[var(--sola-primary-blue)] focus-within:ring-2 focus-within:ring-[var(--sola-primary-blue-soft)] ${validationMessage || error ? 'border-rose-300' : 'border-slate-200'}`}
+              >
+                <span
+                  data-testid="customer-auth-country-code"
+                  aria-hidden="true"
+                  className="flex w-[76px] shrink-0 items-center justify-center border-r border-slate-200 bg-slate-50 px-3 text-base font-extrabold text-slate-700"
+                >
+                  +20
+                </span>
+                <input
+                  id="customer-auth-identifier"
+                  dir="ltr"
+                  type="tel"
+                  inputMode="numeric"
+                  autoComplete="tel-national"
+                  placeholder="01XXXXXXXXX"
+                  value={activeValue}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') {
+                      event.preventDefault();
+                      void submit();
+                    }
+                  }}
+                  onChange={(event) => {
+                    const value = normalizeArabicDigits(event.target.value).replace(/\D/g, '').slice(0, 11);
+                    invalidateIssue();
+                    updateForm(updateScreen08Identifier(form, value));
+                    if (error) setError(null);
+                  }}
+                  aria-invalid={Boolean(validationMessage)}
+                  aria-describedby={validationMessage || error ? 'customer-auth-feedback' : undefined}
+                  className="min-w-0 flex-1 bg-white px-4 text-left text-base font-semibold text-slate-950 outline-none placeholder:text-slate-400"
+                />
+              </div>
+            ) : (
+              <input
+                id="customer-auth-identifier"
+                dir="ltr"
+                type="email"
+                inputMode="email"
+                autoComplete="email"
+                placeholder="name@example.com"
+                value={activeValue}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    event.preventDefault();
+                    void submit();
+                  }
+                }}
+                onChange={(event) => {
+                  invalidateIssue();
+                  updateForm(updateScreen08Identifier(form, event.target.value));
+                  if (error) setError(null);
+                }}
+                aria-invalid={Boolean(validationMessage)}
+                aria-describedby={validationMessage || error ? 'customer-auth-feedback' : undefined}
+                className={`min-h-[54px] w-full rounded-xl border bg-white px-4 text-left text-base font-semibold text-slate-950 outline-none transition-colors placeholder:text-slate-400 focus:border-[var(--sola-primary-blue)] focus:ring-2 focus:ring-[var(--sola-primary-blue-soft)] ${validationMessage || error ? 'border-rose-300' : 'border-slate-200'}`}
+              />
+            )}
             <div id="customer-auth-feedback" aria-live="polite" className="min-h-12 pt-2 text-sm font-semibold leading-6">
               {validationMessage && <p className="text-rose-700">{validationMessage}</p>}
               {!validationMessage && error && <p className="text-rose-700">{error}</p>}
@@ -235,8 +271,8 @@ export const CustomerAuthScreen08: React.FC<CustomerAuthScreen08Props> = ({
           <button
             type="button"
             onClick={() => { void submit(); }}
-            disabled={loading || !canSubmit}
-            className="mt-2 flex min-h-[54px] w-full items-center justify-center gap-2 rounded-xl bg-[var(--sola-primary-blue)] px-4 text-base font-extrabold text-white transition-colors hover:bg-[var(--sola-primary-blue-hover)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--sola-primary-blue)] disabled:cursor-wait disabled:opacity-70"
+            disabled={loading || handoffIssued}
+            className={`mt-2 flex min-h-[54px] w-full items-center justify-center gap-2 rounded-xl bg-[var(--sola-primary-blue)] px-4 text-base font-extrabold text-white transition-colors hover:bg-[var(--sola-primary-blue-hover)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--sola-primary-blue)] disabled:opacity-70 ${loading ? 'cursor-wait' : handoffIssued ? 'cursor-default' : 'cursor-pointer'}`}
           >
             {loading && <LoaderCircle className="h-5 w-5 animate-spin" aria-hidden="true" />}
             {loading ? 'جارٍ إرسال الرمز…' : handoffIssued ? 'تم إرسال الرمز' : 'إرسال رمز التحقق'}

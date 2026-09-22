@@ -214,15 +214,20 @@ export async function runAuthV2RuntimeApiSuite(): Promise<{ total: number; passe
       assert.ok(verified.body.data.tokens.accessToken);
     });
 
-    await record('Unknown email remains truthful and deferred without fake phone/user/session', async () => {
+    await record('Unknown verified email creates an email-only Customer without fake phone', async () => {
       const fixture = createFixture();
       const issued = await request(fixture.app, 'POST', '/api/v2/auth/challenges', { surface: 'CUSTOMER', intent: 'CREATE_ACCOUNT', method: 'EMAIL', identifier: 'new@example.com' });
       const verified = await request(fixture.app, 'POST', `/api/v2/auth/challenges/${issued.body.data.challengeId}/verify`, { otp: '123456' });
       assert.strictEqual(verified.status, 200);
-      assert.strictEqual(verified.body.data.accountCreation, 'DEFERRED_EMAIL_ONLY');
-      assert.ok(!('continuationToken' in verified.body.data));
-      const complete = await request(fixture.app, 'POST', '/api/v2/auth/registration/complete', { continuationToken: 'not-exposed', fullName: 'Should Not Exist' });
-      assert.notStrictEqual(complete.status, 201);
+      assert.strictEqual(verified.body.data.requiresFullName, true);
+      assert.ok(typeof verified.body.data.continuationToken === 'string');
+      const complete = await request(fixture.app, 'POST', '/api/v2/auth/registration/complete', { continuationToken: verified.body.data.continuationToken, fullName: 'Email Customer' });
+      assert.strictEqual(complete.status, 201);
+      assert.strictEqual(complete.body.data.user.fullName, 'Email Customer');
+      assert.ok(!('phoneNumber' in complete.body.data.user));
+      assert.ok(complete.body.data.tokens.accessToken);
+      const replay = await request(fixture.app, 'POST', '/api/v2/auth/registration/complete', { continuationToken: verified.body.data.continuationToken, fullName: 'Email Customer' });
+      assert.strictEqual(replay.status, 409);
     });
 
     await record('Cancel, resend cooldown, malformed IDs, and OTP failures are truthful', async () => {

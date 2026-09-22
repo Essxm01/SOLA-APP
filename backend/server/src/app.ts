@@ -293,11 +293,7 @@ export class ExpressServerApp {
             };
             if (result.user) data.user = safeAuthUser(result.user);
             if (result.tokens) data.tokens = result.tokens;
-            if (result.method === 'EMAIL' && !result.isExistingUser) {
-              data.accountCreation = 'DEFERRED_EMAIL_ONLY';
-            } else if (result.continuationToken) {
-              data.continuationToken = result.continuationToken;
-            }
+            if (result.continuationToken) data.continuationToken = result.continuationToken;
             return { statusCode: 200, body: { success: true, data, timestamp } };
           } catch (error) {
             return authV2ErrorResponse(error);

@@ -1227,38 +1227,34 @@ export async function runAuthV2FoundationSuite(): Promise<{
     assert.strictEqual(ident.userId, completeRes.user.id);
   });
 
-  // BLOCKER 4 HARDENING
-  await record('DOMAIN', 'EMAIL + new account: verifies identifier but blocks account creation without fake phone', async () => {
-    const { service } = createIsolatedTestService();
-
-    // 1. Request challenge for EMAIL + CREATE_ACCOUNT
+  await record('DOMAIN', 'EMAIL + new account creates canonical Customer without fake phone', async () => {
+    const { service, userIdentifierRepo } = createIsolatedTestService();
     const issued = await service.requestChallenge({
       surface: 'CUSTOMER',
       intent: 'CREATE_ACCOUNT',
       method: 'EMAIL',
       identifier: 'new.guest@sola.com',
     });
-
-    // 2. Verification succeeds normally
     const verified = await service.verifyChallenge({
       challengeId: issued.challengeId,
       otp: TEST_FIXED_OTP,
     });
     assert.strictEqual(verified.success, true);
     assert.strictEqual(verified.method, 'EMAIL');
+    assert.strictEqual(verified.requiresFullName, true);
     assert.ok(verified.continuationToken);
 
-    // 3. Attempting to complete account creation for EMAIL must FAIL CLOSED
-    // Proves ZERO fake phone numbers are created!
-    await assert.rejects(
-      async () => {
-        await service.completeAccountCreation({
-          continuationToken: verified.continuationToken!,
-          fullName: 'عميل إيميل جديد',
-        });
-      },
-      /EMAIL_ONLY_ACCOUNT_CREATION_NOT_ENABLED/
-    );
+    const completed = await service.completeAccountCreation({
+      continuationToken: verified.continuationToken!,
+      fullName: 'عميل إيميل جديد',
+    });
+    assert.strictEqual(completed.success, true);
+    assert.strictEqual(completed.user.phoneNumber ?? null, null);
+    assert.strictEqual(completed.user.email, 'new.guest@sola.com');
+    const identifier = await userIdentifierRepo.getByIdentifier('EMAIL', 'new.guest@sola.com');
+    assert.ok(identifier);
+    assert.strictEqual(identifier.userId, completed.user.id);
+    assert.ok(completed.tokens.accessToken);
   });
 
   // BLOCKER 6 HARDENING

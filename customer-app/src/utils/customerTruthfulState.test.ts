@@ -325,6 +325,23 @@ async function run() {
   assert(merged.email === null, 'canonical null email must remain null, never resurrected');
   assert(merged.phoneVerifiedAt === null, 'canonical null phoneVerifiedAt must remain null');
 
+  const emailOnlyProfile = mergeCustomerProfile({
+    ...canonicalNullNameProfile,
+    phoneNumber: null,
+    email: 'email.only@example.com',
+    fullName: 'عميل بريد',
+  });
+  assert(emailOnlyProfile.phoneNumber === null, 'email-only Customer keeps canonical null phone without a placeholder');
+  assert(emailOnlyProfile.email === 'email.only@example.com', 'email-only Customer keeps the verified canonical email');
+
+  let noIdentifierThrew = false;
+  try {
+    mergeCustomerProfile({ ...canonicalNullNameProfile, phoneNumber: null, email: null });
+  } catch {
+    noIdentifierThrew = true;
+  }
+  assert(noIdentifierThrew, 'canonical Customer profile fails closed when both login identifiers are absent');
+
   // F8: mergeCustomerProfile fails closed if required canonical fields (like status) are missing
   let profileMissingStatusThrew = false;
   try {

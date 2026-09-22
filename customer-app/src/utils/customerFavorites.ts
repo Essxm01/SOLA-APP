@@ -149,8 +149,20 @@ export function mergeCustomerProfile(canonicalData: any) {
   if (typeof canonicalData.id !== 'string' || canonicalData.id.trim() === '') {
     throw new Error('INVALID_CANONICAL_PROFILE: missing id');
   }
-  if (typeof canonicalData.phoneNumber !== 'string' || canonicalData.phoneNumber.trim() === '') {
-    throw new Error('INVALID_CANONICAL_PROFILE: missing phoneNumber');
+  const canonicalPhone = typeof canonicalData.phoneNumber === 'string' && canonicalData.phoneNumber.trim() !== ''
+    ? canonicalData.phoneNumber.trim()
+    : canonicalData.phoneNumber === null ? null : undefined;
+  const canonicalEmail = typeof canonicalData.email === 'string' && canonicalData.email.trim() !== ''
+    ? canonicalData.email.trim()
+    : canonicalData.email === null ? null : undefined;
+  if (canonicalPhone === undefined) {
+    throw new Error('INVALID_CANONICAL_PROFILE: malformed phoneNumber');
+  }
+  if (canonicalEmail === undefined) {
+    throw new Error('INVALID_CANONICAL_PROFILE: malformed email');
+  }
+  if (canonicalPhone === null && canonicalEmail === null) {
+    throw new Error('INVALID_CANONICAL_PROFILE: missing verified identifier');
   }
   if (typeof canonicalData.status !== 'string' || canonicalData.status.trim() === '') {
     throw new Error('INVALID_CANONICAL_PROFILE: missing status');
@@ -164,9 +176,9 @@ export function mergeCustomerProfile(canonicalData: any) {
 
   return {
     id: canonicalData.id.trim(),
-    phoneNumber: canonicalData.phoneNumber.trim(),
+    phoneNumber: canonicalPhone,
     fullName: typeof canonicalData.fullName === 'string' && canonicalData.fullName.trim() !== '' ? canonicalData.fullName.trim() : null,
-    email: typeof canonicalData.email === 'string' && canonicalData.email.trim() !== '' ? canonicalData.email.trim() : null,
+    email: canonicalEmail,
     avatarUrl: typeof canonicalData.avatarUrl === 'string' && canonicalData.avatarUrl.trim() !== '' ? canonicalData.avatarUrl.trim() : null,
     phoneVerifiedAt: typeof canonicalData.phoneVerifiedAt === 'string' && canonicalData.phoneVerifiedAt.trim() !== '' ? canonicalData.phoneVerifiedAt.trim() : null,
     status: canonicalData.status.trim(),

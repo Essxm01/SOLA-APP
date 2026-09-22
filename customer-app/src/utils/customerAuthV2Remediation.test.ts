@@ -64,9 +64,9 @@ async function run(): Promise<void> {
   assert(!screen08.includes('disabled:cursor-wait disabled:opacity-70'), 'invalid Screen 08 input never presents a fake loading cursor');
   assert(screen08.includes("'أدخل رقم هاتف صحيحًا.'"), 'Screen 08 keeps the concise invalid-phone message');
 
-  // A verified LOGIN email that does not map to a QA account is not a malformed OTP
-  // response. Email account creation remains deferred; Screen 09 should receive the
-  // normal LOGIN_ACCOUNT_MISSING outcome and offer the existing phone-create path.
+  // A verified LOGIN email that does not map to an account is a normal missing-account
+  // outcome. The already-proven identifier carries a purpose-bound continuation so
+  // an explicit Create Account action can proceed to Screen 10 without another OTP.
   const emailChallenge: AuthChallengeIssued = {
     challengeId: 'email-login-missing',
     intent: 'LOGIN',
@@ -85,7 +85,8 @@ async function run(): Promise<void> {
       method: 'EMAIL',
       intent: 'LOGIN',
       isExistingUser: false,
-      accountCreation: 'DEFERRED_EMAIL_ONLY',
+      requiresSignup: true,
+      continuationToken: 'verified-email-login-continuation',
     },
   }), { status: 200, headers: { 'content-type': 'application/json' } })) as typeof fetch;
   const missingEmailResult = await verifyCustomerAuthChallenge(
@@ -95,6 +96,7 @@ async function run(): Promise<void> {
   );
   assert(missingEmailResult.kind === 'LOGIN_ACCOUNT_MISSING', 'missing verified email returns LOGIN_ACCOUNT_MISSING rather than INVALID_RESPONSE');
   assert(missingEmailResult.method === 'EMAIL', 'missing verified email outcome preserves EMAIL method');
+  assert(missingEmailResult.continuationToken === 'verified-email-login-continuation', 'missing verified email retains the verified continuation for explicit creation');
 
   console.log('customerAuthV2 remediation source-contract tests passed');
 }

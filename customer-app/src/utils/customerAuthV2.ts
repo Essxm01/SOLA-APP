@@ -228,7 +228,10 @@ function readAuthTokens(value: unknown): AuthV2SessionTokens | null {
   if (!value || typeof value !== 'object') return null;
   const tokens = value as Record<string, unknown>;
   if (typeof tokens.accessToken !== 'string' || typeof tokens.refreshToken !== 'string' || typeof tokens.expiresIn !== 'number') return null;
-  return { accessToken: tokens.accessToken, refreshToken: tokens.refreshToken, expiresIn: tokens.expiresIn };
+  const accessToken = tokens.accessToken.trim();
+  const refreshToken = tokens.refreshToken.trim();
+  if (!accessToken || !refreshToken || !Number.isFinite(tokens.expiresIn) || tokens.expiresIn <= 0) return null;
+  return { accessToken, refreshToken, expiresIn: tokens.expiresIn };
 }
 
 export async function verifyCustomerAuthChallenge(

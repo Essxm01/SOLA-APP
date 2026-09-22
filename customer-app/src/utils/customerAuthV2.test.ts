@@ -217,6 +217,25 @@ async function run(): Promise<void> {
     'Screen 10 malformed success response fails closed',
   );
 
+  for (const tokens of [
+    { accessToken: '', refreshToken: 'refresh-10', expiresIn: 900 },
+    { accessToken: '   ', refreshToken: 'refresh-10', expiresIn: 900 },
+    { accessToken: 'access-10', refreshToken: '', expiresIn: 900 },
+    { accessToken: 'access-10', refreshToken: '   ', expiresIn: 900 },
+    { accessToken: 'access-10', refreshToken: 'refresh-10', expiresIn: 0 },
+    { accessToken: 'access-10', refreshToken: 'refresh-10', expiresIn: -1 },
+  ]) {
+    const invalidSessionFetch: typeof fetch = async () => new Response(JSON.stringify({
+      success: true,
+      data: { user: { id: 'user-10' }, tokens },
+    }), { status: 201 });
+    await assertRejects(
+      completeCustomerAccountRegistration('continuation-10', 'أحمد محمد', { baseUrl: qaBaseUrl, fetchImpl: invalidSessionFetch }),
+      (error: unknown) => error instanceof CustomerAuthV2Error && error.kind === 'INVALID_RESPONSE',
+      `Screen 10 rejects malformed session tokens: ${JSON.stringify(tokens)}`,
+    );
+  }
+
   for (const [code, kind, status] of [
     ['CONTINUATION_TOKEN_EXPIRED', 'CONTINUATION_TOKEN_EXPIRED', 400],
     ['CONTINUATION_ALREADY_CONSUMED', 'CONTINUATION_ALREADY_CONSUMED', 409],

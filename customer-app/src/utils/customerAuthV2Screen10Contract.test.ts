@@ -31,6 +31,18 @@ async function run(): Promise<void> {
   assert((screen10.match(/id="customer-auth-full-name"/g) ?? []).length === 1, 'Screen 10 has one semantic full-name input');
   assert(screen10.includes('controllerRef.current?.abort()'), 'Screen 10 aborts in-flight work on exit');
   assert(screen10.includes('guardRef.current.begin()'), 'Screen 10 has double-submit protection');
+  assert(screen10.includes('createScreen10CompletionCoordinator'), 'Screen 10 retains successful registration across canonical-session retries');
+  assert(screen10.includes('completionCoordinatorRef.current.attempt'), 'Screen 10 retries finalization without reusing the continuation token');
+  assert(screen10.includes('onCompleted(result, controller.signal)'), 'Screen 10 cancellation reaches canonical-session reads');
+  assert(screen10.includes('!registrationCompletedRef.current && !validName'), 'initial registration validates the full name');
+  assert(screen10.includes('registrationCompletedRef.current || state ==='), 'post-registration retry locks the already-submitted name');
+  assert(screen10.includes('تم إنشاء الحساب، لكن تعذر تحميل بياناته.'), 'post-registration retry copy does not falsely claim account creation failed');
+  assert(app.includes('orchestrateScreen10SessionFinalization'), 'App uses the tested Screen 10 finalization lifecycle');
+  assert(app.includes('persistSession: (canonicalSession) => persistAuthV2Session'), 'App wires canonical persistence into the lifecycle');
+  assert(app.includes('resumeOrigin: (completedOrigin) => resumeAuthV2Origin'), 'App wires permission-scoped resume after persistence');
+  assert(app.includes('clearHandoff: clearCompletedAuthV2Flow'), 'App clears the handoff only at lifecycle completion');
+  assert(app.includes('await finalizeAuthV2Session'), 'Screen 10 completion awaits canonical session finalization');
+  assert(app.includes('loadCanonicalCustomerSession(tokens.accessToken, signal)'), 'App forwards Screen 10 cancellation to every canonical read');
 
   const sensitiveSources = app + '\n' + screen10 + '\n' + flow;
   assert(!/(localStorage|sessionStorage)\.setItem\([^\n;]*continuation/i.test(sensitiveSources), 'continuation token is never persisted in browser storage');

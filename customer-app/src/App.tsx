@@ -20,6 +20,7 @@ import { getApiUrl } from './utils/api';
 import { isCustomerAuthV2Enabled, type AuthChallengeIssued, type AuthOrigin, type AuthIntent, type AuthV2RegistrationResult, type AuthV2VerifyResult } from './utils/customerAuthV2';
 import { canResumeCustomerBooking, canResumeCustomerFavorite, createCustomerAuthResumePermission, createScreen10Handoff, createScreen10HandoffFromMissingLogin, resolveCustomerAuthEntry, cancelCustomerAuthV2, type CustomerAuthResumePermission, type CustomerBookingReviewContext, type Screen10Handoff } from './utils/customerAuthV2Flow';
 import { restoreScreen08PhoneValue, type AuthV2FlowState, type Screen08FormState } from './utils/customerScreen08AuthV2';
+import { orchestrateScreen10SessionFinalization } from './utils/customerScreen10AuthV2';
 import { CustomerAuthScreen08 } from './components/CustomerAuthScreen08';
 import { CustomerAuthScreen09 } from './components/CustomerAuthScreen09';
 import { CustomerAuthScreen10 } from './components/CustomerAuthScreen10';
@@ -258,32 +259,33 @@ export function App() {
     }
   };
 
+  const loadCanonicalCustomerProfile = async (token: string, signal?: AbortSignal) => {
+    const res = await fetch(getApiUrl('/customer/profile'), {
+      headers: { Authorization: `Bearer ${token}` },
+      signal,
+    });
+    const json = await res.json().catch(() => null);
+    if (!res.ok || !json?.success || !json.data) throw new Error('CUSTOMER_PROFILE_SESSION_INVALID');
+    return mergeCustomerProfile(json.data);
+  };
+
+  const applyCanonicalCustomerProfile = (canonicalProfile: ReturnType<typeof mergeCustomerProfile>): void => {
+    setUserProfile(canonicalProfile as any);
+    localStorage.setItem('sola_customer_profile', JSON.stringify(canonicalProfile));
+    // Only the canonical profile may populate the legacy phone display field.
+    const canonicalPhone = canonicalProfile.phoneNumber;
+    if (canonicalPhone) {
+      setCustomerPhone(canonicalPhone);
+      localStorage.setItem('sola_customer_phone', canonicalPhone);
+    }
+  };
+
   // Fetch Real Customer Profile (AUTH-03 & P2.2)
   const fetchCustomerProfile = async (token?: string | null) => {
     const t = token || authToken || localStorage.getItem('sola_customer_access_token');
     if (!t) return;
     try {
-      const res = await fetch(getApiUrl('/customer/profile'), {
-        headers: {
-          Authorization: `Bearer ${t}`,
-        },
-      });
-      const json = await res.json();
-      if (res.ok && json.success && json.data) {
-        const canonicalProfile = mergeCustomerProfile(json.data);
-        setUserProfile(canonicalProfile as any);
-        localStorage.setItem('sola_customer_profile', JSON.stringify(canonicalProfile));
-        // Only the canonical profile may populate the legacy phone display
-        // field.  Never persist an email identifier as `sola_customer_phone`.
-        const canonicalPhone = (canonicalProfile as { phoneNumber?: unknown }).phoneNumber;
-        if (typeof canonicalPhone === 'string' && canonicalPhone.trim()) {
-          setCustomerPhone(canonicalPhone);
-          localStorage.setItem('sola_customer_phone', canonicalPhone);
-        }
-      } else {
-        setUserProfile(null);
-        localStorage.removeItem('sola_customer_profile');
-      }
+      applyCanonicalCustomerProfile(await loadCanonicalCustomerProfile(t));
     } catch {
       setUserProfile(null);
       localStorage.removeItem('sola_customer_profile');
@@ -355,6 +357,23 @@ export function App() {
     status: booking.status as BookingDetails['status'],
   });
 
+  const loadCanonicalCustomerBookings = async (token: string, signal?: AbortSignal): Promise<CustomerBookingRecord[]> => {
+    const res = await fetch(getApiUrl('/customer/bookings'), {
+      headers: { Authorization: `Bearer ${token}` },
+      signal,
+    });
+    const json = await res.json().catch(() => null);
+    if (!res.ok || !json?.success || !Array.isArray(json.data)) {
+      throw new Error(json?.error?.message || 'تعذر جلب طلبات الحجز');
+    }
+    return json.data.map(toBookingRecord);
+  };
+
+  const applyCanonicalCustomerBookings = (bookings: CustomerBookingRecord[]): void => {
+    setCustomerBookings(bookings);
+    setActiveBooking(bookings[0] ? toBookingDetails(bookings[0]) : null);
+  };
+
   const fetchBookings = async (token?: string | null) => {
     const t = token || authToken || localStorage.getItem('sola_customer_access_token');
     if (!t) {
@@ -365,14 +384,8 @@ export function App() {
     setBookingsLoading(true);
     setBookingsError(null);
     try {
-      const res = await fetch(getApiUrl('/customer/bookings'), { headers: { Authorization: `Bearer ${t}` } });
-      const json = await res.json();
-      if (!res.ok || !json.success || !Array.isArray(json.data)) {
-        throw new Error(json?.error?.message || 'تعذر جلب طلبات الحجز');
-      }
-      const bookings = json.data.map(toBookingRecord);
-      setCustomerBookings(bookings);
-      setActiveBooking(bookings[0] ? toBookingDetails(bookings[0]) : null);
+      const bookings = await loadCanonicalCustomerBookings(t);
+      applyCanonicalCustomerBookings(bookings);
       return bookings;
     } catch (err: any) {
       setBookingsError(err?.message || 'تعذر جلب طلبات الحجز من الخادم');
@@ -590,14 +603,36 @@ export function App() {
     setAuthResumePermission(null);
   };
 
-  /**
-   * Finalize a server-issued Auth V2 Customer session. Canonical profile,
-   * favorites, bookings, and account summary remain server-authoritative.
-   */
-  const finalizeAuthV2Session = (
+  type CanonicalCustomerSession = {
+    profile: ReturnType<typeof mergeCustomerProfile>;
+    accountSummary: Awaited<ReturnType<typeof fetchCustomerAccountSummary>>;
+    favorites: Awaited<ReturnType<typeof fetchCustomerFavorites>>;
+    bookings: CustomerBookingRecord[];
+  };
+
+  const loadCanonicalCustomerSession = async (
+    accessToken: string,
+    signal: AbortSignal,
+  ): Promise<CanonicalCustomerSession> => {
+    const fetchWithSignal: typeof fetch = (input, init) => fetch(input, { ...init, signal });
+    const [profile, canonicalAccountSummary, canonicalFavorites, bookings] = await Promise.all([
+      loadCanonicalCustomerProfile(accessToken, signal),
+      fetchCustomerAccountSummary(accessToken, fetchWithSignal),
+      fetchCustomerFavorites(accessToken, fetchWithSignal),
+      loadCanonicalCustomerBookings(accessToken, signal),
+    ]);
+    return {
+      profile,
+      accountSummary: canonicalAccountSummary,
+      favorites: canonicalFavorites,
+      bookings,
+    };
+  };
+
+  const persistAuthV2Session = (
     tokens: { accessToken: string; refreshToken: string; expiresIn: number },
     method: 'PHONE' | 'EMAIL',
-    origin: AuthOrigin,
+    canonicalSession?: CanonicalCustomerSession,
   ): void => {
     const { accessToken, refreshToken } = tokens;
     localStorage.setItem('sola_customer_access_token', accessToken);
@@ -610,10 +645,28 @@ export function App() {
     setAuthToken(accessToken);
     setCustomerAuthError(null);
 
-    void fetchCustomerProfile(accessToken);
-    void fetchAccountSummary(accessToken);
-    void fetchBookings(accessToken).catch(() => undefined);
+    if (canonicalSession) {
+      applyCanonicalCustomerProfile(canonicalSession.profile);
+      setAccountSummary(canonicalSession.accountSummary);
+      setAccountSummaryError(null);
+      setFavoriteProperties(canonicalSession.favorites as any);
+      setFavoritesLoadState('SUCCESS');
+      setFavoritesError(null);
+      applyCanonicalCustomerBookings(canonicalSession.bookings);
+      setBookingsLoading(false);
+      setBookingsError(null);
+    } else {
+      void fetchCustomerProfile(accessToken);
+      void fetchAccountSummary(accessToken);
+      void fetchBookings(accessToken).catch(() => undefined);
+    }
+  };
 
+  const resumeAuthV2Origin = (
+    accessToken: string,
+    origin: AuthOrigin,
+    hasCanonicalSession: boolean,
+  ): void => {
     const pendingFavId = localStorage.getItem('sola_customer_pending_favorite_property_id');
     if (pendingFavId && canResumeCustomerFavorite(authResumePermission, pendingFavId)) {
       void addCustomerFavorite(accessToken, pendingFavId)
@@ -629,7 +682,7 @@ export function App() {
         });
     } else {
       if (pendingFavId) localStorage.removeItem('sola_customer_pending_favorite_property_id');
-      void loadFavorites(accessToken);
+      if (!hasCanonicalSession) void loadFavorites(accessToken);
     }
 
     const bookingResumeContext = interceptedContext;
@@ -644,7 +697,9 @@ export function App() {
       setDiscoveryView('EXPLORE');
       setIsEditingAccount(false);
     }
+  };
 
+  const clearCompletedAuthV2Flow = (): void => {
     setScreen10Handoff(null);
     setAuthResumePermission(null);
     setAuthV2Challenge(null);
@@ -653,6 +708,37 @@ export function App() {
       markCustomerEntrySeen();
       setEntryPhase('APP');
     }
+  };
+
+  /** Commit an existing-account Auth V2 session from Screen 09. */
+  const commitAuthV2Session = (
+    tokens: { accessToken: string; refreshToken: string; expiresIn: number },
+    method: 'PHONE' | 'EMAIL',
+    origin: AuthOrigin,
+  ): void => {
+    persistAuthV2Session(tokens, method);
+    resumeAuthV2Origin(tokens.accessToken, origin, false);
+    clearCompletedAuthV2Flow();
+  };
+
+  /**
+   * Screen 10 fails closed: validate every canonical Customer read before
+   * persisting tokens, clearing the handoff, or resuming a protected action.
+   */
+  const finalizeAuthV2Session = async (
+    tokens: { accessToken: string; refreshToken: string; expiresIn: number },
+    method: 'PHONE' | 'EMAIL',
+    origin: AuthOrigin,
+    signal: AbortSignal,
+  ): Promise<void> => {
+    await orchestrateScreen10SessionFinalization({
+      origin,
+      loadCanonicalSession: () => loadCanonicalCustomerSession(tokens.accessToken, signal),
+      persistSession: (canonicalSession) => persistAuthV2Session(tokens, method, canonicalSession),
+      resumeOrigin: (completedOrigin) => resumeAuthV2Origin(tokens.accessToken, completedOrigin, true),
+      clearHandoff: clearCompletedAuthV2Flow,
+      signal,
+    });
   };
 
   /**
@@ -667,12 +753,15 @@ export function App() {
       return;
     }
     if (result.kind !== 'AUTHENTICATED_EXISTING_ACCOUNT') return;
-    finalizeAuthV2Session(result.tokens, result.method, result.authOrigin);
+    commitAuthV2Session(result.tokens, result.method, result.authOrigin);
   };
 
-  const handleAuthV2Screen10Completed = (result: AuthV2RegistrationResult): void => {
+  const handleAuthV2Screen10Completed = async (
+    result: AuthV2RegistrationResult,
+    signal: AbortSignal,
+  ): Promise<void> => {
     if (!screen10Handoff) return;
-    finalizeAuthV2Session(result.tokens, 'PHONE', screen10Handoff.authOrigin);
+    await finalizeAuthV2Session(result.tokens, 'PHONE', screen10Handoff.authOrigin, signal);
   };
 
   const restartScreen10Verification = (): void => {

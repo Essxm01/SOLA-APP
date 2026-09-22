@@ -10,6 +10,7 @@ import {
 } from '../utils/customerAuthV2';
 import type { Screen10Handoff } from '../utils/customerAuthV2Flow';
 import {
+  createScreen10CompletionCoordinator,
   createScreen10SubmissionGuard,
   getScreen10FailureDisposition,
   getScreen10OriginMessage,
@@ -21,7 +22,7 @@ export interface CustomerAuthScreen10Props {
   handoff: Screen10Handoff;
   authV2BaseUrl?: string | null;
   onBackToScreen08: () => void;
-  onCompleted: (result: AuthV2RegistrationResult) => void;
+  onCompleted: (result: AuthV2RegistrationResult, signal: AbortSignal) => Promise<void>;
 }
 
 type Screen10State = 'ENTRY' | 'SUBMITTING' | 'RETRY_ERROR' | 'REVERIFY_REQUIRED';
@@ -50,6 +51,8 @@ export const CustomerAuthScreen10: React.FC<CustomerAuthScreen10Props> = ({
   const [error, setError] = useState<string | null>(null);
   const controllerRef = useRef<AbortController | null>(null);
   const guardRef = useRef(createScreen10SubmissionGuard());
+  const completionCoordinatorRef = useRef(createScreen10CompletionCoordinator<AuthV2RegistrationResult>());
+  const registrationCompletedRef = useRef(false);
   const mountedRef = useRef(true);
   const baseUrl = getConfiguredAuthV2BaseUrl(authV2BaseUrl) ?? '/api/v2';
 
@@ -66,18 +69,21 @@ export const CustomerAuthScreen10: React.FC<CustomerAuthScreen10Props> = ({
   const validName = isValidCustomerFullName(cleanName);
   const originMessage = useMemo(() => getScreen10OriginMessage(handoff.authOrigin), [handoff.authOrigin]);
   const reverifyRequired = state === 'REVERIFY_REQUIRED';
-  const validationMessage = submitted && !validName ? 'أدخل اسمك الكامل.' : null;
+  const validationMessage = submitted && !registrationCompletedRef.current && !validName
+    ? 'أدخل اسمك الكامل.'
+    : null;
 
   const returnToScreen08 = (): void => {
     controllerRef.current?.abort();
     controllerRef.current = null;
     guardRef.current.cancel();
+    completionCoordinatorRef.current.reset();
     onBackToScreen08();
   };
 
   const submit = async (): Promise<void> => {
     setSubmitted(true);
-    if (!validName || state === 'SUBMITTING' || reverifyRequired) return;
+    if ((!registrationCompletedRef.current && !validName) || state === 'SUBMITTING' || reverifyRequired) return;
 
     const generation = guardRef.current.begin();
     if (generation === null) return;
@@ -87,18 +93,28 @@ export const CustomerAuthScreen10: React.FC<CustomerAuthScreen10Props> = ({
     setError(null);
 
     try {
-      const result = await completeCustomerAccountRegistration(
-        handoff.continuationToken,
-        cleanName,
-        { baseUrl },
-        controller.signal,
+      await completionCoordinatorRef.current.attempt(
+        async () => {
+          const result = await completeCustomerAccountRegistration(
+            handoff.continuationToken,
+            cleanName,
+            { baseUrl },
+            controller.signal,
+          );
+          registrationCompletedRef.current = true;
+          return result;
+        },
+        (result) => onCompleted(result, controller.signal),
       );
       if (!mountedRef.current || !guardRef.current.isCurrent(generation)) return;
-      onCompleted(result);
     } catch (caught) {
       if (caught instanceof DOMException && caught.name === 'AbortError') return;
       if (!mountedRef.current || !guardRef.current.isCurrent(generation)) return;
-      setError(screen10ErrorMessage(caught));
+      setError(
+        registrationCompletedRef.current
+          ? 'تم إنشاء الحساب، لكن تعذر تحميل بياناته. حاول المتابعة مرة أخرى.'
+          : screen10ErrorMessage(caught),
+      );
       setState(
         caught instanceof CustomerAuthV2Error && getScreen10FailureDisposition(caught.kind) === 'REVERIFY'
           ? 'REVERIFY_REQUIRED'
@@ -147,7 +163,7 @@ export const CustomerAuthScreen10: React.FC<CustomerAuthScreen10Props> = ({
                 type="text"
                 autoComplete="name"
                 value={fullName}
-                disabled={state === 'SUBMITTING' || reverifyRequired}
+                disabled={registrationCompletedRef.current || state === 'SUBMITTING' || reverifyRequired}
                 onChange={(event) => {
                   setFullName(event.target.value);
                   setError(null);
@@ -160,15 +176,15 @@ export const CustomerAuthScreen10: React.FC<CustomerAuthScreen10Props> = ({
                   }
                 }}
                 placeholder="أحمد محمد"
-                aria-invalid={Boolean(validationMessage || error)}
+                aria-invalid={Boolean(validationMessage)}
                 aria-describedby="customer-auth-screen10-feedback"
                 className="min-h-[54px] w-full rounded-xl border border-slate-200 bg-white px-4 text-base font-bold text-slate-950 outline-none transition focus:border-[var(--sola-primary-blue)] focus:ring-2 focus:ring-blue-100 disabled:bg-slate-50 disabled:text-slate-500"
               />
             </div>
 
-            <div id="customer-auth-screen10-feedback" aria-live="polite" className="min-h-14 pt-3 text-sm font-semibold leading-6">
-              {validationMessage && <p className="text-rose-700">{validationMessage}</p>}
-              {!validationMessage && error && <p className={reverifyRequired ? 'text-amber-700' : 'text-rose-700'}>{error}</p>}
+            <div id="customer-auth-screen10-feedback" className="min-h-14 pt-3 text-sm font-semibold leading-6">
+              {validationMessage && <p role="alert" className="text-rose-700">{validationMessage}</p>}
+              {!validationMessage && error && <p role="alert" className={reverifyRequired ? 'text-amber-700' : 'text-rose-700'}>{error}</p>}
             </div>
           </div>
 
@@ -184,12 +200,14 @@ export const CustomerAuthScreen10: React.FC<CustomerAuthScreen10Props> = ({
             ) : (
               <button
                 type="button"
-                disabled={!validName || state === 'SUBMITTING'}
+                disabled={state === 'SUBMITTING'}
                 onClick={() => void submit()}
                 className="flex min-h-[54px] w-full items-center justify-center gap-2 rounded-xl bg-[var(--sola-primary-blue)] px-4 text-base font-extrabold text-white disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {state === 'SUBMITTING' && <LoaderCircle className="h-5 w-5 animate-spin" aria-hidden="true" />}
-                {state === 'SUBMITTING' ? 'جارٍ إنشاء الحساب…' : 'إكمال إنشاء الحساب'}
+                {state === 'SUBMITTING'
+                  ? registrationCompletedRef.current ? 'جارٍ تحميل حسابك…' : 'جارٍ إنشاء الحساب…'
+                  : registrationCompletedRef.current ? 'متابعة' : 'إكمال إنشاء الحساب'}
               </button>
             )}
             {originMessage && (

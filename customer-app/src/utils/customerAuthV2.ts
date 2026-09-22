@@ -34,7 +34,8 @@ export interface AuthV2RegistrationResult {
 
 export type AuthV2VerifyResult =
   | { kind: 'AUTHENTICATED_EXISTING_ACCOUNT'; challengeId: string; method: AuthMethod; intent: AuthIntent; authOrigin: AuthOrigin; tokens: AuthV2SessionTokens; user?: unknown }
-  | { kind: 'LOGIN_ACCOUNT_MISSING'; challengeId: string; method: AuthMethod; intent: 'LOGIN'; authOrigin: AuthOrigin; continuationToken: string }
+  | { kind: 'LOGIN_ACCOUNT_MISSING'; challengeId: string; method: 'PHONE'; intent: 'LOGIN'; authOrigin: AuthOrigin; continuationToken: string }
+  | { kind: 'LOGIN_ACCOUNT_MISSING'; challengeId: string; method: 'EMAIL'; intent: 'LOGIN'; authOrigin: AuthOrigin }
   | { kind: 'CREATE_ACCOUNT_NEW_PHONE'; challengeId: string; method: 'PHONE'; intent: 'CREATE_ACCOUNT'; authOrigin: AuthOrigin; continuationToken: string; requiresFullName: true }
   | { kind: 'EMAIL_ACCOUNT_CREATION_DEFERRED'; challengeId: string; method: 'EMAIL'; intent: AuthIntent; authOrigin: AuthOrigin };
 
@@ -262,15 +263,18 @@ export async function verifyCustomerAuthChallenge(
     if (!tokens) throw new CustomerAuthV2Error('INVALID_RESPONSE');
     return { kind: 'AUTHENTICATED_EXISTING_ACCOUNT', challengeId: challenge.challengeId, method, intent, authOrigin: challenge.authOrigin, tokens, user: data.user };
   }
-  if (intent === 'CREATE_ACCOUNT' && method === 'EMAIL' && data.accountCreation === 'DEFERRED_EMAIL_ONLY') {
+  if (method === 'EMAIL') {
+    if (data.accountCreation !== 'DEFERRED_EMAIL_ONLY') throw new CustomerAuthV2Error('INVALID_RESPONSE');
+    if (intent === 'LOGIN') {
+      return { kind: 'LOGIN_ACCOUNT_MISSING', challengeId: challenge.challengeId, method, intent, authOrigin: challenge.authOrigin };
+    }
     return { kind: 'EMAIL_ACCOUNT_CREATION_DEFERRED', challengeId: challenge.challengeId, method, intent, authOrigin: challenge.authOrigin };
   }
   if (typeof data.continuationToken !== 'string' || data.continuationToken.length === 0) throw new CustomerAuthV2Error('INVALID_RESPONSE');
   if (intent === 'LOGIN') return { kind: 'LOGIN_ACCOUNT_MISSING', challengeId: challenge.challengeId, method, intent, authOrigin: challenge.authOrigin, continuationToken: data.continuationToken };
-  if (method !== 'PHONE' || data.requiresFullName !== true) throw new CustomerAuthV2Error('INVALID_RESPONSE');
+  if (data.requiresFullName !== true) throw new CustomerAuthV2Error('INVALID_RESPONSE');
   return { kind: 'CREATE_ACCOUNT_NEW_PHONE', challengeId: challenge.challengeId, method, intent, authOrigin: challenge.authOrigin, continuationToken: data.continuationToken, requiresFullName: true };
 }
-
 
 export async function completeCustomerAccountRegistration(
   continuationToken: string,

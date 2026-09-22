@@ -41,6 +41,7 @@ import {
 } from '../services/authV2Repository.js';
 import { AuthV2Service } from '../services/authV2Service.js';
 import { AuthV2ContinuationService } from '../services/authV2ContinuationService.js';
+import { mapAuthV2Error } from '../services/authV2Runtime.js';
 import { verifyAccessToken } from '../services/jwtService.js';
 import { AuthService } from '../services/authService.js';
 import { isProductionDatabase, assertSafeTestDatabaseUrl } from '../utils/testDbGuard.js';
@@ -124,6 +125,27 @@ export async function runAuthV2FoundationSuite(): Promise<{
 
     return { service, userIdentifierRepo, challengeRepo, rateLimitRepo, userRepo, sessionRepo };
   }
+
+  await record('SCREEN10_ERROR_MAPPING', 'Continuation failures remain safely recoverable for Screen 10', () => {
+    const expired = mapAuthV2Error(new Error('CONTINUATION_TOKEN_EXPIRED'));
+    assert.strictEqual(expired.statusCode, 400);
+    assert.strictEqual(expired.code, 'CONTINUATION_TOKEN_EXPIRED');
+
+    for (const raw of [
+      'INVALID_CONTINUATION_TOKEN',
+      'MALFORMED_CONTINUATION_TOKEN',
+      'INVALID_CONTINUATION_TOKEN_SIGNATURE',
+      'CORRUPT_CONTINUATION_TOKEN_PAYLOAD',
+    ]) {
+      const mapped = mapAuthV2Error(new Error(raw));
+      assert.strictEqual(mapped.statusCode, 400);
+      assert.strictEqual(mapped.code, 'INVALID_CONTINUATION_TOKEN');
+    }
+
+    const consumed = mapAuthV2Error(new Error('CONTINUATION_ALREADY_CONSUMED'));
+    assert.strictEqual(consumed.statusCode, 409);
+    assert.strictEqual(consumed.code, 'CONTINUATION_ALREADY_CONSUMED');
+  });
 
   // ==========================================================================
   // 1. IDENTITY TESTS

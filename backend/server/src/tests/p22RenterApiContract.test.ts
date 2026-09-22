@@ -44,20 +44,23 @@ assert.equal('passwordHash' in profileDto, false);
 assert.equal('nationalId' in profileDto, false);
 assert.equal('internalFlags' in profileDto, false);
 
-// Profile fail closed on malformed required fields
+// Profile fail closed on malformed required fields / malformed non-null phone.
 assert.throws(() => toCustomerProfileDto({ ...rawUser, id: '' }), /MALFORMED_CUSTOMER_PROFILE_DATA/);
-assert.throws(() => toCustomerProfileDto({ ...rawUser, phoneNumber: '' }), /MALFORMED_CUSTOMER_PROFILE_DATA/);
+assert.throws(() => toCustomerProfileDto({ ...rawUser, phoneNumber: { invalid: true }, phone_number: undefined }), /MALFORMED_CUSTOMER_PROFILE_DATA/);
 assert.throws(() => toCustomerProfileDto({ ...rawUser, status: '' }), /MALFORMED_CUSTOMER_PROFILE_DATA/);
 
-// Canonical null profile fields remain null
+// Canonical nullable Customer identity fields remain null. Email-only accounts
+// are valid after migration 032 and must not need a fake phone.
 const nullProfileDto = toCustomerProfileDto({
   ...rawUser,
-  fullName: null,
-  email: null,
+  phoneNumber: null,
+  phone_number: null,
+  fullName: 'عميل بريد',
+  email: 'email.only@example.com',
   phoneVerifiedAt: null,
 });
-assert.equal(nullProfileDto.fullName, null);
-assert.equal(nullProfileDto.email, null);
+assert.equal(nullProfileDto.phoneNumber, null);
+assert.equal(nullProfileDto.email, 'email.only@example.com');
 assert.equal(nullProfileDto.phoneVerifiedAt, null);
 
 // 1B. CustomerAccountSummaryDto tests

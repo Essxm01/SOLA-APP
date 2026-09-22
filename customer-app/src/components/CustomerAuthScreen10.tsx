@@ -16,6 +16,7 @@ import {
   getScreen10OriginMessage,
   isValidCustomerFullName,
   normalizeCustomerFullName,
+  shouldSuppressScreen10Back,
 } from '../utils/customerScreen10AuthV2';
 
 export interface CustomerAuthScreen10Props {
@@ -69,6 +70,7 @@ export const CustomerAuthScreen10: React.FC<CustomerAuthScreen10Props> = ({
   const validName = isValidCustomerFullName(cleanName);
   const originMessage = useMemo(() => getScreen10OriginMessage(handoff.authOrigin), [handoff.authOrigin]);
   const reverifyRequired = state === 'REVERIFY_REQUIRED';
+  const recoveryMode = shouldSuppressScreen10Back(registrationCompletedRef.current, state);
   const validationMessage = submitted && !registrationCompletedRef.current && !validName
     ? 'أدخل اسمك الكامل.'
     : null;
@@ -112,7 +114,7 @@ export const CustomerAuthScreen10: React.FC<CustomerAuthScreen10Props> = ({
       if (!mountedRef.current || !guardRef.current.isCurrent(generation)) return;
       setError(
         registrationCompletedRef.current
-          ? 'تم إنشاء الحساب، لكن تعذر تحميل بياناته. حاول المتابعة مرة أخرى.'
+          ? 'تم إنشاء حسابك، لكن تعذر إكمال الدخول الآن. حاول المتابعة مرة أخرى.'
           : screen10ErrorMessage(caught),
       );
       setState(
@@ -135,7 +137,11 @@ export const CustomerAuthScreen10: React.FC<CustomerAuthScreen10Props> = ({
         className="mx-auto flex min-h-[100dvh] w-full max-w-[430px] flex-col px-5 pb-8"
         style={{ paddingBottom: 'max(2rem, env(safe-area-inset-bottom, 0px))' }}
       >
-        <CustomerAuthAppBar onBack={returnToScreen08} ariaLabel="إكمال إنشاء الحساب" />
+        <CustomerAuthAppBar
+          onBack={returnToScreen08}
+          ariaLabel="إكمال إنشاء الحساب"
+          suppressBack={recoveryMode}
+        />
 
         <section className="flex flex-1 flex-col pt-10" aria-labelledby="customer-auth-screen10-title">
           <div>
@@ -188,7 +194,7 @@ export const CustomerAuthScreen10: React.FC<CustomerAuthScreen10Props> = ({
             </div>
           </div>
 
-          <div className="mt-auto pt-4">
+          <div className="mt-6">
             {reverifyRequired ? (
               <button
                 type="button"
@@ -214,6 +220,7 @@ export const CustomerAuthScreen10: React.FC<CustomerAuthScreen10Props> = ({
               <p className="mt-5 text-center text-sm font-semibold leading-6 text-slate-500">{originMessage}</p>
             )}
           </div>
+          <div className="flex-1" aria-hidden="true" />
         </section>
       </div>
     </main>

@@ -11,6 +11,7 @@ ACTIVE_TARGET: Customer Screen 10 — Complete Account Creation
 ISSUE: #49
 PR: #50
 C5_STATUS: SCREEN_10_IMPLEMENTATION_AND_QA
+SEARCH_INTENT_RESET: DEFERRED / UNCHANGED
 
 ## Phase 5 / C4 (Screen 07) Closure Summary
 - PR #35 merged into main at `2d27553569c7962e62080d7ab471d16ef1c9e435`.

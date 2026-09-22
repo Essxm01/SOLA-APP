@@ -50,6 +50,10 @@ async function run() {
   assert.match(migration, /ALTER\s+TABLE\s+public\.users\s+ALTER\s+COLUMN\s+phone_number\s+DROP\s+NOT\s+NULL/i, 'migration 032 must make only users.phone_number nullable');
   assert.doesNotMatch(migration, /ALTER\s+TABLE\s+public\.owners[\s\S]*phone_number\s+DROP\s+NOT\s+NULL/i, 'Owner phone must remain mandatory');
   assert.match(migration, /032_customer_email_first_nullable_phone\.sql/, 'migration 032 must record its schema version');
+  assert.match(migration, /konfrm_create_email_customer_v2/i, 'migration 032 must provide the atomic email-only registration RPC');
+  assert.match(migration, /pg_advisory_xact_lock/i, 'atomic email registration must serialize the same normalized email');
+  assert.match(migration, /REVOKE\s+ALL\s+ON\s+FUNCTION[\s\S]*konfrm_create_email_customer_v2[\s\S]*FROM\s+PUBLIC,\s*anon,\s*authenticated/i, 'email registration RPC must not be directly executable by public app roles');
+  assert.match(migration, /GRANT\s+EXECUTE\s+ON\s+FUNCTION[\s\S]*konfrm_create_email_customer_v2[\s\S]*TO\s+service_role/i, 'email registration RPC must be service-role only');
 
   {
     const { service, userIdentifierRepo } = createFixture();
@@ -132,6 +136,19 @@ async function run() {
 
     const completed = await service.completeAccountCreation({ continuationToken: verified.continuationToken!, fullName: 'Should Not Duplicate' });
     assert.strictEqual(completed.user.id, winner.id, 'registration race must resolve to canonical identifier owner');
+  }
+
+  {
+    const { service } = createFixture();
+    const first = await issueVerify(service, 'EMAIL', 'concurrent@example.com');
+    const second = await issueVerify(service, 'EMAIL', 'concurrent@example.com');
+    assert.ok(first.continuationToken && second.continuationToken);
+
+    const results = await Promise.all([
+      service.completeAccountCreation({ continuationToken: first.continuationToken!, fullName: 'Concurrent One' }),
+      service.completeAccountCreation({ continuationToken: second.continuationToken!, fullName: 'Concurrent Two' }),
+    ]);
+    assert.strictEqual(results[0].user.id, results[1].user.id, 'two independently verified continuations for the same email must converge on one canonical user');
   }
 
   console.log('AUTH V2 EMAIL-FIRST focused contract tests passed');

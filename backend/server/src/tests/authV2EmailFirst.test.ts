@@ -211,6 +211,57 @@ async function run() {
     }
   }
 
+  // A generic RPC outage must not be converted into a successful session just
+  // because a matching canonical email account already exists.
+  {
+    const originalFetch = globalThis.fetch;
+    const originalUrl = process.env.SUPABASE_URL;
+    const originalSecret = process.env.SUPABASE_SECRET_KEY;
+    const calls: string[] = [];
+
+    process.env.SUPABASE_URL = 'https://qa.example.test';
+    process.env.SUPABASE_SECRET_KEY = 'service-role-test-key';
+
+    globalThis.fetch = (async (input: string | URL | Request) => {
+      const url = String(input);
+      calls.push(url);
+      if (url.includes('/rpc/konfrm_create_email_customer_v2')) {
+        return new Response(JSON.stringify({ code: 'PGRST000', message: 'database unavailable' }), { status: 503, headers: { 'content-type': 'application/json' } });
+      }
+      if (url.includes('/user_identifiers?')) {
+        return new Response(JSON.stringify([{ user_id: '55555555-5555-4555-8555-555555555555' }]), { status: 200, headers: { 'content-type': 'application/json' } });
+      }
+      if (url.includes('/users?')) {
+        return new Response(JSON.stringify([{
+          id: '55555555-5555-4555-8555-555555555555',
+          phone_number: null,
+          full_name: 'Existing Winner',
+          email: 'outage@example.com',
+          status: 'ACTIVE',
+        }]), { status: 200, headers: { 'content-type': 'application/json' } });
+      }
+      throw new Error(`UNEXPECTED_TEST_FETCH:${url}`);
+    }) as typeof fetch;
+
+    try {
+      await assert.rejects(
+        () => createCanonicalEmailCustomer({
+          userId: '66666666-6666-4666-8666-666666666666',
+          email: 'outage@example.com',
+          fullName: 'Outage Attempt',
+          verifiedAt: '2026-09-22T00:00:00.000Z',
+        }),
+        /EMAIL_CUSTOMER_REGISTRATION_RPC_FAILED: HTTP 503/,
+        'generic RPC outage must remain an explicit failure',
+      );
+      assert.strictEqual(calls.filter((url) => url.includes('/user_identifiers?')).length, 0, 'generic RPC outage must not trigger race recovery');
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (originalUrl === undefined) delete process.env.SUPABASE_URL; else process.env.SUPABASE_URL = originalUrl;
+      if (originalSecret === undefined) delete process.env.SUPABASE_SECRET_KEY; else process.env.SUPABASE_SECRET_KEY = originalSecret;
+    }
+  }
+
   console.log('AUTH V2 EMAIL-FIRST focused contract tests passed');
 }
 

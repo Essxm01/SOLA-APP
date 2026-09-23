@@ -89,8 +89,14 @@ async function registerViaSupabaseRest(input: Required<EmailCustomerRegistration
   if (!rpcResponse.ok) {
     const body = await rpcResponse.text().catch(() => '');
     const originalError = new Error(`EMAIL_CUSTOMER_REGISTRATION_RPC_FAILED: HTTP ${rpcResponse.status} — ${body.slice(0, 240)}`);
-    const recovered = await recoverCommittedSupabaseEmailWinner(input, url, headers);
-    if (recovered) return recovered;
+    // Only a Postgres unique-constraint conflict proves the RPC may have
+    // lost a concurrent registration race. Other HTTP failures (including
+    // 4xx/5xx infrastructure or database errors) must remain failures even
+    // when a matching account happens to exist.
+    if (/23505/.test(body)) {
+      const recovered = await recoverCommittedSupabaseEmailWinner(input, url, headers);
+      if (recovered) return recovered;
+    }
     throw originalError;
   }
   const rpcRaw: any = await rpcResponse.json().catch(() => null);

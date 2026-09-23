@@ -123,6 +123,8 @@ const ERROR_MESSAGES: Record<string, string> = {
   CHALLENGE_ALREADY_VERIFIED: 'تم استخدام جلسة التحقق بالفعل.',
   CHALLENGE_LOCKED_MAX_ATTEMPTS_EXCEEDED: 'تم إيقاف جلسة التحقق بعد محاولات متعددة.',
   CONTINUATION_ALREADY_CONSUMED: 'تم استخدام رابط المتابعة بالفعل.',
+  CONTINUATION_TOKEN_EXPIRED: 'انتهت صلاحية خطوة إنشاء الحساب.',
+  INVALID_CONTINUATION_TOKEN: 'خطوة إنشاء الحساب غير صالحة.',
   EMAIL_ONLY_ACCOUNT_CREATION_DEFERRED: 'إنشاء الحساب بالبريد الإلكتروني غير متاح في هذه المرحلة.',
   EMAIL_ONLY_ACCOUNT_CREATION_NOT_ENABLED: 'إنشاء الحساب بالبريد الإلكتروني غير متاح في هذه المرحلة.',
   RESEND_COOLDOWN_ACTIVE: 'انتظر قليلًا قبل إعادة إرسال الرمز.',
@@ -139,6 +141,10 @@ export function mapAuthV2Error(error: unknown): { statusCode: number; code: stri
   const raw = error instanceof Error ? error.message : String(error || '');
   const code = errorCodeFromMessage(raw);
   if (code === 'CHALLENGE_NOT_FOUND') return { statusCode: 404, code, message: ERROR_MESSAGES[code] };
+  if (code === 'CONTINUATION_TOKEN_EXPIRED') return { statusCode: 400, code, message: ERROR_MESSAGES.CONTINUATION_TOKEN_EXPIRED };
+  if (code === 'INVALID_CONTINUATION_TOKEN' || code === 'MALFORMED_CONTINUATION_TOKEN' || code === 'INVALID_CONTINUATION_TOKEN_SIGNATURE' || code === 'CORRUPT_CONTINUATION_TOKEN_PAYLOAD') {
+    return { statusCode: 400, code: 'INVALID_CONTINUATION_TOKEN', message: ERROR_MESSAGES.INVALID_CONTINUATION_TOKEN };
+  }
   if (code === 'RATE_LIMIT_EXCEEDED' || code === 'RESEND_COOLDOWN_ACTIVE' || code === 'RESEND_IN_PROGRESS') {
     return { statusCode: 429, code, message: ERROR_MESSAGES[code] };
   }

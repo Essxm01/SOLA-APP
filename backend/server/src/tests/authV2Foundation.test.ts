@@ -41,6 +41,7 @@ import {
 } from '../services/authV2Repository.js';
 import { AuthV2Service } from '../services/authV2Service.js';
 import { AuthV2ContinuationService } from '../services/authV2ContinuationService.js';
+import { mapAuthV2Error } from '../services/authV2Runtime.js';
 import { verifyAccessToken } from '../services/jwtService.js';
 import { AuthService } from '../services/authService.js';
 import { isProductionDatabase, assertSafeTestDatabaseUrl } from '../utils/testDbGuard.js';
@@ -124,6 +125,27 @@ export async function runAuthV2FoundationSuite(): Promise<{
 
     return { service, userIdentifierRepo, challengeRepo, rateLimitRepo, userRepo, sessionRepo };
   }
+
+  await record('SCREEN10_ERROR_MAPPING', 'Continuation failures remain safely recoverable for Screen 10', () => {
+    const expired = mapAuthV2Error(new Error('CONTINUATION_TOKEN_EXPIRED'));
+    assert.strictEqual(expired.statusCode, 400);
+    assert.strictEqual(expired.code, 'CONTINUATION_TOKEN_EXPIRED');
+
+    for (const raw of [
+      'INVALID_CONTINUATION_TOKEN',
+      'MALFORMED_CONTINUATION_TOKEN',
+      'INVALID_CONTINUATION_TOKEN_SIGNATURE',
+      'CORRUPT_CONTINUATION_TOKEN_PAYLOAD',
+    ]) {
+      const mapped = mapAuthV2Error(new Error(raw));
+      assert.strictEqual(mapped.statusCode, 400);
+      assert.strictEqual(mapped.code, 'INVALID_CONTINUATION_TOKEN');
+    }
+
+    const consumed = mapAuthV2Error(new Error('CONTINUATION_ALREADY_CONSUMED'));
+    assert.strictEqual(consumed.statusCode, 409);
+    assert.strictEqual(consumed.code, 'CONTINUATION_ALREADY_CONSUMED');
+  });
 
   // ==========================================================================
   // 1. IDENTITY TESTS
@@ -1205,38 +1227,34 @@ export async function runAuthV2FoundationSuite(): Promise<{
     assert.strictEqual(ident.userId, completeRes.user.id);
   });
 
-  // BLOCKER 4 HARDENING
-  await record('DOMAIN', 'EMAIL + new account: verifies identifier but blocks account creation without fake phone', async () => {
-    const { service } = createIsolatedTestService();
-
-    // 1. Request challenge for EMAIL + CREATE_ACCOUNT
+  await record('DOMAIN', 'EMAIL + new account creates canonical Customer without fake phone', async () => {
+    const { service, userIdentifierRepo } = createIsolatedTestService();
     const issued = await service.requestChallenge({
       surface: 'CUSTOMER',
       intent: 'CREATE_ACCOUNT',
       method: 'EMAIL',
       identifier: 'new.guest@sola.com',
     });
-
-    // 2. Verification succeeds normally
     const verified = await service.verifyChallenge({
       challengeId: issued.challengeId,
       otp: TEST_FIXED_OTP,
     });
     assert.strictEqual(verified.success, true);
     assert.strictEqual(verified.method, 'EMAIL');
+    assert.strictEqual(verified.requiresFullName, true);
     assert.ok(verified.continuationToken);
 
-    // 3. Attempting to complete account creation for EMAIL must FAIL CLOSED
-    // Proves ZERO fake phone numbers are created!
-    await assert.rejects(
-      async () => {
-        await service.completeAccountCreation({
-          continuationToken: verified.continuationToken!,
-          fullName: 'عميل إيميل جديد',
-        });
-      },
-      /EMAIL_ONLY_ACCOUNT_CREATION_NOT_ENABLED/
-    );
+    const completed = await service.completeAccountCreation({
+      continuationToken: verified.continuationToken!,
+      fullName: 'عميل إيميل جديد',
+    });
+    assert.strictEqual(completed.success, true);
+    assert.strictEqual(completed.user.phoneNumber ?? null, null);
+    assert.strictEqual(completed.user.email, 'new.guest@sola.com');
+    const identifier = await userIdentifierRepo.getByIdentifier('EMAIL', 'new.guest@sola.com');
+    assert.ok(identifier);
+    assert.strictEqual(identifier.userId, completed.user.id);
+    assert.ok(completed.tokens.accessToken);
   });
 
   // BLOCKER 6 HARDENING

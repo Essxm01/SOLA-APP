@@ -2,7 +2,7 @@ import { PublicPropertyDetail } from './publicProperty.js';
 
 export interface CustomerProfileDto {
   id: string;
-  phoneNumber: string;
+  phoneNumber: string | null;
   phoneVerifiedAt: string | null;
   fullName: string | null;
   email: string | null;
@@ -197,7 +197,7 @@ export function toCustomerProfileDto(raw: any): CustomerProfileDto {
   }
 
   const id = requiredString(raw.id, 'CUSTOMER_PROFILE_DATA', 'id');
-  const phoneNumber = requiredString(raw.phoneNumber ?? raw.phone_number, 'CUSTOMER_PROFILE_DATA', 'phoneNumber');
+  const phoneNumber = optionalString(raw.phoneNumber ?? raw.phone_number, 'CUSTOMER_PROFILE_DATA', 'phoneNumber');
   const phoneVerifiedAt = optionalIsoDate(raw.phoneVerifiedAt ?? raw.phone_verified_at, 'CUSTOMER_PROFILE_DATA', 'phoneVerifiedAt');
   const fullName = optionalString(raw.fullName ?? raw.full_name, 'CUSTOMER_PROFILE_DATA', 'fullName');
   const email = optionalString(raw.email, 'CUSTOMER_PROFILE_DATA', 'email');

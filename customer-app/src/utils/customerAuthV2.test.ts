@@ -1,5 +1,6 @@
 import {
   CustomerAuthV2Error,
+  completeCustomerAccountRegistration,
   getAuthOriginMessage,
   getConfiguredAuthV2BaseUrl,
   isValidCustomerEmail,
@@ -178,6 +179,100 @@ async function run(): Promise<void> {
     abortedRequest,
     (error: unknown) => error instanceof DOMException && error.name === 'AbortError',
     'aborted issue request remains aborted for late-response protection',
+  );
+
+
+  let registrationRequest: { url: string; init: RequestInit } | undefined;
+  const registrationFetch: typeof fetch = async (url, init) => {
+    registrationRequest = { url: String(url), init: init ?? {} };
+    return new Response(JSON.stringify({
+      success: true,
+      data: {
+        user: { id: 'user-10', fullName: 'أحمد محمد' },
+        tokens: { accessToken: 'access-10', refreshToken: 'refresh-10', expiresIn: 900 },
+      },
+    }), { status: 201, headers: { 'content-type': 'application/json' } });
+  };
+  const registration = await completeCustomerAccountRegistration(
+    'continuation-10',
+    '  أحمد   محمد  ',
+    { baseUrl: qaBaseUrl, fetchImpl: registrationFetch },
+  );
+  assertEqual(registration.tokens.accessToken, 'access-10', 'Screen 10 returns a valid access token');
+  assertEqual(registration.tokens.refreshToken, 'refresh-10', 'Screen 10 returns a valid refresh token');
+  assertEqual(registrationRequest?.url, `${qaBaseUrl}/auth/registration/complete`, 'Screen 10 registration endpoint is exact');
+  assertEqual(registrationRequest?.init.method, 'POST', 'Screen 10 registration uses POST');
+  assertDeepEqual(JSON.parse(String(registrationRequest?.init.body)), {
+    continuationToken: 'continuation-10',
+    fullName: 'أحمد محمد',
+  }, 'Screen 10 sends only the continuation token and normalized full name');
+
+  const malformedRegistrationFetch: typeof fetch = async () => new Response(JSON.stringify({
+    success: true,
+    data: { user: { id: 'user-10' } },
+  }), { status: 201 });
+  await assertRejects(
+    completeCustomerAccountRegistration('continuation-10', 'أحمد محمد', { baseUrl: qaBaseUrl, fetchImpl: malformedRegistrationFetch }),
+    (error: unknown) => error instanceof CustomerAuthV2Error && error.kind === 'INVALID_RESPONSE',
+    'Screen 10 malformed success response fails closed',
+  );
+
+  for (const tokens of [
+    { accessToken: '', refreshToken: 'refresh-10', expiresIn: 900 },
+    { accessToken: '   ', refreshToken: 'refresh-10', expiresIn: 900 },
+    { accessToken: 'access-10', refreshToken: '', expiresIn: 900 },
+    { accessToken: 'access-10', refreshToken: '   ', expiresIn: 900 },
+    { accessToken: 'access-10', refreshToken: 'refresh-10', expiresIn: 0 },
+    { accessToken: 'access-10', refreshToken: 'refresh-10', expiresIn: -1 },
+  ]) {
+    const invalidSessionFetch: typeof fetch = async () => new Response(JSON.stringify({
+      success: true,
+      data: { user: { id: 'user-10' }, tokens },
+    }), { status: 201 });
+    await assertRejects(
+      completeCustomerAccountRegistration('continuation-10', 'أحمد محمد', { baseUrl: qaBaseUrl, fetchImpl: invalidSessionFetch }),
+      (error: unknown) => error instanceof CustomerAuthV2Error && error.kind === 'INVALID_RESPONSE',
+      `Screen 10 rejects malformed session tokens: ${JSON.stringify(tokens)}`,
+    );
+  }
+
+  for (const [code, kind, status] of [
+    ['CONTINUATION_TOKEN_EXPIRED', 'CONTINUATION_TOKEN_EXPIRED', 400],
+    ['CONTINUATION_ALREADY_CONSUMED', 'CONTINUATION_ALREADY_CONSUMED', 409],
+    ['INVALID_CONTINUATION_TOKEN', 'CONTINUATION_INVALID', 400],
+  ] as const) {
+    const continuationFailureFetch: typeof fetch = async () => new Response(JSON.stringify({
+      success: false,
+      error: { code, message: 'safe' },
+    }), { status });
+    await assertRejects(
+      completeCustomerAccountRegistration('continuation-10', 'أحمد محمد', { baseUrl: qaBaseUrl, fetchImpl: continuationFailureFetch }),
+      (error: unknown) => error instanceof CustomerAuthV2Error && error.kind === kind,
+      `Screen 10 ${code} maps to recoverable structured error`,
+    );
+  }
+
+  await assertRejects(
+    completeCustomerAccountRegistration('continuation-10', ' ', { baseUrl: qaBaseUrl, fetchImpl: registrationFetch }),
+    (error: unknown) => error instanceof CustomerAuthV2Error && error.kind === 'INVALID_FULL_NAME',
+    'Screen 10 rejects blank full name before network mutation',
+  );
+
+  const registrationAbortController = new AbortController();
+  const abortableRegistrationFetch: typeof fetch = async (_url, init) => new Promise((_resolve, reject) => {
+    init?.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')), { once: true });
+  });
+  const abortedRegistration = completeCustomerAccountRegistration(
+    'continuation-10',
+    'أحمد محمد',
+    { baseUrl: qaBaseUrl, fetchImpl: abortableRegistrationFetch },
+    registrationAbortController.signal,
+  );
+  registrationAbortController.abort();
+  await assertRejects(
+    abortedRegistration,
+    (error: unknown) => error instanceof DOMException && error.name === 'AbortError',
+    'Screen 10 aborted registration remains aborted',
   );
 
   console.log('customerAuthV2 tests passed');

@@ -4,6 +4,7 @@
  * Master Source of Truth: PHASE_7_MASTER_SPECIFICATION.md
  */
 
+import { randomUUID } from 'node:crypto';
 import jwt from 'jsonwebtoken';
 import type { JwtPayload, UserRole, AuthSessionTokens } from '../types/server.js';
 
@@ -79,6 +80,9 @@ export function signRefreshToken(payload: { sub: string; role: UserRole }): stri
       sub: payload.sub,
       role: payload.role,
       type: 'refresh',
+      // Refresh tokens are persisted by hash. A unique JTI prevents two
+      // concurrent sessions for the same user from colliding on that key.
+      jti: randomUUID(),
     },
     getJwtRefreshSecret(),
     {

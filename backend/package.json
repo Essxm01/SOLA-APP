@@ -11,7 +11,7 @@
     "test:booking-01-1": "npx tsx server/src/tests/booking011.test.ts",
     "test:hotfix-02": "npx tsx server/src/tests/m03Hotfix02.test.ts",
     "test:owner-identity-01": "npx tsx server/src/tests/ownerIdentity01.test.ts",
-    "test:auth-v2-foundation": "npx tsx server/src/tests/authV2Foundation.test.ts",
+    "test:auth-v2-foundation": "npx tsx server/src/tests/authV2Foundation.test.ts && npx tsx server/src/tests/authV2EmailFirst.test.ts",
     "test:auth-v2-postgres": "npx tsx server/src/tests/isolatedPostgres.test.ts",
     "test:auth-v2-qa-bootstrap": "npx tsx server/src/tests/authV2QaBootstrap.test.ts",
     "test:auth-v2-runtime-api-01": "npx tsx server/src/tests/authV2RuntimeApi01.test.ts",

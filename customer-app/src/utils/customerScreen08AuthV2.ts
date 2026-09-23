@@ -13,6 +13,11 @@ export function restoreScreen08PhoneValue(identifier: string): string {
   return identifier.startsWith('+20') ? `0${identifier.slice(3)}` : identifier;
 }
 
+/** Founder-approved Customer Screen 08 policy: only 010 / 012 / 015 local mobile prefixes are accepted. */
+export function isAllowedCustomerPhone(value: string): boolean {
+  return /^01[025]\d{8}$/.test(value);
+}
+
 export interface AuthV2FlowState {
   origin: AuthOrigin;
   intent: AuthIntent;

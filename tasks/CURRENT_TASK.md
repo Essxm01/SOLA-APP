@@ -1,15 +1,16 @@
-# Phase 5 — Customer Screen 03 Explore Visual Quality Remediation
+# Phase 5 — Customer Auth V2 Screen 10
 
-TASK_ID: CUSTOMER_EXPLORE_VISUAL_REMEDIATION_01
+TASK_ID: CUSTOMER_AUTH_V2_SCREEN_10
 ROADMAP_PHASE: PHASE_5_CUSTOMER_EXPERIENCE
 STAGE: FOUNDER_AUTHORIZED
 EXECUTOR: Founder + Bridge + UI/UX Design Lab
-AUTHORITATIVE_BASELINE: 2d27553569c7962e62080d7ab471d16ef1c9e435
-TARGET_BRANCH: phase5/customer-explore-visual-remediation
-C4_SCREEN_07_STATUS: CLOSED / MERGED / MAIN-CI VERIFIED / PRODUCTION VERIFIED / FOUNDER APPROVED (PR #35 @ 2d27553569c7962e62080d7ab471d16ef1c9e435)
-ACTIVE_TARGET: Customer Screen 03 — Explore/Home Visual Quality Remediation (EXPLORE_FINAL_REDESIGN_SPEC + EXPLORE_FINAL_POLISH_V2)
-NEXT_AFTER_EXPLORE: Screen 08 — Auth Phone (NOT STARTED)
-C5_STATUS: NOT STARTED
+AUTHORITATIVE_BASELINE: d49f626a3647ae3d7b47b99a1439e769924d3881
+TARGET_BRANCH: phase5/customer-auth-v2-screen10
+AUTH_SCREENS_08_09_STATUS: MERGED / MAIN-CI VERIFIED / FOUNDER APPROVED
+ACTIVE_TARGET: Customer Screen 10 — Complete Account Creation
+ISSUE: #49
+PR: #50
+C5_STATUS: SCREEN_10_IMPLEMENTATION_AND_QA
 SEARCH_INTENT_RESET: DEFERRED / UNCHANGED
 
 ## Phase 5 / C4 (Screen 07) Closure Summary
@@ -22,20 +23,13 @@ SEARCH_INTENT_RESET: DEFERRED / UNCHANGED
   - Founder physical preview passed on Samsung Galaxy A56.
   - All CI and production verification passed.
 
-## Current Task: Customer Screen 03 Explore Visual Quality Remediation
-- Implement the Founder/LAB-approved `EXPLORE_FINAL_REDESIGN_SPEC` and `EXPLORE_FINAL_POLISH_V2`.
-- Visual + UX quality remediation while strictly preserving C2 functional truth.
-- Zero backend, DB, migration, or RPC changes.
-- Zero booking/finance/availability rule changes.
-- Shared `PropertyCard` anatomy across Explore, Search Results, and Favorites (Title before location, 1.4:1 ratio, compact 13px facts, clean price without redundant labels, independent favorite).
-- Explore Header: Standalone KONFRM mark + one control-radius account/identity affordance using canonical radius.control (12px / rounded-xl equivalent) across open space:
-  - Guest Explore: Control-radius `UserRoundPlus` button (44px touch target, 40px `rounded-xl` visual surface, opens existing auth modal, accessible label "تسجيل الدخول أو إنشاء حساب").
-  - Authenticated Explore: Truthful control-radius identity affordance routing to Account (`setActiveTab('ACCOUNT')`) with 44px touch target and 40px `rounded-xl` visual surface; fallback hierarchy: canonical avatarUrl (12px / rounded-xl) → initials (12px / rounded-xl) → UserRound (12px / rounded-xl).
-  - Notifications: DEFERRED / zero Bell icon.
-  *(Supersedes the interim brand-only Explore header model).*
-- Explore Hero: Headline "هتصيف فين؟", Subtitle: NONE (direct headline → search flow with 16–20px rhythm).
-- 4-tab bottom navigation with updated icons (`Compass`, `Heart`, `CalendarDays`, `UserRound`), uniform 2.2 stroke width, and active state blue icon + blue label without bubble/pill background.
-- Local Explore state views (skeleton feed, empty state, error state).
+## Current Task: Customer Auth V2 Screen 10
+- Deliver the Founder-approved full-screen RTL completion surface with one full-name field.
+- Complete registration only through `POST /api/v2/auth/registration/complete` using the verified, memory-only continuation token.
+- Treat the continuation token as single-use and never persist it in browser storage or a URL.
+- Validate the returned Customer session and load canonical profile, account summary, favorites, and bookings before persisting the session or resuming the origin.
+- Resume Welcome at Explore, protected booking at Booking Review without auto-submit, and favorite only for the permission-scoped property.
+- Keep Auth V2 production activation, migration 031 application, and unrelated Screen 03 work out of scope.
 
 
 ## Phase 3 closure verdict

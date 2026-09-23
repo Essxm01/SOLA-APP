@@ -13,6 +13,7 @@ import {
   AUTH_V2_PRODUCTION_PROJECT_REF,
   AUTH_V2_QA_PROJECT_REF,
   getAuthV2RuntimeDecision,
+  mapAuthV2Error,
 } from '../services/authV2Runtime.js';
 
 const QA_ENV = {
@@ -99,6 +100,27 @@ export async function runAuthV2RuntimeApiSuite(): Promise<{ total: number; passe
   };
 
   try {
+    await record('Screen 10 continuation failures expose safe recoverable error codes', async () => {
+      const expired = mapAuthV2Error(new Error('CONTINUATION_TOKEN_EXPIRED'));
+      assert.strictEqual(expired.statusCode, 400);
+      assert.strictEqual(expired.code, 'CONTINUATION_TOKEN_EXPIRED');
+
+      for (const raw of [
+        'INVALID_CONTINUATION_TOKEN',
+        'MALFORMED_CONTINUATION_TOKEN',
+        'INVALID_CONTINUATION_TOKEN_SIGNATURE',
+        'CORRUPT_CONTINUATION_TOKEN_PAYLOAD',
+      ]) {
+        const mapped = mapAuthV2Error(new Error(raw));
+        assert.strictEqual(mapped.statusCode, 400);
+        assert.strictEqual(mapped.code, 'INVALID_CONTINUATION_TOKEN');
+      }
+
+      const consumed = mapAuthV2Error(new Error('CONTINUATION_ALREADY_CONSUMED'));
+      assert.strictEqual(consumed.statusCode, 409);
+      assert.strictEqual(consumed.code, 'CONTINUATION_ALREADY_CONSUMED');
+    });
+
     await record('Auth V2 remains dark when the explicit feature flag is absent', async () => {
       const old = process.env.AUTH_V2_ENABLED;
       delete process.env.AUTH_V2_ENABLED;
@@ -192,15 +214,20 @@ export async function runAuthV2RuntimeApiSuite(): Promise<{ total: number; passe
       assert.ok(verified.body.data.tokens.accessToken);
     });
 
-    await record('Unknown email remains truthful and deferred without fake phone/user/session', async () => {
+    await record('Unknown verified email creates an email-only Customer without fake phone', async () => {
       const fixture = createFixture();
       const issued = await request(fixture.app, 'POST', '/api/v2/auth/challenges', { surface: 'CUSTOMER', intent: 'CREATE_ACCOUNT', method: 'EMAIL', identifier: 'new@example.com' });
       const verified = await request(fixture.app, 'POST', `/api/v2/auth/challenges/${issued.body.data.challengeId}/verify`, { otp: '123456' });
       assert.strictEqual(verified.status, 200);
-      assert.strictEqual(verified.body.data.accountCreation, 'DEFERRED_EMAIL_ONLY');
-      assert.ok(!('continuationToken' in verified.body.data));
-      const complete = await request(fixture.app, 'POST', '/api/v2/auth/registration/complete', { continuationToken: 'not-exposed', fullName: 'Should Not Exist' });
-      assert.notStrictEqual(complete.status, 201);
+      assert.strictEqual(verified.body.data.requiresFullName, true);
+      assert.ok(typeof verified.body.data.continuationToken === 'string');
+      const complete = await request(fixture.app, 'POST', '/api/v2/auth/registration/complete', { continuationToken: verified.body.data.continuationToken, fullName: 'Email Customer' });
+      assert.strictEqual(complete.status, 201);
+      assert.strictEqual(complete.body.data.user.fullName, 'Email Customer');
+      assert.ok(!('phoneNumber' in complete.body.data.user));
+      assert.ok(complete.body.data.tokens.accessToken);
+      const replay = await request(fixture.app, 'POST', '/api/v2/auth/registration/complete', { continuationToken: verified.body.data.continuationToken, fullName: 'Email Customer' });
+      assert.strictEqual(replay.status, 409);
     });
 
     await record('Cancel, resend cooldown, malformed IDs, and OTP failures are truthful', async () => {

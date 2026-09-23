@@ -14,9 +14,10 @@
     "test:explore-redesign": "npx tsx src/utils/exploreRedesign.test.ts",
     "test:responsive-hardening": "npx tsx src/utils/responsiveHardening.test.ts",
     "test:auth-screen08": "npx tsx src/utils/customerAuthV2.test.ts && npx tsx src/utils/customerScreen08AuthV2.test.ts && npx tsx src/utils/customerAuthV2Remediation.test.ts && npx tsx src/utils/customerAuthV2Flow.test.ts",
-    "test:auth-screen09": "npx tsx src/utils/customerAuthV2.test.ts && npx tsx src/utils/customerScreen08AuthV2.test.ts && npx tsx src/utils/customerScreen09AuthV2.test.ts && npx tsx src/utils/customerAuthV2Remediation.test.ts && npx tsx src/utils/customerAuthV2Flow.test.ts",
+    "test:auth-screen09": "npx tsx src/utils/customerAuthV2.test.ts && npx tsx src/utils/customerScreen08AuthV2.test.ts && npx tsx src/utils/customerScreen09AuthV2.test.ts && npx tsx src/utils/customerScreen10AuthV2.test.ts && npx tsx src/utils/customerAuthV2Screen10Contract.test.ts && npx tsx src/utils/customerAuthV2Remediation.test.ts && npx tsx src/utils/customerAuthV2Flow.test.ts",
     "build": "tsc -b && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:auth-screen10": "npx tsx src/utils/customerAuthV2.test.ts && npx tsx src/utils/customerScreen10AuthV2.test.ts && npx tsx src/utils/customerAuthV2Screen10Contract.test.ts && npx tsx src/utils/customerAuthV2Flow.test.ts && npx tsx src/utils/customerAuthV2Remediation.test.ts"
   },
   "dependencies": {
     "lucide-react": "^1.31.0",

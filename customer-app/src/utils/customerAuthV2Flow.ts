@@ -1,4 +1,4 @@
-import type { AuthChallengeIssued, AuthOrigin, AuthV2VerifyResult } from './customerAuthV2';
+import type { AuthChallengeIssued, AuthMethod, AuthOrigin, AuthV2VerifyResult } from './customerAuthV2';
 
 export interface CustomerBookingReviewContext {
   propertyId: string;
@@ -20,7 +20,7 @@ export type CustomerAuthEntry =
 
 export interface Screen10Handoff {
   continuationToken: string;
-  method: 'PHONE';
+  method: AuthMethod;
   identifier: string;
   authOrigin: AuthOrigin;
   originalIntent: 'CREATE_ACCOUNT';
@@ -63,7 +63,7 @@ export function canResumeCustomerBooking(permission: CustomerAuthResumePermissio
     && permission.context.guests === context.guests;
 }
 
-export function createScreen10Handoff(result: Extract<AuthV2VerifyResult, { kind: 'CREATE_ACCOUNT_NEW_PHONE' }>, challenge: AuthChallengeIssued): Screen10Handoff {
+export function createScreen10Handoff(result: Extract<AuthV2VerifyResult, { kind: 'CREATE_ACCOUNT_NEW_IDENTIFIER' }>, challenge: AuthChallengeIssued): Screen10Handoff {
   return {
     continuationToken: result.continuationToken,
     method: result.method,
@@ -82,11 +82,10 @@ export function createScreen10Handoff(result: Extract<AuthV2VerifyResult, { kind
 export function createScreen10HandoffFromMissingLogin(
   result: Extract<AuthV2VerifyResult, { kind: 'LOGIN_ACCOUNT_MISSING' }>,
   challenge: AuthChallengeIssued,
-): Screen10Handoff | null {
-  if (result.method !== 'PHONE') return null;
+): Screen10Handoff {
   return {
     continuationToken: result.continuationToken,
-    method: 'PHONE',
+    method: result.method,
     identifier: challenge.identifier,
     authOrigin: result.authOrigin,
     originalIntent: 'CREATE_ACCOUNT',

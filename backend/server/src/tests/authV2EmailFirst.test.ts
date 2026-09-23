@@ -11,6 +11,7 @@ import {
   InMemoryUserRepository,
 } from '../services/authV2Repository.js';
 import { AuthV2Service } from '../services/authV2Service.js';
+import { createCanonicalEmailCustomer } from '../services/emailCustomerRegistration.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -149,6 +150,65 @@ async function run() {
       service.completeAccountCreation({ continuationToken: second.continuationToken!, fullName: 'Concurrent Two' }),
     ]);
     assert.strictEqual(results[0].user.id, results[1].user.id, 'two independently verified continuations for the same email must converge on one canonical user');
+  }
+
+  // Worker/Supabase race recovery contract: if the atomic RPC loses at the
+  // transport/database boundary but the canonical EMAIL identifier is now
+  // owned by a committed winner, the adapter must return that winner rather
+  // than surface a generic 503. No winner means the original failure remains.
+  {
+    const originalFetch = globalThis.fetch;
+    const originalUrl = process.env.SUPABASE_URL;
+    const originalSecret = process.env.SUPABASE_SECRET_KEY;
+    const originalServiceRole = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    const winnerId = '33333333-3333-4333-8333-333333333333';
+    const calls: string[] = [];
+
+    process.env.SUPABASE_URL = 'https://qa.example.test';
+    process.env.SUPABASE_SECRET_KEY = 'service-role-test-key';
+    delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+    globalThis.fetch = (async (input: string | URL | Request) => {
+      const url = String(input);
+      calls.push(url);
+      if (url.includes('/rpc/konfrm_create_email_customer_v2')) {
+        return new Response(JSON.stringify({ code: '23505' }), { status: 409, headers: { 'content-type': 'application/json' } });
+      }
+      if (url.includes('/user_identifiers?')) {
+        return new Response(JSON.stringify([{ user_id: winnerId }]), { status: 200, headers: { 'content-type': 'application/json' } });
+      }
+      if (url.includes('/users?')) {
+        return new Response(JSON.stringify([{
+          id: winnerId,
+          phone_number: null,
+          phone_verified_at: null,
+          full_name: 'Race Winner',
+          email: 'adapter-race@example.com',
+          avatar_url: null,
+          status: 'ACTIVE',
+          created_at: '2026-09-22T00:00:00.000Z',
+          updated_at: '2026-09-22T00:00:00.000Z',
+        }]), { status: 200, headers: { 'content-type': 'application/json' } });
+      }
+      throw new Error(`UNEXPECTED_TEST_FETCH:${url}`);
+    }) as typeof fetch;
+
+    try {
+      const recovered = await createCanonicalEmailCustomer({
+        userId: '44444444-4444-4444-8444-444444444444',
+        email: 'adapter-race@example.com',
+        fullName: 'Race Loser',
+        verifiedAt: '2026-09-22T00:00:00.000Z',
+      });
+      assert.strictEqual(recovered.created, false, 'race loser must resolve to the committed canonical winner');
+      assert.strictEqual(recovered.user.id, winnerId);
+      assert.ok(calls.some((url) => url.includes('/user_identifiers?')), 'race recovery must re-check canonical identifier ownership');
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (originalUrl === undefined) delete process.env.SUPABASE_URL; else process.env.SUPABASE_URL = originalUrl;
+      if (originalSecret === undefined) delete process.env.SUPABASE_SECRET_KEY; else process.env.SUPABASE_SECRET_KEY = originalSecret;
+      if (originalServiceRole === undefined) delete process.env.SUPABASE_SERVICE_ROLE_KEY; else process.env.SUPABASE_SERVICE_ROLE_KEY = originalServiceRole;
+    }
   }
 
   console.log('AUTH V2 EMAIL-FIRST focused contract tests passed');

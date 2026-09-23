@@ -28,6 +28,39 @@ function mapUserRow(row: any): any {
   };
 }
 
+async function readSupabaseUserById(userId: string, url: string, headers: Record<string, string>): Promise<any> {
+  const userResponse = await fetch(
+    `${url.replace(/\/$/, '')}/rest/v1/users?id=eq.${encodeURIComponent(userId)}&status=eq.ACTIVE&deleted_at=is.null&select=id,phone_number,phone_verified_at,full_name,email,avatar_url,status,created_at,updated_at`,
+    { headers },
+  );
+  if (!userResponse.ok) throw new Error(`EMAIL_CUSTOMER_REGISTRATION_USER_READ_FAILED: HTTP ${userResponse.status}`);
+  const userRaw: any = await userResponse.json().catch(() => null);
+  if (!Array.isArray(userRaw) || userRaw.length !== 1) throw new Error('EMAIL_CUSTOMER_REGISTRATION_USER_READ_MALFORMED');
+  return mapUserRow(userRaw[0]);
+}
+
+async function recoverCommittedSupabaseEmailWinner(
+  input: Required<EmailCustomerRegistrationInput>,
+  url: string,
+  headers: Record<string, string>,
+): Promise<EmailCustomerRegistrationResult | null> {
+  try {
+    const baseUrl = url.replace(/\/$/, '');
+    const identifierResponse = await fetch(
+      `${baseUrl}/rest/v1/user_identifiers?identifier_type=eq.EMAIL&normalized_value=eq.${encodeURIComponent(input.email)}&verified_at=not.is.null&select=user_id`,
+      { headers },
+    );
+    if (!identifierResponse.ok) return null;
+    const identifierRaw: any = await identifierResponse.json().catch(() => null);
+    if (!Array.isArray(identifierRaw) || identifierRaw.length !== 1 || typeof identifierRaw[0]?.user_id !== 'string') return null;
+    const user = await readSupabaseUserById(identifierRaw[0].user_id, baseUrl, headers);
+    if (user.email !== input.email || user.phoneNumber !== null) return null;
+    return { user, created: false };
+  } catch {
+    return null;
+  }
+}
+
 async function registerViaSupabaseRest(input: Required<EmailCustomerRegistrationInput>, url: string, key: string): Promise<EmailCustomerRegistrationResult> {
   const headers: Record<string, string> = {
     apikey: key,
@@ -35,34 +68,38 @@ async function registerViaSupabaseRest(input: Required<EmailCustomerRegistration
     'Content-Type': 'application/json',
   };
 
-  const rpcResponse = await fetch(`${url.replace(/\/$/, '')}/rest/v1/rpc/konfrm_create_email_customer_v2`, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({
-      p_user_id: input.userId,
-      p_email: input.email,
-      p_full_name: input.fullName,
-      p_verified_at: input.verifiedAt,
-    }),
-  });
+  let rpcResponse: Response;
+  try {
+    rpcResponse = await fetch(`${url.replace(/\/$/, '')}/rest/v1/rpc/konfrm_create_email_customer_v2`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        p_user_id: input.userId,
+        p_email: input.email,
+        p_full_name: input.fullName,
+        p_verified_at: input.verifiedAt,
+      }),
+    });
+  } catch (error) {
+    const recovered = await recoverCommittedSupabaseEmailWinner(input, url, headers);
+    if (recovered) return recovered;
+    throw error;
+  }
+
   if (!rpcResponse.ok) {
     const body = await rpcResponse.text().catch(() => '');
-    throw new Error(`EMAIL_CUSTOMER_REGISTRATION_RPC_FAILED: HTTP ${rpcResponse.status} — ${body.slice(0, 240)}`);
+    const originalError = new Error(`EMAIL_CUSTOMER_REGISTRATION_RPC_FAILED: HTTP ${rpcResponse.status} — ${body.slice(0, 240)}`);
+    const recovered = await recoverCommittedSupabaseEmailWinner(input, url, headers);
+    if (recovered) return recovered;
+    throw originalError;
   }
   const rpcRaw: any = await rpcResponse.json().catch(() => null);
   if (!Array.isArray(rpcRaw) || rpcRaw.length !== 1 || typeof rpcRaw[0]?.user_id !== 'string' || typeof rpcRaw[0]?.created !== 'boolean') {
     throw new Error('EMAIL_CUSTOMER_REGISTRATION_RPC_MALFORMED');
   }
 
-  const userId = rpcRaw[0].user_id;
-  const userResponse = await fetch(
-    `${url.replace(/\/$/, '')}/rest/v1/users?id=eq.${encodeURIComponent(userId)}&select=id,phone_number,phone_verified_at,full_name,email,avatar_url,status,created_at,updated_at`,
-    { headers },
-  );
-  if (!userResponse.ok) throw new Error(`EMAIL_CUSTOMER_REGISTRATION_USER_READ_FAILED: HTTP ${userResponse.status}`);
-  const userRaw: any = await userResponse.json().catch(() => null);
-  if (!Array.isArray(userRaw) || userRaw.length !== 1) throw new Error('EMAIL_CUSTOMER_REGISTRATION_USER_READ_MALFORMED');
-  return { user: mapUserRow(userRaw[0]), created: rpcRaw[0].created };
+  const user = await readSupabaseUserById(rpcRaw[0].user_id, url, headers);
+  return { user, created: rpcRaw[0].created };
 }
 
 async function registerViaPostgres(input: Required<EmailCustomerRegistrationInput>): Promise<EmailCustomerRegistrationResult> {
@@ -86,7 +123,10 @@ async function registerViaPostgres(input: Required<EmailCustomerRegistrationInpu
  * Runtime adapter for the migration-032 atomic email registration function.
  * Workers use the service-role Supabase REST RPC path; Node/Postgres runtimes
  * use queryDb. The function itself owns concurrency serialization and creates
- * user + verified EMAIL identifier in one transaction.
+ * user + verified EMAIL identifier in one transaction. If the Worker RPC loses
+ * a real registration race at the REST/database boundary, the adapter may only
+ * recover by re-reading a verified canonical EMAIL identifier and its active,
+ * non-deleted email-only user. Otherwise the original failure remains visible.
  */
 export async function createCanonicalEmailCustomer(input: EmailCustomerRegistrationInput): Promise<EmailCustomerRegistrationResult> {
   const normalizedEmail = input.email.trim();

@@ -150,6 +150,7 @@ async function run() {
       service.completeAccountCreation({ continuationToken: second.continuationToken!, fullName: 'Concurrent Two' }),
     ]);
     assert.strictEqual(results[0].user.id, results[1].user.id, 'two independently verified continuations for the same email must converge on one canonical user');
+    assert.notStrictEqual(results[0].tokens.refreshToken, results[1].tokens.refreshToken, 'converged concurrent completions must issue distinct refresh sessions');
   }
 
   // Worker/Supabase race recovery contract: if the atomic RPC loses at the

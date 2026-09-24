@@ -1,17 +1,27 @@
-# Phase 5 — Customer Auth V2 Screen 10
+# Phase 5 — Customer App Roadmap Tracking
 
-TASK_ID: CUSTOMER_AUTH_V2_SCREEN_10
+TASK_ID: CUSTOMER_SCREEN_12_MY_BOOKINGS
 ROADMAP_PHASE: PHASE_5_CUSTOMER_EXPERIENCE
-STAGE: FOUNDER_AUTHORIZED
+STAGE: LIVE_VERIFIED_COMPLETE
 EXECUTOR: Founder + Bridge + UI/UX Design Lab
-AUTHORITATIVE_BASELINE: d49f626a3647ae3d7b47b99a1439e769924d3881
-TARGET_BRANCH: phase5/customer-auth-v2-screen10
-AUTH_SCREENS_08_09_STATUS: MERGED / MAIN-CI VERIFIED / FOUNDER APPROVED
-ACTIVE_TARGET: Customer Screen 10 — Complete Account Creation
-ISSUE: #49
-PR: #50
-C5_STATUS: SCREEN_10_IMPLEMENTATION_AND_QA
+AUTHORITATIVE_BASELINE: cf75613c3e91133e24279d23539d4794b4ebe1b0
+BRANCH: fix/customer-screen12-session-expiry-closure
 SEARCH_INTENT_RESET: DEFERRED / UNCHANGED
+
+## Customer Screens Status Summary
+- **Screens 08–10 (Customer Auth V2)**: MERGED & LIVE CLOSED (PR #50, PR #55, PR #56)
+  - Screen 08 (Phone/Email Entry): Live verified with OTP challenge orchestration.
+  - Screen 09 (OTP Verification & Timer): Live verified with cooldown & resend guarantees.
+  - Screen 10 (Account Creation): Live verified with single-use continuation token.
+- **Screen 11 (Booking Request Sent)**: MERGED & LIVE CLOSED (PR #57)
+  - Dedicated full-screen confirmation surface with truthful post-submission lifecycle.
+- **Screen 12 (My Bookings / حجوزاتي)**: MERGED & LIVE CLOSED (PR #58 + session-privacy closure)
+  - Dedicated `BOOKINGS_TAB` Auth V2 origin with safe guest/expired flows.
+  - Fail-closed private state on 401/403: clears `customerBookings`, `activeBooking`, `bookingDetailId`, `recentBookingSubmission`, and attention dot.
+  - Real canonical bookings & complete status matrix without `مرفوض` on guest cancellation.
+  - Accessible 44×44px refresh button & Screen 13 `booking.id` routing.
+- **Next Customer Design Target**:
+  - **Screen 13 — Booking Details / Stay Hub**
 
 ## Phase 5 / C4 (Screen 07) Closure Summary
 - PR #35 merged into main at `2d27553569c7962e62080d7ab471d16ef1c9e435`.
@@ -23,13 +33,38 @@ SEARCH_INTENT_RESET: DEFERRED / UNCHANGED
   - Founder physical preview passed on Samsung Galaxy A56.
   - All CI and production verification passed.
 
-## Current Task: Customer Auth V2 Screen 10
-- Deliver the Founder-approved full-screen RTL completion surface with one full-name field.
-- Complete registration only through `POST /api/v2/auth/registration/complete` using the verified, memory-only continuation token.
-- Treat the continuation token as single-use and never persist it in browser storage or a URL.
-- Validate the returned Customer session and load canonical profile, account summary, favorites, and bookings before persisting the session or resuming the origin.
-- Resume Welcome at Explore, protected booking at Booking Review without auto-submit, and favorite only for the permission-scoped property.
-- Keep Auth V2 production activation, migration 031 application, and unrelated Screen 03 work out of scope.
+## Customer Screen 12 Live Verification Summary
+- **Dedicated Auth V2 Origin (`BOOKINGS_TAB`)**:
+  - Guest taps "حجوزاتي" -> Screen 12 renders clean Guest state with heading `سجّل الدخول لعرض حجوزاتك`.
+  - Tapping "تسجيل الدخول" opens Auth V2 with origin `BOOKINGS_TAB` and intent `LOGIN`.
+  - Cancelling Auth V2 returns directly to Screen 12 on tab "حجوزاتي" in Guest state.
+- **Session Expired State**:
+  - HTTP 401 on `/api/v1/customer/bookings` safely triggers `CustomerBookingsUnauthorizedError`.
+  - Renders high-contrast amber session expired card: `انتهت جلسة تسجيل الدخول` with CTA `تسجيل الدخول مجددًا`.
+  - Fails closed: clears all private bookings, active booking, detail modal ID, and recent submission banner.
+- **True Empty State**:
+  - Authenticated customer with 0 bookings renders `لا توجد حجوزات بعد` with subtext and CTA `استكشف الإقامات`.
+  - Tapping `استكشف الإقامات` switches active tab to `استكشف`.
+- **Real Canonical Bookings & Status Matrix**:
+  - Live customer `+201049892908` loaded canonical bookings `BK-183223` and `BK-908747`.
+  - Bookings rendered under section `السابقة` with badge `ملغي من جانبك` and icon `CircleSlash2`.
+  - Absolute status truth: strictly prohibits `مرفوض` or `لم يوافق المالك` for cancellations.
+  - Section `يحتاج إجراء منك` conditionally omitted when no `APPROVED_PENDING_PAYMENT` bookings exist.
+- **Bottom Navigation Attention Dot**:
+  - KONFRM Blue `#0059FF` dot (no green, no pulse) only active when `APPROVED_PENDING_PAYMENT` is present.
+  - Correctly evaluated to `false` during live verification.
+- **Single Clickable Card Surface & Screen 13 Integration**:
+  - 44×44px accessible refresh button (`aria-label="تحديث الحجوزات"`).
+  - Clicking card routes to Screen 13 `BookingDetailModal` by `booking.id`.
+  - Closing Screen 13 cleanly restores Screen 12 without reload.
+- **Responsive Visual Integrity**:
+  - Multi-viewport screenshots saved and visually inspected:
+    - `screen12_live_360x800.png` (Compact Android)
+    - `screen12_live_390x844.png` (iPhone 14/15 standard)
+    - `screen12_live_430x932.png` (iPhone Pro Max)
+    - `screen12_live_guest.png` (Guest state)
+    - `screen12_live_session_expired.png` (Session expired state)
+    - `screen12_live_empty_state.png` (True empty state)
 
 
 ## Phase 3 closure verdict

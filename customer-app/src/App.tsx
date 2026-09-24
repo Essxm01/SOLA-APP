@@ -422,6 +422,10 @@ export function App() {
       return bookings;
     } catch (err: any) {
       if (err instanceof CustomerBookingsUnauthorizedError) {
+        setCustomerBookings([]);
+        setActiveBooking(null);
+        setBookingDetailId(null);
+        setRecentBookingSubmission(null);
         setBookingsSessionExpired(true);
         setBookingsError('انتهت صلاحية الجلسة. يرجى تسجيل الدخول مجدداً لعرض حجوزاتك.');
         setBookingsLoadState('ERROR');

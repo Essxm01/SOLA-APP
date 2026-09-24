@@ -1,0 +1,20 @@
+{
+  "version": "1.0.3",
+  "integration_state_schema": 1,
+  "installed_integrations": [
+    "agy",
+    "zcode"
+  ],
+  "integration_settings": {
+    "agy": {
+      "script": "ps",
+      "invoke_separator": "-"
+    },
+    "zcode": {
+      "script": "ps",
+      "invoke_separator": "-"
+    }
+  },
+  "integration": "agy",
+  "default_integration": "agy"
+}

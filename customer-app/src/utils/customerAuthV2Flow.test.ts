@@ -18,7 +18,15 @@ for (const origin of [
   { type: 'EXPLORE_ACCOUNT' as const },
   { type: 'ACCOUNT_TAB' as const },
   { type: 'FAVORITES_TAB' as const },
-]) equal(resolveCustomerAuthEntry(true, origin).surface, 'AUTH_V2', `${origin.type} uses Auth V2`);
+  { type: 'BOOKINGS_TAB' as const },
+]) {
+  equal(resolveCustomerAuthEntry(true, origin).surface, 'AUTH_V2', `${origin.type} uses Auth V2`);
+  equal(resolveCustomerAuthEntry(true, origin).intent, 'LOGIN', `${origin.type} defaults to LOGIN intent`);
+}
+const bookingsOrigin = { type: 'BOOKINGS_TAB' as const };
+equal(cancelCustomerAuthV2(bookingsOrigin).clearFavoriteHandoff, false, 'bookings tab cancellation clears no favorite handoff');
+equal(cancelCustomerAuthV2(bookingsOrigin).clearBookingHandoff, false, 'bookings tab cancellation clears no booking handoff');
+equal(createCustomerAuthResumePermission(bookingsOrigin), null, 'bookings tab creates no protected action permission');
 const favorite = createCustomerAuthV2Entry({ type: 'PROTECTED_FAVORITE', propertyId: 'property-1' });
 equal(favorite.origin.type, 'PROTECTED_FAVORITE', 'favorite origin is preserved');
 equal((favorite.origin as { propertyId: string }).propertyId, 'property-1', 'favorite property context is preserved');

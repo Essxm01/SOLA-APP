@@ -15,6 +15,11 @@ import {
   resolveScreen11SuccessRouting,
 } from './utils/customerScreen11BookingRequestSent';
 import { BookingDetailModal, type CustomerBookingRecord } from './components/BookingDetailModal';
+import { CustomerMyBookingsScreen } from './components/CustomerMyBookingsScreen';
+import {
+  CustomerBookingsUnauthorizedError,
+  hasBookingActionRequired,
+} from './utils/customerBookingPresentation';
 import { CustomerBottomNav, CustomerTabType } from './components/CustomerBottomNav';
 import { CustomerSplashScreen } from './components/CustomerSplashScreen';
 import { CustomerWelcomeScreen } from './components/CustomerWelcomeScreen';
@@ -51,9 +56,6 @@ import {
   CalendarCheck,
   User,
   AlertCircle,
-  ImageOff,
-  MapPin,
-  Users,
   ChevronLeft,
   HelpCircle,
   Wallet,
@@ -172,8 +174,18 @@ export function App() {
   const [activeBooking, setActiveBooking] = useState<BookingDetails | null>(null);
   const [customerBookings, setCustomerBookings] = useState<CustomerBookingRecord[]>([]);
   const [bookingDetailId, setBookingDetailId] = useState<string | null>(null);
-  const [bookingsLoading, setBookingsLoading] = useState<boolean>(false);
   const [bookingsError, setBookingsError] = useState<string | null>(null);
+  const [bookingsLoadState, setBookingsLoadState] = useState<
+    'INITIAL_LOADING' | 'LOADED' | 'EMPTY' | 'ERROR' | 'REFRESHING' | 'STALE_ERROR'
+  >('INITIAL_LOADING');
+  const [bookingsSessionExpired, setBookingsSessionExpired] = useState<boolean>(false);
+  const [recentBookingSubmission, setRecentBookingSubmission] = useState<{ id: string; bookingNumber?: string } | null>(null);
+
+  const bookingsAuthState: 'AUTHENTICATED' | 'GUEST' | 'SESSION_EXPIRED' = !authToken
+    ? 'GUEST'
+    : bookingsSessionExpired
+    ? 'SESSION_EXPIRED'
+    : 'AUTHENTICATED';
 
   // Fetch Published Properties from API (Server-Authoritative Public Search — P2.1)
   const fetchProperties = async (filters?: Partial<PublicSearchFilters>) => {
@@ -366,6 +378,9 @@ export function App() {
       headers: { Authorization: `Bearer ${token}` },
       signal,
     });
+    if (res.status === 401 || res.status === 403) {
+      throw new CustomerBookingsUnauthorizedError('CUSTOMER_BOOKINGS_UNAUTHORIZED');
+    }
     const json = await res.json().catch(() => null);
     if (!res.ok || !json?.success || !Array.isArray(json.data)) {
       throw new Error(json?.error?.message || 'تعذر جلب طلبات الحجز');
@@ -376,26 +391,53 @@ export function App() {
   const applyCanonicalCustomerBookings = (bookings: CustomerBookingRecord[]): void => {
     setCustomerBookings(bookings);
     setActiveBooking(bookings[0] ? toBookingDetails(bookings[0]) : null);
+    setRecentBookingSubmission((current) => {
+      if (current && bookings.some((b) => b.id === current.id)) {
+        return null;
+      }
+      return current;
+    });
   };
 
-  const fetchBookings = async (token?: string | null) => {
+  const fetchBookings = async (token?: string | null, isRefresh = false) => {
     const t = token || authToken || localStorage.getItem('sola_customer_access_token');
     if (!t) {
       setActiveBooking(null);
       setCustomerBookings([]);
+      setBookingsLoadState('EMPTY');
+      setBookingsError(null);
       return [];
     }
-    setBookingsLoading(true);
+    if (isRefresh && customerBookings.length > 0) {
+      setBookingsLoadState('REFRESHING');
+    } else {
+      setBookingsLoadState('INITIAL_LOADING');
+    }
     setBookingsError(null);
     try {
       const bookings = await loadCanonicalCustomerBookings(t);
       applyCanonicalCustomerBookings(bookings);
+      setBookingsSessionExpired(false);
+      setBookingsLoadState(bookings.length > 0 ? 'LOADED' : 'EMPTY');
       return bookings;
     } catch (err: any) {
-      setBookingsError(err?.message || 'تعذر جلب طلبات الحجز من الخادم');
+      if (err instanceof CustomerBookingsUnauthorizedError) {
+        setBookingsSessionExpired(true);
+        setBookingsError('انتهت صلاحية الجلسة. يرجى تسجيل الدخول مجدداً لعرض حجوزاتك.');
+        setBookingsLoadState('ERROR');
+      } else {
+        const errorMsg = err?.message || 'تعذر جلب طلبات الحجز من الخادم';
+        setBookingsError(errorMsg);
+        setCustomerBookings((prev) => {
+          if (prev.length > 0) {
+            setBookingsLoadState('STALE_ERROR');
+          } else {
+            setBookingsLoadState('ERROR');
+          }
+          return prev;
+        });
+      }
       throw err;
-    } finally {
-      setBookingsLoading(false);
     }
   };
 
@@ -657,7 +699,8 @@ export function App() {
       setFavoritesLoadState('SUCCESS');
       setFavoritesError(null);
       applyCanonicalCustomerBookings(canonicalSession.bookings);
-      setBookingsLoading(false);
+      setBookingsLoadState(canonicalSession.bookings.length > 0 ? 'LOADED' : 'EMPTY');
+      setBookingsSessionExpired(false);
       setBookingsError(null);
     } else {
       void fetchCustomerProfile(accessToken);
@@ -700,6 +743,15 @@ export function App() {
       setActiveTab('EXPLORE');
       setDiscoveryView('EXPLORE');
       setIsEditingAccount(false);
+    }
+
+    if (origin.type === 'BOOKINGS_TAB') {
+      setActiveTab('BOOKINGS');
+      setDiscoveryView('EXPLORE');
+      setIsEditingAccount(false);
+      if (!hasCanonicalSession) {
+        void fetchBookings(accessToken).catch(() => undefined);
+      }
     }
   };
 
@@ -830,6 +882,9 @@ export function App() {
     setCustomerBookings([]);
     setBookingDetailId(null);
     setBookingsError(null);
+    setBookingsLoadState('EMPTY');
+    setBookingsSessionExpired(false);
+    setRecentBookingSubmission(null);
     setCustomerAuthError(null);
     setAuthResumePermission(null);
     setScreen10Handoff(null);
@@ -1181,53 +1236,28 @@ export function App() {
           </div>
         )}
 
-        {/* Tab 3: BOOKINGS */}
+        {/* Tab 3: BOOKINGS (Screen 12 My Bookings) */}
         {activeTab === 'BOOKINGS' && (
-          <div className="my-4">
-            <h2 className="text-base font-black text-slate-900 mb-3">حجوزاتي والطلبات الحالية</h2>
-            {bookingsLoading ? (
-              <LoadingStateView message="جاري جلب طلبات الحجز..." />
-            ) : bookingsError ? (
-              <div className="bg-rose-50 p-5 rounded-2xl border border-rose-200 text-center space-y-3">
-                <AlertCircle className="w-8 h-8 text-rose-600 mx-auto" />
-                <p className="text-xs font-bold text-rose-900">{bookingsError}</p>
-                <button onClick={() => void fetchBookings()} className="min-h-11 px-4 rounded-xl bg-white border border-rose-200 text-rose-700 text-xs font-black">إعادة المحاولة</button>
-              </div>
-            ) : customerBookings.length > 0 ? (
-              <div className="space-y-3">
-                {customerBookings.map((booking) => (
-                  <button key={booking.id} onClick={() => setBookingDetailId(booking.id)} className="w-full text-right bg-white rounded-2xl overflow-hidden border border-slate-200 shadow-sm hover:border-blue-200 transition-colors">
-                    <div className="flex gap-3 p-3">
-                      <div className="w-24 h-24 rounded-xl overflow-hidden bg-slate-100 shrink-0">
-                        {booking.propertyImage ? <img src={booking.propertyImage} alt={booking.propertyTitle} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-slate-400"><ImageOff className="w-5 h-5" /></div>}
-                      </div>
-                      <div className="min-w-0 flex-1 space-y-1.5">
-                        <div className="flex justify-between items-start gap-2"><h3 className="font-black text-sm text-slate-900 truncate">{booking.propertyTitle}</h3><span className={`text-[10px] font-black px-2 py-1 rounded-full shrink-0 ${booking.status === 'APPROVED_PENDING_PAYMENT' ? 'bg-blue-50 text-[#0059FF]' : booking.status === 'REJECTED' ? 'bg-rose-50 text-rose-700' : 'bg-amber-50 text-amber-800'}`}>{booking.status === 'PENDING_OWNER_APPROVAL' ? 'قيد المراجعة' : booking.status === 'APPROVED_PENDING_PAYMENT' ? 'وافق المالك — العربون مطلوب' : booking.status === 'CONFIRMED' ? 'الحجز مؤكد' : 'مرفوض'}</span></div>
-                        {booking.locationName && <p className="flex gap-1 text-[11px] text-slate-500 truncate"><MapPin className="w-3.5 h-3.5 shrink-0 text-[#0059FF]" />{booking.locationName}</p>}
-                        <p className="text-[11px] font-bold text-slate-700" dir="ltr">{booking.checkIn} ← {booking.checkOut} · {booking.nights} ليالٍ</p>
-                        <p className="flex gap-1 text-[11px] text-slate-500"><Users className="w-3.5 h-3.5" />{booking.guestsCount} ضيوف</p>
-                      </div>
-                    </div>
-                    <div className="px-3 py-2.5 border-t border-slate-100 flex items-center justify-between text-xs"><span className="text-slate-600">الإجمالي <strong className="text-slate-900">{booking.totalStay.toLocaleString()} ج.م</strong></span><span className="text-[#0059FF] font-black">العربون {booking.depositAmount.toLocaleString()} ج.م · عرض التفاصيل</span></div>
-                  </button>
-                ))}
-              </div>
-            ) : (
-              <div className="bg-slate-50 p-8 rounded-3xl border border-slate-200 text-center my-6">
-                <CalendarCheck className="w-10 h-10 text-[#0059FF] mx-auto mb-2" />
-                <h3 className="text-sm font-black text-slate-900 mb-1">لا توجد طلبات حجز حالية</h3>
-                <p className="text-xs text-slate-500 mb-5 font-bold">
-                  اختر إقامتك المفضل في الساحل الشمالي واطلب حجز الوحدة لتتابع حالة الطلب هنا.
-                </p>
-                <button
-                  onClick={() => setActiveTab('EXPLORE')}
-                  className="px-5 py-2.5 bg-[#0059FF] text-white font-extrabold text-xs rounded-xl shadow-xs"
-                >
-                  استكشف الإقامات الآن
-                </button>
-              </div>
-            )}
-          </div>
+          <CustomerMyBookingsScreen
+            authState={bookingsAuthState}
+            loadState={bookingsLoadState}
+            bookings={customerBookings}
+            error={bookingsError}
+            recentSubmission={recentBookingSubmission}
+            onOpenBooking={(bookingId) => setBookingDetailId(bookingId)}
+            onRetry={() => {
+              void fetchBookings(authToken);
+            }}
+            onRefresh={() => {
+              void fetchBookings(authToken, true);
+            }}
+            onExplore={() => {
+              setActiveTab('EXPLORE');
+            }}
+            onLogin={() => {
+              openAuthEntry({ type: 'BOOKINGS_TAB' }, 'LOGIN');
+            }}
+          />
         )}
 
         {/* Tab 4: ACCOUNT */}
@@ -1514,8 +1544,14 @@ export function App() {
         <BookingDetailModal
           bookingId={bookingDetailId}
           authToken={authToken}
-          onClose={() => setBookingDetailId(null)}
-          onPaymentSuccess={() => { void fetchBookings(authToken); void fetchAccountSummary(authToken); }}
+          onClose={() => {
+            setBookingDetailId(null);
+            void fetchBookings(authToken).catch(() => undefined);
+          }}
+          onPaymentSuccess={() => {
+            void fetchBookings(authToken).catch(() => undefined);
+            void fetchAccountSummary(authToken).catch(() => undefined);
+          }}
         />
       )}
 
@@ -1571,6 +1607,10 @@ export function App() {
         <BookingRequestSentScreen
           state={bookingRequestSent}
           onGoToBookings={() => {
+            setRecentBookingSubmission({
+              id: bookingRequestSent.booking.id,
+              bookingNumber: bookingRequestSent.booking.bookingNumber,
+            });
             setBookingRequestSent(null);
             setSelectedProperty(null);
             setDiscoveryView('EXPLORE');
@@ -1601,6 +1641,7 @@ export function App() {
             setActiveTab(tab);
           }}
           favoritesCount={favorites.length}
+          hasBookingActionRequired={hasBookingActionRequired(customerBookings)}
           hasActiveBooking={!!activeBooking}
         />
       )}

@@ -8,6 +8,7 @@ interface CustomerBottomNavProps {
   onSelectTab: (tab: CustomerTabType) => void;
   favoritesCount?: number;
   hasActiveBooking?: boolean;
+  hasBookingActionRequired?: boolean;
 }
 
 const TABS: Array<{
@@ -33,7 +34,10 @@ export const CustomerBottomNav: React.FC<CustomerBottomNavProps> = ({
   onSelectTab,
   favoritesCount = 0,
   hasActiveBooking = false,
+  hasBookingActionRequired,
 }) => {
+  const showBookingAttention = hasBookingActionRequired ?? hasActiveBooking;
+
   return (
     <nav
       aria-label="التنقل الرئيسي"
@@ -60,8 +64,8 @@ export const CustomerBottomNav: React.FC<CustomerBottomNavProps> = ({
                     {favoritesCount}
                   </span>
                 )}
-                {badge === 'ACTIVE_BOOKING' && hasActiveBooking && (
-                  <span className="absolute -top-1 -right-1.5 w-2.5 h-2.5 bg-emerald-500 rounded-full ring-2 ring-white" />
+                {badge === 'ACTIVE_BOOKING' && showBookingAttention && (
+                  <span className="absolute -top-1 -right-1.5 w-2 h-2 bg-[#0059FF] rounded-full ring-2 ring-white" />
                 )}
               </span>
               <span className={`text-[11px] leading-none ${isActive ? 'font-bold' : 'font-semibold'}`}>{label}</span>

@@ -9,7 +9,11 @@ import { CustomerEditAccountPage } from './components/CustomerEditAccountPage';
 import { CustomerSupportModal } from './components/CustomerSupportModal';
 import { CustomerWalletModal } from './components/CustomerWalletModal';
 import type { BookingDetails } from './components/CustomerCheckoutModal';
-import { BookingSuccessModal } from './components/BookingSuccessModal';
+import { BookingRequestSentScreen } from './components/BookingRequestSentScreen';
+import {
+  type BookingRequestSentState,
+  resolveScreen11SuccessRouting,
+} from './utils/customerScreen11BookingRequestSent';
 import { BookingDetailModal, type CustomerBookingRecord } from './components/BookingDetailModal';
 import { CustomerBottomNav, CustomerTabType } from './components/CustomerBottomNav';
 import { CustomerSplashScreen } from './components/CustomerSplashScreen';
@@ -122,7 +126,7 @@ export function App() {
   const [authResumePermission, setAuthResumePermission] = useState<CustomerAuthResumePermission | null>(null);
   const [showSupportModal, setShowSupportModal] = useState<boolean>(false);
   const [showWalletModal, setShowWalletModal] = useState<boolean>(false);
-  const [showSuccessModal, setShowSuccessModal] = useState<boolean>(false);
+  const [bookingRequestSent, setBookingRequestSent] = useState<BookingRequestSentState | null>(null);
   const [restoreBookingReview, setRestoreBookingReview] = useState<boolean>(false);
 
   // Intercepted Guest Context
@@ -836,23 +840,39 @@ export function App() {
 
 
   const handleBookingSuccess = async (bookingData: any) => {
-    try {
-      const record = toBookingRecord(bookingData);
-      setActiveBooking(toBookingDetails(record));
-    } catch {
-      // fallback
-    }
-    const token = authToken || localStorage.getItem('sola_customer_access_token');
-    if (token) {
-      void fetchBookings(token).catch(() => undefined);
-      void fetchAccountSummary(token).catch(() => undefined);
-    }
+    // 1. Capture safe optional property presentation title before clearing state
+    const propertyTitle = selectedProperty?.title || null;
+
+    // 2. Resolve truthful routing
+    const routing = resolveScreen11SuccessRouting(bookingData, propertyTitle);
+
+    // 3. Clear Screen 07 / Property Detail & pending booking intent safely
     setSelectedProperty(null);
     setRestoreBookingReview(false);
     setInterceptedContext(null);
     setAuthResumePermission(null);
     localStorage.removeItem('sola_customer_pending_booking_intent');
-    setShowSuccessModal(true);
+
+    // 4. Update state based on canonical routing
+    if (routing.action === 'SHOW_SCREEN_11') {
+      setBookingRequestSent(routing.state);
+    } else {
+      // Replay has progressed beyond pending owner review (approved, confirmed, etc.)
+      try {
+        const record = toBookingRecord(bookingData);
+        setActiveBooking(toBookingDetails(record));
+      } catch {}
+      setDiscoveryView('EXPLORE');
+      setIsEditingAccount(false);
+      setActiveTab('BOOKINGS');
+    }
+
+    // 5. Allow background booking and account summary refresh (failure must NOT gate Screen 11)
+    const token = authToken || localStorage.getItem('sola_customer_access_token');
+    if (token) {
+      void fetchBookings(token).catch(() => undefined);
+      void fetchAccountSummary(token).catch(() => undefined);
+    }
   };
 
   // ===== First-entry gate (Phase 5 / C1) =====
@@ -1546,35 +1566,34 @@ export function App() {
         />
       )}
 
-      {/* Request Success Modal */}
-      {showSuccessModal && activeBooking && (
-        <BookingSuccessModal
-          bookingNumber={activeBooking.bookingNumber}
-          propertyTitle={activeBooking.propertyTitle}
-          checkIn={activeBooking.checkIn}
-          checkOut={activeBooking.checkOut}
-          nights={activeBooking.totalNights}
-          depositAmount={activeBooking.depositAmountEgp}
+      {/* Screen 11 — Booking Request Sent (dedicated full-screen mobile surface) */}
+      {bookingRequestSent && (
+        <BookingRequestSentScreen
+          state={bookingRequestSent}
           onGoToBookings={() => {
-            setShowSuccessModal(false);
+            setBookingRequestSent(null);
             setSelectedProperty(null);
             setDiscoveryView('EXPLORE');
             setIsEditingAccount(false);
             setActiveTab('BOOKINGS');
             setSearchIntent(EMPTY_SEARCH_INTENT);
-            void fetchBookings(authToken);
+            if (authToken) {
+              void fetchBookings(authToken).catch(() => undefined);
+            }
           }}
-          onClose={() => {
-            setShowSuccessModal(false);
+          onGoToExplore={() => {
+            setBookingRequestSent(null);
             setSelectedProperty(null);
             setDiscoveryView('EXPLORE');
+            setIsEditingAccount(false);
+            setActiveTab('EXPLORE');
             setSearchIntent(EMPTY_SEARCH_INTENT);
           }}
         />
       )}
 
-      {/* Native Persistent Mobile Bottom Navigation Bar (hidden during property details or edit account view) */}
-      {!selectedProperty && !isEditingAccount && discoveryView === 'EXPLORE' && (
+      {/* Native Persistent Mobile Bottom Navigation Bar (hidden during property details, edit account view, or Screen 11) */}
+      {!selectedProperty && !isEditingAccount && discoveryView === 'EXPLORE' && !bookingRequestSent && (
         <CustomerBottomNav
           activeTab={activeTab}
           onSelectTab={(tab) => {

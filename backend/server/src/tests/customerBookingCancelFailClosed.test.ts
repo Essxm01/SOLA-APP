@@ -19,7 +19,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ExpressServerApp } from '../app.js';
 import { signAccessToken } from '../services/jwtService.js';
-import { bookingDb, propertyDb, userDb } from '../services/dbRepository.js';
+import { bookingDb, propertyDb, userDb, propertyAvailabilityDb } from '../services/dbRepository.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -45,12 +45,16 @@ async function runSuite() {
   const origBookingCancelForCustomer = bookingDb.cancelForCustomer;
   const origBookingUpdateStatusForOwner = bookingDb.updateStatusForOwner;
   const origPropertyGetById = propertyDb.getById;
+  const origPropertyAvailabilityGetByPropertyId = propertyAvailabilityDb.getByPropertyId;
+  const origBookingGetBlocksByPropertyId = bookingDb.getBlocksByPropertyId;
 
   function restoreMocks() {
     (bookingDb as any).getById = origBookingGetById;
     (bookingDb as any).cancelForCustomer = origBookingCancelForCustomer;
     (bookingDb as any).updateStatusForOwner = origBookingUpdateStatusForOwner;
     (propertyDb as any).getById = origPropertyGetById;
+    (propertyAvailabilityDb as any).getByPropertyId = origPropertyAvailabilityGetByPropertyId;
+    (bookingDb as any).getBlocksByPropertyId = origBookingGetBlocksByPropertyId;
   }
 
   try {
@@ -252,8 +256,8 @@ async function runSuite() {
     // 9. Existing Owner booking decision regressions still pass
     // -------------------------------------------------------------------------
     let ownerDecisionCalledWith: any = null;
-    const origGetBlocks = bookingDb.getBlocksByPropertyId;
     (bookingDb as any).getBlocksByPropertyId = async () => [];
+    (propertyAvailabilityDb as any).getByPropertyId = async () => [];
     (bookingDb as any).getById = async (id: string) => ({
       id,
       bookingNumber: 'BK-OWNER-DECISION',
@@ -302,7 +306,8 @@ async function runSuite() {
     });
     assert.equal(resReject.statusCode, 200, 'Test 9: Owner reject must succeed');
     assert.equal(ownerDecisionCalledWith.status, 'REJECTED', 'Test 9: Owner reject updates to REJECTED');
-    (bookingDb as any).getBlocksByPropertyId = origGetBlocks;
+    (bookingDb as any).getBlocksByPropertyId = origBookingGetBlocksByPropertyId;
+    (propertyAvailabilityDb as any).getByPropertyId = origPropertyAvailabilityGetByPropertyId;
     console.log('  ✅ 9. Existing Owner booking decision regressions still pass');
 
     // -------------------------------------------------------------------------

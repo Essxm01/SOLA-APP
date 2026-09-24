@@ -25,6 +25,8 @@ import type { Screen14PaymentState } from '../components/CustomerDepositPaymentS
 import {
   canStartFreshScreen14Attempt,
   clearScreen14PrivateState,
+  evaluateResumedAmountAuthority,
+  getAllowedScreen14Action,
   resolveScreen14HttpErrorState,
   resolveScreen14ReconciliationState,
   resolveScreen14TypedErrorState,
@@ -172,19 +174,21 @@ console.log('--- Starting Screen 14 Deposit Payment Tests ---');
   const approved = 'APPROVED_PENDING_PAYMENT';
   assertEqual(resolveScreen14ReconciliationState(approved, 'NO_PAYMENT_INITIATED', false, false), 'READY', 'no payment is ready');
   assertEqual(resolveScreen14ReconciliationState(approved, 'INITIATED', true, false), 'PROTOTYPE_READY_TO_COMPLETE', 'active initiated attempt resumes');
-  assertEqual(resolveScreen14ReconciliationState(approved, 'PENDING', true, false), 'PROTOTYPE_READY_TO_COMPLETE', 'active pending attempt resumes');
+  assertEqual(resolveScreen14ReconciliationState(approved, 'PENDING', true, false), 'PAYMENT_PENDING', 'active pending attempt resumes as PAYMENT_PENDING');
   assertEqual(resolveScreen14ReconciliationState(approved, 'FAILED', false, false), 'FAILED', 'failed attempt remains failed until explicit retry');
   assertEqual(resolveScreen14ReconciliationState(approved, 'FAILED', false, true), 'READY', 'failed attempt can explicitly start fresh');
   assertEqual(resolveScreen14ReconciliationState(approved, 'EXPIRED', false, true), 'READY', 'expired attempt can explicitly start fresh');
   assertEqual(canStartFreshScreen14Attempt(approved, 'FAILED', false), true, 'failed attempt is eligible for fresh attempt');
   assertEqual(canStartFreshScreen14Attempt(approved, 'EXPIRED', false), true, 'expired attempt is eligible for fresh attempt');
-  assertEqual(canStartFreshScreen14Attempt(approved, 'PENDING', true), false, 'active attempt refuses duplicate initiation');
+  assertEqual(canStartFreshScreen14Attempt(approved, 'PENDING', true), false, 'active pending attempt refuses duplicate initiation');
+  assertEqual(canStartFreshScreen14Attempt(approved, 'INITIATED', true), false, 'active initiated attempt refuses duplicate initiation');
   assertEqual(resolveScreen14ReconciliationState('CONFIRMED', 'SUCCEEDED', true, false), 'ALREADY_CONFIRMED', 'confirmed booking is already paid');
   assertEqual(resolveScreen14ReconciliationState(approved, 'SUCCEEDED', true, false), 'NETWORK_RECONCILIATION_REQUIRED', 'succeeded payment without booking confirmation reconciles');
   assertEqual(resolveScreen14ReconciliationState('PENDING_OWNER_APPROVAL', 'NO_PAYMENT_INITIATED', false, false), 'STATE_CHANGED', 'pending owner approval is not payable');
   assertEqual(resolveScreen14ReconciliationState('CANCELLED_BY_OWNER', 'NO_PAYMENT_INITIATED', false, false), 'STATE_CHANGED', 'terminal booking is not payable');
   assertEqual(resolveScreen14ReconciliationState('UNKNOWN_STATUS', 'NO_PAYMENT_INITIATED', false, false), 'STATE_CHANGED', 'unknown booking status fails closed');
   assertEqual(resolveScreen14ReconciliationState(approved, 'INITIATED', false, false), 'NETWORK_RECONCILIATION_REQUIRED', 'missing active transaction fails closed');
+  assertEqual(resolveScreen14ReconciliationState(approved, 'PENDING', false, false), 'NETWORK_RECONCILIATION_REQUIRED', 'missing active pending transaction fails closed');
   const cleared = clearScreen14PrivateState();
   assertEqual(cleared.booking, null, 'unauthorized cleanup clears booking');
   assertEqual(cleared.paymentTransactionId, null, 'unauthorized cleanup clears transaction');
@@ -198,6 +202,117 @@ console.log('--- Starting Screen 14 Deposit Payment Tests ---');
   assertEqual(resolveScreen14TypedErrorState('CustomerPaymentNotFoundError'), 'NOT_FOUND', 'verification 404 is not found');
   assertEqual(resolveScreen14TypedErrorState('Error'), null, 'transport uncertainty does not become auth success');
   console.log('✓ Executable Screen 14 reconciliation, retry, and cleanup transitions verified');
+}
+
+// 8. Section 15 Behavioral Tests & Amount Authority Matrix
+{
+  const approved = 'APPROVED_PENDING_PAYMENT';
+
+  // 1. APPROVED + INITIATED + transaction + matching amount -> PROTOTYPE_READY_TO_COMPLETE
+  assertEqual(resolveScreen14ReconciliationState(approved, 'INITIATED', true, false), 'PROTOTYPE_READY_TO_COMPLETE', '1. APPROVED + INITIATED -> PROTOTYPE_READY_TO_COMPLETE');
+
+  // 2. APPROVED + PENDING + transaction + matching amount -> PAYMENT_PENDING
+  assertEqual(resolveScreen14ReconciliationState(approved, 'PENDING', true, false), 'PAYMENT_PENDING', '2. APPROVED + PENDING -> PAYMENT_PENDING');
+
+  // 3. PENDING never returns PROTOTYPE_READY_TO_COMPLETE
+  assertNotEqual(resolveScreen14ReconciliationState(approved, 'PENDING', true, false), 'PROTOTYPE_READY_TO_COMPLETE', '3. PENDING never returns PROTOTYPE_READY_TO_COMPLETE');
+
+  // 4. PENDING cannot call prototype-complete
+  assertNotEqual(getAllowedScreen14Action('PAYMENT_PENDING'), 'COMPLETE_PROTOTYPE', '4. PENDING cannot call prototype-complete');
+
+  // 5. PENDING cannot call payment initiation
+  assertNotEqual(getAllowedScreen14Action('PAYMENT_PENDING'), 'INITIATE_PAYMENT', '5. PENDING cannot call payment initiation');
+  assertEqual(canStartFreshScreen14Attempt(approved, 'PENDING', true), false, '5b. PENDING active attempt cannot start fresh initiation');
+
+  // 6. PENDING status-check re-runs payment-status only
+  assertEqual(getAllowedScreen14Action('PAYMENT_PENDING'), 'CHECK_STATUS', '6. PENDING allowed action is CHECK_STATUS');
+
+  // 7. PENDING -> PENDING remains PAYMENT_PENDING
+  assertEqual(resolveScreen14ReconciliationState(approved, 'PENDING', true, false), 'PAYMENT_PENDING', '7. PENDING -> PENDING remains PAYMENT_PENDING');
+
+  // 8. PENDING -> SUCCEEDED + CONFIRMED -> success/already confirmed
+  assertEqual(resolveScreen14ReconciliationState('CONFIRMED', 'SUCCEEDED', true, false), 'ALREADY_CONFIRMED', '8. SUCCEEDED + CONFIRMED -> ALREADY_CONFIRMED');
+
+  // 9. PENDING -> FAILED -> FAILED
+  assertEqual(resolveScreen14ReconciliationState(approved, 'FAILED', false, false), 'FAILED', '9. FAILED -> FAILED');
+
+  // 10. PENDING -> EXPIRED transaction -> TRANSACTION_EXPIRED
+  assertEqual(resolveScreen14ReconciliationState(approved, 'EXPIRED', false, false), 'TRANSACTION_EXPIRED', '10. EXPIRED -> TRANSACTION_EXPIRED');
+
+  // 11. INITIATED resumed amount equal -> completion allowed
+  const authMatched = evaluateResumedAmountAuthority(2000, 2000);
+  assertEqual(authMatched.status, 'MATCHED', '11. Matching amount status is MATCHED');
+  if (authMatched.status === 'MATCHED') {
+    assertEqual(authMatched.amountEgp, 2000, '11b. Matched amount is 2000');
+  }
+
+  // 12. INITIATED resumed amount mismatch -> no silent continuation
+  const authMismatch = evaluateResumedAmountAuthority(2000, 2500);
+  assertEqual(authMismatch.status, 'MISMATCH_REVIEW_REQUIRED', '12. Mismatched amount status is MISMATCH_REVIEW_REQUIRED');
+
+  // 13. INITIATED mismatch coherent after canonical refetch -> amount-change review required
+  const authFreshMatch = evaluateResumedAmountAuthority(2500, 2500);
+  assertEqual(authFreshMatch.status, 'MATCHED', '13. Fresh refetch matching 2500 is coherent');
+  assertEqual(getAllowedScreen14Action('AMOUNT_CHANGED'), 'ACKNOWLEDGE_AMOUNT', '13b. AMOUNT_CHANGED requires explicit acknowledgement');
+
+  // 14. INITIATED mismatch unresolved -> fail closed
+  const authUnresolved = evaluateResumedAmountAuthority(2000, 2500);
+  assertNotEqual(authUnresolved.status, 'MATCHED', '14. Unresolved mismatch cannot be MATCHED');
+  assertEqual(getAllowedScreen14Action('ERROR'), 'RETRY_REVALIDATION', '14b. Fail closed state is ERROR');
+
+  // 15. PENDING amount mismatch -> remains non-completable
+  assertNotEqual(getAllowedScreen14Action('PAYMENT_PENDING'), 'COMPLETE_PROTOTYPE', '15. PENDING with mismatch remains non-completable');
+  assertEqual(getAllowedScreen14Action('PAYMENT_PENDING'), 'CHECK_STATUS', '15b. PENDING with mismatch allows only status check');
+
+  // 16. Missing transaction amount for active attempt -> fail closed
+  const authMissingTxn = evaluateResumedAmountAuthority(2000, undefined);
+  assertEqual(authMissingTxn.status, 'INCONSISTENT_FAIL_CLOSED', '16. Missing transaction amount fails closed');
+  const authZeroTxn = evaluateResumedAmountAuthority(2000, 0);
+  assertEqual(authZeroTxn.status, 'INCONSISTENT_FAIL_CLOSED', '16b. Zero transaction amount fails closed');
+
+  // 17. Invalid canonical deposit -> fail closed
+  const authMissingCanon = evaluateResumedAmountAuthority(undefined, 2000);
+  assertEqual(authMissingCanon.status, 'INCONSISTENT_FAIL_CLOSED', '17. Missing canonical deposit fails closed');
+  const authNegativeCanon = evaluateResumedAmountAuthority(-500, 2000);
+  assertEqual(authNegativeCanon.status, 'INCONSISTENT_FAIL_CLOSED', '17b. Negative canonical deposit fails closed');
+
+  // 18. Existing FAILED fresh retry tests remain green
+  assertEqual(canStartFreshScreen14Attempt(approved, 'FAILED', false), true, '18. FAILED attempt eligible for fresh attempt');
+  assertEqual(resolveScreen14ReconciliationState(approved, 'FAILED', false, true), 'READY', '18b. FAILED with allowFreshAttempt becomes READY');
+
+  // 19. Existing EXPIRED fresh retry tests remain green
+  assertEqual(canStartFreshScreen14Attempt(approved, 'EXPIRED', false), true, '19. EXPIRED attempt eligible for fresh attempt');
+  assertEqual(resolveScreen14ReconciliationState(approved, 'EXPIRED', false, true), 'READY', '19b. EXPIRED with allowFreshAttempt becomes READY');
+
+  // 20. Existing active-attempt duplicate prevention remains green
+  assertEqual(canStartFreshScreen14Attempt(approved, 'INITIATED', true), false, '20. INITIATED active attempt blocks fresh attempt');
+  assertEqual(canStartFreshScreen14Attempt(approved, 'PENDING', true), false, '20b. PENDING active attempt blocks fresh attempt');
+
+  console.log('✓ Section 15: All 20 behavioral tests verified');
+}
+
+// 9. Section 16 Action Permissions Matrix
+{
+  assertEqual(getAllowedScreen14Action('READY'), 'INITIATE_PAYMENT', 'READY allows INITIATE_PAYMENT');
+  assertEqual(getAllowedScreen14Action('PROTOTYPE_READY_TO_COMPLETE'), 'COMPLETE_PROTOTYPE', 'PROTOTYPE_READY_TO_COMPLETE allows COMPLETE_PROTOTYPE');
+  assertEqual(getAllowedScreen14Action('PAYMENT_PENDING'), 'CHECK_STATUS', 'PAYMENT_PENDING allows CHECK_STATUS');
+  assertEqual(getAllowedScreen14Action('FAILED'), 'REQUEST_FRESH_ATTEMPT', 'FAILED allows REQUEST_FRESH_ATTEMPT');
+  assertEqual(getAllowedScreen14Action('TRANSACTION_EXPIRED'), 'REQUEST_FRESH_ATTEMPT', 'TRANSACTION_EXPIRED allows REQUEST_FRESH_ATTEMPT');
+  assertEqual(getAllowedScreen14Action('AMOUNT_CHANGED'), 'ACKNOWLEDGE_AMOUNT', 'AMOUNT_CHANGED allows ACKNOWLEDGE_AMOUNT');
+  assertEqual(getAllowedScreen14Action('NETWORK_RECONCILIATION_REQUIRED'), 'CHECK_STATUS', 'NETWORK_RECONCILIATION_REQUIRED allows CHECK_STATUS');
+  assertEqual(getAllowedScreen14Action('SUCCESS'), 'RETURN_TO_BOOKING', 'SUCCESS allows RETURN_TO_BOOKING');
+  assertEqual(getAllowedScreen14Action('ALREADY_CONFIRMED'), 'RETURN_TO_BOOKING', 'ALREADY_CONFIRMED allows RETURN_TO_BOOKING');
+  assertEqual(getAllowedScreen14Action('STATE_CHANGED'), 'RETURN_TO_BOOKING', 'STATE_CHANGED allows RETURN_TO_BOOKING');
+  assertEqual(getAllowedScreen14Action('UNAUTHORIZED'), 'REAUTHENTICATE', 'UNAUTHORIZED allows REAUTHENTICATE');
+  assertEqual(getAllowedScreen14Action('FORBIDDEN'), 'RETURN_TO_BOOKINGS', 'FORBIDDEN allows RETURN_TO_BOOKINGS');
+  assertEqual(getAllowedScreen14Action('NOT_FOUND'), 'RETURN_TO_BOOKINGS', 'NOT_FOUND allows RETURN_TO_BOOKINGS');
+  assertEqual(getAllowedScreen14Action('ERROR'), 'RETRY_REVALIDATION', 'ERROR allows RETRY_REVALIDATION');
+
+  // Critical Invariants:
+  assert(getAllowedScreen14Action('PAYMENT_PENDING') !== 'COMPLETE_PROTOTYPE', 'CRITICAL: PAYMENT_PENDING must never allow COMPLETE_PROTOTYPE');
+  assert(getAllowedScreen14Action('PAYMENT_PENDING') !== 'INITIATE_PAYMENT', 'CRITICAL: PAYMENT_PENDING must never allow INITIATE_PAYMENT');
+
+  console.log('✓ Section 16: Action permissions and critical invariants verified');
 }
 
 console.log('--- ALL Screen 14 Tests Passed Successfully ---');

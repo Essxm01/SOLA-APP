@@ -35,6 +35,8 @@ import {
 import type { CustomerBookingDetailDto } from '../types/customerBookingDetail';
 import {
   clearScreen14PrivateState,
+  evaluateResumedAmountAuthority,
+  getAllowedScreen14Action,
   resolveScreen14HttpErrorState,
   resolveScreen14ReconciliationState,
   resolveScreen14TypedErrorState,
@@ -95,6 +97,7 @@ export const CustomerDepositPaymentScreen: React.FC<CustomerDepositPaymentScreen
   const idempotencyKeyRef = useRef<string>(generateAttemptKey());
   const isActionLockedRef = useRef<boolean>(false);
   const freshAttemptRequestedRef = useRef<boolean>(false);
+  const statusCheckSourceRef = useRef<'PENDING' | 'PROTOTYPE' | 'NETWORK' | null>(null);
 
   const clearPrivatePaymentState = useCallback(() => {
     const cleared = clearScreen14PrivateState();
@@ -167,15 +170,80 @@ export const CustomerDepositPaymentScreen: React.FC<CustomerDepositPaymentScreen
         );
 
         if (['INITIATED', 'PENDING'].includes(paymentStatusResult.paymentStatus) && paymentStatusResult.paymentTransactionId) {
-          // Resume existing initiated attempt
-          setPaymentTransactionId(paymentStatusResult.paymentTransactionId);
-          setActiveDepositEgp(paymentStatusResult.amountEgp || canonicalBooking.depositAmount);
-          setPaymentState(resolveScreen14ReconciliationState(
-            canonicalBooking.status,
-            paymentStatusResult.paymentStatus,
-            true,
-            allowFreshAttempt,
-          ));
+          // Resumed active attempt: must pass amount authority check before proceeding
+          const authority = evaluateResumedAmountAuthority(
+            canonicalBooking.depositAmount,
+            paymentStatusResult.amountEgp,
+          );
+
+          if (authority.status === 'MATCHED') {
+            setPaymentTransactionId(paymentStatusResult.paymentTransactionId);
+            setActiveDepositEgp(authority.amountEgp);
+            setPaymentState(resolveScreen14ReconciliationState(
+              canonicalBooking.status,
+              paymentStatusResult.paymentStatus,
+              true,
+              allowFreshAttempt,
+            ));
+            return;
+          }
+
+          if (authority.status === 'MISMATCH_REVIEW_REQUIRED') {
+            // Amount mismatch between canonical booking and transaction
+            // Re-fetch canonical booking to check coherence with backend update
+            const freshRes = await fetch(getApiUrl(`/customer/bookings/${bookingId}`), {
+              headers: { Authorization: `Bearer ${authToken}` },
+            });
+            const freshAccessState = resolveScreen14HttpErrorState(freshRes.status);
+            if (freshAccessState) {
+              clearPrivatePaymentState();
+              setPaymentState(freshAccessState);
+              return;
+            }
+            const freshJson = await freshRes.json().catch(() => ({}));
+            const freshBooking: CustomerBookingDetailDto | null =
+              freshRes.ok && freshJson.success && freshJson.data ? freshJson.data : null;
+
+            if (freshBooking && freshBooking.depositAmount === paymentStatusResult.amountEgp) {
+              // Server booking coherently matches the transaction amount
+              if (paymentStatusResult.paymentStatus === 'INITIATED') {
+                setPreviousDepositEgp(canonicalBooking.depositAmount);
+                setBooking(freshBooking);
+                setActiveDepositEgp(freshBooking.depositAmount);
+                setPaymentTransactionId(paymentStatusResult.paymentTransactionId);
+                setPaymentState('AMOUNT_CHANGED');
+                return;
+              } else {
+                // For PENDING: Section 5 - amount acknowledgement cannot bypass PENDING state
+                setBooking(freshBooking);
+                setActiveDepositEgp(freshBooking.depositAmount);
+                setPaymentTransactionId(paymentStatusResult.paymentTransactionId);
+                setPaymentState('PAYMENT_PENDING');
+                return;
+              }
+            }
+
+            // Inconsistent: transaction amount does not match canonical booking even after fresh read
+            if (paymentStatusResult.paymentStatus === 'PENDING') {
+              setPaymentTransactionId(paymentStatusResult.paymentTransactionId);
+              setPaymentState('PAYMENT_PENDING');
+              return;
+            }
+
+            // For INITIATED: fail closed if inconsistent
+            setErrorMessage('تعذر متابعة الدفع بسبب عدم تطابق مبالغ الحجز المعتمدة.');
+            setPaymentState('ERROR');
+            return;
+          }
+
+          // INCONSISTENT_FAIL_CLOSED (missing/invalid amounts)
+          if (paymentStatusResult.paymentStatus === 'PENDING') {
+            setPaymentTransactionId(paymentStatusResult.paymentTransactionId);
+            setPaymentState('PAYMENT_PENDING');
+            return;
+          }
+          setErrorMessage('تعذر متابعة الدفع بسبب عدم تطابق مبالغ الحجز المعتمدة.');
+          setPaymentState('ERROR');
           return;
         }
 
@@ -222,7 +290,7 @@ export const CustomerDepositPaymentScreen: React.FC<CustomerDepositPaymentScreen
   // Step 1: Initiate Prototype Payment (POST /pay)
   // ---------------------------------------------------------------------------
   const handleInitiatePayment = async () => {
-    if (isActionLockedRef.current) return;
+    if (isActionLockedRef.current || getAllowedScreen14Action(paymentState) !== 'INITIATE_PAYMENT') return;
     isActionLockedRef.current = true;
     setPaymentState('INITIATING');
     setErrorMessage(null);
@@ -308,8 +376,9 @@ export const CustomerDepositPaymentScreen: React.FC<CustomerDepositPaymentScreen
   // Step 2: Complete Prototype Payment (POST /pay/prototype-complete)
   // ---------------------------------------------------------------------------
   const handleCompletePrototypePayment = async () => {
-    if (!paymentTransactionId || isActionLockedRef.current) return;
+    if (!paymentTransactionId || isActionLockedRef.current || getAllowedScreen14Action(paymentState) !== 'COMPLETE_PROTOTYPE') return;
     isActionLockedRef.current = true;
+    statusCheckSourceRef.current = 'PROTOTYPE';
     setPaymentState('CHECKING_STATUS');
     setErrorMessage(null);
 
@@ -346,10 +415,10 @@ export const CustomerDepositPaymentScreen: React.FC<CustomerDepositPaymentScreen
       // Check payment status before reporting failure
       try {
         const verifyStatus = await CustomerPaymentService.getPaymentStatus(bookingId, authToken);
-      if (verifyStatus.paymentStatus === 'SUCCEEDED' && verifyStatus.bookingStatus === 'CONFIRMED') {
-        setPaymentState('SUCCESS');
-        return;
-      }
+        if (verifyStatus.paymentStatus === 'SUCCEEDED' && verifyStatus.bookingStatus === 'CONFIRMED') {
+          setPaymentState('SUCCESS');
+          return;
+        }
       } catch (verifyErr: any) {
         const verificationAccessState = resolveScreen14TypedErrorState(verifyErr?.name);
         if (verificationAccessState) {
@@ -364,6 +433,109 @@ export const CustomerDepositPaymentScreen: React.FC<CustomerDepositPaymentScreen
       setPaymentState('FAILED');
     } finally {
       isActionLockedRef.current = false;
+      statusCheckSourceRef.current = null;
+    }
+  };
+
+  // ---------------------------------------------------------------------------
+  // Check Payment Status (GET /payment-status only — PENDING / Reconcile)
+  // ---------------------------------------------------------------------------
+  const handleCheckPaymentStatus = async () => {
+    if (isActionLockedRef.current) return;
+    isActionLockedRef.current = true;
+    statusCheckSourceRef.current = 'PENDING';
+    setPaymentState('CHECKING_STATUS');
+    setErrorMessage(null);
+
+    try {
+      const paymentStatusResult: PaymentStatusResult = await CustomerPaymentService.getPaymentStatus(
+        bookingId,
+        authToken
+      );
+
+      // 1. Still PENDING: remains in PAYMENT_PENDING
+      if (paymentStatusResult.paymentStatus === 'PENDING') {
+        if (paymentStatusResult.paymentTransactionId) {
+          setPaymentTransactionId(paymentStatusResult.paymentTransactionId);
+        }
+        setPaymentState('PAYMENT_PENDING');
+        return;
+      }
+
+      // 2. INITIATED: evaluate amount authority before allowing completion
+      if (paymentStatusResult.paymentStatus === 'INITIATED' && paymentStatusResult.paymentTransactionId) {
+        setPaymentTransactionId(paymentStatusResult.paymentTransactionId);
+        const authority = evaluateResumedAmountAuthority(
+          booking?.depositAmount,
+          paymentStatusResult.amountEgp
+        );
+        if (authority.status === 'MATCHED') {
+          setActiveDepositEgp(authority.amountEgp);
+          setPaymentState('PROTOTYPE_READY_TO_COMPLETE');
+          return;
+        }
+        // Mismatch or invalid on INITIATED: revalidate full booking
+        await revalidateAndReconcile();
+        return;
+      }
+
+      // 3. SUCCEEDED: if booking confirmed, success; else re-read booking
+      if (paymentStatusResult.paymentStatus === 'SUCCEEDED') {
+        if (paymentStatusResult.bookingStatus === 'CONFIRMED' || booking?.status === 'CONFIRMED') {
+          setPaymentState('SUCCESS');
+          return;
+        }
+        await revalidateAndReconcile();
+        return;
+      }
+
+      // 4. FAILED / EXPIRED / Terminal statuses
+      if (paymentStatusResult.paymentStatus === 'FAILED') {
+        setPaymentState('FAILED');
+        return;
+      }
+
+      if (paymentStatusResult.paymentStatus === 'EXPIRED') {
+        setPaymentState('TRANSACTION_EXPIRED');
+        return;
+      }
+
+      if (paymentStatusResult.bookingStatus === 'CONFIRMED') {
+        setPaymentState('ALREADY_CONFIRMED');
+        return;
+      }
+
+      if (paymentStatusResult.bookingStatus !== 'APPROVED_PENDING_PAYMENT') {
+        setPaymentState('STATE_CHANGED');
+        return;
+      }
+
+      setPaymentState(resolveScreen14ReconciliationState(
+        paymentStatusResult.bookingStatus,
+        paymentStatusResult.paymentStatus,
+        Boolean(paymentStatusResult.paymentTransactionId),
+        false,
+      ));
+    } catch (statusErr: any) {
+      if (statusErr instanceof CustomerPaymentUnauthorizedError) {
+        clearPrivatePaymentState();
+        setPaymentState('UNAUTHORIZED');
+        return;
+      }
+      if (statusErr instanceof CustomerPaymentForbiddenError) {
+        clearPrivatePaymentState();
+        setPaymentState('FORBIDDEN');
+        return;
+      }
+      if (statusErr instanceof CustomerPaymentNotFoundError) {
+        clearPrivatePaymentState();
+        setPaymentState('NOT_FOUND');
+        return;
+      }
+      setPaymentState('NETWORK_RECONCILIATION_REQUIRED');
+    } finally {
+      isActionLockedRef.current = false;
+      statusCheckSourceRef.current = null;
     }
   };
 
@@ -680,9 +852,16 @@ export const CustomerDepositPaymentScreen: React.FC<CustomerDepositPaymentScreen
   // ---------------------------------------------------------------------------
   const isInitiating = paymentState === 'INITIATING';
   const isCheckingOrCompleting = paymentState === 'CHECKING_STATUS';
-  const isReadyToComplete = paymentState === 'PROTOTYPE_READY_TO_COMPLETE';
+  const isReadyToComplete =
+    paymentState === 'PROTOTYPE_READY_TO_COMPLETE' ||
+    (paymentState === 'CHECKING_STATUS' && statusCheckSourceRef.current === 'PROTOTYPE');
+  const isPending =
+    paymentState === 'PAYMENT_PENDING' ||
+    (paymentState === 'CHECKING_STATUS' && statusCheckSourceRef.current === 'PENDING');
   const isAmountChanged = paymentState === 'AMOUNT_CHANGED';
-  const isReconciliationRequired = paymentState === 'NETWORK_RECONCILIATION_REQUIRED';
+  const isReconciliationRequired =
+    paymentState === 'NETWORK_RECONCILIATION_REQUIRED' ||
+    (paymentState === 'CHECKING_STATUS' && statusCheckSourceRef.current === 'NETWORK');
   const isExpired = paymentState === 'TRANSACTION_EXPIRED';
   const isFailed = paymentState === 'FAILED';
 
@@ -782,7 +961,7 @@ export const CustomerDepositPaymentScreen: React.FC<CustomerDepositPaymentScreen
               <span>تم تحديث مبلغ العربون</span>
             </div>
             <p className="text-sm text-blue-800 leading-relaxed">
-              تغيّر مبلغ العربون قبل بدء الدفع. راجع المبلغ الجديد قبل المتابعة.
+              تغيّر مبلغ العربون قبل متابعة الدفع. راجع المبلغ الجديد قبل المتابعة.
             </p>
             <div className="text-sm space-y-1 bg-white p-3 rounded-2xl border border-blue-100">
               <div className="flex justify-between text-slate-500">
@@ -800,6 +979,40 @@ export const CustomerDepositPaymentScreen: React.FC<CustomerDepositPaymentScreen
             >
               موافق على المبلغ الجديد والمتابعة
             </button>
+          </section>
+        )}
+
+        {/* Payment Pending State */}
+        {isPending && (
+          <section className="bg-slate-50 border border-slate-200/90 rounded-3xl p-5 shadow-xs text-center space-y-3">
+            <div className="w-12 h-12 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center mx-auto">
+              <Clock className="w-6 h-6" />
+            </div>
+            <h3 className="text-base font-bold text-slate-900">عملية الدفع قيد التحقق</h3>
+            <p className="text-sm text-slate-600 leading-relaxed max-w-xs mx-auto">
+              لم يتم تأكيد الدفع بعد.
+              <br />
+              سنُظهر النتيجة بعد التحقق من حالته.
+            </p>
+            <div className="pt-2">
+              <button
+                onClick={() => void handleCheckPaymentStatus()}
+                disabled={isCheckingOrCompleting}
+                className="w-full h-[52px] bg-[var(--konfrm-color-primary)] hover:bg-[var(--konfrm-color-primary-hover)] active:scale-[0.99] text-white font-bold rounded-2xl shadow-sm transition-all flex items-center justify-center gap-2 text-sm disabled:opacity-60"
+              >
+                {isCheckingOrCompleting && statusCheckSourceRef.current === 'PENDING' ? (
+                  <>
+                    <RefreshCw className="w-5 h-5 animate-spin" />
+                    <span>جارٍ التحقق من حالة الدفع…</span>
+                  </>
+                ) : (
+                  <>
+                    <RefreshCw className="w-5 h-5" />
+                    <span>التحقق من حالة الدفع</span>
+                  </>
+                )}
+              </button>
+            </div>
           </section>
         )}
 
@@ -846,11 +1059,24 @@ export const CustomerDepositPaymentScreen: React.FC<CustomerDepositPaymentScreen
               سنراجع حالة العملية الحالية قبل بدء محاولة جديدة.
             </p>
             <button
-              onClick={() => void revalidateAndReconcile()}
-              className="w-full h-12 bg-amber-600 text-white font-bold rounded-2xl text-sm shadow-sm hover:bg-amber-700 transition-colors flex items-center justify-center gap-2"
+              onClick={() => {
+                statusCheckSourceRef.current = 'NETWORK';
+                void revalidateAndReconcile();
+              }}
+              disabled={isCheckingOrCompleting}
+              className="w-full h-12 bg-amber-600 text-white font-bold rounded-2xl text-sm shadow-sm hover:bg-amber-700 transition-colors flex items-center justify-center gap-2 disabled:opacity-60"
             >
-              <RefreshCw className="w-4 h-4" />
-              <span>التحقق من حالة الدفع</span>
+              {isCheckingOrCompleting && statusCheckSourceRef.current === 'NETWORK' ? (
+                <>
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                  <span>جارٍ التحقق من حالة الدفع…</span>
+                </>
+              ) : (
+                <>
+                  <RefreshCw className="w-4 h-4" />
+                  <span>التحقق من حالة الدفع</span>
+                </>
+              )}
             </button>
           </section>
         )}

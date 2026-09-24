@@ -33,6 +33,13 @@ export class CustomerPaymentNotFoundError extends Error {
   }
 }
 
+export class CustomerPaymentProviderUnavailableError extends Error {
+  constructor(message = 'خدمة الدفع الإلكتروني غير متاحة حاليًا. حاول مرة أخرى لاحقًا.') {
+    super(message);
+    this.name = 'CustomerPaymentProviderUnavailableError';
+  }
+}
+
 export interface InitiatePaymentResult {
   paymentTransactionId: string;
   merchantOrderId: string;
@@ -40,8 +47,7 @@ export interface InitiatePaymentResult {
   depositAmountCents: number;
   checkoutUrl?: string;
   expiresAt?: string;
-  mode: 'PROTOTYPE' | 'LIVE';
-  requiresExternalCheckout: boolean;
+  requiresExternalCheckout?: boolean;
 }
 
 export interface PaymentStatusResult {
@@ -54,17 +60,6 @@ export interface PaymentStatusResult {
   currency: string;
   bookingStatus: string;
   paymentTransactionId?: string;
-  mode?: 'PROTOTYPE' | 'LIVE';
-}
-
-export interface PrototypeCompletionResult {
-  bookingId: string;
-  bookingStatus: 'CONFIRMED';
-  paymentTransactionId: string;
-  paymentStatus: 'SUCCEEDED';
-  amountEgp: number;
-  currency: string;
-  confirmedAt?: string;
 }
 
 export class CustomerPaymentService {
@@ -91,6 +86,11 @@ export class CustomerPaymentService {
     if (res.status === 404) throw new CustomerPaymentNotFoundError();
 
     const json = await res.json().catch(() => ({}));
+
+    if (res.status === 503 || json.error?.code === 'PAYMENT_PROVIDER_UNAVAILABLE') {
+      throw new CustomerPaymentProviderUnavailableError(json.error?.message);
+    }
+
     if (!res.ok || !json.success) {
       const err = new Error(json.error?.code || json.error?.message || 'PAYMENT_INITIATION_FAILED');
       (err as any).code = json.error?.code;
@@ -98,33 +98,6 @@ export class CustomerPaymentService {
       throw err;
     }
 
-    return json.data;
-  }
-
-  static async completePrototypePayment(
-    bookingId: string,
-    paymentTransactionId: string,
-    authToken: string
-  ): Promise<PrototypeCompletionResult> {
-    const res = await fetch(getApiUrl(`/customer/bookings/${bookingId}/pay/prototype-complete`), {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${authToken}`,
-      },
-      body: JSON.stringify({ paymentTransactionId }),
-    });
-
-    if (res.status === 401) throw new CustomerPaymentUnauthorizedError();
-    if (res.status === 403) throw new CustomerPaymentForbiddenError();
-    if (res.status === 404) throw new CustomerPaymentNotFoundError();
-
-    const json = await res.json().catch(() => ({}));
-    if (!res.ok || !json.success) {
-      const err = new Error(json.error?.code || json.error?.message || 'PAYMENT_COMPLETION_FAILED');
-      (err as any).code = json.error?.code;
-      throw err;
-    }
     return json.data;
   }
 

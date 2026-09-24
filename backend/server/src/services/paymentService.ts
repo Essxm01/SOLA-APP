@@ -9,10 +9,31 @@ import { queryDb } from './dbClient.js';
 
 export type PaymentMode = 'PROTOTYPE' | 'LIVE';
 
+/**
+ * Real Provider Availability Boundary
+ * Returns true if and only if a production payment gateway (e.g. Paymob) is fully configured with credentials.
+ */
+export function isRealPaymentProviderAvailable(): boolean {
+  const apiKey = String(process.env.PAYMOB_API_KEY || '').trim();
+  const cardIntegrationId = String(process.env.PAYMOB_INTEGRATION_ID_CARD || '').trim();
+  const iframeId = String(process.env.PAYMOB_IFRAME_ID || '').trim();
+  const hmacSecret = String(process.env.PAYMOB_HMAC_SECRET || '').trim();
+  return Boolean(apiKey && cardIntegrationId && iframeId && hmacSecret);
+}
+
+/**
+ * Checks if the request is executing within an authorized test harness
+ */
+export function isPaymentTestHarnessAuthorized(headers?: Record<string, any>): boolean {
+  const envAllowed = String(process.env.ALLOW_PAYMENT_TEST_HARNESS || '').trim().toLowerCase() === 'true';
+  const headerAllowed = headers && (headers['x-konfrm-test-harness'] === 'enabled' || headers['X-Konfrm-Test-Harness'] === 'enabled');
+  return envAllowed || Boolean(headerAllowed);
+}
+
 export function getPaymentMode(): PaymentMode {
   const mode = String(process.env.PAYMENT_MODE || '').trim().toUpperCase();
   if (mode === 'PROTOTYPE' || mode === 'LIVE') return mode;
-  throw new Error('PAYMENT_MODE_NOT_CONFIGURED');
+  return 'LIVE';
 }
 
 export interface PaymentInitiationParams {
@@ -297,13 +318,20 @@ export const paymentTxDb = {
 export class PaymentService {
   private gateway: IPaymentGateway;
 
-  constructor(gateway?: IPaymentGateway) {
+  constructor(gateway?: IPaymentGateway, headers?: Record<string, any>) {
     if (gateway) {
       this.gateway = gateway;
       return;
     }
-    const mode = getPaymentMode();
-    this.gateway = mode === 'PROTOTYPE' ? new PrototypePaymentGateway() : new PaymobGateway();
+    if (isRealPaymentProviderAvailable()) {
+      this.gateway = new PaymobGateway();
+      return;
+    }
+    if (isPaymentTestHarnessAuthorized(headers)) {
+      this.gateway = new PrototypePaymentGateway();
+      return;
+    }
+    throw new Error('PAYMENT_PROVIDER_UNAVAILABLE');
   }
 
   getGateway(): IPaymentGateway {

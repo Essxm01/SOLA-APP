@@ -32,6 +32,7 @@ export function resolveScreen14TypedErrorState(errorName: string | undefined): S
   if (errorName === 'CustomerPaymentUnauthorizedError') return 'UNAUTHORIZED';
   if (errorName === 'CustomerPaymentForbiddenError') return 'FORBIDDEN';
   if (errorName === 'CustomerPaymentNotFoundError') return 'NOT_FOUND';
+  if (errorName === 'CustomerPaymentProviderUnavailableError') return 'PROVIDER_UNAVAILABLE';
   return null;
 }
 /**
@@ -39,9 +40,7 @@ export function resolveScreen14TypedErrorState(errorName: string | undefined): S
  * active attempt and can become READY only after the user explicitly requests
  * a new attempt and the booking has been revalidated.
  *
- * Distinction:
- * - INITIATED + hasPaymentTransaction -> PROTOTYPE_READY_TO_COMPLETE
- * - PENDING + hasPaymentTransaction -> PAYMENT_PENDING (never completable)
+ * Both INITIATED and PENDING with an active transaction reconcile to PAYMENT_PENDING.
  */
 export function resolveScreen14ReconciliationState(
   bookingStatus: string,
@@ -52,10 +51,7 @@ export function resolveScreen14ReconciliationState(
   if (bookingStatus === 'CONFIRMED') return 'ALREADY_CONFIRMED';
   if (bookingStatus !== 'APPROVED_PENDING_PAYMENT') return 'STATE_CHANGED';
   if (paymentStatus === 'SUCCEEDED') return 'NETWORK_RECONCILIATION_REQUIRED';
-  if (paymentStatus === 'INITIATED') {
-    return hasPaymentTransaction ? 'PROTOTYPE_READY_TO_COMPLETE' : 'NETWORK_RECONCILIATION_REQUIRED';
-  }
-  if (paymentStatus === 'PENDING') {
+  if (paymentStatus === 'INITIATED' || paymentStatus === 'PENDING') {
     return hasPaymentTransaction ? 'PAYMENT_PENDING' : 'NETWORK_RECONCILIATION_REQUIRED';
   }
   if ((paymentStatus === 'FAILED' || paymentStatus === 'EXPIRED') && allowFreshAttempt) return 'READY';
@@ -113,7 +109,6 @@ export function evaluateResumedAmountAuthority(
 
 export type Screen14AllowedAction =
   | 'INITIATE_PAYMENT'
-  | 'COMPLETE_PROTOTYPE'
   | 'CHECK_STATUS'
   | 'REQUEST_FRESH_ATTEMPT'
   | 'ACKNOWLEDGE_AMOUNT'
@@ -125,18 +120,17 @@ export type Screen14AllowedAction =
 
 /**
  * Pure action resolver mapping each Screen 14 state to its permitted action.
- * Critical Invariant: PAYMENT_PENDING must NEVER resolve to COMPLETE_PROTOTYPE or INITIATE_PAYMENT.
+ * Critical Invariant: PAYMENT_PENDING must NEVER resolve to INITIATE_PAYMENT.
  */
 export function getAllowedScreen14Action(state: Screen14PaymentState): Screen14AllowedAction {
   switch (state) {
     case 'READY':
       return 'INITIATE_PAYMENT';
-    case 'PROTOTYPE_READY_TO_COMPLETE':
-      return 'COMPLETE_PROTOTYPE';
     case 'PAYMENT_PENDING':
       return 'CHECK_STATUS';
     case 'FAILED':
     case 'TRANSACTION_EXPIRED':
+    case 'PROVIDER_UNAVAILABLE':
       return 'REQUEST_FRESH_ATTEMPT';
     case 'AMOUNT_CHANGED':
       return 'ACKNOWLEDGE_AMOUNT';

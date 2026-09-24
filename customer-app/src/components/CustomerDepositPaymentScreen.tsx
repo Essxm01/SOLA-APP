@@ -7,7 +7,7 @@
  * - Dedicated full-screen mobile surface for deposit payment.
  * - Server financial authority; no client-side financial calculations.
  * - Attempt-scoped idempotency key (browser crypto.randomUUID).
- * - Two-step Prototype payment UX (initiate -> complete).
+ * - Real product payment UX with fail-closed provider boundary.
  * - Fail-closed error handling and session recovery (PROTECTED_PAYMENT).
  */
 
@@ -21,7 +21,6 @@ import {
   XCircle,
   HelpCircle,
   Clock,
-  Sparkles,
 } from 'lucide-react';
 import { getApiUrl } from '../utils/api';
 import {
@@ -29,6 +28,7 @@ import {
   CustomerPaymentUnauthorizedError,
   CustomerPaymentForbiddenError,
   CustomerPaymentNotFoundError,
+  CustomerPaymentProviderUnavailableError,
   type InitiatePaymentResult,
   type PaymentStatusResult,
 } from '../services/customerPaymentService';
@@ -47,8 +47,8 @@ export type Screen14PaymentState =
   | 'READY'
   | 'AMOUNT_CHANGED'
   | 'INITIATING'
-  | 'PROTOTYPE_READY_TO_COMPLETE'
   | 'EXTERNAL_HANDOFF_READY'
+  | 'PROVIDER_UNAVAILABLE'
   | 'CHECKING_STATUS'
   | 'PAYMENT_PENDING'
   | 'FAILED'
@@ -97,7 +97,7 @@ export const CustomerDepositPaymentScreen: React.FC<CustomerDepositPaymentScreen
   const idempotencyKeyRef = useRef<string>(generateAttemptKey());
   const isActionLockedRef = useRef<boolean>(false);
   const freshAttemptRequestedRef = useRef<boolean>(false);
-  const statusCheckSourceRef = useRef<'PENDING' | 'PROTOTYPE' | 'NETWORK' | null>(null);
+  const statusCheckSourceRef = useRef<'PENDING' | 'NETWORK' | null>(null);
 
   const clearPrivatePaymentState = useCallback(() => {
     const cleared = clearScreen14PrivateState();
@@ -258,19 +258,10 @@ export const CustomerDepositPaymentScreen: React.FC<CustomerDepositPaymentScreen
         }
         setPaymentState(nextState);
       } catch (statusErr: any) {
-        if (statusErr instanceof CustomerPaymentUnauthorizedError) {
+        const typedState = resolveScreen14TypedErrorState(statusErr?.name);
+        if (typedState) {
           clearPrivatePaymentState();
-          setPaymentState('UNAUTHORIZED');
-          return;
-        }
-        if (statusErr instanceof CustomerPaymentForbiddenError) {
-          clearPrivatePaymentState();
-          setPaymentState('FORBIDDEN');
-          return;
-        }
-        if (statusErr instanceof CustomerPaymentNotFoundError) {
-          clearPrivatePaymentState();
-          setPaymentState('NOT_FOUND');
+          setPaymentState(typedState);
           return;
         }
         // If payment status lookup fails on network/500, fail safe into reconciliation required
@@ -287,10 +278,12 @@ export const CustomerDepositPaymentScreen: React.FC<CustomerDepositPaymentScreen
   }, [revalidateAndReconcile]);
 
   // ---------------------------------------------------------------------------
-  // Step 1: Initiate Prototype Payment (POST /pay)
+  // Initiate Payment (POST /pay)
   // ---------------------------------------------------------------------------
   const handleInitiatePayment = async () => {
-    if (isActionLockedRef.current || getAllowedScreen14Action(paymentState) !== 'INITIATE_PAYMENT') return;
+    if (isActionLockedRef.current) return;
+    const allowed = getAllowedScreen14Action(paymentState);
+    if (allowed !== 'INITIATE_PAYMENT' && allowed !== 'REQUEST_FRESH_ATTEMPT') return;
     isActionLockedRef.current = true;
     setPaymentState('INITIATING');
     setErrorMessage(null);
@@ -301,12 +294,6 @@ export const CustomerDepositPaymentScreen: React.FC<CustomerDepositPaymentScreen
         idempotencyKeyRef.current,
         authToken
       );
-
-      if (initResult.mode !== 'PROTOTYPE' || initResult.requiresExternalCheckout) {
-        setErrorMessage('الدفع الخارجي غير متاح في النسخة الحالية.');
-        setPaymentState('ERROR');
-        return;
-      }
 
       // Amount Authority Check: compare initiated deposit with displayed deposit
       if (booking && initResult.depositAmountEgp !== booking.depositAmount) {
@@ -338,8 +325,20 @@ export const CustomerDepositPaymentScreen: React.FC<CustomerDepositPaymentScreen
 
       setPaymentTransactionId(initResult.paymentTransactionId);
       setActiveDepositEgp(initResult.depositAmountEgp);
-      setPaymentState('PROTOTYPE_READY_TO_COMPLETE');
+
+      if (initResult.checkoutUrl) {
+        setPaymentState('EXTERNAL_HANDOFF_READY');
+        window.location.href = initResult.checkoutUrl;
+        return;
+      }
+
+      setPaymentState('PAYMENT_PENDING');
     } catch (err: any) {
+      if (err instanceof CustomerPaymentProviderUnavailableError || err?.code === 'PAYMENT_PROVIDER_UNAVAILABLE') {
+        setErrorMessage('خدمة الدفع الإلكتروني غير متاحة حاليًا. حاول مرة أخرى لاحقًا.');
+        setPaymentState('PROVIDER_UNAVAILABLE');
+        return;
+      }
       if (err instanceof CustomerPaymentUnauthorizedError) {
         clearPrivatePaymentState();
         setPaymentState('UNAUTHORIZED');
@@ -373,71 +372,6 @@ export const CustomerDepositPaymentScreen: React.FC<CustomerDepositPaymentScreen
   };
 
   // ---------------------------------------------------------------------------
-  // Step 2: Complete Prototype Payment (POST /pay/prototype-complete)
-  // ---------------------------------------------------------------------------
-  const handleCompletePrototypePayment = async () => {
-    if (!paymentTransactionId || isActionLockedRef.current || getAllowedScreen14Action(paymentState) !== 'COMPLETE_PROTOTYPE') return;
-    isActionLockedRef.current = true;
-    statusCheckSourceRef.current = 'PROTOTYPE';
-    setPaymentState('CHECKING_STATUS');
-    setErrorMessage(null);
-
-    try {
-      const completionResult = await CustomerPaymentService.completePrototypePayment(
-        bookingId,
-        paymentTransactionId,
-        authToken
-      );
-
-      if (completionResult.bookingStatus === 'CONFIRMED' && completionResult.paymentStatus === 'SUCCEEDED') {
-        setPaymentState('SUCCESS');
-      } else {
-        setErrorMessage('تعذر تأكيد الدفع التجريبي من الخادم.');
-        setPaymentState('ERROR');
-      }
-    } catch (err: any) {
-      if (err instanceof CustomerPaymentUnauthorizedError) {
-        clearPrivatePaymentState();
-        setPaymentState('UNAUTHORIZED');
-        return;
-      }
-      if (err instanceof CustomerPaymentForbiddenError) {
-        clearPrivatePaymentState();
-        setPaymentState('FORBIDDEN');
-        return;
-      }
-      if (err instanceof CustomerPaymentNotFoundError) {
-        clearPrivatePaymentState();
-        setPaymentState('NOT_FOUND');
-        return;
-      }
-
-      // Check payment status before reporting failure
-      try {
-        const verifyStatus = await CustomerPaymentService.getPaymentStatus(bookingId, authToken);
-        if (verifyStatus.paymentStatus === 'SUCCEEDED' && verifyStatus.bookingStatus === 'CONFIRMED') {
-          setPaymentState('SUCCESS');
-          return;
-        }
-      } catch (verifyErr: any) {
-        const verificationAccessState = resolveScreen14TypedErrorState(verifyErr?.name);
-        if (verificationAccessState) {
-          clearPrivatePaymentState();
-          setPaymentState(verificationAccessState);
-          return;
-        }
-        // Transport/server uncertainty remains a truthful failed attempt.
-      }
-
-      setErrorMessage(err?.message || 'تعذر إتمام الدفع التجريبي. يمكنك المحاولة مرة أخرى.');
-      setPaymentState('FAILED');
-    } finally {
-      isActionLockedRef.current = false;
-      statusCheckSourceRef.current = null;
-    }
-  };
-
-  // ---------------------------------------------------------------------------
   // Check Payment Status (GET /payment-status only — PENDING / Reconcile)
   // ---------------------------------------------------------------------------
   const handleCheckPaymentStatus = async () => {
@@ -453,29 +387,12 @@ export const CustomerDepositPaymentScreen: React.FC<CustomerDepositPaymentScreen
         authToken
       );
 
-      // 1. Still PENDING: remains in PAYMENT_PENDING
-      if (paymentStatusResult.paymentStatus === 'PENDING') {
+      // 1. Still PENDING or INITIATED: remains in PAYMENT_PENDING
+      if (paymentStatusResult.paymentStatus === 'PENDING' || paymentStatusResult.paymentStatus === 'INITIATED') {
         if (paymentStatusResult.paymentTransactionId) {
           setPaymentTransactionId(paymentStatusResult.paymentTransactionId);
         }
         setPaymentState('PAYMENT_PENDING');
-        return;
-      }
-
-      // 2. INITIATED: evaluate amount authority before allowing completion
-      if (paymentStatusResult.paymentStatus === 'INITIATED' && paymentStatusResult.paymentTransactionId) {
-        setPaymentTransactionId(paymentStatusResult.paymentTransactionId);
-        const authority = evaluateResumedAmountAuthority(
-          booking?.depositAmount,
-          paymentStatusResult.amountEgp
-        );
-        if (authority.status === 'MATCHED') {
-          setActiveDepositEgp(authority.amountEgp);
-          setPaymentState('PROTOTYPE_READY_TO_COMPLETE');
-          return;
-        }
-        // Mismatch or invalid on INITIATED: revalidate full booking
-        await revalidateAndReconcile();
         return;
       }
 
@@ -808,6 +725,11 @@ export const CustomerDepositPaymentScreen: React.FC<CustomerDepositPaymentScreen
             <p className="text-sm text-slate-600 mb-6 leading-relaxed">
               تم تأكيد حجزك بنجاح.
             </p>
+            {paymentTransactionId && (
+              <div className="text-xs text-slate-400 font-mono mb-4" dir="ltr">
+                Ref: {paymentTransactionId}
+              </div>
+            )}
             <button
               onClick={() => onPaymentSuccess(bookingId)}
               className="w-full h-[52px] bg-[var(--konfrm-color-primary)] hover:bg-[var(--konfrm-color-primary-hover)] text-white font-bold rounded-2xl shadow-sm transition-colors text-sm flex items-center justify-center gap-2"
@@ -848,13 +770,10 @@ export const CustomerDepositPaymentScreen: React.FC<CustomerDepositPaymentScreen
   }
 
   // ---------------------------------------------------------------------------
-  // CANONICAL PAYMENT SURFACE (READY / INITIATING / PROTOTYPE_READY_TO_COMPLETE)
+  // CANONICAL PAYMENT SURFACE (READY / INITIATING / PAYMENT_PENDING)
   // ---------------------------------------------------------------------------
   const isInitiating = paymentState === 'INITIATING';
   const isCheckingOrCompleting = paymentState === 'CHECKING_STATUS';
-  const isReadyToComplete =
-    paymentState === 'PROTOTYPE_READY_TO_COMPLETE' ||
-    (paymentState === 'CHECKING_STATUS' && statusCheckSourceRef.current === 'PROTOTYPE');
   const isPending =
     paymentState === 'PAYMENT_PENDING' ||
     (paymentState === 'CHECKING_STATUS' && statusCheckSourceRef.current === 'PENDING');
@@ -864,6 +783,8 @@ export const CustomerDepositPaymentScreen: React.FC<CustomerDepositPaymentScreen
     (paymentState === 'CHECKING_STATUS' && statusCheckSourceRef.current === 'NETWORK');
   const isExpired = paymentState === 'TRANSACTION_EXPIRED';
   const isFailed = paymentState === 'FAILED';
+  const isProviderUnavailable = paymentState === 'PROVIDER_UNAVAILABLE';
+  const isExternalHandoffReady = paymentState === 'EXTERNAL_HANDOFF_READY';
 
   return (
     <div className="fixed inset-0 z-50 bg-[var(--konfrm-surface-canvas)] flex flex-col overflow-y-auto" dir="rtl">
@@ -942,17 +863,6 @@ export const CustomerDepositPaymentScreen: React.FC<CustomerDepositPaymentScreen
           </p>
         </section>
 
-        {/* Prototype Notice */}
-        <section className="bg-amber-50/80 border border-amber-200 rounded-3xl p-4 shadow-xs">
-          <div className="flex items-center gap-2 mb-1 text-amber-900 text-sm font-bold">
-            <Sparkles className="w-4 h-4 text-amber-600" />
-            <span>وضع تجريبي</span>
-          </div>
-          <p className="text-sm text-amber-800 leading-relaxed">
-            لن يتم خصم أي أموال حقيقية في هذه النسخة.
-          </p>
-        </section>
-
         {/* Amount Changed Notice */}
         {isAmountChanged && previousDepositEgp !== null && (
           <section className="bg-blue-50 border border-blue-200 rounded-3xl p-5 shadow-xs space-y-3">
@@ -974,7 +884,7 @@ export const CustomerDepositPaymentScreen: React.FC<CustomerDepositPaymentScreen
               </div>
             </div>
             <button
-              onClick={() => setPaymentState('PROTOTYPE_READY_TO_COMPLETE')}
+              onClick={() => void handleInitiatePayment()}
               className="w-full h-12 bg-[var(--konfrm-color-primary)] text-white font-bold rounded-2xl text-sm shadow-sm hover:bg-[var(--konfrm-color-primary-hover)] transition-colors"
             >
               موافق على المبلغ الجديد والمتابعة
@@ -1013,6 +923,54 @@ export const CustomerDepositPaymentScreen: React.FC<CustomerDepositPaymentScreen
                 )}
               </button>
             </div>
+          </section>
+        )}
+
+        {/* Payment Provider Unavailable State */}
+        {isProviderUnavailable && (
+          <section className="bg-slate-50 border border-slate-200 rounded-3xl p-5 shadow-xs text-center space-y-3">
+            <div className="w-12 h-12 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center mx-auto">
+              <ShieldCheck className="w-6 h-6" />
+            </div>
+            <h3 className="text-base font-bold text-slate-900">الدفع الإلكتروني غير متاح حاليًا</h3>
+            <p className="text-sm text-slate-600 leading-relaxed max-w-xs mx-auto">
+              خدمة الدفع الإلكتروني غير متاحة حاليًا. حاول مرة أخرى لاحقًا.
+            </p>
+            <div className="pt-2 space-y-2">
+              <button
+                onClick={() => void handleInitiatePayment()}
+                disabled={isInitiating}
+                className="w-full h-12 bg-[var(--konfrm-color-primary)] text-white font-bold rounded-2xl text-sm shadow-sm hover:bg-[var(--konfrm-color-primary-hover)] transition-colors flex items-center justify-center gap-2 disabled:opacity-60"
+              >
+                {isInitiating ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    <span>جارٍ إعادة المحاولة…</span>
+                  </>
+                ) : (
+                  <span>إعادة المحاولة</span>
+                )}
+              </button>
+              <button
+                onClick={onBack}
+                className="w-full h-12 bg-white border border-slate-200 text-slate-700 font-bold rounded-2xl text-sm hover:bg-slate-50 transition-colors"
+              >
+                العودة إلى تفاصيل الحجز
+              </button>
+            </div>
+          </section>
+        )}
+
+        {/* External Handoff Ready State */}
+        {isExternalHandoffReady && (
+          <section className="bg-blue-50 border border-blue-200 rounded-3xl p-5 shadow-xs text-center space-y-3">
+            <div className="w-12 h-12 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center mx-auto">
+              <RefreshCw className="w-6 h-6 animate-spin" />
+            </div>
+            <h3 className="text-base font-bold text-slate-900">جارٍ الانتقال إلى بوابة الدفع…</h3>
+            <p className="text-sm text-slate-600 leading-relaxed max-w-xs mx-auto">
+              يتم تحويلك الآن بأمان لإتمام دفع العربون.
+            </p>
           </section>
         )}
 
@@ -1081,7 +1039,7 @@ export const CustomerDepositPaymentScreen: React.FC<CustomerDepositPaymentScreen
           </section>
         )}
 
-        {/* Step 1: Initial Prototype Initiation CTA */}
+        {/* Primary Payment Initiation CTA */}
         {paymentState === 'READY' && (
           <div className="pt-2">
             <button
@@ -1097,34 +1055,7 @@ export const CustomerDepositPaymentScreen: React.FC<CustomerDepositPaymentScreen
               ) : (
                 <>
                   <ShieldCheck className="w-5 h-5" />
-                  <span>متابعة الدفع التجريبي</span>
-                </>
-              )}
-            </button>
-          </div>
-        )}
-
-        {/* Step 2: Prototype Ready to Complete CTA */}
-        {isReadyToComplete && (
-          <div className="pt-2 space-y-3">
-            <div className="bg-blue-50/70 border border-blue-200 rounded-2xl p-3.5 text-center text-sm text-blue-900 leading-relaxed">
-              تم تجهيز محاولة الدفع التجريبية. لا توجد أموال حقيقية سيتم خصمها.
-            </div>
-
-            <button
-              onClick={() => void handleCompletePrototypePayment()}
-              disabled={isCheckingOrCompleting}
-              className="w-full h-[52px] bg-emerald-600 hover:bg-emerald-700 active:scale-[0.99] text-white font-bold rounded-2xl shadow-sm transition-all flex items-center justify-center gap-2 text-sm disabled:opacity-60"
-            >
-              {isCheckingOrCompleting ? (
-                <>
-                  <RefreshCw className="w-5 h-5 animate-spin" />
-                  <span>جارٍ تأكيد الدفع التجريبي…</span>
-                </>
-              ) : (
-                <>
-                  <CheckCircle2 className="w-5 h-5" />
-                  <span>تأكيد الدفع التجريبي</span>
+                  <span>متابعة إلى الدفع</span>
                 </>
               )}
             </button>

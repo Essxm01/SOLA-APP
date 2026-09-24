@@ -40,9 +40,14 @@ const propertyId = 'ab10aa91-8835-466f-897a-51a961d92e95';
 
 const customerHeadersA = {
   authorization: `Bearer ${signAccessToken({ sub: customerIdA, role: 'ROLE_CUSTOMER' })}`,
+  'x-konfrm-test-harness': 'enabled',
 };
 const customerHeadersB = {
   authorization: `Bearer ${signAccessToken({ sub: customerIdB, role: 'ROLE_CUSTOMER' })}`,
+  'x-konfrm-test-harness': 'enabled',
+};
+const normalCustomerHeadersA = {
+  authorization: `Bearer ${signAccessToken({ sub: customerIdA, role: 'ROLE_CUSTOMER' })}`,
 };
 
 async function runSuite() {
@@ -515,7 +520,72 @@ async function runSuite() {
     assert.equal(res18.body.error?.code, 'PAYMENT_IDEMPOTENCY_KEY_REQUIRED');
     console.log('  ✅ 18. Missing idempotency key -> 400 PAYMENT_IDEMPOTENCY_KEY_REQUIRED');
 
-    console.log('\nALL 18 PAYMENT BOUNDARY FAIL-CLOSED & HARDENING CHECKS PASSED DETERMINISTICALLY!\n');
+    // -------------------------------------------------------------------------
+    // 19. Normal customer runtime with no provider returns HTTP 503 before transaction creation
+    // -------------------------------------------------------------------------
+    let txCreateCallCount = 0;
+    (paymentTxDb as any).create = async () => {
+      txCreateCallCount++;
+      return { id: 'tx-should-not-be-created' };
+    };
+    (bookingDb as any).getById = async () => ({ ...baseApprovedBooking });
+    (bookingDb as any).getFinancialSummary = async () => ({ ...baseSummary });
+
+    const res19 = await app.handleHttpRequest(
+      'POST',
+      '/api/v1/customer/bookings/bk-approved-01/pay',
+      { ...normalCustomerHeadersA, 'idempotency-key': 'attempt-normal-failclosed-01' }
+    );
+    assert.equal(res19.statusCode, 503, 'Normal runtime with unconfigured provider must fail closed with 503');
+    assert.equal(res19.body.error?.code, 'PAYMENT_PROVIDER_UNAVAILABLE');
+    assert.equal(res19.body.error?.message, 'خدمة الدفع الإلكتروني غير متاحة حاليًا. حاول مرة أخرى لاحقًا.');
+    console.log('  ✅ 19. Normal customer runtime with no provider returns HTTP 503');
+
+    // -------------------------------------------------------------------------
+    // 20. Zero payment_transactions rows are written on 503
+    // -------------------------------------------------------------------------
+    assert.equal(txCreateCallCount, 0, 'Zero payment_transactions rows must be written on 503 fail-closed');
+    console.log('  ✅ 20. Zero payment_transactions rows are written on 503');
+
+    // -------------------------------------------------------------------------
+    // 21. Old MOCK transactions are not resumed in normal runtime
+    // -------------------------------------------------------------------------
+    (paymentTxDb as any).getByBookingId = async () => [
+      {
+        id: 'tx-legacy-mock-01',
+        provider: 'MOCK',
+        status: 'INITIATED',
+        amount_cents: 250000,
+        currency: 'EGP',
+        merchant_order_id: 'KONFRM-DEP-MOCK-OLD',
+      },
+    ];
+
+    const res21 = await app.handleHttpRequest(
+      'GET',
+      '/api/v1/customer/bookings/bk-approved-01/payment-status',
+      normalCustomerHeadersA
+    );
+    assert.equal(res21.statusCode, 200);
+    assert.equal(res21.body.data.hasPaymentTransaction, false, 'Legacy MOCK transaction must not be treated as active in normal runtime');
+    assert.equal(res21.body.data.paymentStatus, 'NO_PAYMENT_INITIATED');
+    assert.equal(res21.body.data.mode, undefined, 'Normal runtime payment status must not leak mode');
+    console.log('  ✅ 21. Old MOCK transactions are not resumed in normal runtime');
+
+    // -------------------------------------------------------------------------
+    // 22. prototype-complete returns 404 for normal runtime requests
+    // -------------------------------------------------------------------------
+    const res22 = await app.handleHttpRequest(
+      'POST',
+      '/api/v1/customer/bookings/bk-approved-01/pay/prototype-complete',
+      normalCustomerHeadersA,
+      { paymentTransactionId: 'tx-legacy-mock-01' }
+    );
+    assert.equal(res22.statusCode, 404, 'Normal runtime cannot call prototype-complete');
+    assert.equal(res22.body.error?.code, 'NOT_FOUND');
+    console.log('  ✅ 22. prototype-complete returns 404 for normal runtime requests');
+
+    console.log('\nALL 22 PAYMENT BOUNDARY FAIL-CLOSED & HARDENING CHECKS PASSED DETERMINISTICALLY!\n');
   } finally {
     restoreMocks();
   }

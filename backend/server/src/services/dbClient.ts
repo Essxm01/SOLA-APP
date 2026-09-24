@@ -2303,6 +2303,7 @@ async function queryViaSupabaseRest(text: string, params: any[] | undefined, url
   if (lowerSql.startsWith('select') && lowerSql.includes('from payment_transactions') && /\bcustomer_id\s*=\s*\$1\b/i.test(sql)) {
     const customerId = params?.[0];
     const res = await fetch(`${url}/rest/v1/payment_transactions?customer_id=eq.${encodeURIComponent(customerId)}&order=created_at.desc`, { headers });
+    if (!res.ok) throw new Error(`REST_PAYMENT_TRANSACTION_SELECT_BY_CUSTOMER_FAILED: HTTP ${res.status}`);
     const raw: any = await res.json().catch(() => []);
     const rows: any[] = Array.isArray(raw) ? raw : [];
     const mapped = rows.map(mapPaymentRestRow);

@@ -20,7 +20,6 @@ export function clearScreen14PrivateState(): Screen14PrivateState {
     errorMessage: null,
   };
 }
-
 /**
  * Server status is authoritative. A failed/expired transaction is not an
  * active attempt and can become READY only after the user explicitly requests
@@ -54,4 +53,3 @@ export function canStartFreshScreen14Attempt(
     && !hasPaymentTransaction
     && (paymentStatus === 'FAILED' || paymentStatus === 'EXPIRED' || paymentStatus === 'NO_PAYMENT_INITIATED');
 }
-

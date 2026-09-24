@@ -213,8 +213,9 @@ async function run() {
   // ── 16. Screen 11 only after server-confirmed success/replay ──────────────
   assert(
     appSource.includes('handleBookingSuccess') &&
-    appSource.includes('setShowSuccessModal(true)'),
-    'C4-REG-16: App.tsx must only show Screen 11 (BookingSuccessModal) after server confirms booking'
+    appSource.includes('setBookingRequestSent(routing.state)') &&
+    appSource.includes('BookingRequestSentScreen'),
+    'C4-REG-16: App.tsx must only show Screen 11 (BookingRequestSentScreen) after server confirms booking'
   );
   assert(
     reviewScreenSource.includes('onSubmitSuccess(json.data)'),

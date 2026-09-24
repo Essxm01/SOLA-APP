@@ -13,7 +13,7 @@ const payload = JSON.stringify({
     production: {
       env_vars: {
         VITE_CUSTOMER_AUTH_V2_ENABLED: { value: 'true' },
-        VITE_API_BASE_URL: { value: '/api/v1' }
+        VITE_API_BASE_URL: { value: 'https://sola-backend-api.essxm01.workers.dev/api/v1' }
       }
     }
   }

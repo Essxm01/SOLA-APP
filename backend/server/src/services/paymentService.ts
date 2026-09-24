@@ -9,10 +9,55 @@ import { queryDb } from './dbClient.js';
 
 export type PaymentMode = 'PROTOTYPE' | 'LIVE';
 
+/**
+ * Real Provider Availability Boundary
+ * Returns true if and only if a production payment gateway (e.g. Paymob) is fully configured with credentials.
+ */
+export function isRealPaymentProviderAvailable(): boolean {
+  const apiKey = String(process.env.PAYMOB_API_KEY || '').trim();
+  const cardIntegrationId = String(process.env.PAYMOB_INTEGRATION_ID_CARD || '').trim();
+  const iframeId = String(process.env.PAYMOB_IFRAME_ID || '').trim();
+  const hmacSecret = String(process.env.PAYMOB_HMAC_SECRET || '').trim();
+  return Boolean(apiKey && cardIntegrationId && iframeId && hmacSecret);
+}
+
+/**
+ * Server-controlled automated test runtime boundary.
+ * The payment test harness capability exists ONLY in local automated tests and CI.
+ * It strictly requires:
+ * 1. process.env.NODE_ENV === 'test' (server runtime is automated test)
+ * 2. process.env.ALLOW_PAYMENT_TEST_HARNESS === 'true' (explicit server opt-in)
+ *
+ * An incoming request header alone CAN NEVER activate the test harness.
+ */
+export function isServerPaymentTestEnvironment(): boolean {
+  const isTestEnv = process.env.NODE_ENV === 'test';
+  const isHarnessAllowed = String(process.env.ALLOW_PAYMENT_TEST_HARNESS || '').trim().toLowerCase() === 'true';
+  return isTestEnv && isHarnessAllowed;
+}
+
+/**
+ * Checks if the request is executing within an authorized test harness.
+ * In normal/deployed runtime, this ALWAYS returns false regardless of any request headers.
+ * In automated test runtime, it requires an explicit test harness signal in the request headers.
+ */
+export function isPaymentTestHarnessAuthorized(headers?: Record<string, any>): boolean {
+  // Hard server-controlled gate: MUST be running inside server test environment
+  if (!isServerPaymentTestEnvironment()) {
+    return false;
+  }
+  // Secondary check: require explicit test-harness request signal
+  if (!headers) {
+    return false;
+  }
+  const headerVal = headers['x-konfrm-test-harness'] || headers['X-Konfrm-Test-Harness'];
+  return String(headerVal || '').trim().toLowerCase() === 'enabled';
+}
+
 export function getPaymentMode(): PaymentMode {
   const mode = String(process.env.PAYMENT_MODE || '').trim().toUpperCase();
   if (mode === 'PROTOTYPE' || mode === 'LIVE') return mode;
-  throw new Error('PAYMENT_MODE_NOT_CONFIGURED');
+  return 'LIVE';
 }
 
 export interface PaymentInitiationParams {
@@ -297,13 +342,24 @@ export const paymentTxDb = {
 export class PaymentService {
   private gateway: IPaymentGateway;
 
-  constructor(gateway?: IPaymentGateway) {
+  constructor(gateway?: IPaymentGateway, headers?: Record<string, any>) {
     if (gateway) {
       this.gateway = gateway;
       return;
     }
-    const mode = getPaymentMode();
-    this.gateway = mode === 'PROTOTYPE' ? new PrototypePaymentGateway() : new PaymobGateway();
+    if (isRealPaymentProviderAvailable()) {
+      this.gateway = new PaymobGateway();
+      return;
+    }
+    if (isPaymentTestHarnessAuthorized(headers)) {
+      this.gateway = new PrototypePaymentGateway();
+      return;
+    }
+    if (isServerPaymentTestEnvironment() && !headers) {
+      this.gateway = new PrototypePaymentGateway();
+      return;
+    }
+    throw new Error('PAYMENT_PROVIDER_UNAVAILABLE');
   }
 
   getGateway(): IPaymentGateway {

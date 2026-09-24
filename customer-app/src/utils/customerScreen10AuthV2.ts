@@ -13,6 +13,7 @@ export function isValidCustomerFullName(value: string): boolean {
 export function getScreen10OriginMessage(origin: AuthOrigin): string | null {
   if (origin.type === 'PROTECTED_BOOKING') return 'ستعود إلى مراجعة طلب الحجز بعد إكمال الحساب.';
   if (origin.type === 'PROTECTED_FAVORITE') return 'ستعود إلى الوحدة بعد إكمال الحساب.';
+  if (origin.type === 'PROTECTED_PAYMENT') return 'بعد إكمال الحساب، ستعود إلى صفحة دفع العربون لهذا الحجز.';
   return null;
 }
 

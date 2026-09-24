@@ -2,13 +2,15 @@ import assert from 'node:assert/strict';
 import { queryDb } from '../services/dbClient.js';
 import { PaymentService, PrototypePaymentGateway, getPaymentMode } from '../services/paymentService.js';
 
-type EnvSnapshot = Record<'SUPABASE_URL' | 'SUPABASE_SERVICE_ROLE_KEY' | 'PAYMENT_MODE', string | undefined>;
+type EnvSnapshot = Record<'SUPABASE_URL' | 'SUPABASE_SERVICE_ROLE_KEY' | 'PAYMENT_MODE' | 'NODE_ENV' | 'ALLOW_PAYMENT_TEST_HARNESS', string | undefined>;
 
 function snapshot(): EnvSnapshot {
   return {
     SUPABASE_URL: process.env.SUPABASE_URL,
     SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY,
     PAYMENT_MODE: process.env.PAYMENT_MODE,
+    NODE_ENV: process.env.NODE_ENV,
+    ALLOW_PAYMENT_TEST_HARNESS: process.env.ALLOW_PAYMENT_TEST_HARNESS,
   };
 }
 
@@ -26,6 +28,8 @@ async function run() {
   process.env.SUPABASE_URL = 'https://example.supabase.co';
   process.env.SUPABASE_SERVICE_ROLE_KEY = 'service-role-test';
   process.env.PAYMENT_MODE = 'PROTOTYPE';
+  process.env.NODE_ENV = 'test';
+  process.env.ALLOW_PAYMENT_TEST_HARNESS = 'true';
   globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
     requests.push({ url: String(input), init });
     if (String(input).includes('rpc/konfrm_complete_deposit_payment')) {

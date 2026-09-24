@@ -34,6 +34,9 @@ export function createCustomerAuthV2Entry(origin: AuthOrigin): { origin: AuthOri
 export function resolveCustomerAuthEntry(enabled: boolean, origin: AuthOrigin, explicitIntent?: 'LOGIN' | 'CREATE_ACCOUNT'): CustomerAuthEntry {
   if (!enabled) return { surface: 'LEGACY', origin: null, intent: 'LOGIN' };
   const entry = createCustomerAuthV2Entry(origin);
+  if (origin.type === 'PROTECTED_PAYMENT') {
+    return { surface: 'AUTH_V2', origin: entry.origin, intent: 'LOGIN' };
+  }
   return { surface: 'AUTH_V2', origin: entry.origin, intent: explicitIntent ?? entry.intent };
 }
 

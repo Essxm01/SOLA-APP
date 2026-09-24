@@ -13,7 +13,15 @@ import { verifyJwtToken, requireRole } from './middleware/auth.js';
 import { applyCorsHeaders } from './middleware/cors.js';
 import { dbUsersStore, dbOwnersStore, dbAdminUsersStore, dbNotificationsStore, dbOwnerVerificationDocsStore, dbPropertyVerificationDocsStore, dbPropertiesStore, dbBookingsStore, dbPayoutRequestsStore, dbDisputesStore } from './services/authService.js';
 import { userDb, ownerDb, propertyDb, bookingDb, conversationDb, messageDb, isBookingChatEligible, payoutDb, disputeDb, notificationDb, imageDb, uploadIntentDb, adminStatsDb, walletDb, propertyAvailabilityDb, getUnifiedUnavailableBlocks, favoriteDb, adminDb } from './services/dbRepository.js';
-import { paymentTxDb, PaymentService, PaymobGateway, verifyPaymobHmacSha512, getPaymentMode } from './services/paymentService.js';
+import {
+  paymentTxDb,
+  PaymentService,
+  PaymobGateway,
+  verifyPaymobHmacSha512,
+  getPaymentMode,
+  isRealPaymentProviderAvailable,
+  isPaymentTestHarnessAuthorized,
+} from './services/paymentService.js';
 import { createStorageProvider, IObjectStorageProvider, verifyMagicBytes, computeSha256 } from './services/storageProvider.js';
 import { GLOBAL_MIN_STAY_NIGHTS, GLOBAL_MAX_STAY_NIGHTS, hasDateRangeOverlap, validateStayLength } from './constants/bookingRules.js';
 import { parsePublicPropertySearchFilters, toPublicPropertySearchItem, toPublicPropertyDetail, PublicPropertySearchFilters, extractPublicImageUrls } from './contracts/publicProperty.js';
@@ -4153,6 +4161,22 @@ export class ExpressServerApp {
             };
           }
 
+          // Provider Availability Boundary: Fail Closed if no real provider and not test harness
+          const isTestHarness = isPaymentTestHarnessAuthorized(headers);
+          if (!isRealPaymentProviderAvailable() && !isTestHarness) {
+            return {
+              statusCode: 503,
+              body: {
+                success: false,
+                error: {
+                  code: 'PAYMENT_PROVIDER_UNAVAILABLE',
+                  message: 'خدمة الدفع الإلكتروني غير متاحة حاليًا. حاول مرة أخرى لاحقًا.',
+                },
+                timestamp,
+              },
+            };
+          }
+
           // C. Attempt-Scoped Idempotency Contract — Fail Closed
           const rawKey = headers['idempotency-key'] || headers['Idempotency-Key'] || bodyPayload?.idempotencyKey;
           const idempotencyKey = typeof rawKey === 'string' ? rawKey.trim() : '';
@@ -4175,29 +4199,33 @@ export class ExpressServerApp {
           }
 
           if (existingTx) {
-            const txBookingId = existingTx.booking_id || existingTx.bookingId;
-            const txCustomerId = existingTx.customer_id || existingTx.customerId;
-            if (txBookingId !== bookingId || txCustomerId !== customerId) {
+            if (!isTestHarness && (existingTx.provider === 'MOCK' || existingTx.raw_request_payload?.mode === 'PROTOTYPE')) {
+              // Ignore legacy MOCK transaction in normal runtime
+            } else {
+              const txBookingId = existingTx.booking_id || existingTx.bookingId;
+              const txCustomerId = existingTx.customer_id || existingTx.customerId;
+              if (txBookingId !== bookingId || txCustomerId !== customerId) {
+                return {
+                  statusCode: 409,
+                  body: { success: false, error: { code: 'PAYMENT_IDEMPOTENCY_SCOPE_MISMATCH', message: 'مفتاح المحاولة مرتبط بحجز أو عميل آخر' }, timestamp },
+                };
+              }
               return {
-                statusCode: 409,
-                body: { success: false, error: { code: 'PAYMENT_IDEMPOTENCY_SCOPE_MISMATCH', message: 'مفتاح المحاولة مرتبط بحجز أو عميل آخر' }, timestamp },
+                statusCode: 200,
+                body: {
+                  success: true,
+                  data: {
+                    paymentTransactionId: existingTx.id,
+                    merchantOrderId: existingTx.merchant_order_id || existingTx.merchantOrderId,
+                    depositAmountEgp: Number(existingTx.amount_cents || existingTx.amountCents) / 100,
+                    depositAmountCents: Number(existingTx.amount_cents || existingTx.amountCents),
+                    requiresExternalCheckout: !isTestHarness,
+                    ...(isTestHarness ? { mode: 'PROTOTYPE' } : {}),
+                  },
+                  timestamp,
+                },
               };
             }
-            return {
-              statusCode: 200,
-              body: {
-                success: true,
-                data: {
-                  paymentTransactionId: existingTx.id,
-                  merchantOrderId: existingTx.merchant_order_id || existingTx.merchantOrderId,
-                  depositAmountEgp: Number(existingTx.amount_cents || existingTx.amountCents) / 100,
-                  depositAmountCents: Number(existingTx.amount_cents || existingTx.amountCents),
-                  mode: 'PROTOTYPE',
-                  requiresExternalCheckout: false,
-                },
-                timestamp,
-              },
-            };
           }
 
           // E. Active Booking Transaction Reconciliation — Prevent Duplicate Active Attempts
@@ -4211,7 +4239,11 @@ export class ExpressServerApp {
             };
           }
 
-          const activeBookingTx = (bookingTxs || []).find((candidate: any) => ['INITIATED', 'PENDING'].includes(candidate.status));
+          const activeBookingTx = (bookingTxs || []).find((candidate: any) => {
+            if (!['INITIATED', 'PENDING'].includes(candidate.status)) return false;
+            if (!isTestHarness && candidate.provider === 'MOCK') return false;
+            return true;
+          });
           if (activeBookingTx) {
             return {
               statusCode: 200,
@@ -4222,29 +4254,33 @@ export class ExpressServerApp {
                   merchantOrderId: activeBookingTx.merchant_order_id || activeBookingTx.merchantOrderId,
                   depositAmountEgp: Number(activeBookingTx.amount_cents || activeBookingTx.amountCents) / 100,
                   depositAmountCents: Number(activeBookingTx.amount_cents || activeBookingTx.amountCents),
-                  mode: 'PROTOTYPE',
-                  requiresExternalCheckout: false,
+                  requiresExternalCheckout: !isTestHarness,
+                  ...(isTestHarness ? { mode: 'PROTOTYPE' } : {}),
                 },
                 timestamp,
               },
             };
           }
 
-          // F. Payment Mode Verification & Initiation
-          let mode: ReturnType<typeof getPaymentMode>;
+          // F. Payment Service Gateway Router & Initiation
+          let paymentService: PaymentService;
           try {
-            mode = getPaymentMode();
+            paymentService = new PaymentService(undefined, headers);
           } catch (err: any) {
-            return { statusCode: 503, body: { success: false, error: { code: err?.message || 'PAYMENT_MODE_NOT_CONFIGURED', message: 'إعداد الدفع غير متاح' }, timestamp } };
-          }
-          if (mode !== 'PROTOTYPE') {
-            return { statusCode: 503, body: { success: false, error: { code: 'PAYMOB_LIVE_NOT_CONFIGURED', message: 'الدفع الحي غير متاح في النسخة الحالية' }, timestamp } };
+            return {
+              statusCode: 503,
+              body: {
+                success: false,
+                error: { code: 'PAYMENT_PROVIDER_UNAVAILABLE', message: 'خدمة الدفع الإلكتروني غير متاحة حاليًا. حاول مرة أخرى لاحقًا.' },
+                timestamp,
+              },
+            };
           }
 
           const merchantOrderId = `KONFRM-DEP-${bookingId.slice(0, 8)}-${Date.now()}`;
           let initResult: any;
           try {
-            initResult = await new PaymentService().getGateway().initiatePayment({
+            initResult = await paymentService.getGateway().initiatePayment({
               bookingId,
               customerId,
               ownerId: booking.ownerId,
@@ -4264,13 +4300,13 @@ export class ExpressServerApp {
               bookingId,
               customerId,
               ownerId: booking.ownerId,
-              provider: 'MOCK',
+              provider: isTestHarness ? 'MOCK' : 'PAYMOB',
               merchantOrderId,
               amountCents: Math.round(depositEgp * 100),
               currency: 'EGP',
               paymentMethod: 'CARD',
               idempotencyKey,
-              rawRequestPayload: { mode: 'PROTOTYPE', paymentMethod: 'CARD' },
+              rawRequestPayload: isTestHarness ? { mode: 'PROTOTYPE', paymentMethod: 'CARD' } : { paymentMethod: 'CARD' },
             });
           } catch {
             return { statusCode: 500, body: { success: false, error: { code: 'CUSTOMER_PAYMENT_TRANSACTION_PERSISTENCE_FAILED', message: 'تعذر حفظ عملية الدفع في قاعدة البيانات' }, timestamp } };
@@ -4285,16 +4321,24 @@ export class ExpressServerApp {
                 merchantOrderId,
                 depositAmountEgp: depositEgp,
                 depositAmountCents: Math.round(depositEgp * 100),
-                mode: initResult.mode,
-                requiresExternalCheckout: false,
+                requiresExternalCheckout: !isTestHarness,
+                checkoutUrl: initResult.checkoutUrl,
+                expiresAt: initResult.expiresAt,
+                ...(isTestHarness ? { mode: 'PROTOTYPE' } : {}),
               },
               timestamp,
             },
           };
         }
 
-        // 4.5A Prototype-only completion — Exact Transaction Resolution & Fail Closed
+        // 4.5A Prototype-only completion — Test Harness Isolated & Fail Closed
         if (path.startsWith('/api/v1/customer/bookings/') && path.endsWith('/pay/prototype-complete') && method === 'POST') {
+          if (!isPaymentTestHarnessAuthorized(headers)) {
+            return {
+              statusCode: 404,
+              body: { success: false, error: { code: 'NOT_FOUND', message: 'المسار غير موجود' }, timestamp },
+            };
+          }
           const bookingId = path.split('/')[5];
           if (String(process.env.PAYMENT_MODE || '').toUpperCase() !== 'PROTOTYPE') {
             return { statusCode: 503, body: { success: false, error: { code: 'PAYMENT_MODE_NOT_PROTOTYPE', message: 'الدفع التجريبي غير مفعل' }, timestamp } };
@@ -4389,6 +4433,7 @@ export class ExpressServerApp {
         // 4.5B Customer Payment Status Polling & Resume Support — Fail Closed
         if (path.startsWith('/api/v1/customer/bookings/') && path.endsWith('/payment-status') && method === 'GET') {
           const bookingId = path.split('/')[5];
+          const isTestHarness = isPaymentTestHarnessAuthorized(headers);
 
           // A. Canonical Booking Read — Fail Closed
           let booking: any;
@@ -4418,7 +4463,11 @@ export class ExpressServerApp {
             };
           }
 
-          const latestTx = (txList && txList.length > 0) ? txList[0] : null;
+          const filteredTxs = isTestHarness
+            ? (txList || [])
+            : (txList || []).filter((tx: any) => tx.provider !== 'MOCK');
+
+          const latestTx = (filteredTxs && filteredTxs.length > 0) ? filteredTxs[0] : null;
 
           return {
             statusCode: 200,
@@ -4433,7 +4482,7 @@ export class ExpressServerApp {
                 currency: latestTx?.currency || 'EGP',
                 paymentTransactionId: latestTx ? latestTx.id : undefined,
                 merchantOrderId: latestTx ? (latestTx.merchant_order_id || latestTx.merchantOrderId) : undefined,
-                mode: 'PROTOTYPE',
+                ...(isTestHarness ? { mode: 'PROTOTYPE' } : {}),
               },
               timestamp,
             },

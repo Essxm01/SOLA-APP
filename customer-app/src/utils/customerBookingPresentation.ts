@@ -227,3 +227,75 @@ export function hasBookingActionRequired(bookings: CustomerBookingRecord[] | nul
   }
   return bookings.some((b) => b && b.status === 'APPROVED_PENDING_PAYMENT');
 }
+
+export interface Screen13StatusPresentation {
+  status: string;
+  customerLabel: string;
+  supportingCopy: string;
+  hasPaymentCta: boolean;
+  iconName: BookingPresentationIconName;
+  isActionRequired: boolean;
+  isKnownStatus: boolean;
+}
+
+export function getScreen13StatusPresentation(status: unknown): Screen13StatusPresentation {
+  const base = getCustomerBookingPresentation(status);
+  const normalized = base.status as CanonicalBookingStatus;
+
+  switch (normalized) {
+    case 'PENDING_OWNER_APPROVAL':
+      return {
+        ...base,
+        supportingCopy: 'طلبك وصل إلى المالك وهو قيد المراجعة.\nلا يوجد دفع مطلوب الآن.',
+        hasPaymentCta: false,
+      };
+    case 'APPROVED_PENDING_PAYMENT':
+      return {
+        ...base,
+        supportingCopy: 'وافق المالك على طلبك.\nدفع العربون هو الخطوة التالية لتأكيد الحجز.',
+        hasPaymentCta: true,
+      };
+    case 'CONFIRMED':
+      return {
+        ...base,
+        supportingCopy: 'تم دفع العربون وتأكيد حجزك.',
+        hasPaymentCta: false,
+      };
+    case 'REJECTED':
+      return {
+        ...base,
+        supportingCopy: 'لم يوافق المالك على طلب الحجز.',
+        hasPaymentCta: false,
+      };
+    case 'CANCELLED_BY_GUEST':
+      return {
+        ...base,
+        supportingCopy: 'تم إلغاء هذا الحجز من جانبك.',
+        hasPaymentCta: false,
+      };
+    case 'CANCELLED_BY_OWNER':
+      return {
+        ...base,
+        supportingCopy: 'تم إلغاء هذا الحجز من جانب المالك.',
+        hasPaymentCta: false,
+      };
+    case 'EXPIRED':
+      return {
+        ...base,
+        supportingCopy: 'انتهت صلاحية هذا الطلب.\nلا توجد خطوة مطلوبة منك الآن.',
+        hasPaymentCta: false,
+      };
+    case 'COMPLETED':
+      return {
+        ...base,
+        supportingCopy: 'انتهت الإقامة وأصبح هذا الحجز ضمن سجل حجوزاتك.',
+        hasPaymentCta: false,
+      };
+    default:
+      return {
+        ...base,
+        supportingCopy: 'حالة الحجز قيد المتابعة.',
+        hasPaymentCta: false,
+      };
+  }
+}

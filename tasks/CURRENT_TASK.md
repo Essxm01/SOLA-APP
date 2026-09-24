@@ -1,3 +1,15 @@
+# Active Task — CUSTOMER_SCREENS_13_14
+
+STATUS: IN_PROGRESS_LOCAL_TAKEOVER
+BRANCH: phase5/customer-screens13-14-stay-hub-payment
+BASE_MAIN_SHA: 85a3fc8734d258babd60295c4a9d65b96b01e0ed
+SCOPE: Customer Screen 13 Booking Details / Stay Hub and Screen 14 Prototype Deposit Payment.
+NON_GOALS: no live payment provider, no Screen 15, no PR #48 changes, no production mutation.
+VALIDATION: customer typecheck/build; Screen 11/12/Auth regression tests; Screen 13/14 tests; backend payment boundary tests.
+
+The historical Phase 5 roadmap below is preserved as evidence. This active
+contract supersedes its stale "next target" wording for this branch only.
+
 # Phase 5 — Customer App Roadmap Tracking
 
 TASK_ID: CUSTOMER_SCREEN_12_MY_BOOKINGS

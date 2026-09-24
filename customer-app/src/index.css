@@ -3,6 +3,7 @@
  * White-Dominant Coastal Mobile Marketplace
  * ============================================================================ */
 
+@import "../../DESIGN_SYSTEM/generated/konfrm-tokens.css";
 @import "tailwindcss";
 
 :root {

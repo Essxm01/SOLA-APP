@@ -9,7 +9,8 @@ export type AuthOrigin =
   | { type: 'FAVORITES_TAB' }
   | { type: 'BOOKINGS_TAB' }
   | { type: 'PROTECTED_FAVORITE'; propertyId: string }
-  | { type: 'PROTECTED_BOOKING'; context: { propertyId: string; checkIn: string; checkOut: string; guests: number; quoteSnapshot?: import('../components/PropertyDetailModal').ServerPriceQuote | null; quoteFingerprint?: string | null; requestId?: string | null } };
+  | { type: 'PROTECTED_BOOKING'; context: { propertyId: string; checkIn: string; checkOut: string; guests: number; quoteSnapshot?: import('../components/PropertyDetailModal').ServerPriceQuote | null; quoteFingerprint?: string | null; requestId?: string | null } }
+  | { type: 'PROTECTED_PAYMENT'; bookingId: string };
 
 export interface AuthChallengeIssued {
   challengeId: string;
@@ -121,6 +122,7 @@ export function formatMaskedCustomerEmail(identifier: string): string {
 export function getAuthOriginMessage(origin?: AuthOrigin): string | null {
   if (origin?.type === 'PROTECTED_BOOKING') return 'بعد التحقق، ستعود لمراجعة طلب الحجز.';
   if (origin?.type === 'PROTECTED_FAVORITE') return 'بعد التحقق، ستتمكن من متابعة حفظ الوحدة.';
+  if (origin?.type === 'PROTECTED_PAYMENT') return 'بعد التحقق، ستعود إلى صفحة دفع العربون لهذا الحجز.';
   return null;
 }
 

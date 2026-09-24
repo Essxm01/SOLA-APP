@@ -76,6 +76,7 @@ assertEqual(getConfiguredAuthV2BaseUrl(null, '192.168.1.20'), '/api/v2', 'LAN ho
 assertEqual(getAuthV2ApiUrl('/auth/challenges', qaBaseUrl), `${qaBaseUrl}/auth/challenges`, 'API resolver does not duplicate version prefix');
 assertEqual(getAuthOriginMessage({ type: 'PROTECTED_FAVORITE', propertyId: 'p1' }), 'بعد التحقق، ستتمكن من متابعة حفظ الوحدة.', 'favorite origin copy');
 assertEqual(getAuthOriginMessage({ type: 'PROTECTED_BOOKING', context: { propertyId: 'p1', checkIn: '2026-10-01', checkOut: '2026-10-03', guests: 2 } }), 'بعد التحقق، ستعود لمراجعة طلب الحجز.', 'booking origin copy');
+assertEqual(getAuthOriginMessage({ type: 'PROTECTED_PAYMENT', bookingId: 'bk-123' }), 'بعد التحقق، ستعود إلى صفحة دفع العربون لهذا الحجز.', 'protected payment origin copy');
 assertEqual(getAuthOriginMessage({ type: 'EXPLORE_ACCOUNT' }), null, 'explore origin has no protected-action copy');
 
 let request: { url: string; init: RequestInit } | undefined;

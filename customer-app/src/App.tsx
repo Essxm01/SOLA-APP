@@ -14,7 +14,9 @@ import {
   type BookingRequestSentState,
   resolveScreen11SuccessRouting,
 } from './utils/customerScreen11BookingRequestSent';
-import { BookingDetailModal, type CustomerBookingRecord } from './components/BookingDetailModal';
+import { CustomerBookingDetailsScreen } from './components/CustomerBookingDetailsScreen';
+import { CustomerDepositPaymentScreen } from './components/CustomerDepositPaymentScreen';
+import { type CustomerBookingRecord } from './utils/customerBookingPresentation';
 import { CustomerMyBookingsScreen } from './components/CustomerMyBookingsScreen';
 import {
   CustomerBookingsUnauthorizedError,
@@ -174,6 +176,7 @@ export function App() {
   const [activeBooking, setActiveBooking] = useState<BookingDetails | null>(null);
   const [customerBookings, setCustomerBookings] = useState<CustomerBookingRecord[]>([]);
   const [bookingDetailId, setBookingDetailId] = useState<string | null>(null);
+  const [paymentScreenBookingId, setPaymentScreenBookingId] = useState<string | null>(null);
   const [bookingsError, setBookingsError] = useState<string | null>(null);
   const [bookingsLoadState, setBookingsLoadState] = useState<
     'INITIAL_LOADING' | 'LOADED' | 'EMPTY' | 'ERROR' | 'REFRESHING' | 'STALE_ERROR'
@@ -425,6 +428,7 @@ export function App() {
         setCustomerBookings([]);
         setActiveBooking(null);
         setBookingDetailId(null);
+        setPaymentScreenBookingId(null);
         setRecentBookingSubmission(null);
         setBookingsSessionExpired(true);
         setBookingsError('انتهت صلاحية الجلسة. يرجى تسجيل الدخول مجدداً لعرض حجوزاتك.');
@@ -756,6 +760,13 @@ export function App() {
       if (!hasCanonicalSession) {
         void fetchBookings(accessToken).catch(() => undefined);
       }
+    }
+
+    if (origin.type === 'PROTECTED_PAYMENT') {
+      setPaymentScreenBookingId(origin.bookingId);
+      setBookingDetailId(origin.bookingId);
+      setIsEditingAccount(false);
+      setDiscoveryView('EXPLORE');
     }
   };
 
@@ -1544,18 +1555,40 @@ export function App() {
         />
       )}
 
-      {bookingDetailId && authToken && (
-        <BookingDetailModal
+      {/* Screen 13 — Booking Details / Stay Hub */}
+      {bookingDetailId && !paymentScreenBookingId && (
+        <CustomerBookingDetailsScreen
           bookingId={bookingDetailId}
-          authToken={authToken}
-          onClose={() => {
+          authToken={authToken || ''}
+          onBack={() => {
             setBookingDetailId(null);
-            void fetchBookings(authToken).catch(() => undefined);
+            if (authToken) void fetchBookings(authToken).catch(() => undefined);
           }}
-          onPaymentSuccess={() => {
-            void fetchBookings(authToken).catch(() => undefined);
-            void fetchAccountSummary(authToken).catch(() => undefined);
+          onNavigateToPayment={(id) => setPaymentScreenBookingId(id)}
+          onReconcileBooking={(updated) => {
+            setCustomerBookings((prev) =>
+              prev.map((b) => (b.id === updated.id ? { ...b, ...updated } : b))
+            );
           }}
+          onSessionExpired={() => openAuthEntry({ type: 'BOOKINGS_TAB' }, 'LOGIN')}
+        />
+      )}
+
+      {/* Screen 14 — Deposit Payment */}
+      {paymentScreenBookingId && (
+        <CustomerDepositPaymentScreen
+          bookingId={paymentScreenBookingId}
+          authToken={authToken || ''}
+          onBack={() => setPaymentScreenBookingId(null)}
+          onPaymentSuccess={(id) => {
+            setPaymentScreenBookingId(null);
+            setBookingDetailId(id);
+            if (authToken) {
+              void fetchBookings(authToken).catch(() => undefined);
+              void fetchAccountSummary(authToken).catch(() => undefined);
+            }
+          }}
+          onSessionExpired={(id) => openAuthEntry({ type: 'PROTECTED_PAYMENT', bookingId: id }, 'LOGIN')}
         />
       )}
 
@@ -1636,8 +1669,8 @@ export function App() {
         />
       )}
 
-      {/* Native Persistent Mobile Bottom Navigation Bar (hidden during property details, edit account view, or Screen 11) */}
-      {!selectedProperty && !isEditingAccount && discoveryView === 'EXPLORE' && !bookingRequestSent && (
+      {/* Native Persistent Mobile Bottom Navigation Bar (hidden during property details, edit account view, Screen 11, Screen 13, or Screen 14) */}
+      {!selectedProperty && !isEditingAccount && discoveryView === 'EXPLORE' && !bookingRequestSent && !bookingDetailId && !paymentScreenBookingId && (
         <CustomerBottomNav
           activeTab={activeTab}
           onSelectTab={(tab) => {

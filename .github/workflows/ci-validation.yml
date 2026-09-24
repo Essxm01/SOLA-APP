@@ -112,6 +112,8 @@ jobs:
           npm run test:auth-screen10
           npm run test:screen11
           npm run test:screen12
+          npm run test:screen13
+          npm run test:screen14
           npm run build
       - name: Deploy Customer App to Cloudflare Pages
         if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}

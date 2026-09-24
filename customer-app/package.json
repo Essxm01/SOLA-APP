@@ -19,7 +19,9 @@
     "preview": "vite preview",
     "test:auth-screen10": "npx tsx src/utils/customerAuthV2.test.ts && npx tsx src/utils/customerScreen10AuthV2.test.ts && npx tsx src/utils/customerAuthV2Screen10Contract.test.ts && npx tsx src/utils/customerAuthV2Flow.test.ts && npx tsx src/utils/customerAuthV2Remediation.test.ts",
     "test:screen11": "npx tsx src/utils/customerScreen11BookingRequestSent.test.ts",
-    "test:screen12": "npx tsx src/utils/customerScreen12MyBookings.test.ts"
+    "test:screen12": "npx tsx src/utils/customerScreen12MyBookings.test.ts",
+    "test:screen13": "npx tsx src/utils/customerScreen13BookingDetails.test.ts",
+    "test:screen14": "npx tsx src/utils/customerScreen14DepositPayment.test.ts"
   },
   "dependencies": {
     "lucide-react": "^1.31.0",

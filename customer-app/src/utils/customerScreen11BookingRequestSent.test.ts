@@ -294,7 +294,40 @@ async function run() {
   assertEqual(isAllowedStayLength(0), false, '0 nights rejected');
   assertEqual(isAllowedStayLength(-2), false, 'negative nights rejected');
 
-  console.log('ALL 24 SCREEN 11 REGRESSION CHECKS PASSED DETERMINISTICALLY!');
+  // ── 25. Brand correction: Legacy "صولا" completely absent from Screen 11 ─────
+  assert(
+    !screen11Source.includes('صولا'),
+    'RULE-25: Screen 11 must NOT render legacy Arabic brand text "صولا"'
+  );
+
+  // ── 26. Canonical KONFRM treatment ─────────────────────────────────────────
+  assert(
+    screen11Source.includes('/konfrm-mark.svg') &&
+    screen11Source.includes('alt="KONFRM"') &&
+    screen11Source.includes('KONFRM'),
+    'RULE-26: Screen 11 must render canonical restrained KONFRM brand mark and wordmark'
+  );
+
+  // ── 27. Mobile Typography: Decision copy not using tiny text-xs ─────────────
+  assert(
+    !screen11Source.includes('text-xs font-extrabold text-slate-800') &&
+    !screen11Source.includes('text-xs font-bold text-slate-800') &&
+    !screen11Source.includes('text-xs font-medium leading-relaxed') &&
+    !screen11Source.includes('text-xs font-semibold text-slate-500') &&
+    !screen11Source.includes('text-xs sm:text-sm') &&
+    !screen11Source.includes('text-xs'),
+    'RULE-27: Screen 11 decision copy must be comfortably readable (~14px/text-sm) and not use tiny text-xs'
+  );
+
+  // ── 28. Property Title: Supports safe max-two-line layout ──────────────────
+  assert(
+    screen11Source.includes('line-clamp-2') &&
+    screen11Source.includes('break-words') &&
+    screen11Source.includes('items-start'),
+    'RULE-28: Property title presentation must support max-two-line layout (line-clamp-2) without overflow'
+  );
+
+  console.log('ALL 28 SCREEN 11 REGRESSION CHECKS PASSED DETERMINISTICALLY!');
 }
 
 run().catch((err) => {

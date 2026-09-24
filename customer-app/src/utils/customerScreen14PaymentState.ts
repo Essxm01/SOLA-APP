@@ -20,6 +20,20 @@ export function clearScreen14PrivateState(): Screen14PrivateState {
     errorMessage: null,
   };
 }
+
+export function resolveScreen14HttpErrorState(status: number): Screen14PaymentState | null {
+  if (status === 401) return 'UNAUTHORIZED';
+  if (status === 403) return 'FORBIDDEN';
+  if (status === 404) return 'NOT_FOUND';
+  return null;
+}
+
+export function resolveScreen14TypedErrorState(errorName: string | undefined): Screen14PaymentState | null {
+  if (errorName === 'CustomerPaymentUnauthorizedError') return 'UNAUTHORIZED';
+  if (errorName === 'CustomerPaymentForbiddenError') return 'FORBIDDEN';
+  if (errorName === 'CustomerPaymentNotFoundError') return 'NOT_FOUND';
+  return null;
+}
 /**
  * Server status is authoritative. A failed/expired transaction is not an
  * active attempt and can become READY only after the user explicitly requests

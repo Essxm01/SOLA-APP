@@ -46,7 +46,8 @@ export interface CustomerBookingDetailsScreenProps {
   onBack: () => void;
   onNavigateToPayment: (bookingId: string) => void;
   onReconcileBooking?: (updated: CustomerBookingDetailDto) => void;
-  onSessionExpired?: () => void;
+  onUnauthorizedDetected?: () => void;
+  onReauthenticate?: () => void;
 }
 
 function renderStatusIcon(iconName: BookingPresentationIconName, className = 'w-5 h-5') {
@@ -93,7 +94,8 @@ export const CustomerBookingDetailsScreen: React.FC<CustomerBookingDetailsScreen
   onBack,
   onNavigateToPayment,
   onReconcileBooking,
-  onSessionExpired,
+  onUnauthorizedDetected,
+  onReauthenticate,
 }) => {
   const [booking, setBooking] = useState<CustomerBookingDetailDto | null>(null);
   const [loadState, setLoadState] = useState<Screen13LoadState>('INITIAL_LOADING');
@@ -121,7 +123,7 @@ export const CustomerBookingDetailsScreen: React.FC<CustomerBookingDetailsScreen
           // Fail closed: clear private booking state immediately
           setBooking(null);
           setLoadState('UNAUTHORIZED');
-          onSessionExpired?.();
+          onUnauthorizedDetected?.();
           return;
         }
 
@@ -156,7 +158,7 @@ export const CustomerBookingDetailsScreen: React.FC<CustomerBookingDetailsScreen
         }
       }
     },
-    [bookingId, authToken, booking, onReconcileBooking]
+    [bookingId, authToken, booking, onReconcileBooking, onUnauthorizedDetected]
   );
 
   useEffect(() => {
@@ -220,7 +222,7 @@ export const CustomerBookingDetailsScreen: React.FC<CustomerBookingDetailsScreen
               سجّل الدخول مرة أخرى لعرض تفاصيل هذا الحجز.
             </p>
             <button
-              onClick={() => onSessionExpired?.()}
+              onClick={() => onReauthenticate?.()}
               className="w-full h-[52px] bg-[var(--konfrm-color-primary)] hover:bg-[var(--konfrm-color-primary-hover)] text-white font-bold rounded-2xl shadow-sm transition-colors text-sm"
             >
               تسجيل الدخول مجددًا

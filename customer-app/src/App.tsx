@@ -1580,10 +1580,8 @@ export function App() {
               prev.map((b) => (b.id === updated.id ? { ...b, ...updated } : b))
             );
           }}
-          onSessionExpired={() => {
-            handleBookingDomainSessionExpired();
-            openAuthEntry({ type: 'BOOKINGS_TAB' }, 'LOGIN');
-          }}
+          onUnauthorizedDetected={handleBookingDomainSessionExpired}
+          onReauthenticate={() => openAuthEntry({ type: 'BOOKINGS_TAB' }, 'LOGIN')}
         />
       )}
 

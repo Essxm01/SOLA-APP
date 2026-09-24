@@ -35,7 +35,9 @@ import {
 import type { CustomerBookingDetailDto } from '../types/customerBookingDetail';
 import {
   clearScreen14PrivateState,
+  resolveScreen14HttpErrorState,
   resolveScreen14ReconciliationState,
+  resolveScreen14TypedErrorState,
 } from '../utils/customerScreen14PaymentState';
 
 export type Screen14PaymentState =
@@ -244,8 +246,14 @@ export const CustomerDepositPaymentScreen: React.FC<CustomerDepositPaymentScreen
         const freshRes = await fetch(getApiUrl(`/customer/bookings/${bookingId}`), {
           headers: { Authorization: `Bearer ${authToken}` },
         });
+        const freshAccessState = resolveScreen14HttpErrorState(freshRes.status);
+        if (freshAccessState) {
+          clearPrivatePaymentState();
+          setPaymentState(freshAccessState);
+          return;
+        }
         const freshJson = await freshRes.json().catch(() => ({}));
-        if (freshJson.success && freshJson.data && freshJson.data.depositAmount === initResult.depositAmountEgp) {
+        if (freshRes.ok && freshJson.success && freshJson.data && freshJson.data.depositAmount === initResult.depositAmountEgp) {
           setPreviousDepositEgp(booking.depositAmount);
           setBooking(freshJson.data);
           setActiveDepositEgp(initResult.depositAmountEgp);
@@ -342,8 +350,14 @@ export const CustomerDepositPaymentScreen: React.FC<CustomerDepositPaymentScreen
         setPaymentState('SUCCESS');
         return;
       }
-      } catch {
-        // ignore secondary verification error
+      } catch (verifyErr: any) {
+        const verificationAccessState = resolveScreen14TypedErrorState(verifyErr?.name);
+        if (verificationAccessState) {
+          clearPrivatePaymentState();
+          setPaymentState(verificationAccessState);
+          return;
+        }
+        // Transport/server uncertainty remains a truthful failed attempt.
       }
 
       setErrorMessage(err?.message || 'تعذر إتمام الدفع التجريبي. يمكنك المحاولة مرة أخرى.');

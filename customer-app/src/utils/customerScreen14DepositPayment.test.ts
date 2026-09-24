@@ -25,7 +25,9 @@ import type { Screen14PaymentState } from '../components/CustomerDepositPaymentS
 import {
   canStartFreshScreen14Attempt,
   clearScreen14PrivateState,
+  resolveScreen14HttpErrorState,
   resolveScreen14ReconciliationState,
+  resolveScreen14TypedErrorState,
 } from './customerScreen14PaymentState';
 
 function assert(condition: unknown, message?: string): asserts condition {
@@ -188,6 +190,13 @@ console.log('--- Starting Screen 14 Deposit Payment Tests ---');
   assertEqual(cleared.paymentTransactionId, null, 'unauthorized cleanup clears transaction');
   assertEqual(cleared.activeDepositEgp, 0, 'unauthorized cleanup clears active amount');
   assertEqual(cleared.previousDepositEgp, null, 'unauthorized cleanup clears previous amount');
+  assertEqual(resolveScreen14HttpErrorState(401), 'UNAUTHORIZED', 'amount refresh 401 is unauthorized');
+  assertEqual(resolveScreen14HttpErrorState(403), 'FORBIDDEN', 'amount refresh 403 is forbidden');
+  assertEqual(resolveScreen14HttpErrorState(404), 'NOT_FOUND', 'amount refresh 404 is not found');
+  assertEqual(resolveScreen14TypedErrorState('CustomerPaymentUnauthorizedError'), 'UNAUTHORIZED', 'verification 401 is unauthorized');
+  assertEqual(resolveScreen14TypedErrorState('CustomerPaymentForbiddenError'), 'FORBIDDEN', 'verification 403 is forbidden');
+  assertEqual(resolveScreen14TypedErrorState('CustomerPaymentNotFoundError'), 'NOT_FOUND', 'verification 404 is not found');
+  assertEqual(resolveScreen14TypedErrorState('Error'), null, 'transport uncertainty does not become auth success');
   console.log('✓ Executable Screen 14 reconciliation, retry, and cleanup transitions verified');
 }
 

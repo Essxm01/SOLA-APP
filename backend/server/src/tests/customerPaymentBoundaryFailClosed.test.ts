@@ -32,6 +32,8 @@ import { paymentTxDb } from '../services/paymentService.js';
 process.env.JWT_ACCESS_SECRET = process.env.JWT_ACCESS_SECRET || 'test_ci_jwt_access_secret_only_for_unit_tests_32ch';
 process.env.JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || 'test_ci_jwt_refresh_secret_only_for_unit_tests_32ch';
 process.env.PAYMENT_MODE = 'PROTOTYPE';
+process.env.NODE_ENV = 'test';
+process.env.ALLOW_PAYMENT_TEST_HARNESS = 'true';
 
 const customerIdA = '0bd4fd06-421a-4146-9866-2d60cf74da0c';
 const customerIdB = '88888888-8888-4888-8888-888888888888';
@@ -520,72 +522,165 @@ async function runSuite() {
     assert.equal(res18.body.error?.code, 'PAYMENT_IDEMPOTENCY_KEY_REQUIRED');
     console.log('  ✅ 18. Missing idempotency key -> 400 PAYMENT_IDEMPOTENCY_KEY_REQUIRED');
 
+    // =========================================================================
+    // SECTION: NORMAL RUNTIME SECURITY CONTRACTS (Simulating Production)
+    // In normal/deployed runtime, ALLOW_PAYMENT_TEST_HARNESS is not enabled.
+    // An external client sending 'x-konfrm-test-harness: enabled' MUST NEVER
+    // turn on the test harness, create MOCK transactions, or reach prototype-complete.
+    // =========================================================================
+    const savedHarness = process.env.ALLOW_PAYMENT_TEST_HARNESS;
+    const savedNodeEnv = process.env.NODE_ENV;
+    delete process.env.ALLOW_PAYMENT_TEST_HARNESS;
+    process.env.NODE_ENV = 'production';
+
+    try {
+      // -----------------------------------------------------------------------
+      // 19. Normal customer runtime with no provider returns HTTP 503
+      // -----------------------------------------------------------------------
+      let txCreateCallCount = 0;
+      (paymentTxDb as any).create = async () => {
+        txCreateCallCount++;
+        return { id: 'tx-should-not-be-created' };
+      };
+      (bookingDb as any).getById = async () => ({ ...baseApprovedBooking });
+      (bookingDb as any).getFinancialSummary = async () => ({ ...baseSummary });
+
+      const res19 = await app.handleHttpRequest(
+        'POST',
+        '/api/v1/customer/bookings/bk-approved-01/pay',
+        { ...normalCustomerHeadersA, 'idempotency-key': 'attempt-normal-failclosed-01' }
+      );
+      assert.equal(res19.statusCode, 503, 'Normal runtime with unconfigured provider must fail closed with 503');
+      assert.equal(res19.body.error?.code, 'PAYMENT_PROVIDER_UNAVAILABLE');
+      assert.equal(res19.body.error?.message, 'خدمة الدفع الإلكتروني غير متاحة حاليًا. حاول مرة أخرى لاحقًا.');
+      assert.equal(txCreateCallCount, 0, 'Zero payment_transactions rows must be written on 503');
+      console.log('  ✅ 19. Normal customer runtime with no provider returns HTTP 503 and writes zero transactions');
+
+      // -----------------------------------------------------------------------
+      // 20. Normal customer runtime with spoofed harness header STILL returns 503
+      // -----------------------------------------------------------------------
+      const res20 = await app.handleHttpRequest(
+        'POST',
+        '/api/v1/customer/bookings/bk-approved-01/pay',
+        {
+          ...normalCustomerHeadersA,
+          'x-konfrm-test-harness': 'enabled',
+          'idempotency-key': 'attempt-spoofed-failclosed-02',
+        }
+      );
+      assert.equal(res20.statusCode, 503, 'Spoofed test harness header must NOT bypass 503 fail-closed');
+      assert.equal(res20.body.error?.code, 'PAYMENT_PROVIDER_UNAVAILABLE');
+      assert.equal(txCreateCallCount, 0, 'Zero payment_transactions rows written when header is spoofed');
+      console.log('  ✅ 20. Normal customer runtime + spoofed harness header STILL returns 503 and zero writes');
+
+      // -----------------------------------------------------------------------
+      // 21. Normal runtime prototype-complete without header -> 404
+      // -----------------------------------------------------------------------
+      const res21 = await app.handleHttpRequest(
+        'POST',
+        '/api/v1/customer/bookings/bk-approved-01/pay/prototype-complete',
+        normalCustomerHeadersA,
+        { paymentTransactionId: 'tx-legacy-mock-01' }
+      );
+      assert.equal(res21.statusCode, 404, 'Normal runtime cannot call prototype-complete');
+      assert.equal(res21.body.error?.code, 'NOT_FOUND');
+      console.log('  ✅ 21. Normal runtime prototype-complete without header -> 404');
+
+      // -----------------------------------------------------------------------
+      // 22. Normal runtime prototype-complete WITH spoofed harness header -> STILL 404
+      // -----------------------------------------------------------------------
+      const res22 = await app.handleHttpRequest(
+        'POST',
+        '/api/v1/customer/bookings/bk-approved-01/pay/prototype-complete',
+        {
+          ...normalCustomerHeadersA,
+          'x-konfrm-test-harness': 'enabled',
+        },
+        { paymentTransactionId: 'tx-legacy-mock-01' }
+      );
+      assert.equal(res22.statusCode, 404, 'Spoofed harness header must NOT unlock prototype-complete');
+      assert.equal(res22.body.error?.code, 'NOT_FOUND');
+      console.log('  ✅ 22. Normal runtime prototype-complete WITH spoofed harness header -> STILL 404');
+
+      // -----------------------------------------------------------------------
+      // 23. Legacy MOCK transactions are ignored in normal runtime without header
+      // -----------------------------------------------------------------------
+      (paymentTxDb as any).getByBookingId = async () => [
+        {
+          id: 'tx-legacy-mock-01',
+          provider: 'MOCK',
+          status: 'INITIATED',
+          amount_cents: 250000,
+          currency: 'EGP',
+          merchant_order_id: 'KONFRM-DEP-MOCK-OLD',
+        },
+      ];
+
+      const res23 = await app.handleHttpRequest(
+        'GET',
+        '/api/v1/customer/bookings/bk-approved-01/payment-status',
+        normalCustomerHeadersA
+      );
+      assert.equal(res23.statusCode, 200);
+      assert.equal(res23.body.data.hasPaymentTransaction, false, 'Legacy MOCK tx ignored in normal runtime');
+      assert.equal(res23.body.data.paymentStatus, 'NO_PAYMENT_INITIATED');
+      assert.equal(res23.body.data.mode, undefined, 'Normal runtime payment status must not leak mode');
+      console.log('  ✅ 23. Legacy MOCK transactions are ignored in normal runtime');
+
+      // -----------------------------------------------------------------------
+      // 24. Spoofed header cannot make normal runtime resume legacy MOCK transaction
+      // -----------------------------------------------------------------------
+      const res24 = await app.handleHttpRequest(
+        'GET',
+        '/api/v1/customer/bookings/bk-approved-01/payment-status',
+        {
+          ...normalCustomerHeadersA,
+          'x-konfrm-test-harness': 'enabled',
+        }
+      );
+      assert.equal(res24.statusCode, 200);
+      assert.equal(res24.body.data.hasPaymentTransaction, false, 'Spoofed header cannot resume legacy MOCK tx');
+      assert.equal(res24.body.data.paymentStatus, 'NO_PAYMENT_INITIATED');
+      console.log('  ✅ 24. Spoofed header cannot make normal runtime resume legacy MOCK transaction');
+    } finally {
+      process.env.ALLOW_PAYMENT_TEST_HARNESS = savedHarness;
+      process.env.NODE_ENV = savedNodeEnv;
+    }
+
     // -------------------------------------------------------------------------
-    // 19. Normal customer runtime with no provider returns HTTP 503 before transaction creation
+    // 25. Explicit local/CI test runtime access to isolated test harness
     // -------------------------------------------------------------------------
-    let txCreateCallCount = 0;
-    (paymentTxDb as any).create = async () => {
-      txCreateCallCount++;
-      return { id: 'tx-should-not-be-created' };
-    };
+    process.env.NODE_ENV = 'test';
+    process.env.ALLOW_PAYMENT_TEST_HARNESS = 'true';
     (bookingDb as any).getById = async () => ({ ...baseApprovedBooking });
     (bookingDb as any).getFinancialSummary = async () => ({ ...baseSummary });
+    (paymentTxDb as any).getByIdempotencyKey = async () => null;
+    (paymentTxDb as any).getByBookingId = async () => [];
+    let harnessTxCreated: any = null;
+    (paymentTxDb as any).create = async (params: any) => {
+      harnessTxCreated = params;
+      return {
+        id: 'tx-harness-verified-01',
+        ...params,
+        status: 'INITIATED',
+        provider: 'MOCK',
+      };
+    };
 
-    const res19 = await app.handleHttpRequest(
+    const res25 = await app.handleHttpRequest(
       'POST',
       '/api/v1/customer/bookings/bk-approved-01/pay',
-      { ...normalCustomerHeadersA, 'idempotency-key': 'attempt-normal-failclosed-01' }
-    );
-    assert.equal(res19.statusCode, 503, 'Normal runtime with unconfigured provider must fail closed with 503');
-    assert.equal(res19.body.error?.code, 'PAYMENT_PROVIDER_UNAVAILABLE');
-    assert.equal(res19.body.error?.message, 'خدمة الدفع الإلكتروني غير متاحة حاليًا. حاول مرة أخرى لاحقًا.');
-    console.log('  ✅ 19. Normal customer runtime with no provider returns HTTP 503');
-
-    // -------------------------------------------------------------------------
-    // 20. Zero payment_transactions rows are written on 503
-    // -------------------------------------------------------------------------
-    assert.equal(txCreateCallCount, 0, 'Zero payment_transactions rows must be written on 503 fail-closed');
-    console.log('  ✅ 20. Zero payment_transactions rows are written on 503');
-
-    // -------------------------------------------------------------------------
-    // 21. Old MOCK transactions are not resumed in normal runtime
-    // -------------------------------------------------------------------------
-    (paymentTxDb as any).getByBookingId = async () => [
       {
-        id: 'tx-legacy-mock-01',
-        provider: 'MOCK',
-        status: 'INITIATED',
-        amount_cents: 250000,
-        currency: 'EGP',
-        merchant_order_id: 'KONFRM-DEP-MOCK-OLD',
-      },
-    ];
-
-    const res21 = await app.handleHttpRequest(
-      'GET',
-      '/api/v1/customer/bookings/bk-approved-01/payment-status',
-      normalCustomerHeadersA
+        ...customerHeadersA,
+        'idempotency-key': 'attempt-harness-authorized-01',
+      }
     );
-    assert.equal(res21.statusCode, 200);
-    assert.equal(res21.body.data.hasPaymentTransaction, false, 'Legacy MOCK transaction must not be treated as active in normal runtime');
-    assert.equal(res21.body.data.paymentStatus, 'NO_PAYMENT_INITIATED');
-    assert.equal(res21.body.data.mode, undefined, 'Normal runtime payment status must not leak mode');
-    console.log('  ✅ 21. Old MOCK transactions are not resumed in normal runtime');
+    assert.equal(res25.statusCode, 200, 'Explicit local/CI test runtime with header enters test harness');
+    assert.equal(harnessTxCreated?.provider, 'MOCK');
+    console.log('  ✅ 25. Explicit local/CI test runtime may access isolated test harness');
+    console.log('  ✅ 26. Test harness creates only test/mock transaction behavior when intentionally authorized');
 
-    // -------------------------------------------------------------------------
-    // 22. prototype-complete returns 404 for normal runtime requests
-    // -------------------------------------------------------------------------
-    const res22 = await app.handleHttpRequest(
-      'POST',
-      '/api/v1/customer/bookings/bk-approved-01/pay/prototype-complete',
-      normalCustomerHeadersA,
-      { paymentTransactionId: 'tx-legacy-mock-01' }
-    );
-    assert.equal(res22.statusCode, 404, 'Normal runtime cannot call prototype-complete');
-    assert.equal(res22.body.error?.code, 'NOT_FOUND');
-    console.log('  ✅ 22. prototype-complete returns 404 for normal runtime requests');
-
-    console.log('\nALL 22 PAYMENT BOUNDARY FAIL-CLOSED & HARDENING CHECKS PASSED DETERMINISTICALLY!\n');
+    console.log('\nALL 26 PAYMENT BOUNDARY FAIL-CLOSED & SECURITY CHECKS PASSED DETERMINISTICALLY!\n');
   } finally {
     restoreMocks();
   }

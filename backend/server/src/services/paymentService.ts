@@ -22,12 +22,36 @@ export function isRealPaymentProviderAvailable(): boolean {
 }
 
 /**
- * Checks if the request is executing within an authorized test harness
+ * Server-controlled automated test runtime boundary.
+ * The payment test harness capability exists ONLY in local automated tests and CI.
+ * It strictly requires:
+ * 1. process.env.NODE_ENV === 'test' (server runtime is automated test)
+ * 2. process.env.ALLOW_PAYMENT_TEST_HARNESS === 'true' (explicit server opt-in)
+ *
+ * An incoming request header alone CAN NEVER activate the test harness.
+ */
+export function isServerPaymentTestEnvironment(): boolean {
+  const isTestEnv = process.env.NODE_ENV === 'test';
+  const isHarnessAllowed = String(process.env.ALLOW_PAYMENT_TEST_HARNESS || '').trim().toLowerCase() === 'true';
+  return isTestEnv && isHarnessAllowed;
+}
+
+/**
+ * Checks if the request is executing within an authorized test harness.
+ * In normal/deployed runtime, this ALWAYS returns false regardless of any request headers.
+ * In automated test runtime, it requires an explicit test harness signal in the request headers.
  */
 export function isPaymentTestHarnessAuthorized(headers?: Record<string, any>): boolean {
-  const envAllowed = String(process.env.ALLOW_PAYMENT_TEST_HARNESS || '').trim().toLowerCase() === 'true';
-  const headerAllowed = headers && (headers['x-konfrm-test-harness'] === 'enabled' || headers['X-Konfrm-Test-Harness'] === 'enabled');
-  return envAllowed || Boolean(headerAllowed);
+  // Hard server-controlled gate: MUST be running inside server test environment
+  if (!isServerPaymentTestEnvironment()) {
+    return false;
+  }
+  // Secondary check: require explicit test-harness request signal
+  if (!headers) {
+    return false;
+  }
+  const headerVal = headers['x-konfrm-test-harness'] || headers['X-Konfrm-Test-Harness'];
+  return String(headerVal || '').trim().toLowerCase() === 'enabled';
 }
 
 export function getPaymentMode(): PaymentMode {
@@ -328,6 +352,10 @@ export class PaymentService {
       return;
     }
     if (isPaymentTestHarnessAuthorized(headers)) {
+      this.gateway = new PrototypePaymentGateway();
+      return;
+    }
+    if (isServerPaymentTestEnvironment() && !headers) {
       this.gateway = new PrototypePaymentGateway();
       return;
     }

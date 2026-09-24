@@ -187,6 +187,7 @@ jobs:
           npm run test:p2-2-renter-api
           npm run test:c4-booking
           npm run test:customer-booking-cancel
+          npm run test:customer-payment-boundary
           npm run test:auth-p02
           npm run test:p2-3-owner-api
           npm run test:r1-admin-security

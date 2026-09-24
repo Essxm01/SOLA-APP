@@ -566,47 +566,71 @@ try {
   };
   (paymentTxDb as any).getByBookingId = async () => [mockTx];
 
-  // Case 24: malformed finalization result cannot produce a successful response using default values
-  (paymentTxDb as any).completeDepositPayment = async () => ({
-    // malformed: missing bookingStatus, paymentStatus, currency
-    bookingId,
-    confirmedAt: '2026-09-03T00:00:00Z',
-  });
-  const malformedRouteRes = await app.handleHttpRequest(
+  // Contract B: normal Customer runtime prototype-complete returns 404 even if header is spoofed
+  const normalRouteRes = await app.handleHttpRequest(
     'POST',
     `/api/v1/customer/bookings/${bookingId}/pay/prototype-complete`,
-    customerHeaders,
+    { ...customerHeaders, 'x-konfrm-test-harness': 'enabled' },
     { paymentTransactionId: paymentTxId }
   );
-  assert.equal(malformedRouteRes.statusCode, 500, 'malformed result must return 500 and not fabricate default success');
-  assert.equal((malformedRouteRes.body as any).error?.code, 'PAYMENT_COMPLETION_MALFORMED_RESULT');
+  assert.equal(normalRouteRes.statusCode, 404, 'Normal customer runtime cannot call prototype-complete even with spoofed header');
 
-  // Case 25: valid completion preserves existing Customer-facing fields and does not expose internal Owner/commission data
-  (paymentTxDb as any).completeDepositPayment = async () => ({
-    paymentTransactionId: paymentTxId,
-    paymentStatus: 'SUCCEEDED',
-    bookingId,
-    bookingStatus: 'CONFIRMED',
-    confirmedAt: '2026-09-03T00:00:00Z',
-    amountCents: 200000,
-    currency: 'EGP',
-    idempotent: false,
-  });
-  const successRouteRes = await app.handleHttpRequest(
-    'POST',
-    `/api/v1/customer/bookings/${bookingId}/pay/prototype-complete`,
-    customerHeaders,
-    { paymentTransactionId: paymentTxId }
-  );
-  assert.equal(successRouteRes.statusCode, 200);
-  const successData = (successRouteRes.body as any).data;
-  assert.equal(successData.bookingStatus, 'CONFIRMED');
-  assert.equal(successData.paymentStatus, 'SUCCEEDED');
-  assert.equal(successData.currency, 'EGP');
-  assert.equal(successData.amountEgp, 2000);
-  assert.equal(successData.confirmedAt, '2026-09-03T00:00:00Z');
-  for (const forbidden of ['commission', 'ownerNet', 'wallet', 'solaCommission', 'pendingBalance', 'heldBalance']) {
-    assert.ok(!Object.keys(successData).some((k) => k.toLowerCase().includes(forbidden.toLowerCase())), `customer payment response must not expose ${forbidden}`);
+  // Contract A: explicitly execute Cases 24 and 25 inside the safe local/CI-only payment test harness context
+  const prevNodeEnv = process.env.NODE_ENV;
+  const prevHarness = process.env.ALLOW_PAYMENT_TEST_HARNESS;
+  process.env.NODE_ENV = 'test';
+  process.env.ALLOW_PAYMENT_TEST_HARNESS = 'true';
+  const testHarnessHeaders = {
+    ...customerHeaders,
+    'x-konfrm-test-harness': 'enabled',
+  };
+
+  try {
+    // Case 24: malformed finalization result cannot produce a successful response using default values
+    (paymentTxDb as any).completeDepositPayment = async () => ({
+      // malformed: missing bookingStatus, paymentStatus, currency
+      bookingId,
+      confirmedAt: '2026-09-03T00:00:00Z',
+    });
+    const malformedRouteRes = await app.handleHttpRequest(
+      'POST',
+      `/api/v1/customer/bookings/${bookingId}/pay/prototype-complete`,
+      testHarnessHeaders,
+      { paymentTransactionId: paymentTxId }
+    );
+    assert.equal(malformedRouteRes.statusCode, 500, 'malformed result must return 500 and not fabricate default success');
+    assert.equal((malformedRouteRes.body as any).error?.code, 'PAYMENT_COMPLETION_MALFORMED_RESULT');
+
+    // Case 25: valid completion preserves existing Customer-facing fields and does not expose internal Owner/commission data
+    (paymentTxDb as any).completeDepositPayment = async () => ({
+      paymentTransactionId: paymentTxId,
+      paymentStatus: 'SUCCEEDED',
+      bookingId,
+      bookingStatus: 'CONFIRMED',
+      confirmedAt: '2026-09-03T00:00:00Z',
+      amountCents: 200000,
+      currency: 'EGP',
+      idempotent: false,
+    });
+    const successRouteRes = await app.handleHttpRequest(
+      'POST',
+      `/api/v1/customer/bookings/${bookingId}/pay/prototype-complete`,
+      testHarnessHeaders,
+      { paymentTransactionId: paymentTxId }
+    );
+    assert.equal(successRouteRes.statusCode, 200);
+    const successData = (successRouteRes.body as any).data;
+    assert.equal(successData.bookingStatus, 'CONFIRMED');
+    assert.equal(successData.paymentStatus, 'SUCCEEDED');
+    assert.equal(successData.currency, 'EGP');
+    assert.equal(successData.amountEgp, 2000);
+    assert.equal(successData.confirmedAt, '2026-09-03T00:00:00Z');
+    for (const forbidden of ['commission', 'ownerNet', 'wallet', 'solaCommission', 'pendingBalance', 'heldBalance']) {
+      assert.ok(!Object.keys(successData).some((k) => k.toLowerCase().includes(forbidden.toLowerCase())), `customer payment response must not expose ${forbidden}`);
+    }
+  } finally {
+    process.env.NODE_ENV = prevNodeEnv;
+    process.env.ALLOW_PAYMENT_TEST_HARNESS = prevHarness;
   }
 } finally {
   (walletDb as any).getOwnerWalletSummary = originals.walletSummary;

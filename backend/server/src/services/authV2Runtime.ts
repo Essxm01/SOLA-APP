@@ -41,7 +41,8 @@ export function getAuthV2RuntimeDecision(env: NodeJS.ProcessEnv = process.env): 
   }
   const projectRef = explicitProjectRef || urlProjectRef || '';
   const nodeEnv = String(env.NODE_ENV || '').trim().toLowerCase();
-  const production = authEnv === 'production' || nodeEnv === 'production';
+  const isExplicitLiveDev = authEnv === 'development_live' || authEnv === 'founder_live_development';
+  const production = authEnv === 'production' || (nodeEnv === 'production' && !isExplicitLiveDev && authEnv !== 'founder_qa');
 
   if (!authEnv) return { enabled: false, errorCode: 'AUTH_ENVIRONMENT_REQUIRED' };
   if (!hasSecret(env.JWT_ACCESS_SECRET, 32) || !hasSecret(env.JWT_REFRESH_SECRET, 32)) {
@@ -65,8 +66,19 @@ export function getAuthV2RuntimeDecision(env: NodeJS.ProcessEnv = process.env): 
     if (projectRef !== AUTH_V2_QA_PROJECT_REF) {
       return { enabled: false, errorCode: 'AUTH_V2_QA_PROJECT_MISMATCH' };
     }
-    if (production || deliveryMode !== 'DEVELOPMENT_FIXED_OTP' || !/^\d{6}$/.test(String(env.AUTH_DEVELOPMENT_OTP || ''))) {
+    if (deliveryMode !== 'DEVELOPMENT_FIXED_OTP' || !/^\d{6}$/.test(String(env.AUTH_DEVELOPMENT_OTP || ''))) {
       return { enabled: false, errorCode: 'AUTH_V2_QA_FIXED_OTP_CONFIGURATION_INVALID' };
+    }
+  } else if (isExplicitLiveDev) {
+    if (projectRef !== AUTH_V2_PRODUCTION_PROJECT_REF) {
+      return { enabled: false, errorCode: 'AUTH_V2_PRODUCTION_PROJECT_MISMATCH' };
+    }
+    if (deliveryMode === 'DEVELOPMENT_FIXED_OTP') {
+      if (!/^\d{6}$/.test(String(env.AUTH_DEVELOPMENT_OTP || ''))) {
+        return { enabled: false, errorCode: 'AUTH_DEVELOPMENT_OTP_CONFIG_REQUIRED' };
+      }
+    } else if (deliveryMode !== 'REAL_PROVIDER') {
+      return { enabled: false, errorCode: 'AUTH_V2_DELIVERY_MODE_REQUIRED' };
     }
   } else if (production) {
     if (projectRef !== AUTH_V2_PRODUCTION_PROJECT_REF) {

@@ -42,12 +42,21 @@ export const ALLOWED_FIXED_OTP_ENVIRONMENTS = new Set<string>([
   'test',
   'founder_preview',
   'founder_qa',
+  'development_live',
+  'founder_live_development',
 ]);
 
 export function isProductionEnvironment(config?: AuthEnvironmentConfig): boolean {
   const nodeEnv = (config?.nodeEnv ?? process.env.NODE_ENV ?? '').toLowerCase();
   const authEnv = (config?.authEnv ?? process.env.AUTH_ENVIRONMENT ?? '').toLowerCase();
-  return nodeEnv === 'production' || authEnv === 'production';
+  if (authEnv === 'production') return true;
+  if (nodeEnv === 'production') {
+    if (authEnv === 'founder_qa' || authEnv === 'development_live' || authEnv === 'founder_live_development') {
+      return false;
+    }
+    return true;
+  }
+  return false;
 }
 
 /**

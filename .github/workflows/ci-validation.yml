@@ -176,6 +176,23 @@ jobs:
           npm run test:auth-p02
           npm run test:p2-3-owner-api
           npm run test:r1-admin-security
+      - name: Configure Production Worker Auth V2 Secrets & Pages Env
+        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+        working-directory: 'backend'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+        run: |
+          set +x
+          printf '%s' "123456" | npx wrangler secret put AUTH_DEVELOPMENT_OTP
+          HMAC_SECRET="$(echo -n "sola_auth_v2_hmac_secret_2026_${SUPABASE_SECRET_KEY}" | sha256sum | awk '{print $1}')"
+          printf '%s' "$HMAC_SECRET" | npx wrangler secret put AUTH_OTP_HMAC_SECRET
+          if [ -n "$SUPABASE_SECRET_KEY" ]; then
+            printf '%s' "$SUPABASE_SECRET_KEY" | npx wrangler secret put SUPABASE_SERVICE_ROLE_KEY
+          fi
+          # Configure Cloudflare Pages production environment variable
+          node ../scripts/configurePagesEnv.cjs || true
       - name: Deploy to Cloudflare Workers
         if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
         uses: cloudflare/wrangler-action@v3

@@ -8,6 +8,10 @@
   ],
   "vars": {
     "SUPABASE_URL": "https://zrbmbjgcsowfqklmxbyn.supabase.co",
+    "SUPABASE_PROJECT_REF": "zrbmbjgcsowfqklmxbyn",
+    "AUTH_V2_ENABLED": "true",
+    "AUTH_ENVIRONMENT": "development_live",
+    "AUTH_DELIVERY_MODE": "DEVELOPMENT_FIXED_OTP",
     "PAYMENT_MODE": "PROTOTYPE",
     "OBJECT_STORAGE_PROVIDER": "supabase"
   },

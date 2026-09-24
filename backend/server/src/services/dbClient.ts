@@ -1970,6 +1970,24 @@ async function queryViaSupabaseRest(text: string, params: any[] | undefined, url
     return { rows, command: 'UPDATE', rowCount: rows.length, oid: 0, fields: [] };
   }
 
+  // 7G-2. Booking status update by id (e.g. customer cancellation)
+  if (lowerSql.startsWith('update bookings') && /\bstatus\s*=\s*\$2\b/i.test(text) && /\bid\s*=\s*\$1\b/i.test(text)) {
+    const bookingId = params?.[0];
+    const status = params?.[1];
+    const res = await fetch(`${url}/rest/v1/bookings?id=eq.${encodeURIComponent(bookingId)}`, {
+      method: 'PATCH',
+      headers: { ...headers, 'Prefer': 'return=representation' },
+      body: JSON.stringify({ status }),
+    });
+    if (!res.ok) {
+      const body = await res.text().catch(() => '');
+      throw new Error(`REST_BOOKING_STATUS_UPDATE_BY_ID_FAILED: HTTP ${res.status} — ${body.slice(0, 200)}`);
+    }
+    const raw: any = await res.json().catch(() => []);
+    const rows = (Array.isArray(raw) ? raw : []).map(mapBookingRestRow);
+    return { rows, command: 'UPDATE', rowCount: rows.length, oid: 0, fields: [] };
+  }
+
   // 7H. Compensating delete is limited to a just-created customer-owned pending request when summary persistence fails.
   if (lowerSql.startsWith('delete from bookings') && /\bid\s*=\s*\$1\b/i.test(text) && /\bcustomer_id\s*=\s*\$2\b/i.test(text) && /\bstatus\s*=\s*'pending_owner_approval'/i.test(text)) {
     const bookingId = params?.[0];

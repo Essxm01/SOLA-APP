@@ -4228,7 +4228,23 @@ export class ExpressServerApp {
         // 4.5C Customer Booking Cancellation
         if (path.startsWith('/api/v1/customer/bookings/') && path.endsWith('/cancel') && method === 'POST') {
           const bookingId = path.split('/')[5];
-          const mockBooking: any = {
+          const existingBooking = await bookingDb.getById(bookingId).catch(() => null);
+
+          if (existingBooking && existingBooking.customerId && existingBooking.customerId !== customerId) {
+            return {
+              statusCode: 403,
+              body: {
+                success: false,
+                error: {
+                  code: 'FORBIDDEN_BOOKING_ACCESS',
+                  message: 'غير مصرح لك بإلغاء هذا الحجز',
+                },
+                timestamp,
+              },
+            };
+          }
+
+          const targetBooking: any = existingBooking || {
             id: bookingId,
             bookingNumber: 'BK-990011',
             propertyId: 'prop-pub-001',
@@ -4244,14 +4260,17 @@ export class ExpressServerApp {
             createdAt: timestamp,
           };
 
-          const cancelled = CustomerDomainController.cancelCustomerBooking(mockBooking, customerId);
+          const cancelled = CustomerDomainController.cancelCustomerBooking(targetBooking, customerId);
           await bookingDb.updateStatus(bookingId, 'CANCELLED_BY_GUEST').catch(() => null);
 
           return {
             statusCode: 200,
             body: {
               success: true,
-              data: cancelled,
+              data: {
+                ...cancelled,
+                status: 'CANCELLED_BY_GUEST',
+              },
               timestamp,
             },
           };

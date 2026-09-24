@@ -1970,6 +1970,25 @@ async function queryViaSupabaseRest(text: string, params: any[] | undefined, url
     return { rows, command: 'UPDATE', rowCount: rows.length, oid: 0, fields: [] };
   }
 
+  // 7G-1. Customer conditional cancellation. Requires exact customer_id and expected status predicate.
+  if (lowerSql.startsWith('update bookings') && /\bid\s*=\s*\$1\b/i.test(text) && /\bcustomer_id\s*=\s*\$2\b/i.test(text) && /\bstatus\s*=\s*\$3\b/i.test(text)) {
+    const bookingId = params?.[0];
+    const customerId = params?.[1];
+    const expectedStatus = params?.[2];
+    const res = await fetch(`${url}/rest/v1/bookings?id=eq.${encodeURIComponent(bookingId)}&customer_id=eq.${encodeURIComponent(customerId)}&status=eq.${encodeURIComponent(expectedStatus)}`, {
+      method: 'PATCH',
+      headers: { ...headers, 'Prefer': 'return=representation' },
+      body: JSON.stringify({ status: 'CANCELLED_BY_GUEST' }),
+    });
+    if (!res.ok) {
+      const body = await res.text().catch(() => '');
+      throw new Error(`REST_CUSTOMER_BOOKING_CANCEL_FAILED: HTTP ${res.status} — ${body.slice(0, 200)}`);
+    }
+    const raw: any = await res.json().catch(() => []);
+    const rows = (Array.isArray(raw) ? raw : []).map(mapBookingRestRow);
+    return { rows, command: 'UPDATE', rowCount: rows.length, oid: 0, fields: [] };
+  }
+
   // 7G-2. Booking status update by id (e.g. customer cancellation)
   if (lowerSql.startsWith('update bookings') && /\bstatus\s*=\s*\$2\b/i.test(text) && /\bid\s*=\s*\$1\b/i.test(text)) {
     const bookingId = params?.[0];

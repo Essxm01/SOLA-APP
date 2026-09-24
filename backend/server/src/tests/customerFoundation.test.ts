@@ -5,6 +5,7 @@
 
 import { ExpressServerApp } from '../app';
 import { CustomerDomainController } from '../controllers/domainControllers';
+import { bookingDb } from '../services/dbRepository.js';
 
 export interface TestResult {
   name: string;
@@ -219,9 +220,43 @@ export async function runCustomerFoundationSuite(): Promise<{
 
   // Test 16: Customer booking cancellation transition to CANCELLED_BY_GUEST
   try {
+    const origGet = bookingDb.getById;
+    const origCancel = bookingDb.cancelForCustomer;
+    (bookingDb as any).getById = async (id: string) => id === 'booking_c1_001' ? {
+      id: 'booking_c1_001',
+      bookingNumber: 'BK-100001',
+      propertyId: 'prop-pub-001',
+      ownerId: 'owner-001',
+      customerId: 'cust001',
+      guestName: 'Sola Customer',
+      checkIn: '2026-09-01',
+      checkOut: '2026-09-05',
+      nights: 4,
+      totalGuests: 2,
+      status: 'PENDING_OWNER_APPROVAL',
+      createdAt: new Date().toISOString(),
+    } : null;
+    (bookingDb as any).cancelForCustomer = async (id: string, customerId: string, expectedStatus: string) => ({
+      id,
+      bookingNumber: 'BK-100001',
+      propertyId: 'prop-pub-001',
+      ownerId: 'owner-001',
+      customerId,
+      guestName: 'Sola Customer',
+      checkIn: '2026-09-01',
+      checkOut: '2026-09-05',
+      nights: 4,
+      totalGuests: 2,
+      status: 'CANCELLED_BY_GUEST',
+      createdAt: new Date().toISOString(),
+    });
+
     const res = await app.handleHttpRequest('POST', '/api/v1/customer/bookings/booking_c1_001/cancel', customerHeadersA);
     const isCancelled = res.statusCode === 200 && res.body.data.status === 'CANCELLED_BY_GUEST';
     results.push({ name: 'Customer Cancellation 1: Booking cancellation transition to CANCELLED_BY_GUEST', passed: isCancelled });
+
+    (bookingDb as any).getById = origGet;
+    (bookingDb as any).cancelForCustomer = origCancel;
   } catch (err: any) {
     results.push({ name: 'Customer Cancellation 1: Booking cancellation transition to CANCELLED_BY_GUEST', passed: false, error: err.message });
   }

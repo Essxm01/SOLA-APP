@@ -4225,12 +4225,44 @@ export class ExpressServerApp {
           };
         }
 
-        // 4.5C Customer Booking Cancellation
+        // 4.5C Customer Booking Cancellation — Fail Closed & Concurrency Safe
         if (path.startsWith('/api/v1/customer/bookings/') && path.endsWith('/cancel') && method === 'POST') {
           const bookingId = path.split('/')[5];
-          const existingBooking = await bookingDb.getById(bookingId).catch(() => null);
 
-          if (existingBooking && existingBooking.customerId && existingBooking.customerId !== customerId) {
+          // A. Canonical Read — fail closed on DB query failure or not found
+          let booking: any;
+          try {
+            booking = await bookingDb.getById(bookingId);
+          } catch {
+            return {
+              statusCode: 500,
+              body: {
+                success: false,
+                error: {
+                  code: 'CUSTOMER_BOOKING_QUERY_FAILED',
+                  message: 'فشل في قراءة بيانات الحجز من قاعدة البيانات',
+                },
+                timestamp,
+              },
+            };
+          }
+
+          if (!booking) {
+            return {
+              statusCode: 404,
+              body: {
+                success: false,
+                error: {
+                  code: 'BOOKING_NOT_FOUND',
+                  message: 'الحجز غير موجود',
+                },
+                timestamp,
+              },
+            };
+          }
+
+          // B. Authorization — must match authenticated customerId
+          if (booking.customerId !== customerId) {
             return {
               statusCode: 403,
               body: {
@@ -4244,31 +4276,78 @@ export class ExpressServerApp {
             };
           }
 
-          const targetBooking: any = existingBooking || {
-            id: bookingId,
-            bookingNumber: 'BK-990011',
-            propertyId: 'prop-pub-001',
-            ownerId: 'owner-001',
-            customerId,
-            guestName: 'Sola Customer',
-            guestPhone: customerPhone,
-            checkIn: '2026-09-01',
-            checkOut: '2026-09-05',
-            nights: 4,
-            totalGuests: 4,
-            status: 'PENDING_OWNER_APPROVAL',
-            createdAt: timestamp,
-          };
+          // C. Domain Eligibility — preserve existing CustomerDomainController cancellation eligibility
+          try {
+            CustomerDomainController.cancelCustomerBooking(booking, customerId);
+          } catch (domainErr: any) {
+            return {
+              statusCode: 400,
+              body: {
+                success: false,
+                error: {
+                  code: domainErr.message || 'CANNOT_CANCEL_BOOKING_IN_CURRENT_STATE',
+                  message: 'لا يمكن إلغاء الحجز في حالته الحالية',
+                },
+                timestamp,
+              },
+            };
+          }
 
-          const cancelled = CustomerDomainController.cancelCustomerBooking(targetBooking, customerId);
-          await bookingDb.updateStatus(bookingId, 'CANCELLED_BY_GUEST').catch(() => null);
+          // D & E. Atomic / Race-safe Persistence
+          let updatedBooking: any;
+          try {
+            updatedBooking = await bookingDb.cancelForCustomer(bookingId, customerId, booking.status);
+          } catch {
+            return {
+              statusCode: 500,
+              body: {
+                success: false,
+                error: {
+                  code: 'CUSTOMER_BOOKING_PERSISTENCE_FAILED',
+                  message: 'فشل في حفظ إلغاء الحجز في قاعدة البيانات',
+                },
+                timestamp,
+              },
+            };
+          }
+
+          // If zero rows updated because state changed concurrently
+          if (!updatedBooking) {
+            return {
+              statusCode: 409,
+              body: {
+                success: false,
+                error: {
+                  code: 'BOOKING_STATE_CHANGED',
+                  message: 'تم تغيير حالة الحجز بواسطة عملية متزامنة أخرى',
+                },
+                timestamp,
+              },
+            };
+          }
+
+          // F. Response — verify persisted state and return real data
+          if (updatedBooking.status !== 'CANCELLED_BY_GUEST') {
+            return {
+              statusCode: 500,
+              body: {
+                success: false,
+                error: {
+                  code: 'CUSTOMER_BOOKING_PERSISTENCE_FAILED',
+                  message: 'فشل التحقق من حالة إلغاء الحجز المسجلة',
+                },
+                timestamp,
+              },
+            };
+          }
 
           return {
             statusCode: 200,
             body: {
               success: true,
               data: {
-                ...cancelled,
+                ...booking,
+                ...updatedBooking,
                 status: 'CANCELLED_BY_GUEST',
               },
               timestamp,

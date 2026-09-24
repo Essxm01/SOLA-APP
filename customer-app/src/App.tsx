@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { CustomerHeader } from './components/CustomerHeader';
 import { CoastalSearchBar } from './components/CoastalSearchBar';
 import { PropertyCard, CustomerPropertyItem } from './components/PropertyCard';
@@ -183,6 +183,16 @@ export function App() {
   >('INITIAL_LOADING');
   const [bookingsSessionExpired, setBookingsSessionExpired] = useState<boolean>(false);
   const [recentBookingSubmission, setRecentBookingSubmission] = useState<{ id: string; bookingNumber?: string } | null>(null);
+
+  const handleBookingDomainSessionExpired = useCallback(() => {
+    setCustomerBookings([]);
+    setActiveBooking(null);
+    setRecentBookingSubmission(null);
+    setBookingRequestSent(null);
+    setBookingsSessionExpired(true);
+    setBookingsError('انتهت جلسة الدخول. سجّل الدخول مرة أخرى لعرض حجوزاتك.');
+    setBookingsLoadState('ERROR');
+  }, []);
 
   const bookingsAuthState: 'AUTHENTICATED' | 'GUEST' | 'SESSION_EXPIRED' = !authToken
     ? 'GUEST'
@@ -1570,7 +1580,10 @@ export function App() {
               prev.map((b) => (b.id === updated.id ? { ...b, ...updated } : b))
             );
           }}
-          onSessionExpired={() => openAuthEntry({ type: 'BOOKINGS_TAB' }, 'LOGIN')}
+          onSessionExpired={() => {
+            handleBookingDomainSessionExpired();
+            openAuthEntry({ type: 'BOOKINGS_TAB' }, 'LOGIN');
+          }}
         />
       )}
 
@@ -1588,7 +1601,10 @@ export function App() {
               void fetchAccountSummary(authToken).catch(() => undefined);
             }
           }}
-          onSessionExpired={(id) => openAuthEntry({ type: 'PROTECTED_PAYMENT', bookingId: id }, 'LOGIN')}
+          onSessionExpired={(id) => {
+            handleBookingDomainSessionExpired();
+            openAuthEntry({ type: 'PROTECTED_PAYMENT', bookingId: id }, 'LOGIN');
+          }}
         />
       )}
 

@@ -22,6 +22,11 @@ import {
   type PrototypeCompletionResult,
 } from '../services/customerPaymentService';
 import type { Screen14PaymentState } from '../components/CustomerDepositPaymentScreen';
+import {
+  canStartFreshScreen14Attempt,
+  clearScreen14PrivateState,
+  resolveScreen14ReconciliationState,
+} from './customerScreen14PaymentState';
 
 function assert(condition: unknown, message?: string): asserts condition {
   if (!condition) throw new Error(message || 'Assertion failed');
@@ -158,6 +163,32 @@ console.log('--- Starting Screen 14 Deposit Payment Tests ---');
   assert(!('autoPay' in origin), 'Must never have autoPay flag');
   assert(!('autoComplete' in origin), 'Must never have autoComplete flag');
   console.log('✓ Auth V2 PROTECTED_PAYMENT recovery contract verified');
+}
+
+// 7. Executable reconciliation and retry state transitions
+{
+  const approved = 'APPROVED_PENDING_PAYMENT';
+  assertEqual(resolveScreen14ReconciliationState(approved, 'NO_PAYMENT_INITIATED', false, false), 'READY', 'no payment is ready');
+  assertEqual(resolveScreen14ReconciliationState(approved, 'INITIATED', true, false), 'PROTOTYPE_READY_TO_COMPLETE', 'active initiated attempt resumes');
+  assertEqual(resolveScreen14ReconciliationState(approved, 'PENDING', true, false), 'PROTOTYPE_READY_TO_COMPLETE', 'active pending attempt resumes');
+  assertEqual(resolveScreen14ReconciliationState(approved, 'FAILED', false, false), 'FAILED', 'failed attempt remains failed until explicit retry');
+  assertEqual(resolveScreen14ReconciliationState(approved, 'FAILED', false, true), 'READY', 'failed attempt can explicitly start fresh');
+  assertEqual(resolveScreen14ReconciliationState(approved, 'EXPIRED', false, true), 'READY', 'expired attempt can explicitly start fresh');
+  assertEqual(canStartFreshScreen14Attempt(approved, 'FAILED', false), true, 'failed attempt is eligible for fresh attempt');
+  assertEqual(canStartFreshScreen14Attempt(approved, 'EXPIRED', false), true, 'expired attempt is eligible for fresh attempt');
+  assertEqual(canStartFreshScreen14Attempt(approved, 'PENDING', true), false, 'active attempt refuses duplicate initiation');
+  assertEqual(resolveScreen14ReconciliationState('CONFIRMED', 'SUCCEEDED', true, false), 'ALREADY_CONFIRMED', 'confirmed booking is already paid');
+  assertEqual(resolveScreen14ReconciliationState(approved, 'SUCCEEDED', true, false), 'NETWORK_RECONCILIATION_REQUIRED', 'succeeded payment without booking confirmation reconciles');
+  assertEqual(resolveScreen14ReconciliationState('PENDING_OWNER_APPROVAL', 'NO_PAYMENT_INITIATED', false, false), 'STATE_CHANGED', 'pending owner approval is not payable');
+  assertEqual(resolveScreen14ReconciliationState('CANCELLED_BY_OWNER', 'NO_PAYMENT_INITIATED', false, false), 'STATE_CHANGED', 'terminal booking is not payable');
+  assertEqual(resolveScreen14ReconciliationState('UNKNOWN_STATUS', 'NO_PAYMENT_INITIATED', false, false), 'STATE_CHANGED', 'unknown booking status fails closed');
+  assertEqual(resolveScreen14ReconciliationState(approved, 'INITIATED', false, false), 'NETWORK_RECONCILIATION_REQUIRED', 'missing active transaction fails closed');
+  const cleared = clearScreen14PrivateState();
+  assertEqual(cleared.booking, null, 'unauthorized cleanup clears booking');
+  assertEqual(cleared.paymentTransactionId, null, 'unauthorized cleanup clears transaction');
+  assertEqual(cleared.activeDepositEgp, 0, 'unauthorized cleanup clears active amount');
+  assertEqual(cleared.previousDepositEgp, null, 'unauthorized cleanup clears previous amount');
+  console.log('✓ Executable Screen 14 reconciliation, retry, and cleanup transitions verified');
 }
 
 console.log('--- ALL Screen 14 Tests Passed Successfully ---');

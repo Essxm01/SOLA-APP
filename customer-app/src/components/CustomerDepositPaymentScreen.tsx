@@ -33,6 +33,10 @@ import {
   type PaymentStatusResult,
 } from '../services/customerPaymentService';
 import type { CustomerBookingDetailDto } from '../types/customerBookingDetail';
+import {
+  clearScreen14PrivateState,
+  resolveScreen14ReconciliationState,
+} from '../utils/customerScreen14PaymentState';
 
 export type Screen14PaymentState =
   | 'INITIAL_LOADING'
@@ -88,11 +92,23 @@ export const CustomerDepositPaymentScreen: React.FC<CustomerDepositPaymentScreen
   // Stable attempt-scoped idempotency key (persists across retries of the SAME attempt)
   const idempotencyKeyRef = useRef<string>(generateAttemptKey());
   const isActionLockedRef = useRef<boolean>(false);
+  const freshAttemptRequestedRef = useRef<boolean>(false);
+
+  const clearPrivatePaymentState = useCallback(() => {
+    const cleared = clearScreen14PrivateState();
+    setBooking(cleared.booking);
+    setPaymentTransactionId(cleared.paymentTransactionId);
+    setActiveDepositEgp(cleared.activeDepositEgp);
+    setPreviousDepositEgp(cleared.previousDepositEgp);
+    setErrorMessage(cleared.errorMessage);
+  }, []);
 
   // ---------------------------------------------------------------------------
   // Canonical Revalidation on Entry
   // ---------------------------------------------------------------------------
   const revalidateAndReconcile = useCallback(async () => {
+    const allowFreshAttempt = freshAttemptRequestedRef.current;
+    freshAttemptRequestedRef.current = false;
     setPaymentState('INITIAL_LOADING');
     setErrorMessage(null);
 
@@ -107,17 +123,17 @@ export const CustomerDepositPaymentScreen: React.FC<CustomerDepositPaymentScreen
       });
 
       if (res.status === 401) {
-        setBooking(null);
+        clearPrivatePaymentState();
         setPaymentState('UNAUTHORIZED');
         return;
       }
       if (res.status === 403) {
-        setBooking(null);
+        clearPrivatePaymentState();
         setPaymentState('FORBIDDEN');
         return;
       }
       if (res.status === 404) {
-        setBooking(null);
+        clearPrivatePaymentState();
         setPaymentState('NOT_FOUND');
         return;
       }
@@ -132,7 +148,7 @@ export const CustomerDepositPaymentScreen: React.FC<CustomerDepositPaymentScreen
       setActiveDepositEgp(canonicalBooking.depositAmount);
 
       // Check status eligibility
-      if (canonicalBooking.status === 'CONFIRMED' || canonicalBooking.confirmedAt) {
+      if (canonicalBooking.status === 'CONFIRMED') {
         setPaymentState('ALREADY_CONFIRMED');
         return;
       }
@@ -148,48 +164,42 @@ export const CustomerDepositPaymentScreen: React.FC<CustomerDepositPaymentScreen
           authToken
         );
 
-        if (paymentStatusResult.paymentStatus === 'SUCCEEDED') {
-          // A successful transaction is not enough to claim a confirmed
-          // booking. Keep the user in reconciliation until both canonical
-          // records agree.
-          setErrorMessage('تم تسجيل محاولة دفع، لكن لم يتأكد الحجز بعد. تحقّق من الحالة مرة أخرى.');
-          setPaymentState('NETWORK_RECONCILIATION_REQUIRED');
-          return;
-        }
-
         if (['INITIATED', 'PENDING'].includes(paymentStatusResult.paymentStatus) && paymentStatusResult.paymentTransactionId) {
           // Resume existing initiated attempt
           setPaymentTransactionId(paymentStatusResult.paymentTransactionId);
           setActiveDepositEgp(paymentStatusResult.amountEgp || canonicalBooking.depositAmount);
-          setPaymentState('PROTOTYPE_READY_TO_COMPLETE');
+          setPaymentState(resolveScreen14ReconciliationState(
+            canonicalBooking.status,
+            paymentStatusResult.paymentStatus,
+            true,
+            allowFreshAttempt,
+          ));
           return;
         }
 
-        if (paymentStatusResult.paymentStatus === 'EXPIRED') {
-          setPaymentState('TRANSACTION_EXPIRED');
-          return;
+        const nextState = resolveScreen14ReconciliationState(
+          canonicalBooking.status,
+          paymentStatusResult.paymentStatus,
+          Boolean(paymentStatusResult.paymentTransactionId),
+          allowFreshAttempt,
+        );
+        if (nextState === 'NETWORK_RECONCILIATION_REQUIRED') {
+          setErrorMessage('تم تسجيل محاولة دفع، لكن لم يتأكد الحجز بعد. تحقّق من الحالة مرة أخرى.');
         }
-
-        if (paymentStatusResult.paymentStatus === 'FAILED') {
-          setPaymentState('FAILED');
-          return;
-        }
-
-        // Ready for fresh initiation
-        setPaymentState('READY');
+        setPaymentState(nextState);
       } catch (statusErr: any) {
         if (statusErr instanceof CustomerPaymentUnauthorizedError) {
-          setBooking(null);
+          clearPrivatePaymentState();
           setPaymentState('UNAUTHORIZED');
           return;
         }
         if (statusErr instanceof CustomerPaymentForbiddenError) {
-          setBooking(null);
+          clearPrivatePaymentState();
           setPaymentState('FORBIDDEN');
           return;
         }
         if (statusErr instanceof CustomerPaymentNotFoundError) {
-          setBooking(null);
+          clearPrivatePaymentState();
           setPaymentState('NOT_FOUND');
           return;
         }
@@ -200,7 +210,7 @@ export const CustomerDepositPaymentScreen: React.FC<CustomerDepositPaymentScreen
       setErrorMessage(err?.message || 'تعذر التحقق من حالة الحجز للدفع.');
       setPaymentState('ERROR');
     }
-  }, [bookingId, authToken]);
+  }, [authToken, bookingId, clearPrivatePaymentState]);
 
   useEffect(() => {
     void revalidateAndReconcile();
@@ -255,17 +265,17 @@ export const CustomerDepositPaymentScreen: React.FC<CustomerDepositPaymentScreen
       setPaymentState('PROTOTYPE_READY_TO_COMPLETE');
     } catch (err: any) {
       if (err instanceof CustomerPaymentUnauthorizedError) {
-        setBooking(null);
+        clearPrivatePaymentState();
         setPaymentState('UNAUTHORIZED');
         return;
       }
       if (err instanceof CustomerPaymentForbiddenError) {
-        setBooking(null);
+        clearPrivatePaymentState();
         setPaymentState('FORBIDDEN');
         return;
       }
       if (err instanceof CustomerPaymentNotFoundError) {
-        setBooking(null);
+        clearPrivatePaymentState();
         setPaymentState('NOT_FOUND');
         return;
       }
@@ -310,13 +320,18 @@ export const CustomerDepositPaymentScreen: React.FC<CustomerDepositPaymentScreen
       }
     } catch (err: any) {
       if (err instanceof CustomerPaymentUnauthorizedError) {
-        setBooking(null);
+        clearPrivatePaymentState();
         setPaymentState('UNAUTHORIZED');
         return;
       }
       if (err instanceof CustomerPaymentForbiddenError) {
-        setBooking(null);
+        clearPrivatePaymentState();
         setPaymentState('FORBIDDEN');
+        return;
+      }
+      if (err instanceof CustomerPaymentNotFoundError) {
+        clearPrivatePaymentState();
+        setPaymentState('NOT_FOUND');
         return;
       }
 
@@ -344,6 +359,7 @@ export const CustomerDepositPaymentScreen: React.FC<CustomerDepositPaymentScreen
   const handleRetryWithNewAttempt = () => {
     idempotencyKeyRef.current = generateAttemptKey();
     setPaymentTransactionId(null);
+    freshAttemptRequestedRef.current = true;
     void revalidateAndReconcile();
   };
 
@@ -678,7 +694,7 @@ export const CustomerDepositPaymentScreen: React.FC<CustomerDepositPaymentScreen
       <main className="flex-1 pb-16 px-4 pt-4 max-w-lg mx-auto w-full space-y-4">
         {/* Booking Recognition Card */}
         <section className="bg-white border border-slate-200/80 rounded-3xl p-4 shadow-xs">
-          <div className="text-xs text-slate-500 font-medium mb-1">
+          <div className="text-sm text-slate-500 font-medium mb-1">
             {booking.bookingNumber} • {booking.nights} ليالٍ
           </div>
           <h2 className="text-sm font-bold text-slate-900 line-clamp-2 leading-snug">
@@ -688,24 +704,24 @@ export const CustomerDepositPaymentScreen: React.FC<CustomerDepositPaymentScreen
 
         {/* Payment Hero */}
         <section className="bg-white border border-blue-200 rounded-3xl p-5 shadow-xs text-center">
-          <span className="text-xs font-bold text-slate-500 block mb-1">
+          <span className="text-sm font-bold text-slate-500 block mb-1">
             العربون المطلوب الآن
           </span>
           <div className="text-3xl font-black text-slate-900 font-mono tracking-tight my-2" dir="ltr">
             {activeDepositEgp.toLocaleString()} ج.م
           </div>
-          <p className="text-xs text-slate-600 leading-relaxed max-w-xs mx-auto">
+          <p className="text-sm text-slate-600 leading-relaxed max-w-xs mx-auto">
             بعد نجاح دفع العربون يصبح الحجز مؤكدًا.
           </p>
         </section>
 
         {/* Financial Summary */}
         <section className="bg-white border border-slate-200/80 rounded-3xl p-5 shadow-xs space-y-3">
-          <h3 className="text-xs font-bold text-slate-400 border-b border-slate-100 pb-2">
+          <h3 className="text-sm font-bold text-slate-400 border-b border-slate-100 pb-2">
             تفاصيل المبلغ
           </h3>
 
-          <div className="space-y-2 text-xs sm:text-sm">
+          <div className="space-y-2 text-sm">
             <div className="flex justify-between items-center text-slate-600">
               <span>إجمالي الإقامة</span>
               <span className="font-bold text-slate-900 font-mono" dir="ltr">
@@ -728,18 +744,18 @@ export const CustomerDepositPaymentScreen: React.FC<CustomerDepositPaymentScreen
             </div>
           </div>
 
-          <p className="text-[11px] text-slate-400 pt-1 leading-relaxed">
+          <p className="text-sm text-slate-400 pt-1 leading-relaxed">
             المبلغ المتبقي لا يتم دفعه في هذه الخطوة.
           </p>
         </section>
 
         {/* Prototype Notice */}
         <section className="bg-amber-50/80 border border-amber-200 rounded-3xl p-4 shadow-xs">
-          <div className="flex items-center gap-2 mb-1 text-amber-900 text-xs font-bold">
+          <div className="flex items-center gap-2 mb-1 text-amber-900 text-sm font-bold">
             <Sparkles className="w-4 h-4 text-amber-600" />
             <span>وضع تجريبي</span>
           </div>
-          <p className="text-xs text-amber-800 leading-relaxed">
+          <p className="text-sm text-amber-800 leading-relaxed">
             لن يتم خصم أي أموال حقيقية في هذه النسخة.
           </p>
         </section>
@@ -751,10 +767,10 @@ export const CustomerDepositPaymentScreen: React.FC<CustomerDepositPaymentScreen
               <AlertTriangle className="w-5 h-5 text-blue-600" />
               <span>تم تحديث مبلغ العربون</span>
             </div>
-            <p className="text-xs text-blue-800 leading-relaxed">
+            <p className="text-sm text-blue-800 leading-relaxed">
               تغيّر مبلغ العربون قبل بدء الدفع. راجع المبلغ الجديد قبل المتابعة.
             </p>
-            <div className="text-xs space-y-1 bg-white p-3 rounded-2xl border border-blue-100">
+            <div className="text-sm space-y-1 bg-white p-3 rounded-2xl border border-blue-100">
               <div className="flex justify-between text-slate-500">
                 <span>المبلغ السابق</span>
                 <span className="font-mono" dir="ltr">{previousDepositEgp.toLocaleString()} ج.م</span>
@@ -766,7 +782,7 @@ export const CustomerDepositPaymentScreen: React.FC<CustomerDepositPaymentScreen
             </div>
             <button
               onClick={() => setPaymentState('PROTOTYPE_READY_TO_COMPLETE')}
-              className="w-full h-12 bg-[var(--konfrm-color-primary)] text-white font-bold rounded-2xl text-xs shadow-sm hover:bg-[var(--konfrm-color-primary-hover)] transition-colors"
+              className="w-full h-12 bg-[var(--konfrm-color-primary)] text-white font-bold rounded-2xl text-sm shadow-sm hover:bg-[var(--konfrm-color-primary-hover)] transition-colors"
             >
               موافق على المبلغ الجديد والمتابعة
             </button>
@@ -778,12 +794,12 @@ export const CustomerDepositPaymentScreen: React.FC<CustomerDepositPaymentScreen
           <section className="bg-slate-50 border border-slate-200 rounded-3xl p-5 shadow-xs text-center space-y-3">
             <Clock className="w-8 h-8 text-slate-500 mx-auto" />
             <h3 className="text-sm font-bold text-slate-900">انتهت محاولة الدفع الحالية</h3>
-            <p className="text-xs text-slate-600 leading-relaxed">
+            <p className="text-sm text-slate-600 leading-relaxed">
               لم يكتمل دفع العربون في هذه المحاولة.
             </p>
             <button
               onClick={handleRetryWithNewAttempt}
-              className="w-full h-12 bg-[var(--konfrm-color-primary)] text-white font-bold rounded-2xl text-xs shadow-sm hover:bg-[var(--konfrm-color-primary-hover)] transition-colors"
+              className="w-full h-12 bg-[var(--konfrm-color-primary)] text-white font-bold rounded-2xl text-sm shadow-sm hover:bg-[var(--konfrm-color-primary-hover)] transition-colors"
             >
               بدء محاولة دفع جديدة
             </button>
@@ -795,12 +811,12 @@ export const CustomerDepositPaymentScreen: React.FC<CustomerDepositPaymentScreen
           <section className="bg-rose-50 border border-rose-200 rounded-3xl p-5 shadow-xs text-center space-y-3">
             <XCircle className="w-8 h-8 text-rose-500 mx-auto" />
             <h3 className="text-sm font-bold text-rose-950">تعذر إتمام الدفع</h3>
-            <p className="text-xs text-rose-900/80 leading-relaxed">
+            <p className="text-sm text-rose-900/80 leading-relaxed">
               {errorMessage || 'لم يتم تأكيد دفع العربون. يمكنك المحاولة مرة أخرى بعد التحقق من حالة الحجز.'}
             </p>
             <button
               onClick={handleRetryWithNewAttempt}
-              className="w-full h-12 bg-[var(--konfrm-color-primary)] text-white font-bold rounded-2xl text-xs shadow-sm hover:bg-[var(--konfrm-color-primary-hover)] transition-colors"
+              className="w-full h-12 bg-[var(--konfrm-color-primary)] text-white font-bold rounded-2xl text-sm shadow-sm hover:bg-[var(--konfrm-color-primary-hover)] transition-colors"
             >
               إعادة المحاولة
             </button>
@@ -812,12 +828,12 @@ export const CustomerDepositPaymentScreen: React.FC<CustomerDepositPaymentScreen
           <section className="bg-amber-50 border border-amber-200 rounded-3xl p-5 shadow-xs text-center space-y-3">
             <AlertTriangle className="w-8 h-8 text-amber-600 mx-auto" />
             <h3 className="text-sm font-bold text-amber-950">تعذر التأكد من نتيجة محاولة الدفع</h3>
-            <p className="text-xs text-amber-900/80 leading-relaxed">
+            <p className="text-sm text-amber-900/80 leading-relaxed">
               سنراجع حالة العملية الحالية قبل بدء محاولة جديدة.
             </p>
             <button
               onClick={() => void revalidateAndReconcile()}
-              className="w-full h-12 bg-amber-600 text-white font-bold rounded-2xl text-xs shadow-sm hover:bg-amber-700 transition-colors flex items-center justify-center gap-2"
+              className="w-full h-12 bg-amber-600 text-white font-bold rounded-2xl text-sm shadow-sm hover:bg-amber-700 transition-colors flex items-center justify-center gap-2"
             >
               <RefreshCw className="w-4 h-4" />
               <span>التحقق من حالة الدفع</span>
@@ -851,7 +867,7 @@ export const CustomerDepositPaymentScreen: React.FC<CustomerDepositPaymentScreen
         {/* Step 2: Prototype Ready to Complete CTA */}
         {isReadyToComplete && (
           <div className="pt-2 space-y-3">
-            <div className="bg-blue-50/70 border border-blue-200 rounded-2xl p-3.5 text-center text-xs text-blue-900 leading-relaxed">
+            <div className="bg-blue-50/70 border border-blue-200 rounded-2xl p-3.5 text-center text-sm text-blue-900 leading-relaxed">
               تم تجهيز محاولة الدفع التجريبية. لا توجد أموال حقيقية سيتم خصمها.
             </div>
 

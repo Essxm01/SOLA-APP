@@ -37,6 +37,7 @@ import {
   getScreen13StatusPresentation,
   type BookingPresentationIconName,
 } from '../utils/customerBookingPresentation';
+import { getScreen13FinancePresentation } from '../utils/customerScreen13Finance';
 import type { CustomerBookingDetailDto, Screen13LoadState } from '../types/customerBookingDetail';
 
 export interface CustomerBookingDetailsScreenProps {
@@ -120,6 +121,7 @@ export const CustomerBookingDetailsScreen: React.FC<CustomerBookingDetailsScreen
           // Fail closed: clear private booking state immediately
           setBooking(null);
           setLoadState('UNAUTHORIZED');
+          onSessionExpired?.();
           return;
         }
 
@@ -350,9 +352,9 @@ export const CustomerBookingDetailsScreen: React.FC<CustomerBookingDetailsScreen
   // CANONICAL LOADED SURFACE
   // ---------------------------------------------------------------------------
   const presentation = getScreen13StatusPresentation(booking.status);
+  const finance = getScreen13FinancePresentation(booking.status);
   const isApproved = booking.status === 'APPROVED_PENDING_PAYMENT';
-  const isConfirmed = booking.status === 'CONFIRMED' || !!booking.confirmedAt;
-  const isPending = booking.status === 'PENDING_OWNER_APPROVAL';
+  const isConfirmed = booking.status === 'CONFIRMED';
   const isCancelled = booking.status.startsWith('CANCELLED');
 
   const propertyImage = booking.property.images?.[0];
@@ -387,7 +389,7 @@ export const CustomerBookingDetailsScreen: React.FC<CustomerBookingDetailsScreen
       <main className="flex-1 pb-16 px-4 pt-4 max-w-lg mx-auto w-full space-y-4">
         {/* Stale Data Notice Banner */}
         {loadState === 'STALE_ERROR' && (
-          <div className="bg-amber-50 border border-amber-200 text-amber-900 rounded-2xl p-3.5 flex items-start gap-2.5 text-xs font-semibold leading-relaxed">
+          <div className="bg-amber-50 border border-amber-200 text-amber-900 rounded-2xl p-3.5 flex items-start gap-2.5 text-sm font-semibold leading-relaxed">
             <Info className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
             <span>تعذر تحديث حالة الحجز. آخر بيانات تم تحميلها ما زالت ظاهرة.</span>
           </div>
@@ -402,7 +404,7 @@ export const CustomerBookingDetailsScreen: React.FC<CustomerBookingDetailsScreen
             : 'bg-white border-slate-200/80'
         }`}>
           <div className="flex items-center gap-2 mb-3">
-            <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold ${
+            <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-bold ${
               isApproved
                 ? 'bg-[var(--konfrm-color-primary)] text-white'
                 : isConfirmed
@@ -418,7 +420,7 @@ export const CustomerBookingDetailsScreen: React.FC<CustomerBookingDetailsScreen
             {presentation.customerLabel}
           </h1>
 
-          <p className="text-xs sm:text-sm text-slate-600 leading-relaxed whitespace-pre-line">
+          <p className="text-sm text-slate-600 leading-relaxed whitespace-pre-line">
             {presentation.supportingCopy}
           </p>
 
@@ -458,12 +460,12 @@ export const CustomerBookingDetailsScreen: React.FC<CustomerBookingDetailsScreen
               <h2 className="text-sm font-bold text-slate-900 line-clamp-2 leading-snug mb-1">
                 {propertyTitle}
               </h2>
-              <div className="flex items-center gap-1 text-slate-500 text-xs truncate mb-1">
+              <div className="flex items-center gap-1 text-slate-500 text-sm truncate mb-1">
                 <MapPin className="w-3.5 h-3.5 shrink-0" />
                 <span className="truncate">{propertyLocation}</span>
               </div>
               {booking.property.unitType && (
-                <div className="flex items-center gap-1 text-slate-500 text-xs">
+                <div className="flex items-center gap-1 text-slate-500 text-sm">
                   <Building className="w-3.5 h-3.5 shrink-0" />
                   <span>{booking.property.unitType}</span>
                 </div>
@@ -478,7 +480,7 @@ export const CustomerBookingDetailsScreen: React.FC<CustomerBookingDetailsScreen
             تفاصيل الإقامة
           </h2>
 
-          <div className="grid grid-cols-2 gap-3 text-xs">
+          <div className="grid grid-cols-2 gap-3 text-sm">
             <div className="bg-slate-50 rounded-2xl p-3 border border-slate-100">
               <div className="text-slate-400 font-medium mb-1 flex items-center gap-1">
                 <Calendar className="w-3.5 h-3.5" />
@@ -500,7 +502,7 @@ export const CustomerBookingDetailsScreen: React.FC<CustomerBookingDetailsScreen
             </div>
           </div>
 
-          <div className="flex items-center justify-around py-2 border-t border-slate-100 text-xs">
+          <div className="flex items-center justify-around py-2 border-t border-slate-100 text-sm">
             <div className="flex items-center gap-1.5 text-slate-700 font-semibold">
               <Moon className="w-4 h-4 text-slate-400" />
               <span>{booking.nights} ليالٍ</span>
@@ -519,7 +521,7 @@ export const CustomerBookingDetailsScreen: React.FC<CustomerBookingDetailsScreen
             تفاصيل الدفع
           </h2>
 
-          <div className="space-y-2.5 text-xs sm:text-sm">
+          <div className="space-y-2.5 text-sm">
             <div className="flex justify-between items-center text-slate-600">
               <span>إجمالي الإقامة</span>
               <span className="font-bold text-slate-900 font-mono" dir="ltr">
@@ -527,38 +529,32 @@ export const CustomerBookingDetailsScreen: React.FC<CustomerBookingDetailsScreen
               </span>
             </div>
 
-            {/* Deposit Line */}
-            <div className={`flex justify-between items-center p-2.5 rounded-xl ${
-              isApproved
-                ? 'bg-blue-50 text-[var(--konfrm-color-primary)] font-bold border border-blue-100'
-                : isConfirmed
-                ? 'bg-emerald-50 text-emerald-800 font-bold border border-emerald-100'
-                : 'text-slate-600'
-            }`}>
-              <span>
-                {isApproved
-                  ? 'العربون المطلوب'
+            {finance.showDeposit && (
+              <div className={`flex justify-between items-center p-2.5 rounded-xl ${
+                isApproved
+                  ? 'bg-blue-50 text-[var(--konfrm-color-primary)] font-bold border border-blue-100'
                   : isConfirmed
-                  ? 'العربون المدفوع'
-                  : 'العربون بعد موافقة المالك'}
-              </span>
-              <span className="font-bold font-mono" dir="ltr">
-                {booking.depositAmount.toLocaleString()} ج.م
-              </span>
-            </div>
+                  ? 'bg-emerald-50 text-emerald-800 font-bold border border-emerald-100'
+                  : 'text-slate-600'
+              }`}>
+                <span>{finance.depositLabel}</span>
+                <span className="font-bold font-mono" dir="ltr">
+                  {booking.depositAmount.toLocaleString()} ج.م
+                </span>
+              </div>
+            )}
 
-            {/* Remaining Line */}
-            <div className="flex justify-between items-center text-slate-600">
-              <span>
-                {isConfirmed ? 'المتبقي من قيمة الإقامة' : 'المتبقي بعد العربون'}
-              </span>
-              <span className="font-bold text-slate-900 font-mono" dir="ltr">
-                {booking.remainingAmount.toLocaleString()} ج.م
-              </span>
-            </div>
+            {finance.showRemaining && (
+              <div className="flex justify-between items-center text-slate-600">
+                <span>{finance.remainingLabel}</span>
+                <span className="font-bold text-slate-900 font-mono" dir="ltr">
+                  {booking.remainingAmount.toLocaleString()} ج.م
+                </span>
+              </div>
+            )}
 
-            {isPending && (
-              <div className="pt-2 text-center text-xs text-slate-500 font-medium">
+            {finance.showPendingNotice && (
+              <div className="pt-2 text-center text-sm text-slate-500 font-medium">
                 لا يوجد مبلغ مطلوب الآن.
               </div>
             )}
@@ -566,11 +562,11 @@ export const CustomerBookingDetailsScreen: React.FC<CustomerBookingDetailsScreen
         </section>
 
         {/* 6. Booking Identity */}
-        <section className="bg-white border border-slate-200/80 rounded-3xl p-4 shadow-xs flex items-center justify-between text-xs">
+        <section className="bg-white border border-slate-200/80 rounded-3xl p-4 shadow-xs flex items-center justify-between text-sm">
           <span className="text-slate-500 font-medium">
             {isConfirmed ? 'رقم الحجز' : 'رقم الطلب'}
           </span>
-          <span className="font-mono font-bold text-slate-900 bg-slate-100 px-3 py-1 rounded-xl text-xs" dir="ltr">
+          <span className="font-mono font-bold text-slate-900 bg-slate-100 px-3 py-1 rounded-xl text-sm" dir="ltr">
             {booking.bookingNumber}
           </span>
         </section>
@@ -579,10 +575,10 @@ export const CustomerBookingDetailsScreen: React.FC<CustomerBookingDetailsScreen
         {booking.specialRequests && booking.specialRequests.trim() && (
           <section className="bg-white border border-slate-200/80 rounded-3xl p-5 shadow-xs space-y-2">
             <h2 className="text-sm font-black text-slate-900">طلبات خاصة</h2>
-            <p className="text-xs text-slate-700 bg-slate-50 p-3 rounded-2xl leading-relaxed whitespace-pre-wrap">
+            <p className="text-sm text-slate-700 bg-slate-50 p-3 rounded-2xl leading-relaxed whitespace-pre-wrap">
               {booking.specialRequests}
             </p>
-            <p className="text-[11px] text-slate-400">
+            <p className="text-sm text-slate-400">
               كما أرسلتها مع طلب الحجز.
             </p>
           </section>
@@ -590,7 +586,7 @@ export const CustomerBookingDetailsScreen: React.FC<CustomerBookingDetailsScreen
 
         {/* 8. Cancellation Context (if cancelled) */}
         {isCancelled && (
-          <section className="bg-slate-50 border border-slate-200 rounded-3xl p-5 shadow-xs space-y-2 text-xs">
+          <section className="bg-slate-50 border border-slate-200 rounded-3xl p-5 shadow-xs space-y-2 text-sm">
             <h2 className="text-sm font-black text-slate-800">بيانات الإلغاء</h2>
             {booking.cancelledAt && (
               <div className="flex justify-between items-center text-slate-600">

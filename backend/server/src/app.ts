@@ -4108,67 +4108,254 @@ export class ExpressServerApp {
           };
         }
 
-        // 4.5 Customer Booking Payment Initiation
+        // 4.5 Customer Booking Payment Initiation — Fail Closed & Attempt-Scoped Idempotency
         if (path.startsWith('/api/v1/customer/bookings/') && path.endsWith('/pay') && method === 'POST') {
           const bookingId = path.split('/')[5];
-          const booking = await bookingDb.getById(bookingId).catch(() => null);
-          if (!booking) return { statusCode: 404, body: { success: false, error: { code: 'BOOKING_NOT_FOUND', message: 'طلب الحجز غير موجود' }, timestamp } };
-          if (booking.customerId !== customerId) return { statusCode: 403, body: { success: false, error: { code: 'FORBIDDEN_BOOKING_ACCESS', message: 'غير مصرح بالدفع لحجز يخص نزيلاً آخر' }, timestamp } };
-          if (booking.status === 'CONFIRMED') return { statusCode: 409, body: { success: false, error: { code: 'BOOKING_ALREADY_CONFIRMED', message: 'تم تأكيد هذا الحجز بالفعل' }, timestamp } };
-          if (booking.status !== 'APPROVED_PENDING_PAYMENT') return { statusCode: 409, body: { success: false, error: { code: 'BOOKING_NOT_APPROVED_FOR_PAYMENT', message: 'لا يمكن دفع العربون قبل موافقة المالك' }, timestamp } };
 
-          const summary = await bookingDb.getFinancialSummary(bookingId).catch(() => null);
+          // A. Canonical Booking Read — Fail Closed
+          let booking: any;
+          try {
+            booking = await bookingDb.getById(bookingId);
+          } catch {
+            return {
+              statusCode: 500,
+              body: { success: false, error: { code: 'CUSTOMER_PAYMENT_BOOKING_QUERY_FAILED', message: 'تعذر التحقق من بيانات الحجز لبدء الدفع' }, timestamp },
+            };
+          }
+          if (!booking) {
+            return { statusCode: 404, body: { success: false, error: { code: 'BOOKING_NOT_FOUND', message: 'طلب الحجز غير موجود' }, timestamp } };
+          }
+          if (booking.customerId !== customerId) {
+            return { statusCode: 403, body: { success: false, error: { code: 'FORBIDDEN_BOOKING_ACCESS', message: 'غير مصرح بالدفع لحجز يخص نزيلاً آخر' }, timestamp } };
+          }
+          if (booking.status === 'CONFIRMED') {
+            return { statusCode: 409, body: { success: false, error: { code: 'BOOKING_ALREADY_CONFIRMED', message: 'تم تأكيد هذا الحجز بالفعل' }, timestamp } };
+          }
+          if (booking.status !== 'APPROVED_PENDING_PAYMENT') {
+            return { statusCode: 409, body: { success: false, error: { code: 'BOOKING_NOT_APPROVED_FOR_PAYMENT', message: 'لا يمكن دفع العربون قبل موافقة المالك' }, timestamp } };
+          }
+
+          // B. Canonical Financial Summary Read — Fail Closed
+          let summary: any;
+          try {
+            summary = await bookingDb.getFinancialSummary(bookingId);
+          } catch {
+            return {
+              statusCode: 500,
+              body: { success: false, error: { code: 'CUSTOMER_PAYMENT_FINANCIAL_QUERY_FAILED', message: 'تعذر قراءة بيانات الحجز المالية المعتمدة' }, timestamp },
+            };
+          }
           const depositEgp = Number(summary?.depositAmount);
           if (!summary || !Number.isFinite(depositEgp) || depositEgp <= 0) {
-            return { statusCode: 500, body: { success: false, error: { code: 'BOOKING_FINANCIAL_SUMMARY_NOT_FOUND', message: 'تعذر قراءة ملخص الحجز المالي المعتمد' }, timestamp } };
+            return {
+              statusCode: 500,
+              body: { success: false, error: { code: 'BOOKING_FINANCIAL_SUMMARY_NOT_FOUND', message: 'تعذر قراءة ملخص الحجز المالي المعتمد' }, timestamp },
+            };
           }
 
-          const idempotencyKey = String(headers['idempotency-key'] || bodyPayload?.idempotencyKey || `prototype_deposit_${bookingId}`);
-          const existingTx = await paymentTxDb.getByIdempotencyKey(idempotencyKey).catch(() => null);
+          // C. Attempt-Scoped Idempotency Contract — Fail Closed
+          const rawKey = headers['idempotency-key'] || headers['Idempotency-Key'] || bodyPayload?.idempotencyKey;
+          const idempotencyKey = typeof rawKey === 'string' ? rawKey.trim() : '';
+          if (!idempotencyKey) {
+            return {
+              statusCode: 400,
+              body: { success: false, error: { code: 'PAYMENT_IDEMPOTENCY_KEY_REQUIRED', message: 'مفتاح عملية الدفع مطلوب' }, timestamp },
+            };
+          }
+
+          // D. Reused Key Resolution — Fail Closed on DB Error
+          let existingTx: any;
+          try {
+            existingTx = await paymentTxDb.getByIdempotencyKey(idempotencyKey);
+          } catch {
+            return {
+              statusCode: 500,
+              body: { success: false, error: { code: 'CUSTOMER_PAYMENT_TRANSACTION_QUERY_FAILED', message: 'تعذر التحقق من العمليات السابقة' }, timestamp },
+            };
+          }
+
           if (existingTx) {
-            if ((existingTx.booking_id || existingTx.bookingId) !== bookingId || (existingTx.customer_id || existingTx.customerId) !== customerId) {
-              return { statusCode: 409, body: { success: false, error: { code: 'PAYMENT_IDEMPOTENCY_SCOPE_MISMATCH', message: 'مفتاح المحاولة مرتبط بحجز آخر' }, timestamp } };
+            const txBookingId = existingTx.booking_id || existingTx.bookingId;
+            const txCustomerId = existingTx.customer_id || existingTx.customerId;
+            if (txBookingId !== bookingId || txCustomerId !== customerId) {
+              return {
+                statusCode: 409,
+                body: { success: false, error: { code: 'PAYMENT_IDEMPOTENCY_SCOPE_MISMATCH', message: 'مفتاح المحاولة مرتبط بحجز أو عميل آخر' }, timestamp },
+              };
             }
-            return { statusCode: 200, body: { success: true, data: { paymentTransactionId: existingTx.id, merchantOrderId: existingTx.merchant_order_id || existingTx.merchantOrderId, depositAmountEgp: Number(existingTx.amount_cents || existingTx.amountCents) / 100, depositAmountCents: Number(existingTx.amount_cents || existingTx.amountCents), mode: 'PROTOTYPE', requiresExternalCheckout: false }, timestamp } };
+            return {
+              statusCode: 200,
+              body: {
+                success: true,
+                data: {
+                  paymentTransactionId: existingTx.id,
+                  merchantOrderId: existingTx.merchant_order_id || existingTx.merchantOrderId,
+                  depositAmountEgp: Number(existingTx.amount_cents || existingTx.amountCents) / 100,
+                  depositAmountCents: Number(existingTx.amount_cents || existingTx.amountCents),
+                  mode: 'PROTOTYPE',
+                  requiresExternalCheckout: false,
+                },
+                timestamp,
+              },
+            };
           }
 
-          const activeBookingTx = (await paymentTxDb.getByBookingId(bookingId).catch(() => []))
-            .find((candidate: any) => ['INITIATED', 'PENDING'].includes(candidate.status));
+          // E. Active Booking Transaction Reconciliation — Prevent Duplicate Active Attempts
+          let bookingTxs: any[];
+          try {
+            bookingTxs = await paymentTxDb.getByBookingId(bookingId);
+          } catch {
+            return {
+              statusCode: 500,
+              body: { success: false, error: { code: 'CUSTOMER_PAYMENT_TRANSACTION_QUERY_FAILED', message: 'تعذر التحقق من عمليات الدفع لهذا الحجز' }, timestamp },
+            };
+          }
+
+          const activeBookingTx = (bookingTxs || []).find((candidate: any) => ['INITIATED', 'PENDING'].includes(candidate.status));
           if (activeBookingTx) {
-            return { statusCode: 200, body: { success: true, data: { paymentTransactionId: activeBookingTx.id, merchantOrderId: activeBookingTx.merchant_order_id || activeBookingTx.merchantOrderId, depositAmountEgp: Number(activeBookingTx.amount_cents || activeBookingTx.amountCents) / 100, depositAmountCents: Number(activeBookingTx.amount_cents || activeBookingTx.amountCents), mode: 'PROTOTYPE', requiresExternalCheckout: false }, timestamp } };
+            return {
+              statusCode: 200,
+              body: {
+                success: true,
+                data: {
+                  paymentTransactionId: activeBookingTx.id,
+                  merchantOrderId: activeBookingTx.merchant_order_id || activeBookingTx.merchantOrderId,
+                  depositAmountEgp: Number(activeBookingTx.amount_cents || activeBookingTx.amountCents) / 100,
+                  depositAmountCents: Number(activeBookingTx.amount_cents || activeBookingTx.amountCents),
+                  mode: 'PROTOTYPE',
+                  requiresExternalCheckout: false,
+                },
+                timestamp,
+              },
+            };
           }
 
+          // F. Payment Mode Verification & Initiation
           let mode: ReturnType<typeof getPaymentMode>;
-          try { mode = getPaymentMode(); } catch (err: any) {
+          try {
+            mode = getPaymentMode();
+          } catch (err: any) {
             return { statusCode: 503, body: { success: false, error: { code: err?.message || 'PAYMENT_MODE_NOT_CONFIGURED', message: 'إعداد الدفع غير متاح' }, timestamp } };
           }
-          if (mode !== 'PROTOTYPE') return { statusCode: 503, body: { success: false, error: { code: 'PAYMOB_LIVE_NOT_CONFIGURED', message: 'الدفع الحي غير متاح في النسخة الحالية' }, timestamp } };
+          if (mode !== 'PROTOTYPE') {
+            return { statusCode: 503, body: { success: false, error: { code: 'PAYMOB_LIVE_NOT_CONFIGURED', message: 'الدفع الحي غير متاح في النسخة الحالية' }, timestamp } };
+          }
 
           const merchantOrderId = `KONFRM-DEP-${bookingId.slice(0, 8)}-${Date.now()}`;
-          const initResult = await new PaymentService().getGateway().initiatePayment({
-            bookingId, customerId, ownerId: booking.ownerId, merchantOrderId,
-            amountEgp: depositEgp, currency: 'EGP', paymentMethod: 'CARD', idempotencyKey,
-          });
-          const createdTx = await paymentTxDb.create({
-            bookingId, customerId, ownerId: booking.ownerId, provider: 'MOCK', merchantOrderId,
-            amountCents: Math.round(depositEgp * 100), currency: 'EGP', paymentMethod: 'CARD', idempotencyKey,
-            rawRequestPayload: { mode: 'PROTOTYPE', paymentMethod: 'CARD' },
-          });
-          return { statusCode: 200, body: { success: true, data: { paymentTransactionId: createdTx.id, merchantOrderId, depositAmountEgp: depositEgp, depositAmountCents: Math.round(depositEgp * 100), mode: initResult.mode, requiresExternalCheckout: false }, timestamp } };
+          let initResult: any;
+          try {
+            initResult = await new PaymentService().getGateway().initiatePayment({
+              bookingId,
+              customerId,
+              ownerId: booking.ownerId,
+              merchantOrderId,
+              amountEgp: depositEgp,
+              currency: 'EGP',
+              paymentMethod: 'CARD',
+              idempotencyKey,
+            });
+          } catch {
+            return { statusCode: 500, body: { success: false, error: { code: 'PAYMENT_GATEWAY_INITIATION_FAILED', message: 'تعذر بدء عملية الدفع عبر بوابة الدفع' }, timestamp } };
+          }
+
+          let createdTx: any;
+          try {
+            createdTx = await paymentTxDb.create({
+              bookingId,
+              customerId,
+              ownerId: booking.ownerId,
+              provider: 'MOCK',
+              merchantOrderId,
+              amountCents: Math.round(depositEgp * 100),
+              currency: 'EGP',
+              paymentMethod: 'CARD',
+              idempotencyKey,
+              rawRequestPayload: { mode: 'PROTOTYPE', paymentMethod: 'CARD' },
+            });
+          } catch {
+            return { statusCode: 500, body: { success: false, error: { code: 'CUSTOMER_PAYMENT_TRANSACTION_PERSISTENCE_FAILED', message: 'تعذر حفظ عملية الدفع في قاعدة البيانات' }, timestamp } };
+          }
+
+          return {
+            statusCode: 200,
+            body: {
+              success: true,
+              data: {
+                paymentTransactionId: createdTx.id,
+                merchantOrderId,
+                depositAmountEgp: depositEgp,
+                depositAmountCents: Math.round(depositEgp * 100),
+                mode: initResult.mode,
+                requiresExternalCheckout: false,
+              },
+              timestamp,
+            },
+          };
         }
 
-        // 4.5A Prototype-only completion. The RPC is the sole authority for
-        // the payment, booking, wallet and ledger state transition.
+        // 4.5A Prototype-only completion — Exact Transaction Resolution & Fail Closed
         if (path.startsWith('/api/v1/customer/bookings/') && path.endsWith('/pay/prototype-complete') && method === 'POST') {
           const bookingId = path.split('/')[5];
-          if (String(process.env.PAYMENT_MODE || '').toUpperCase() !== 'PROTOTYPE') return { statusCode: 503, body: { success: false, error: { code: 'PAYMENT_MODE_NOT_PROTOTYPE', message: 'الدفع التجريبي غير مفعل' }, timestamp } };
-          const booking = await bookingDb.getById(bookingId).catch(() => null);
-          if (!booking) return { statusCode: 404, body: { success: false, error: { code: 'BOOKING_NOT_FOUND', message: 'طلب الحجز غير موجود' }, timestamp } };
-          if (booking.customerId !== customerId) return { statusCode: 403, body: { success: false, error: { code: 'FORBIDDEN_BOOKING_ACCESS', message: 'غير مصرح لك بهذا الحجز' }, timestamp } };
-          const txList = await paymentTxDb.getByBookingId(bookingId);
-          const requestedId = typeof bodyPayload?.paymentTransactionId === 'string' ? bodyPayload.paymentTransactionId : undefined;
-          const tx: any = requestedId ? txList.find((candidate: any) => candidate.id === requestedId) : txList[0];
-          if (!tx || (tx.booking_id || tx.bookingId) !== bookingId || (tx.customer_id || tx.customerId) !== customerId || (tx.owner_id || tx.ownerId) !== booking.ownerId) return { statusCode: 409, body: { success: false, error: { code: 'PAYMENT_TRANSACTION_NOT_FOUND', message: 'لم تبدأ محاولة دفع صالحة لهذا الحجز' }, timestamp } };
+          if (String(process.env.PAYMENT_MODE || '').toUpperCase() !== 'PROTOTYPE') {
+            return { statusCode: 503, body: { success: false, error: { code: 'PAYMENT_MODE_NOT_PROTOTYPE', message: 'الدفع التجريبي غير مفعل' }, timestamp } };
+          }
+
+          // A. Canonical Booking Read — Fail Closed
+          let booking: any;
+          try {
+            booking = await bookingDb.getById(bookingId);
+          } catch {
+            return {
+              statusCode: 500,
+              body: { success: false, error: { code: 'CUSTOMER_PAYMENT_BOOKING_QUERY_FAILED', message: 'تعذر التحقق من بيانات الحجز' }, timestamp },
+            };
+          }
+          if (!booking) {
+            return { statusCode: 404, body: { success: false, error: { code: 'BOOKING_NOT_FOUND', message: 'طلب الحجز غير موجود' }, timestamp } };
+          }
+          if (booking.customerId !== customerId) {
+            return { statusCode: 403, body: { success: false, error: { code: 'FORBIDDEN_BOOKING_ACCESS', message: 'غير مصرح لك بهذا الحجز' }, timestamp } };
+          }
+
+          // B. Transaction Query — Fail Closed
+          let txList: any[];
+          try {
+            txList = await paymentTxDb.getByBookingId(bookingId);
+          } catch {
+            return {
+              statusCode: 500,
+              body: { success: false, error: { code: 'CUSTOMER_PAYMENT_TRANSACTION_QUERY_FAILED', message: 'تعذر قراءة عمليات الدفع' }, timestamp },
+            };
+          }
+
+          const requestedId = typeof bodyPayload?.paymentTransactionId === 'string' ? bodyPayload.paymentTransactionId.trim() : undefined;
+          if (!requestedId) {
+            return {
+              statusCode: 400,
+              body: { success: false, error: { code: 'PAYMENT_TRANSACTION_ID_REQUIRED', message: 'معرف عملية الدفع مطلوب' }, timestamp },
+            };
+          }
+
+          const tx: any = (txList || []).find((candidate: any) => candidate.id === requestedId);
+          if (!tx) {
+            return {
+              statusCode: 404,
+              body: { success: false, error: { code: 'PAYMENT_TRANSACTION_NOT_FOUND', message: 'لم يتم العثور على محاولة الدفع المحددة' }, timestamp },
+            };
+          }
+
+          const txBookingId = tx.booking_id || tx.bookingId;
+          const txCustomerId = tx.customer_id || tx.customerId;
+          const txOwnerId = tx.owner_id || tx.ownerId;
+
+          if (txBookingId !== bookingId || txCustomerId !== customerId || txOwnerId !== booking.ownerId) {
+            return {
+              statusCode: 403,
+              body: { success: false, error: { code: 'FORBIDDEN_TRANSACTION_ACCESS', message: 'محاولة الدفع لا تتطابق مع بيانات الحجز والعميل' }, timestamp },
+            };
+          }
+
+          // C. Canonical Atomic RPC Execution
           try {
             const result: any = await paymentTxDb.completeDepositPayment({ paymentTransactionId: tx.id, bookingId, customerId });
             if (!result || typeof result !== 'object' || result.bookingStatus !== 'CONFIRMED' || result.paymentStatus !== 'SUCCEEDED' || result.currency !== 'EGP' || !result.confirmedAt) {
@@ -4199,14 +4386,39 @@ export class ExpressServerApp {
           }
         }
 
-        // 4.5B Customer Payment Status Polling Fallback
+        // 4.5B Customer Payment Status Polling & Resume Support — Fail Closed
         if (path.startsWith('/api/v1/customer/bookings/') && path.endsWith('/payment-status') && method === 'GET') {
           const bookingId = path.split('/')[5];
-          const booking = await bookingDb.getById(bookingId).catch(() => null);
-          if (!booking) return { statusCode: 404, body: { success: false, error: { code: 'BOOKING_NOT_FOUND', message: 'طلب الحجز غير موجود' }, timestamp } };
-          if (booking.customerId !== customerId) return { statusCode: 403, body: { success: false, error: { code: 'FORBIDDEN_BOOKING_ACCESS', message: 'غير مصرح لك بهذا الحجز' }, timestamp } };
-          const txList = await paymentTxDb.getByBookingId(bookingId);
-          const latestTx = txList[0];
+
+          // A. Canonical Booking Read — Fail Closed
+          let booking: any;
+          try {
+            booking = await bookingDb.getById(bookingId);
+          } catch {
+            return {
+              statusCode: 500,
+              body: { success: false, error: { code: 'CUSTOMER_PAYMENT_BOOKING_QUERY_FAILED', message: 'تعذر التحقق من بيانات الحجز' }, timestamp },
+            };
+          }
+          if (!booking) {
+            return { statusCode: 404, body: { success: false, error: { code: 'BOOKING_NOT_FOUND', message: 'طلب الحجز غير موجود' }, timestamp } };
+          }
+          if (booking.customerId !== customerId) {
+            return { statusCode: 403, body: { success: false, error: { code: 'FORBIDDEN_BOOKING_ACCESS', message: 'غير مصرح لك بهذا الحجز' }, timestamp } };
+          }
+
+          // B. Transaction Query — Fail Closed
+          let txList: any[];
+          try {
+            txList = await paymentTxDb.getByBookingId(bookingId);
+          } catch {
+            return {
+              statusCode: 500,
+              body: { success: false, error: { code: 'CUSTOMER_PAYMENT_TRANSACTION_QUERY_FAILED', message: 'تعذر قراءة عمليات الدفع' }, timestamp },
+            };
+          }
+
+          const latestTx = (txList && txList.length > 0) ? txList[0] : null;
 
           return {
             statusCode: 200,
@@ -4219,6 +4431,9 @@ export class ExpressServerApp {
                 paymentStatus: latestTx ? latestTx.status : 'NO_PAYMENT_INITIATED',
                 amountEgp: latestTx ? Number(latestTx.amount_cents || latestTx.amountCents) / 100 : 0,
                 currency: latestTx?.currency || 'EGP',
+                paymentTransactionId: latestTx ? latestTx.id : undefined,
+                merchantOrderId: latestTx ? (latestTx.merchant_order_id || latestTx.merchantOrderId) : undefined,
+                mode: 'PROTOTYPE',
               },
               timestamp,
             },

@@ -672,6 +672,16 @@ export const bookingDb = {
     return res.rows[0] ? hydrateBooking(res.rows[0]) : null;
   },
 
+  async cancelForCustomer(id: string, customerId: string, expectedStatus: string) {
+    const res = await queryDb(
+      `UPDATE bookings SET status = 'CANCELLED_BY_GUEST'
+       WHERE id = $1 AND customer_id = $2 AND status = $3
+       RETURNING id, booking_number AS "bookingNumber", property_id AS "propertyId", owner_id AS "ownerId", customer_id AS "customerId", guest_name AS "guestName", check_in AS "checkIn", check_out AS "checkOut", nights, total_guests AS "guestsCount", status, created_at AS "createdAt", confirmed_at AS "confirmedAt", rejected_at AS "rejectedAt"`,
+      [id, customerId, expectedStatus]
+    );
+    return res.rows[0] ? hydrateBooking(res.rows[0]) : null;
+  },
+
   // Retained for legacy cancellation code paths outside BOOKING-01.
   async updateStatus(id: string, status: string) {
     const res = await queryDb(

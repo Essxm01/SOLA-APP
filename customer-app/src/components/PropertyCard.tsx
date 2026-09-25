@@ -88,6 +88,7 @@ export const PropertyCard: React.FC<PropertyCardProps> = ({
             if (onToggleFavorite && !isFavoritePending) onToggleFavorite(property.id, e);
           }}
           aria-label={isFavorite ? 'إزالة من المفضلة' : 'إضافة إلى المفضلة'}
+          aria-pressed={isFavorite}
           className="pointer-events-auto absolute top-2 left-2 min-w-[48px] min-h-[48px] w-12 h-12 flex items-center justify-center rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0059FF]/40 cursor-pointer disabled:cursor-not-allowed"
         >
           <span

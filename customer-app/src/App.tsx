@@ -18,6 +18,7 @@ import { CustomerBookingDetailsScreen } from './components/CustomerBookingDetail
 import { CustomerDepositPaymentScreen } from './components/CustomerDepositPaymentScreen';
 import { type CustomerBookingRecord } from './utils/customerBookingPresentation';
 import { CustomerMyBookingsScreen } from './components/CustomerMyBookingsScreen';
+import { CustomerFavoritesScreen } from './components/CustomerFavoritesScreen';
 import {
   CustomerBookingsUnauthorizedError,
   hasBookingActionRequired,
@@ -26,7 +27,6 @@ import { CustomerBottomNav, CustomerTabType } from './components/CustomerBottomN
 import { CustomerSplashScreen } from './components/CustomerSplashScreen';
 import { CustomerWelcomeScreen } from './components/CustomerWelcomeScreen';
 import { hasSeenCustomerEntry, markCustomerEntrySeen } from './utils/customerEntryState';
-import { LoadingStateView, ErrorStateView } from './components/StateViews';
 import { getApiUrl } from './utils/api';
 import { isCustomerAuthV2Enabled, type AuthChallengeIssued, type AuthOrigin, type AuthIntent, type AuthV2RegistrationResult, type AuthV2VerifyResult } from './utils/customerAuthV2';
 import { canResumeCustomerBooking, canResumeCustomerFavorite, createCustomerAuthResumePermission, createScreen10Handoff, createScreen10HandoffFromMissingLogin, resolveCustomerAuthEntry, cancelCustomerAuthV2, type CustomerAuthResumePermission, type CustomerBookingReviewContext, type Screen10Handoff } from './utils/customerAuthV2Flow';
@@ -50,9 +50,15 @@ import {
   fetchCustomerFavorites,
   addCustomerFavorite,
   removeCustomerFavorite,
+  CustomerFavoritesUnauthorizedError,
   mergeCustomerProfile,
   fetchCustomerAccountSummary,
 } from './utils/customerFavorites';
+import {
+  favoriteListStateAfterLoad,
+  removeFavoriteAfterServerConfirmation,
+  type CustomerFavoritesLoadState,
+} from './utils/customerScreen15Favorites';
 import {
   Heart,
   CalendarCheck,
@@ -93,12 +99,15 @@ export function App() {
   const [properties, setProperties] = useState<CustomerPropertyItem[]>([]);
   const [filteredProperties, setFilteredProperties] = useState<CustomerPropertyItem[]>([]);
   const [activeDestination, setActiveDestination] = useState<string>('الكل');
-  type FavoritesLoadState = 'UNAUTHORIZED' | 'LOADING' | 'SUCCESS' | 'ERROR';
   const [favoriteProperties, setFavoriteProperties] = useState<CustomerPropertyItem[]>([]);
-  const [favoritesLoadState, setFavoritesLoadState] = useState<FavoritesLoadState>('UNAUTHORIZED');
+  const [favoritesLoadState, setFavoritesLoadState] = useState<CustomerFavoritesLoadState>('UNAUTHORIZED');
   const [favoritesError, setFavoritesError] = useState<string | null>(null);
   const [favoritesActionError, setFavoritesActionError] = useState<string | null>(null);
+  const [favoritesScreenActionError, setFavoritesScreenActionError] = useState<string | null>(null);
   const [favoriteInFlightIds, setFavoriteInFlightIds] = useState<Set<string>>(new Set());
+  const [favoriteRemovalNotice, setFavoriteRemovalNotice] = useState<{ propertyId: string; message: string } | null>(null);
+  const favoritesRequestIdRef = useRef(0);
+  const favoriteSessionTokenRef = useRef<string | null>(null);
   const favorites = favoriteProperties.map((p) => p.id);
   const [propertyLoadState, setPropertyLoadState] = useState<'LOADING' | 'SUCCESS' | 'ERROR'>('LOADING');
   const [propertyLoadError, setPropertyLoadError] = useState<string | null>(null);
@@ -335,23 +344,46 @@ export function App() {
     }
   };
 
-  // Fetch Canonical Favorites Collection (P2.2)
+  const handleFavoriteSessionExpired = useCallback(() => {
+    favoritesRequestIdRef.current += 1;
+    favoriteSessionTokenRef.current = null;
+    setFavoriteProperties([]);
+    setFavoriteInFlightIds(new Set());
+    setFavoriteRemovalNotice(null);
+    setFavoritesError(null);
+    setFavoritesScreenActionError(null);
+    setFavoritesLoadState('SESSION_EXPIRED');
+  }, []);
+
+  // Fetch Canonical Favorites Collection (Screen 15: server-authoritative states)
   const loadFavorites = async (token?: string | null) => {
     const t = token || authToken || localStorage.getItem('sola_customer_access_token');
     if (!t) {
+      favoriteSessionTokenRef.current = null;
       setFavoriteProperties([]);
       setFavoritesLoadState('UNAUTHORIZED');
+      setFavoritesError(null);
       return;
     }
-    setFavoritesLoadState('LOADING');
+    const requestId = ++favoritesRequestIdRef.current;
+    const hadCanonicalList = favoriteSessionTokenRef.current === t && favoriteProperties.length > 0;
+    favoriteSessionTokenRef.current = t;
+    setFavoritesLoadState(hadCanonicalList ? 'REFRESHING' : 'INITIAL_LOADING');
     setFavoritesError(null);
     try {
       const items = await fetchCustomerFavorites(t);
+      if (requestId !== favoritesRequestIdRef.current || favoriteSessionTokenRef.current !== t) return;
       setFavoriteProperties(items as any);
-      setFavoritesLoadState('SUCCESS');
+      setFavoritesLoadState(favoriteListStateAfterLoad(items as any));
+      setFavoritesError(null);
     } catch (err: any) {
-      setFavoritesLoadState('ERROR');
-      setFavoritesError(err?.message || 'تعذر تحميل الوحدات المفضلة');
+      if (requestId !== favoritesRequestIdRef.current || favoriteSessionTokenRef.current !== t) return;
+      if (err instanceof CustomerFavoritesUnauthorizedError) {
+        handleFavoriteSessionExpired();
+        return;
+      }
+      setFavoritesError(null);
+      setFavoritesLoadState(hadCanonicalList ? 'STALE_ERROR' : 'ERROR');
     }
   };
 
@@ -585,13 +617,69 @@ export function App() {
         const fresh = await fetchCustomerFavorites(authToken);
         setFavoriteProperties(fresh as any);
       }
-    } catch {
+    } catch (err) {
+      if (err instanceof CustomerFavoritesUnauthorizedError) {
+        handleFavoriteSessionExpired();
+        return;
+      }
       // Error leaves heart state untouched truthfully and reveals retryable error
       setFavoritesActionError('تعذر تحديث المفضلة حالياً. يُرجى المحاولة مرة أخرى.');
     } finally {
       setFavoriteInFlightIds((prev) => {
         const next = new Set(prev);
         next.delete(id);
+        return next;
+      });
+    }
+  };
+
+  // Screen 15 has stricter removal semantics than Explore/Search/Detail:
+  // retain the card until the canonical DELETE confirms success.
+  const handleFavoritesScreenRemove = async (id: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    if (!authToken || favoriteInFlightIds.has(id)) return;
+    setFavoriteInFlightIds((prev) => new Set(prev).add(id));
+    setFavoritesScreenActionError(null);
+    setFavoriteRemovalNotice(null);
+    try {
+      await removeCustomerFavorite(authToken, id);
+      setFavoriteProperties((prev) => removeFavoriteAfterServerConfirmation(prev, id));
+      setFavoritesLoadState((prev) => prev === 'LOADED' ? (favoriteProperties.length > 1 ? 'LOADED' : 'EMPTY') : prev);
+      setFavoriteRemovalNotice({ propertyId: id, message: 'تمت الإزالة من المفضلة' });
+    } catch (err) {
+      if (err instanceof CustomerFavoritesUnauthorizedError) {
+        handleFavoriteSessionExpired();
+      } else {
+        setFavoritesScreenActionError('تعذر إزالة الإقامة من المفضلة. حاول مرة أخرى.');
+      }
+    } finally {
+      setFavoriteInFlightIds((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+    }
+  };
+
+  const handleFavoritesUndo = async () => {
+    const notice = favoriteRemovalNotice;
+    if (!notice || !authToken) return;
+    setFavoriteRemovalNotice(null);
+    setFavoriteInFlightIds((prev) => new Set(prev).add(notice.propertyId));
+    setFavoritesScreenActionError(null);
+    try {
+      await addCustomerFavorite(authToken, notice.propertyId);
+      await loadFavorites(authToken);
+    } catch (err) {
+      if (err instanceof CustomerFavoritesUnauthorizedError) {
+        handleFavoriteSessionExpired();
+      } else {
+        setFavoritesScreenActionError('تعذر استعادة الإقامة إلى المفضلة. حاول حفظها مرة أخرى من صفحة الإقامة.');
+      }
+    } finally {
+      setFavoriteInFlightIds((prev) => {
+        const next = new Set(prev);
+        next.delete(notice.propertyId);
         return next;
       });
     }
@@ -714,8 +802,10 @@ export function App() {
       setAccountSummary(canonicalSession.accountSummary);
       setAccountSummaryError(null);
       setFavoriteProperties(canonicalSession.favorites as any);
-      setFavoritesLoadState('SUCCESS');
+      favoriteSessionTokenRef.current = accessToken;
+      setFavoritesLoadState(favoriteListStateAfterLoad(canonicalSession.favorites as any));
       setFavoritesError(null);
+      setFavoritesScreenActionError(null);
       applyCanonicalCustomerBookings(canonicalSession.bookings);
       setBookingsLoadState(canonicalSession.bookings.length > 0 ? 'LOADED' : 'EMPTY');
       setBookingsSessionExpired(false);
@@ -770,6 +860,13 @@ export function App() {
       if (!hasCanonicalSession) {
         void fetchBookings(accessToken).catch(() => undefined);
       }
+    }
+
+    if (origin.type === 'FAVORITES_TAB') {
+      setActiveTab('FAVORITES');
+      setDiscoveryView('EXPLORE');
+      setIsEditingAccount(false);
+      if (!hasCanonicalSession) void loadFavorites(accessToken);
     }
 
     if (origin.type === 'PROTECTED_PAYMENT') {
@@ -895,6 +992,8 @@ export function App() {
     localStorage.removeItem('sola_customer_phone');
     localStorage.removeItem('sola_customer_profile');
     localStorage.removeItem('sola_customer_pending_favorite_property_id');
+    favoritesRequestIdRef.current += 1;
+    favoriteSessionTokenRef.current = null;
     setAuthToken(null);
     setCustomerPhone(null);
     setUserProfile(null);
@@ -903,6 +1002,8 @@ export function App() {
     setFavoriteProperties([]);
     setFavoritesLoadState('UNAUTHORIZED');
     setFavoritesError(null);
+    setFavoritesScreenActionError(null);
+    setFavoriteRemovalNotice(null);
     setActiveBooking(null);
     setCustomerBookings([]);
     setBookingDetailId(null);
@@ -1197,68 +1298,26 @@ export function App() {
           </div>
         )}
 
-        {/* Tab 2: FAVORITES */}
+        {/* Tab 2: FAVORITES / Screen 15 */}
         {activeTab === 'FAVORITES' && (
-          <div className="my-4">
-            <h2 className="text-base font-black text-slate-900 mb-3">
-              الوحدات المفضلة{favoritesLoadState === 'SUCCESS' ? ` (${favoriteProperties.length})` : ''}
-            </h2>
-
-            {favoritesLoadState === 'UNAUTHORIZED' ? (
-              <div className="bg-slate-50 p-8 rounded-3xl border border-slate-200 text-center my-6">
-                <Heart className="w-10 h-10 text-slate-300 mx-auto mb-2" />
-                <h3 className="text-sm font-black text-slate-800 mb-1">سجّل الدخول لعرض وحداتك المفضلة</h3>
-                <p className="text-xs text-slate-500 mb-4 font-bold">
-                  يمكنك حفظ ومتابعة الوحدات المفضلة بعد تسجيل الدخول إلى حسابك.
-                </p>
-                <button
-                  onClick={() => openAuthEntry({ type: 'FAVORITES_TAB' })}
-                  className="px-5 py-2.5 bg-[#0059FF] text-white font-extrabold text-xs rounded-xl shadow-xs cursor-pointer"
-                >
-                  تسجيل الدخول
-                </button>
-              </div>
-            ) : favoritesLoadState === 'LOADING' ? (
-              <div className="py-12">
-                <LoadingStateView message="جاري تحميل الوحدات المفضلة..." />
-              </div>
-            ) : favoritesLoadState === 'ERROR' ? (
-              <div className="py-8">
-                <ErrorStateView
-                  title="تعذر تحميل المفضلة"
-                  message={favoritesError || 'حدث خطأ أثناء تحميل الوحدات المفضلة.'}
-                  onRetry={() => loadFavorites(authToken)}
-                />
-              </div>
-            ) : favoriteProperties.length === 0 ? (
-              <div className="bg-slate-50 p-8 rounded-3xl border border-slate-200 text-center my-6">
-                <Heart className="w-10 h-10 text-slate-300 mx-auto mb-2" />
-                <h3 className="text-sm font-black text-slate-800 mb-1">لا توجد وحدات مفضلة بعد</h3>
-                <p className="text-xs text-slate-500 mb-4 font-bold">
-                  انقر على رمز القلب على أي وحدة ساحلية لحفظها في قائمتك المفضلة.
-                </p>
-                <button
-                  onClick={() => setActiveTab('EXPLORE')}
-                  className="px-5 py-2.5 bg-[#0059FF] text-white font-extrabold text-xs rounded-xl shadow-xs cursor-pointer"
-                >
-                  استكشف الإقامات
-                </button>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {favoriteProperties.map((prop) => (
-                  <PropertyCard
-                    key={prop.id}
-                    property={prop}
-                    onSelect={() => setSelectedProperty(prop)}
-                    isFavorite={true}
-                    isFavoritePending={favoriteInFlightIds.has(prop.id)}
-                    onToggleFavorite={handleToggleFavorite}
-                  />
-                ))}
-              </div>
-            )}
-          </div>
+          <CustomerFavoritesScreen
+            authState={!authToken ? 'GUEST' : favoritesLoadState === 'SESSION_EXPIRED' ? 'SESSION_EXPIRED' : 'AUTHENTICATED'}
+            loadState={favoritesLoadState}
+            favorites={favoriteProperties}
+            error={favoritesError}
+            actionError={favoritesScreenActionError}
+            removingIds={favoriteInFlightIds}
+            removalNotice={favoriteRemovalNotice}
+            onLogin={() => openAuthEntry({ type: 'FAVORITES_TAB' }, 'LOGIN')}
+            onRetry={() => void loadFavorites(authToken)}
+            onExplore={() => setActiveTab('EXPLORE')}
+            onOpenProperty={(id) => {
+              const item = favoriteProperties.find((property) => property.id === id);
+              if (item) setSelectedProperty(item);
+            }}
+            onToggleFavorite={handleFavoritesScreenRemove}
+            onUndoRemoval={() => void handleFavoritesUndo()}
+          />
         )}
 
         {/* Tab 3: BOOKINGS (Screen 12 My Bookings) */}
@@ -1377,7 +1436,7 @@ export function App() {
                   <div className="bg-white p-3.5 rounded-2xl border border-slate-200 text-center shadow-xs">
                     <p className="text-[11px] font-bold text-slate-400">المفضلة</p>
                     <p className="text-lg font-black text-slate-900 mt-0.5">
-                      {favoritesLoadState === 'SUCCESS' ? favoriteProperties.length : '-'}
+                      {favoritesLoadState === 'LOADED' || favoritesLoadState === 'EMPTY' ? favoriteProperties.length : '-'}
                     </p>
                   </div>
                 </div>
@@ -1545,7 +1604,10 @@ export function App() {
           property={selectedProperty}
           authToken={authToken}
           initialSearchIntent={searchIntent}
-          onClose={() => setSelectedProperty(null)}
+          onClose={() => {
+            setSelectedProperty(null);
+            if (activeTab === 'FAVORITES' && authToken) void loadFavorites(authToken);
+          }}
           onBookingSuccess={handleBookingSuccess}
           onRequireAuth={(context) => {
             localStorage.setItem('sola_customer_pending_booking_intent', JSON.stringify(context));
@@ -1691,7 +1753,6 @@ export function App() {
             setIsEditingAccount(false);
             setActiveTab(tab);
           }}
-          favoritesCount={favorites.length}
           hasBookingActionRequired={hasBookingActionRequired(customerBookings)}
           hasActiveBooking={!!activeBooking}
         />

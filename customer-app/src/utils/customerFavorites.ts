@@ -19,6 +19,18 @@ export interface CustomerFavoriteItem {
 export type CustomerFetch = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 export type GetUrlFn = (path: string) => string;
 
+/** A protected Favorites read/write was rejected by the canonical session. */
+export class CustomerFavoritesUnauthorizedError extends Error {
+  constructor(message = 'Customer Favorites session expired') {
+    super(message);
+    this.name = 'CustomerFavoritesUnauthorizedError';
+  }
+}
+
+function throwIfUnauthorized(status: number): void {
+  if (status === 401 || status === 403) throw new CustomerFavoritesUnauthorizedError();
+}
+
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function validateFavoriteItem(item: any): CustomerFavoriteItem {
@@ -70,6 +82,7 @@ export async function fetchCustomerFavorites(
   } catch (err: any) {
     throw new Error(`FETCH_CUSTOMER_FAVORITES_NETWORK_ERROR: ${err?.message || String(err)}`);
   }
+  throwIfUnauthorized(res.status);
   if (!res.ok) {
     throw new Error(`FETCH_CUSTOMER_FAVORITES_FAILED: HTTP ${res.status}`);
   }
@@ -103,6 +116,7 @@ export async function addCustomerFavorite(
   } catch (err: any) {
     throw new Error(`ADD_CUSTOMER_FAVORITE_NETWORK_ERROR: ${err?.message || String(err)}`);
   }
+  throwIfUnauthorized(res.status);
   if (!res.ok) {
     throw new Error(`ADD_CUSTOMER_FAVORITE_FAILED: HTTP ${res.status}`);
   }
@@ -132,6 +146,7 @@ export async function removeCustomerFavorite(
   } catch (err: any) {
     throw new Error(`REMOVE_CUSTOMER_FAVORITE_NETWORK_ERROR: ${err?.message || String(err)}`);
   }
+  throwIfUnauthorized(res.status);
   if (!res.ok) {
     throw new Error(`REMOVE_CUSTOMER_FAVORITE_FAILED: HTTP ${res.status}`);
   }

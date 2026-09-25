@@ -6,7 +6,6 @@ export type CustomerTabType = 'EXPLORE' | 'FAVORITES' | 'BOOKINGS' | 'ACCOUNT';
 interface CustomerBottomNavProps {
   activeTab: CustomerTabType;
   onSelectTab: (tab: CustomerTabType) => void;
-  favoritesCount?: number;
   hasActiveBooking?: boolean;
   hasBookingActionRequired?: boolean;
 }
@@ -15,10 +14,10 @@ const TABS: Array<{
   id: CustomerTabType;
   label: string;
   Icon: React.ComponentType<{ className?: string; strokeWidth?: number | string }>;
-  badge?: 'FAVORITES' | 'ACTIVE_BOOKING';
+  badge?: 'ACTIVE_BOOKING';
 }> = [
   { id: 'EXPLORE', label: 'استكشف', Icon: Compass },
-  { id: 'FAVORITES', label: 'المفضلة', Icon: Heart, badge: 'FAVORITES' },
+  { id: 'FAVORITES', label: 'المفضلة', Icon: Heart },
   { id: 'BOOKINGS', label: 'حجوزاتي', Icon: CalendarDays, badge: 'ACTIVE_BOOKING' },
   { id: 'ACCOUNT', label: 'الحساب', Icon: UserRound },
 ];
@@ -32,7 +31,6 @@ const TABS: Array<{
 export const CustomerBottomNav: React.FC<CustomerBottomNavProps> = ({
   activeTab,
   onSelectTab,
-  favoritesCount = 0,
   hasActiveBooking = false,
   hasBookingActionRequired,
 }) => {
@@ -59,11 +57,6 @@ export const CustomerBottomNav: React.FC<CustomerBottomNavProps> = ({
             >
               <span className="relative leading-none" aria-hidden="true">
                 <Icon className="w-[22px] h-[22px]" strokeWidth={2.2} />
-                {badge === 'FAVORITES' && favoritesCount > 0 && (
-                  <span className="absolute -top-1 -right-2 bg-[#0059FF] text-white text-[9px] font-black min-w-4 h-4 px-0.5 rounded-full flex items-center justify-center border border-white">
-                    {favoritesCount}
-                  </span>
-                )}
                 {badge === 'ACTIVE_BOOKING' && showBookingAttention && (
                   <span className="absolute -top-1 -right-1.5 w-2 h-2 bg-[#0059FF] rounded-full ring-2 ring-white" />
                 )}

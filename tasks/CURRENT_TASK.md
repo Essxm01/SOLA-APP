@@ -49,10 +49,10 @@ PR: #61
   - Real canonical bookings & complete status matrix without `مرفوض` on guest cancellation.
   - Accessible 44×44px refresh button & Screen 13 `booking.id` routing.
 - **Screens 13 & 14 (Stay Hub & Deposit Payment)**: MERGED & LIVE CLOSED (PR #61)
-  - Screen 13: dedicated full-screen stay hub with canonical booking data, lifecycle-aware presentation, state-aware financial summary, check-in instructions, hidden Bottom Navigation, no forbidden Owner direct-contact or cancellation CTAs, and no internal finance leakage.
+  - Screen 13: dedicated full-screen stay hub with canonical booking data, lifecycle-aware presentation, property recognition, stay dates, guest count, state-aware financial summary, payment CTA when canonically eligible, hidden Bottom Navigation, no forbidden Owner direct-contact or cancellation CTAs, and no internal finance leakage.
   - Screen 14: production-grade deposit-payment entry with `متابعة إلى الدفع`, fail-closed provider-unavailable handling, resilient poll and expiry handling, zero prototype/demo/test wording, and `PROTECTED_PAYMENT` auth recovery.
 - **Next Customer Design Target**:
-  - Screen 15 (Post-Payment / Stay Hub Confirmed) — NOT started
+  - Screen 15 — Favorites — NOT STARTED
 
 ## Phase 5 / C4 (Screen 07) Closure Summary
 - PR #35 merged into main at `2d27553569c7962e62080d7ab471d16ef1c9e435`.

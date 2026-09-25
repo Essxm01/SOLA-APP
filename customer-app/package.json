@@ -21,7 +21,8 @@
     "test:screen11": "npx tsx src/utils/customerScreen11BookingRequestSent.test.ts",
     "test:screen12": "npx tsx src/utils/customerScreen12MyBookings.test.ts",
     "test:screen13": "npx tsx src/utils/customerScreen13BookingDetails.test.ts && npx tsx src/utils/customerScreen13Finance.test.ts",
-    "test:screen14": "npx tsx src/utils/customerScreen14DepositPayment.test.ts"
+    "test:screen14": "npx tsx src/utils/customerScreen14DepositPayment.test.ts",
+    "test:screen15": "npx tsx src/utils/customerScreen15Favorites.test.ts"
   },
   "dependencies": {
     "lucide-react": "^1.31.0",

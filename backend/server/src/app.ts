@@ -5213,7 +5213,6 @@ export class ExpressServerApp {
               success: true,
               data: {
                 notificationId: result.notificationId,
-                readAt: result.readAt,
                 isRead: true,
               },
               timestamp,

@@ -246,6 +246,15 @@ try {
   assert.equal(markResult.notificationId, '00000000-0000-4000-8000-000000000001');
   assert.equal(markResult.readAt, '2026-09-25T13:00:00.000Z');
 
+  // Internal repository/RPC idempotency: repeat markRead preserves original readAt
+  const repeatMarkResult = await customerNotificationDb.markRead(
+    '00000000-0000-4000-8000-000000000009',
+    '00000000-0000-4000-8000-000000000001'
+  );
+  assert.ok(repeatMarkResult);
+  assert.equal(repeatMarkResult.notificationId, '00000000-0000-4000-8000-000000000001');
+  assert.equal(repeatMarkResult.readAt, markResult.readAt, 'Internal markRead must preserve first read_at timestamp');
+
   // Test fail-closed: malformed RPC responses throw, no fake empty arrays or zero counts
   globalThis.fetch = (async () => {
     return new Response(JSON.stringify([{ unread_count: 'malformed_negative' }]), { status: 200 });
@@ -483,18 +492,34 @@ try {
     headersCustomerA
   );
   assert.equal(markRes.statusCode, 200);
+  assert.ok((markRes.body as any).data.notificationId, 'response.data.notificationId must exist');
   assert.equal((markRes.body as any).data.notificationId, '10000000-0000-4000-8000-000000000001');
   assert.equal((markRes.body as any).data.isRead, true);
 
-  // Read idempotency: original readAt is preserved on repeat call
-  const originalReadAt = (markRes.body as any).data.readAt;
+  // Assert PUBLIC response does NOT contain readAt or read_at
+  assert.equal((markRes.body as any).data.readAt, undefined, 'Public response must NOT expose readAt');
+  assert.equal((markRes.body as any).data.read_at, undefined, 'Public response must NOT expose read_at');
+
+  // Verify internal persistence captured readAt
+  const internalNotif = mockNotifications.find(n => n.notificationId === '10000000-0000-4000-8000-000000000001');
+  const firstInternalReadAt = internalNotif?.readAt;
+  assert.ok(firstInternalReadAt, 'Internal notification must have recorded readAt');
+
+  // Repeat public call succeeds with identical shape and does not expose readAt
   const repeatMarkRes = await app.handleHttpRequest(
     'POST',
     '/api/v1/customer/notifications/10000000-0000-4000-8000-000000000001/read',
     headersCustomerA
   );
   assert.equal(repeatMarkRes.statusCode, 200);
-  assert.equal((repeatMarkRes.body as any).data.readAt, originalReadAt);
+  assert.ok((repeatMarkRes.body as any).data.notificationId, 'response.data.notificationId must exist on repeat');
+  assert.equal((repeatMarkRes.body as any).data.notificationId, '10000000-0000-4000-8000-000000000001');
+  assert.equal((repeatMarkRes.body as any).data.isRead, true);
+  assert.equal((repeatMarkRes.body as any).data.readAt, undefined, 'Repeat response must NOT expose readAt');
+  assert.equal((repeatMarkRes.body as any).data.read_at, undefined, 'Repeat response must NOT expose read_at');
+
+  // Read idempotency: internal first-read timestamp is strictly preserved
+  assert.equal(internalNotif?.readAt, firstInternalReadAt, 'Internal first-read timestamp must be preserved across repeat calls');
 
   // 7. Cross-customer isolation on mutation: Customer B attempts to mark Customer A's notification
   const crossMarkRes = await app.handleHttpRequest(

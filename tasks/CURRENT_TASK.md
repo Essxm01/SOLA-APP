@@ -1,24 +1,40 @@
 # Active Task — CUSTOMER_SCREENS_13_14
 
-STATUS: IN_PROGRESS_LOCAL_TAKEOVER
-BRANCH: phase5/customer-screens13-14-stay-hub-payment
-BASE_MAIN_SHA: 85a3fc8734d258babd60295c4a9d65b96b01e0ed
-SCOPE: Customer Screen 13 Booking Details / Stay Hub and Screen 14 Prototype Deposit Payment.
-NON_GOALS: no live payment provider, no Screen 15, no PR #48 changes, no production mutation.
-VALIDATION: customer typecheck/build; Screen 11/12/Auth regression tests; Screen 13/14 tests; backend payment boundary tests.
+TASK_ID: CUSTOMER_SCREENS_13_14
+ROADMAP_PHASE: PHASE_5_CUSTOMER_EXPERIENCE
+STATUS: LIVE_VERIFIED_COMPLETE
+MERGED_PR: #61
+MERGED_MAIN_SHA: 0d3a7f3b875e0e97c09cb6451d7c91af49340d6f
+MAIN_CI_RUN: 36073243912
+BASE_MAIN_SHA: 0d3a7f3b875e0e97c09cb6451d7c91af49340d6f
+SCOPE: Customer Screen 13 Booking Details / Stay Hub and Screen 14 Deposit Payment Flow.
+PRODUCTION_STATUS:
+- Customer Screens 13 & 14 merged and live in production on Cloudflare Pages (`sola-customer-app.pages.dev`).
+- Backend payment boundary merged and live in production on Cloudflare Workers (`sola-backend-api.essxm01.workers.dev`).
+- Screen 13 is the dedicated full-screen Booking Details / Stay Hub: the active flow uses canonical booking detail and lifecycle-aware, state-aware Customer financial presentation; the legacy `BookingDetailModal` is removed from the active flow.
+- For `APPROVED_PENDING_PAYMENT`, the truthful next action is `العربون مطلوب` → `دفع العربون`.
+- Screen 13 hides Bottom Navigation and exposes no Owner phone, WhatsApp, Call, Chat, or cancellation CTA; commission, Owner net, and wallet internals remain hidden.
+- Screen 13 responsive behavior was verified at 360 / 390 / 430 widths.
+- Screen 14 is production-grade Customer UX with no prototype, demo, or test-version language. Its primary action is `متابعة إلى الدفع`.
+- Real external payment provider (Paymob) is deferred / not connected; production fails closed with `PROVIDER_UNAVAILABLE` and `الدفع الإلكتروني غير متاح حاليًا`.
+- Normal production `POST /customer/bookings/:id/pay` without a real provider returns HTTP 503 `PAYMENT_PROVIDER_UNAVAILABLE`, with zero payment-transaction, booking-financial, wallet, or ledger mutation.
+- Payment test harness is TEST/CI-only, server-controlled, client-header spoofing cannot activate it, and it is disabled in Production.
+- `POST /pay/prototype-complete` returns 404 NOT_FOUND.
+- Historical MOCK payment records are retained but ignored by normal Customer payment resume/status authority.
+- `PROTECTED_PAYMENT { bookingId }` is implemented and live: 401 clears private payment state, requests explicit reauthentication, returns to the same `bookingId`, revalidates canonically, and never initiates payment automatically.
+- Screen 15 is NOT started.
 
 The historical Phase 5 roadmap below is preserved as evidence. This active
-contract supersedes its stale "next target" wording for this branch only.
+contract records live verified closure for Screens 13 and 14.
 
 # Phase 5 — Customer App Roadmap Tracking
 
-TASK_ID: CUSTOMER_SCREEN_12_MY_BOOKINGS
+TASK_ID: CUSTOMER_SCREENS_13_14_STAY_HUB_AND_DEPOSIT_PAYMENT
 ROADMAP_PHASE: PHASE_5_CUSTOMER_EXPERIENCE
 STAGE: LIVE_VERIFIED_COMPLETE
 EXECUTOR: Founder + Bridge + UI/UX Design Lab
-AUTHORITATIVE_BASELINE: cf75613c3e91133e24279d23539d4794b4ebe1b0
-BRANCH: fix/customer-screen12-session-expiry-closure
-SEARCH_INTENT_RESET: DEFERRED / UNCHANGED
+MERGED_SHA: 0d3a7f3b875e0e97c09cb6451d7c91af49340d6f
+PR: #61
 
 ## Customer Screens Status Summary
 - **Screens 08–10 (Customer Auth V2)**: MERGED & LIVE CLOSED (PR #50, PR #55, PR #56)
@@ -32,8 +48,11 @@ SEARCH_INTENT_RESET: DEFERRED / UNCHANGED
   - Fail-closed private state on 401/403: clears `customerBookings`, `activeBooking`, `bookingDetailId`, `recentBookingSubmission`, and attention dot.
   - Real canonical bookings & complete status matrix without `مرفوض` on guest cancellation.
   - Accessible 44×44px refresh button & Screen 13 `booking.id` routing.
+- **Screens 13 & 14 (Stay Hub & Deposit Payment)**: MERGED & LIVE CLOSED (PR #61)
+  - Screen 13: dedicated full-screen stay hub with canonical booking data, lifecycle-aware presentation, property recognition, stay dates, guest count, state-aware financial summary, payment CTA when canonically eligible, hidden Bottom Navigation, no forbidden Owner direct-contact or cancellation CTAs, and no internal finance leakage.
+  - Screen 14: production-grade deposit-payment entry with `متابعة إلى الدفع`, fail-closed provider-unavailable handling, resilient poll and expiry handling, zero prototype/demo/test wording, and `PROTECTED_PAYMENT` auth recovery.
 - **Next Customer Design Target**:
-  - **Screen 13 — Booking Details / Stay Hub**
+  - Screen 15 — Favorites — NOT STARTED
 
 ## Phase 5 / C4 (Screen 07) Closure Summary
 - PR #35 merged into main at `2d27553569c7962e62080d7ab471d16ef1c9e435`.

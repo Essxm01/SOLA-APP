@@ -1,31 +1,28 @@
-# Active Task — CUSTOMER_SCREENS_13_14
+# Active Task — CUSTOMER_SCREEN_15_FAVORITES
 
-TASK_ID: CUSTOMER_SCREENS_13_14
+TASK_ID: CUSTOMER_SCREEN_15_FAVORITES
 ROADMAP_PHASE: PHASE_5_CUSTOMER_EXPERIENCE
 STATUS: LIVE_VERIFIED_COMPLETE
-MERGED_PR: #61
-MERGED_MAIN_SHA: 0d3a7f3b875e0e97c09cb6451d7c91af49340d6f
-MAIN_CI_RUN: 36073243912
-BASE_MAIN_SHA: 0d3a7f3b875e0e97c09cb6451d7c91af49340d6f
-SCOPE: Customer Screen 13 Booking Details / Stay Hub and Screen 14 Deposit Payment Flow.
+MERGED_PR: #64
+MERGED_MAIN_SHA: 0612feb142a55877e16c1b5982763dcd3aeab5a3
+MAIN_CI_RUN: 36152981595
+BASE_MAIN_SHA: da3be0fd4d6a14f9059825cd797484a081baf9b0
+SCOPE: Customer Screen 15 — Favorites / المفضلة.
 PRODUCTION_STATUS:
-- Customer Screens 13 & 14 merged and live in production on Cloudflare Pages (`sola-customer-app.pages.dev`).
-- Backend payment boundary merged and live in production on Cloudflare Workers (`sola-backend-api.essxm01.workers.dev`).
-- Screen 13 is the dedicated full-screen Booking Details / Stay Hub: the active flow uses canonical booking detail and lifecycle-aware, state-aware Customer financial presentation; the legacy `BookingDetailModal` is removed from the active flow.
-- For `APPROVED_PENDING_PAYMENT`, the truthful next action is `العربون مطلوب` → `دفع العربون`.
-- Screen 13 hides Bottom Navigation and exposes no Owner phone, WhatsApp, Call, Chat, or cancellation CTA; commission, Owner net, and wallet internals remain hidden.
-- Screen 13 responsive behavior was verified at 360 / 390 / 430 widths.
-- Screen 14 is production-grade Customer UX with no prototype, demo, or test-version language. Its primary action is `متابعة إلى الدفع`.
-- Real external payment provider (Paymob) is deferred / not connected; production fails closed with `PROVIDER_UNAVAILABLE` and `الدفع الإلكتروني غير متاح حاليًا`.
-- Normal production `POST /customer/bookings/:id/pay` without a real provider returns HTTP 503 `PAYMENT_PROVIDER_UNAVAILABLE`, with zero payment-transaction, booking-financial, wallet, or ledger mutation.
-- Payment test harness is TEST/CI-only, server-controlled, client-header spoofing cannot activate it, and it is disabled in Production.
-- `POST /pay/prototype-complete` returns 404 NOT_FOUND.
-- Historical MOCK payment records are retained but ignored by normal Customer payment resume/status authority.
-- `PROTECTED_PAYMENT { bookingId }` is implemented and live: 401 clears private payment state, requests explicit reauthentication, returns to the same `bookingId`, revalidates canonically, and never initiates payment automatically.
-- Screen 15 is NOT started.
+- Customer Screen 15 is merged and live on the production Customer Pages bundle: `https://sola-customer-app.pages.dev/`.
+- A dedicated `CustomerFavoritesScreen` uses server-authoritative `GET /customer/favorites`, `POST /customer/favorites/:propertyId`, and `DELETE /customer/favorites/:propertyId` APIs.
+- Guest Favorites does not auto-open Auth; `FAVORITES_TAB` Auth origin and `PROTECTED_FAVORITE { propertyId }` canonical same-property resume are preserved.
+- States are explicit: `GUEST`, `INITIAL_LOADING`, `LOADED`, `EMPTY`, `REFRESHING`, `STALE_ERROR`, `ERROR`, and `SESSION_EXPIRED`.
+- 401/403 clears private Favorites display state fail-closed without independently clearing unrelated Booking or Payment state.
+- Server-confirmed DELETE keeps the card until success; Undo performs POST for the same property ID followed by canonical GET. Stale GET protection prevents deleted Favorites from being resurrected.
+- `PropertyCard` is reused; Favorite hearts expose `aria-pressed`, use a touch target of at least 48px, and primary Guest/Empty/Session CTAs use 52px targets. The Favorite numeric Bottom Nav badge was removed while the Bookings attention indicator remains.
+- Responsive production UI was verified at 360×800, 390×844, and 430×932, including open-page Guest, Empty, Error, and Session surfaces.
+- Real production Cloudflare Pages bundle, Guest Screen 15, responsive 360/390/430 UI, and `FAVORITES_TAB` Auth handoff were verified on the production frontend.
+- Sensitive, error, and mutation states were verified on the real production frontend with controlled network responses where avoiding production data mutation was appropriate; no production data mutation was required for final verification.
+- No ratings, reviews, scarcity, fake recommendations, backend schema, or database changes were introduced.
 
 The historical Phase 5 roadmap below is preserved as evidence. This active
-contract records live verified closure for Screens 13 and 14.
+contract records live verified closure for Screen 15.
 
 # Phase 5 — Customer App Roadmap Tracking
 
@@ -52,8 +49,10 @@ PR: #61
 - **Screens 13 & 14 (Stay Hub & Deposit Payment)**: MERGED & LIVE CLOSED (PR #61)
   - Screen 13: dedicated full-screen stay hub with canonical booking data, lifecycle-aware presentation, property recognition, stay dates, guest count, state-aware financial summary, payment CTA when canonically eligible, hidden Bottom Navigation, no forbidden Owner direct-contact or cancellation CTAs, and no internal finance leakage.
   - Screen 14: production-grade deposit-payment entry with `متابعة إلى الدفع`, fail-closed provider-unavailable handling, resilient poll and expiry handling, zero prototype/demo/test wording, and `PROTECTED_PAYMENT` auth recovery.
+- **Screen 15 (Favorites / المفضلة)**: MERGED & LIVE CLOSED (PR #64)
+  - Dedicated Favorites surface with canonical server reads and mutations, explicit loading/empty/error/session states, protected same-property Auth resume, race-safe delete/undo behavior, responsive production verification, and no fabricated property or Favorite data.
 - **Next Customer Design Target**:
-  - Screen 15 — Favorites — NOT STARTED
+  - Screen 16 — Notification Center — NOT STARTED
 
 ## Phase 5 / C4 (Screen 07) Closure Summary
 - PR #35 merged into main at `2d27553569c7962e62080d7ab471d16ef1c9e435`.

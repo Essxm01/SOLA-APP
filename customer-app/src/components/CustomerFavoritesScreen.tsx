@@ -1,5 +1,5 @@
 import React from 'react';
-import { AlertCircle, Heart, UserRound } from 'lucide-react';
+import { AlertCircle, Heart } from 'lucide-react';
 import { PropertyCard, type CustomerPropertyItem } from './PropertyCard';
 import {
   CUSTOMER_FAVORITES_COPY,
@@ -97,7 +97,7 @@ export const CustomerFavoritesScreen: React.FC<CustomerFavoritesScreenProps> = (
       {authState === 'GUEST' && (
         <section aria-labelledby="favorites-guest-heading" className="bg-white rounded-3xl border border-slate-200 p-6 text-center shadow-xs my-6 space-y-4">
           <div className="w-14 h-14 bg-blue-50 rounded-2xl flex items-center justify-center mx-auto text-[var(--konfrm-color-primary)] border border-blue-100">
-            <UserRound className="w-7 h-7" aria-hidden="true" />
+            <Heart className="w-7 h-7" aria-hidden="true" />
           </div>
           <div className="space-y-1.5">
             <h2 id="favorites-guest-heading" className="text-base font-black text-slate-950">{CUSTOMER_FAVORITES_COPY.guestTitle}</h2>

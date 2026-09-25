@@ -56,7 +56,8 @@ import {
 } from './utils/customerFavorites';
 import {
   favoriteListStateAfterLoad,
-  removeFavoriteAfterServerConfirmation,
+  favoriteStateAfterServerRemoval,
+  shouldApplyFavoriteRead,
   type CustomerFavoritesLoadState,
 } from './utils/customerScreen15Favorites';
 import {
@@ -107,7 +108,17 @@ export function App() {
   const [favoriteInFlightIds, setFavoriteInFlightIds] = useState<Set<string>>(new Set());
   const [favoriteRemovalNotice, setFavoriteRemovalNotice] = useState<{ propertyId: string; message: string } | null>(null);
   const favoritesRequestIdRef = useRef(0);
+  const favoriteMutationVersionRef = useRef(0);
+  const favoritePropertiesRef = useRef<CustomerPropertyItem[]>([]);
   const favoriteSessionTokenRef = useRef<string | null>(null);
+  const applyFavoriteProperties = (items: CustomerPropertyItem[]) => {
+    favoritePropertiesRef.current = items;
+    setFavoriteProperties(items);
+  };
+  const invalidateFavoriteReads = () => {
+    favoriteMutationVersionRef.current += 1;
+    favoritesRequestIdRef.current += 1;
+  };
   const favorites = favoriteProperties.map((p) => p.id);
   const [propertyLoadState, setPropertyLoadState] = useState<'LOADING' | 'SUCCESS' | 'ERROR'>('LOADING');
   const [propertyLoadError, setPropertyLoadError] = useState<string | null>(null);
@@ -345,9 +356,9 @@ export function App() {
   };
 
   const handleFavoriteSessionExpired = useCallback(() => {
-    favoritesRequestIdRef.current += 1;
+    invalidateFavoriteReads();
     favoriteSessionTokenRef.current = null;
-    setFavoriteProperties([]);
+    applyFavoriteProperties([]);
     setFavoriteInFlightIds(new Set());
     setFavoriteRemovalNotice(null);
     setFavoritesError(null);
@@ -360,24 +371,25 @@ export function App() {
     const t = token || authToken || localStorage.getItem('sola_customer_access_token');
     if (!t) {
       favoriteSessionTokenRef.current = null;
-      setFavoriteProperties([]);
+      applyFavoriteProperties([]);
       setFavoritesLoadState('UNAUTHORIZED');
       setFavoritesError(null);
       return;
     }
     const requestId = ++favoritesRequestIdRef.current;
-    const hadCanonicalList = favoriteSessionTokenRef.current === t && favoriteProperties.length > 0;
+    const mutationVersion = favoriteMutationVersionRef.current;
+    const hadCanonicalList = favoriteSessionTokenRef.current === t && favoritePropertiesRef.current.length > 0;
     favoriteSessionTokenRef.current = t;
     setFavoritesLoadState(hadCanonicalList ? 'REFRESHING' : 'INITIAL_LOADING');
     setFavoritesError(null);
     try {
       const items = await fetchCustomerFavorites(t);
-      if (requestId !== favoritesRequestIdRef.current || favoriteSessionTokenRef.current !== t) return;
-      setFavoriteProperties(items as any);
+      if (!shouldApplyFavoriteRead(requestId, favoritesRequestIdRef.current, mutationVersion, favoriteMutationVersionRef.current, favoriteSessionTokenRef.current === t)) return;
+      applyFavoriteProperties(items as any);
       setFavoritesLoadState(favoriteListStateAfterLoad(items as any));
       setFavoritesError(null);
     } catch (err: any) {
-      if (requestId !== favoritesRequestIdRef.current || favoriteSessionTokenRef.current !== t) return;
+      if (!shouldApplyFavoriteRead(requestId, favoritesRequestIdRef.current, mutationVersion, favoriteMutationVersionRef.current, favoriteSessionTokenRef.current === t)) return;
       if (err instanceof CustomerFavoritesUnauthorizedError) {
         handleFavoriteSessionExpired();
         return;
@@ -606,18 +618,23 @@ export function App() {
 
     setFavoriteInFlightIds((prev) => new Set(prev).add(id));
     setFavoritesActionError(null);
-    const isFav = favoriteProperties.some((p) => p.id === id);
+    const isFav = favoritePropertiesRef.current.some((p) => p.id === id);
+    invalidateFavoriteReads();
 
     try {
       if (isFav) {
         await removeCustomerFavorite(authToken, id);
-        setFavoriteProperties((prev) => prev.filter((p) => p.id !== id));
+        invalidateFavoriteReads();
+        const next = favoriteStateAfterServerRemoval(favoritePropertiesRef.current, id, favoritesLoadState);
+        applyFavoriteProperties(next.items);
+        setFavoritesLoadState(next.loadState);
       } else {
         await addCustomerFavorite(authToken, id);
-        const fresh = await fetchCustomerFavorites(authToken);
-        setFavoriteProperties(fresh as any);
+        invalidateFavoriteReads();
+        await loadFavorites(authToken);
       }
     } catch (err) {
+      invalidateFavoriteReads();
       if (err instanceof CustomerFavoritesUnauthorizedError) {
         handleFavoriteSessionExpired();
         return;
@@ -641,12 +658,16 @@ export function App() {
     setFavoriteInFlightIds((prev) => new Set(prev).add(id));
     setFavoritesScreenActionError(null);
     setFavoriteRemovalNotice(null);
+    invalidateFavoriteReads();
     try {
       await removeCustomerFavorite(authToken, id);
-      setFavoriteProperties((prev) => removeFavoriteAfterServerConfirmation(prev, id));
-      setFavoritesLoadState((prev) => prev === 'LOADED' ? (favoriteProperties.length > 1 ? 'LOADED' : 'EMPTY') : prev);
+      invalidateFavoriteReads();
+      const next = favoriteStateAfterServerRemoval(favoritePropertiesRef.current, id, favoritesLoadState);
+      applyFavoriteProperties(next.items);
+      setFavoritesLoadState(next.loadState);
       setFavoriteRemovalNotice({ propertyId: id, message: 'تمت الإزالة من المفضلة' });
     } catch (err) {
+      invalidateFavoriteReads();
       if (err instanceof CustomerFavoritesUnauthorizedError) {
         handleFavoriteSessionExpired();
       } else {
@@ -667,10 +688,13 @@ export function App() {
     setFavoriteRemovalNotice(null);
     setFavoriteInFlightIds((prev) => new Set(prev).add(notice.propertyId));
     setFavoritesScreenActionError(null);
+    invalidateFavoriteReads();
     try {
       await addCustomerFavorite(authToken, notice.propertyId);
+      invalidateFavoriteReads();
       await loadFavorites(authToken);
     } catch (err) {
+      invalidateFavoriteReads();
       if (err instanceof CustomerFavoritesUnauthorizedError) {
         handleFavoriteSessionExpired();
       } else {
@@ -801,7 +825,7 @@ export function App() {
       applyCanonicalCustomerProfile(canonicalSession.profile);
       setAccountSummary(canonicalSession.accountSummary);
       setAccountSummaryError(null);
-      setFavoriteProperties(canonicalSession.favorites as any);
+      applyFavoriteProperties(canonicalSession.favorites as any);
       favoriteSessionTokenRef.current = accessToken;
       setFavoritesLoadState(favoriteListStateAfterLoad(canonicalSession.favorites as any));
       setFavoritesError(null);
@@ -992,14 +1016,14 @@ export function App() {
     localStorage.removeItem('sola_customer_phone');
     localStorage.removeItem('sola_customer_profile');
     localStorage.removeItem('sola_customer_pending_favorite_property_id');
-    favoritesRequestIdRef.current += 1;
+    invalidateFavoriteReads();
     favoriteSessionTokenRef.current = null;
     setAuthToken(null);
     setCustomerPhone(null);
     setUserProfile(null);
     setAccountSummary(null);
     setAccountSummaryError(null);
-    setFavoriteProperties([]);
+    applyFavoriteProperties([]);
     setFavoritesLoadState('UNAUTHORIZED');
     setFavoritesError(null);
     setFavoritesScreenActionError(null);

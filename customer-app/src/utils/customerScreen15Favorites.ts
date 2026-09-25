@@ -51,6 +51,27 @@ export function favoriteListStateAfterLoad(items: CustomerPropertyItem[]): 'LOAD
   return items.length > 0 ? 'LOADED' : 'EMPTY';
 }
 
+export function favoriteStateAfterServerRemoval(
+  favorites: CustomerPropertyItem[],
+  propertyId: string,
+  _previousLoadState?: CustomerFavoritesLoadState,
+): { items: CustomerPropertyItem[]; loadState: 'LOADED' | 'EMPTY' } {
+  const items = removeFavoriteAfterServerConfirmation(favorites, propertyId);
+  return { items, loadState: favoriteListStateAfterLoad(items) };
+}
+
+export function shouldApplyFavoriteRead(
+  requestId: number,
+  currentRequestId: number,
+  mutationVersion: number,
+  currentMutationVersion: number,
+  sessionMatches: boolean,
+): boolean {
+  return requestId === currentRequestId
+    && mutationVersion === currentMutationVersion
+    && sessionMatches;
+}
+
 export function shouldKeepFavoritesAfterRefreshFailure(
   items: CustomerPropertyItem[],
   unauthorized: boolean,

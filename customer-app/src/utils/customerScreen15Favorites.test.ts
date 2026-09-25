@@ -1,7 +1,7 @@
 // @ts-ignore The lightweight script runs under Node through the repository's tsx harness.
 import { readFileSync } from 'node:fs';
 import { CustomerFavoritesUnauthorizedError, fetchCustomerFavorites, addCustomerFavorite, removeCustomerFavorite } from './customerFavorites';
-import { CUSTOMER_FAVORITES_COPY, favoriteListStateAfterLoad, removeFavoriteAfterServerConfirmation, shouldKeepFavoritesAfterRefreshFailure } from './customerScreen15Favorites';
+import { CUSTOMER_FAVORITES_COPY, favoriteListStateAfterLoad, favoriteStateAfterServerRemoval, shouldApplyFavoriteRead, shouldKeepFavoritesAfterRefreshFailure } from './customerScreen15Favorites';
 import type { CustomerPropertyItem } from '../components/PropertyCard';
 
 declare const process: { exitCode?: number };
@@ -54,6 +54,7 @@ async function run(): Promise<void> {
   assert(componentSource.includes("authState === 'SESSION_EXPIRED'") && helperSource.includes(`sessionTitle: '${CUSTOMER_FAVORITES_COPY.sessionTitle}'`), 'Session expired state must be explicit');
   assert(componentSource.includes('role="status"') && componentSource.includes('onUndoRemoval'), 'Mutation feedback must be polite and undoable');
   assert(componentSource.includes('<PropertyCard'), 'Loaded state must reuse canonical PropertyCard');
+  assert(componentSource.includes('<Heart className="w-7 h-7"') && !componentSource.includes('UserRound'), 'Guest state must use the outline Heart hero icon');
   assert(propertyCardSource.includes('aria-pressed={isFavorite}'), 'Favorite heart must expose aria-pressed');
   assert(bottomNavSource.includes("badge?: 'ACTIVE_BOOKING'"), 'Bookings attention indicator must remain supported');
   assert(!bottomNavSource.includes('favoritesCount'), 'Bottom navigation must not expose a Favorite numeric badge');
@@ -63,7 +64,16 @@ async function run(): Promise<void> {
   // Pure state/transition semantics.
   assert(favoriteListStateAfterLoad([]) === 'EMPTY', 'Successful [] must be EMPTY');
   assert(favoriteListStateAfterLoad([property('a')]) === 'LOADED', 'Successful records must be LOADED');
-  assert(removeFavoriteAfterServerConfirmation([property('a'), property('b')], 'a').map((p) => p.id).join(',') === 'b', 'Only confirmed removal may remove a card');
+  assert(favoriteStateAfterServerRemoval([property('a'), property('b')], 'a').items.map((p) => p.id).join(',') === 'b', 'Only confirmed removal may remove a card');
+  assert(favoriteStateAfterServerRemoval([property('a')], 'a').loadState === 'EMPTY', 'Last-item removal must produce EMPTY');
+  assert(favoriteStateAfterServerRemoval([property('a'), property('b')], 'a').loadState === 'LOADED', 'Multi-item removal must produce LOADED');
+  assert(favoriteStateAfterServerRemoval([property('a')], 'a', 'STALE_ERROR').loadState === 'EMPTY', 'STALE_ERROR last-item removal must derive EMPTY from the next list');
+  assert(favoriteStateAfterServerRemoval([property('a')], 'a', 'REFRESHING').loadState === 'EMPTY', 'REFRESHING last-item removal must derive EMPTY from the next list');
+  assert(!shouldApplyFavoriteRead(4, 4, 1, 2, true), 'An older read cannot overwrite a newer mutation state');
+  assert(!shouldApplyFavoriteRead(3, 4, 2, 2, true), 'A superseded read request cannot overwrite newer state');
+  assert(shouldApplyFavoriteRead(5, 5, 3, 3, true), 'Current canonical read may apply');
+  assert(appSource.includes('favoriteMutationVersionRef') && appSource.includes('shouldApplyFavoriteRead'), 'Favorite reads must be guarded against newer mutations');
+  assert(appSource.includes('await addCustomerFavorite(authToken, notice.propertyId)') && appSource.includes('await loadFavorites(authToken)'), 'Undo must POST then re-fetch canonical favorites');
   assert(shouldKeepFavoritesAfterRefreshFailure([property('a')], false), 'Non-auth refresh failure preserves same-session canonical list');
   assert(!shouldKeepFavoritesAfterRefreshFailure([property('a')], true), 'Unauthorized refresh never preserves private list');
   assert(!componentSource.includes('ratings') && !componentSource.includes('reviews'), 'Screen 15 must not invent ratings or review counts');

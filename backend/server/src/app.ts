@@ -12,7 +12,7 @@ import { calculateBookingFinancials, validatePayoutRequest, roundHalfEvenInCents
 import { verifyJwtToken, requireRole } from './middleware/auth.js';
 import { applyCorsHeaders } from './middleware/cors.js';
 import { dbUsersStore, dbOwnersStore, dbAdminUsersStore, dbNotificationsStore, dbOwnerVerificationDocsStore, dbPropertyVerificationDocsStore, dbPropertiesStore, dbBookingsStore, dbPayoutRequestsStore, dbDisputesStore } from './services/authService.js';
-import { userDb, ownerDb, propertyDb, bookingDb, conversationDb, messageDb, isBookingChatEligible, payoutDb, disputeDb, notificationDb, imageDb, uploadIntentDb, adminStatsDb, walletDb, propertyAvailabilityDb, getUnifiedUnavailableBlocks, favoriteDb, adminDb } from './services/dbRepository.js';
+import { userDb, ownerDb, propertyDb, bookingDb, conversationDb, messageDb, isBookingChatEligible, payoutDb, disputeDb, notificationDb, customerNotificationDb, imageDb, uploadIntentDb, adminStatsDb, walletDb, propertyAvailabilityDb, getUnifiedUnavailableBlocks, favoriteDb, adminDb } from './services/dbRepository.js';
 import {
   paymentTxDb,
   PaymentService,
@@ -52,6 +52,7 @@ import {
 } from './utils/quoteFingerprint.js';
 import { AuthV2Service } from './services/authV2Service.js';
 import { getAuthV2RuntimeDecision, mapAuthV2Error, safeAuthUser } from './services/authV2Runtime.js';
+import { decodeCustomerNotificationCursor, encodeCustomerNotificationCursor, toCustomerNotificationDto } from './contracts/customerNotifications.js';
 
 export interface RouteHandlerResult {
   statusCode: number;
@@ -5050,6 +5051,170 @@ export class ExpressServerApp {
               data: {
                 propertyId,
                 isFavorite: false,
+              },
+              timestamp,
+            },
+          };
+        }
+
+        // 4.6 Customer Notifications (P9.1)
+        if (path === '/api/v1/customer/notifications' && method === 'GET') {
+          const rawLimit = effectiveSearchParams?.get('limit');
+          const rawCursor = effectiveSearchParams?.get('cursor');
+
+          let limit = 20;
+          if (rawLimit !== null && rawLimit !== undefined && rawLimit !== '') {
+            if (!/^[1-9]\d*$/.test(rawLimit)) {
+              return {
+                statusCode: 400,
+                body: {
+                  success: false,
+                  error: { code: 'INVALID_NOTIFICATION_LIMIT', message: 'معامل الحد الأقصى غير صالح' },
+                  timestamp,
+                },
+              };
+            }
+            const parsedLimit = parseInt(rawLimit, 10);
+            if (parsedLimit < 1 || parsedLimit > 50) {
+              return {
+                statusCode: 400,
+                body: {
+                  success: false,
+                  error: { code: 'INVALID_NOTIFICATION_LIMIT', message: 'معامل الحد الأقصى يجب أن يكون بين 1 و 50' },
+                  timestamp,
+                },
+              };
+            }
+            limit = parsedLimit;
+          }
+
+          let cursorObj: { createdAt: string; id: string } | null = null;
+          if (rawCursor) {
+            try {
+              cursorObj = decodeCustomerNotificationCursor(rawCursor);
+            } catch {
+              return {
+                statusCode: 400,
+                body: {
+                  success: false,
+                  error: { code: 'INVALID_NOTIFICATION_CURSOR', message: 'مؤشر التصفح غير صالح' },
+                  timestamp,
+                },
+              };
+            }
+          }
+
+          let rawRows: any[];
+          try {
+            rawRows = await customerNotificationDb.list(customerId, limit, cursorObj);
+          } catch {
+            return {
+              statusCode: 500,
+              body: {
+                success: false,
+                error: { code: 'CUSTOMER_NOTIFICATIONS_QUERY_FAILED', message: 'تعذر تحميل الإشعارات' },
+                timestamp,
+              },
+            };
+          }
+
+          const hasMore = rawRows.length > limit;
+          const pagedRows = hasMore ? rawRows.slice(0, limit) : rawRows;
+          const items = pagedRows.map(toCustomerNotificationDto);
+          const nextCursor = hasMore && pagedRows.length > 0
+            ? encodeCustomerNotificationCursor({
+                id: pagedRows[pagedRows.length - 1].notificationId,
+                createdAt: pagedRows[pagedRows.length - 1].createdAt,
+              })
+            : null;
+
+          return {
+            statusCode: 200,
+            body: {
+              success: true,
+              data: {
+                items,
+                nextCursor,
+              },
+              timestamp,
+            },
+          };
+        }
+
+        if (path === '/api/v1/customer/notifications/unread-count' && method === 'GET') {
+          let unreadCount: number;
+          try {
+            unreadCount = await customerNotificationDb.countUnread(customerId);
+          } catch {
+            return {
+              statusCode: 500,
+              body: {
+                success: false,
+                error: { code: 'CUSTOMER_NOTIFICATIONS_COUNT_FAILED', message: 'تعذر تحميل عدد الإشعارات غير المقروءة' },
+                timestamp,
+              },
+            };
+          }
+
+          return {
+            statusCode: 200,
+            body: {
+              success: true,
+              data: {
+                unreadCount,
+              },
+              timestamp,
+            },
+          };
+        }
+
+        const markReadMatch = path.match(/^\/api\/v1\/customer\/notifications\/([^\/]+)\/read$/);
+        if (markReadMatch && method === 'POST') {
+          const notificationId = markReadMatch[1];
+          if (!isValidUuid(notificationId)) {
+            return {
+              statusCode: 400,
+              body: {
+                success: false,
+                error: { code: 'INVALID_NOTIFICATION_ID', message: 'معرف الإشعار غير صالح' },
+                timestamp,
+              },
+            };
+          }
+
+          let result: { notificationId: string; readAt: string } | null;
+          try {
+            result = await customerNotificationDb.markRead(customerId, notificationId);
+          } catch {
+            return {
+              statusCode: 500,
+              body: {
+                success: false,
+                error: { code: 'CUSTOMER_NOTIFICATION_MARK_READ_FAILED', message: 'تعذر تحديث حالة الإشعار' },
+                timestamp,
+              },
+            };
+          }
+
+          if (!result) {
+            return {
+              statusCode: 404,
+              body: {
+                success: false,
+                error: { code: 'NOTIFICATION_NOT_FOUND', message: 'الإشعار غير موجود' },
+                timestamp,
+              },
+            };
+          }
+
+          return {
+            statusCode: 200,
+            body: {
+              success: true,
+              data: {
+                notificationId: result.notificationId,
+                readAt: result.readAt,
+                isRead: true,
               },
               timestamp,
             },

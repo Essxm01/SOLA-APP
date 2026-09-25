@@ -890,7 +890,6 @@ export function App() {
       setActiveTab('FAVORITES');
       setDiscoveryView('EXPLORE');
       setIsEditingAccount(false);
-      if (!hasCanonicalSession) void loadFavorites(accessToken);
     }
 
     if (origin.type === 'PROTECTED_PAYMENT') {

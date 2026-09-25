@@ -60,6 +60,9 @@ async function run(): Promise<void> {
   assert(!bottomNavSource.includes('favoritesCount'), 'Bottom navigation must not expose a Favorite numeric badge');
   assert(authFlowSource.includes("origin.type === 'PROTECTED_FAVORITE'"), 'PROTECTED_FAVORITE resume permission must remain');
   assert(appSource.includes("type: 'FAVORITES_TAB'"), 'FAVORITES_TAB auth origin must remain available');
+  assert(!appSource.includes("origin.type === 'FAVORITES_TAB') {\n      setActiveTab('FAVORITES');\n      setDiscoveryView('EXPLORE');\n      setIsEditingAccount(false);\n      if (!hasCanonicalSession) void loadFavorites"), 'FAVORITES_TAB auth origin must not duplicate loadFavorites');
+  assert(componentSource.includes('min-h-[52px]') && componentSource.includes('h-[52px]'), 'Screen 15 primary CTAs must be at least 52px tall');
+  assert(!componentSource.includes('bg-white rounded-3xl border border-slate-200 p-6 text-center') && !componentSource.includes('bg-slate-50/70 rounded-3xl border'), 'Screen 15 states must use open page surface without legacy outer card containers');
 
   // Pure state/transition semantics.
   assert(favoriteListStateAfterLoad([]) === 'EMPTY', 'Successful [] must be EMPTY');

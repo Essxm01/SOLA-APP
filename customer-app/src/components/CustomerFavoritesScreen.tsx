@@ -95,30 +95,30 @@ export const CustomerFavoritesScreen: React.FC<CustomerFavoritesScreenProps> = (
       </header>
 
       {authState === 'GUEST' && (
-        <section aria-labelledby="favorites-guest-heading" className="bg-white rounded-3xl border border-slate-200 p-6 text-center shadow-xs my-6 space-y-4">
+        <section aria-labelledby="favorites-guest-heading" className="py-12 sm:py-16 text-center space-y-5">
           <div className="w-14 h-14 bg-blue-50 rounded-2xl flex items-center justify-center mx-auto text-[var(--konfrm-color-primary)] border border-blue-100">
             <Heart className="w-7 h-7" aria-hidden="true" />
           </div>
           <div className="space-y-1.5">
-            <h2 id="favorites-guest-heading" className="text-base font-black text-slate-950">{CUSTOMER_FAVORITES_COPY.guestTitle}</h2>
-            <p className="text-sm font-semibold text-slate-600 max-w-xs mx-auto">{CUSTOMER_FAVORITES_COPY.guestDescription}</p>
+            <h2 id="favorites-guest-heading" className="text-base sm:text-lg font-black text-slate-950">{CUSTOMER_FAVORITES_COPY.guestTitle}</h2>
+            <p className="text-sm font-semibold text-slate-600 max-w-xs mx-auto leading-relaxed">{CUSTOMER_FAVORITES_COPY.guestDescription}</p>
           </div>
-          <button type="button" onClick={onLogin} className="min-h-[48px] w-full max-w-xs mx-auto px-6 rounded-2xl bg-[var(--konfrm-color-primary)] text-white text-sm font-black shadow-sm hover:bg-[var(--konfrm-color-primary-hover)] transition-colors cursor-pointer">
+          <button type="button" onClick={onLogin} className="min-h-[52px] h-[52px] w-full max-w-xs mx-auto px-6 rounded-2xl bg-[var(--konfrm-color-primary)] text-white text-sm font-black shadow-sm hover:bg-[var(--konfrm-color-primary-hover)] transition-colors cursor-pointer inline-flex items-center justify-center">
             {CUSTOMER_FAVORITES_COPY.guestAction}
           </button>
         </section>
       )}
 
       {authState === 'SESSION_EXPIRED' && (
-        <section aria-labelledby="favorites-session-heading" className="bg-white rounded-3xl border border-amber-200 p-6 text-center shadow-xs my-6 space-y-4">
+        <section aria-labelledby="favorites-session-heading" className="py-12 sm:py-16 text-center space-y-5">
           <div className="w-14 h-14 bg-amber-50 rounded-2xl flex items-center justify-center mx-auto text-amber-700 border border-amber-200">
             <AlertCircle className="w-7 h-7" aria-hidden="true" />
           </div>
           <div className="space-y-1.5">
-            <h2 id="favorites-session-heading" className="text-base font-black text-slate-950">{CUSTOMER_FAVORITES_COPY.sessionTitle}</h2>
-            <p className="text-sm font-semibold text-slate-600 max-w-xs mx-auto">{CUSTOMER_FAVORITES_COPY.sessionDescription}</p>
+            <h2 id="favorites-session-heading" className="text-base sm:text-lg font-black text-slate-950">{CUSTOMER_FAVORITES_COPY.sessionTitle}</h2>
+            <p className="text-sm font-semibold text-slate-600 max-w-xs mx-auto leading-relaxed">{CUSTOMER_FAVORITES_COPY.sessionDescription}</p>
           </div>
-          <button type="button" onClick={onLogin} className="min-h-[48px] w-full max-w-xs mx-auto px-6 rounded-2xl bg-[var(--konfrm-color-primary)] text-white text-sm font-black shadow-sm hover:bg-[var(--konfrm-color-primary-hover)] transition-colors cursor-pointer">
+          <button type="button" onClick={onLogin} className="min-h-[52px] h-[52px] w-full max-w-xs mx-auto px-6 rounded-2xl bg-[var(--konfrm-color-primary)] text-white text-sm font-black shadow-sm hover:bg-[var(--konfrm-color-primary-hover)] transition-colors cursor-pointer inline-flex items-center justify-center">
             {CUSTOMER_FAVORITES_COPY.sessionAction}
           </button>
         </section>
@@ -133,30 +133,30 @@ export const CustomerFavoritesScreen: React.FC<CustomerFavoritesScreenProps> = (
       )}
 
       {authState === 'AUTHENTICATED' && !initialLoading && loadState === 'ERROR' && !hasCards && (
-        <section aria-labelledby="favorites-error-heading" className="bg-white rounded-3xl border border-rose-200 p-6 text-center shadow-xs my-6 space-y-4">
+        <section aria-labelledby="favorites-error-heading" className="py-12 sm:py-16 text-center space-y-5">
           <div className="w-14 h-14 bg-rose-50 rounded-2xl flex items-center justify-center mx-auto text-rose-600 border border-rose-100">
             <AlertCircle className="w-7 h-7" aria-hidden="true" />
           </div>
           <div className="space-y-1.5">
-            <h2 id="favorites-error-heading" className="text-base font-black text-slate-950">{CUSTOMER_FAVORITES_COPY.errorTitle}</h2>
-            <p className="text-sm font-semibold text-slate-600 max-w-xs mx-auto">{error || CUSTOMER_FAVORITES_COPY.errorDescription}</p>
+            <h2 id="favorites-error-heading" className="text-base sm:text-lg font-black text-slate-950">{CUSTOMER_FAVORITES_COPY.errorTitle}</h2>
+            <p className="text-sm font-semibold text-slate-600 max-w-xs mx-auto leading-relaxed">{error || CUSTOMER_FAVORITES_COPY.errorDescription}</p>
           </div>
-          <button type="button" onClick={onRetry} className="min-h-[44px] px-6 rounded-2xl bg-[var(--konfrm-color-primary)] text-white text-sm font-black shadow-sm hover:bg-[var(--konfrm-color-primary-hover)] transition-colors cursor-pointer">
+          <button type="button" onClick={onRetry} className="min-h-[44px] h-[44px] px-6 rounded-2xl bg-[var(--konfrm-color-primary)] text-white text-sm font-black shadow-sm hover:bg-[var(--konfrm-color-primary-hover)] transition-colors cursor-pointer inline-flex items-center justify-center">
             {CUSTOMER_FAVORITES_COPY.errorAction}
           </button>
         </section>
       )}
 
       {authState === 'AUTHENTICATED' && loadState === 'EMPTY' && !initialLoading && (
-        <section aria-labelledby="favorites-empty-heading" className="bg-slate-50/70 rounded-3xl border border-slate-200 p-8 text-center my-6 space-y-4 shadow-xs">
-          <div className="w-14 h-14 bg-white rounded-2xl flex items-center justify-center mx-auto text-[var(--konfrm-color-primary)] border border-slate-200 shadow-xs">
+        <section aria-labelledby="favorites-empty-heading" className="py-12 sm:py-16 text-center space-y-5">
+          <div className="w-14 h-14 bg-slate-100/80 rounded-2xl flex items-center justify-center mx-auto text-[var(--konfrm-color-primary)] border border-slate-200/60">
             <Heart className="w-7 h-7" aria-hidden="true" />
           </div>
           <div className="space-y-1.5">
-            <h2 ref={emptyHeadingRef} tabIndex={-1} id="favorites-empty-heading" className="text-base font-black text-slate-950 focus:outline-none">{CUSTOMER_FAVORITES_COPY.emptyTitle}</h2>
-            <p className="text-sm font-medium text-slate-600 max-w-xs mx-auto">{CUSTOMER_FAVORITES_COPY.emptyDescription}</p>
+            <h2 ref={emptyHeadingRef} tabIndex={-1} id="favorites-empty-heading" className="text-base sm:text-lg font-black text-slate-950 focus:outline-none">{CUSTOMER_FAVORITES_COPY.emptyTitle}</h2>
+            <p className="text-sm font-medium text-slate-600 max-w-xs mx-auto leading-relaxed">{CUSTOMER_FAVORITES_COPY.emptyDescription}</p>
           </div>
-          <button type="button" onClick={onExplore} className="min-h-[48px] px-6 rounded-2xl bg-[var(--konfrm-color-primary)] text-white text-sm font-black shadow-sm hover:bg-[var(--konfrm-color-primary-hover)] transition-colors cursor-pointer inline-flex items-center justify-center">
+          <button type="button" onClick={onExplore} className="min-h-[52px] h-[52px] w-full max-w-xs mx-auto px-6 rounded-2xl bg-[var(--konfrm-color-primary)] text-white text-sm font-black shadow-sm hover:bg-[var(--konfrm-color-primary-hover)] transition-colors cursor-pointer inline-flex items-center justify-center">
             {CUSTOMER_FAVORITES_COPY.emptyAction}
           </button>
         </section>

@@ -192,6 +192,7 @@ jobs:
           npm run test:auth-p02
           npm run test:p2-3-owner-api
           npm run test:r1-admin-security
+          npm run test:p9-1-customer-notifications
       - name: Configure Production Worker Auth V2 Secrets & Pages Env
         if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
         working-directory: 'backend'

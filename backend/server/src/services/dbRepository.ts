@@ -1653,6 +1653,65 @@ export const favoriteDb = {
 };
 
 // ----------------------------------------------------------------------------
+// 14A. CUSTOMER NOTIFICATIONS REPOSITORY (P9.1)
+// ----------------------------------------------------------------------------
+export interface CustomerNotificationRecord {
+  notificationId: string;
+  eventType: 'BOOKING_APPROVED_PENDING_PAYMENT' | 'BOOKING_REJECTED';
+  bookingId: string;
+  propertyTitle: string | null;
+  createdAt: string;
+  readAt: string | null;
+  isRead: boolean;
+  actionRequired: boolean;
+}
+
+export const customerNotificationDb = {
+  async list(customerId: string, limit: number, cursor?: { createdAt: string; id: string } | null): Promise<CustomerNotificationRecord[]> {
+    const res = await queryDb(
+      'SELECT * FROM public.konfrm_list_customer_notifications($1, $2, $3, $4)',
+      [customerId, limit, cursor?.createdAt || null, cursor?.id || null]
+    );
+    return res.rows.map((row: any) => ({
+      notificationId: row.notification_id ?? row.notificationId,
+      eventType: row.event_type ?? row.eventType,
+      bookingId: row.booking_id ?? row.bookingId,
+      propertyTitle: row.property_title_snapshot ?? row.propertyTitle ?? null,
+      createdAt: row.created_at ?? row.createdAt,
+      readAt: row.read_at ?? row.readAt ?? null,
+      isRead: Boolean(row.is_read ?? row.isRead),
+      actionRequired: Boolean(row.action_required ?? row.actionRequired),
+    }));
+  },
+
+  async countUnread(customerId: string): Promise<number> {
+    const res = await queryDb(
+      'SELECT * FROM public.konfrm_count_customer_unread_notifications($1)',
+      [customerId]
+    );
+    if (res.rows.length !== 1) throw new Error('CUSTOMER_NOTIFICATION_COUNT_CARDINALITY_INVALID');
+    const count = Number((res.rows[0] as any).unread_count ?? (res.rows[0] as any).unreadCount);
+    if (!Number.isSafeInteger(count) || count < 0) throw new Error('CUSTOMER_NOTIFICATION_COUNT_MALFORMED');
+    return count;
+  },
+
+  async markRead(customerId: string, notificationId: string): Promise<{ notificationId: string; readAt: string } | null> {
+    const res = await queryDb(
+      'SELECT * FROM public.konfrm_mark_customer_notification_read($1, $2)',
+      [customerId, notificationId]
+    );
+    if (res.rows.length === 0) return null;
+    if (res.rows.length !== 1) throw new Error('CUSTOMER_NOTIFICATION_MARK_READ_CARDINALITY_INVALID');
+    const row: any = res.rows[0];
+    const mapped = { notificationId: row.notification_id ?? row.notificationId, readAt: row.read_at ?? row.readAt };
+    if (typeof mapped.notificationId !== 'string' || typeof mapped.readAt !== 'string' || Number.isNaN(Date.parse(mapped.readAt))) {
+      throw new Error('CUSTOMER_NOTIFICATION_MARK_READ_MALFORMED');
+    }
+    return mapped;
+  },
+};
+
+// ----------------------------------------------------------------------------
 // 15. ADMIN USERS REPOSITORY (R1 Canonical Authentication)
 // ----------------------------------------------------------------------------
 export interface AdminUserRecord {

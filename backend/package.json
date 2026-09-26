@@ -43,6 +43,7 @@
     "test:customer-booking-cancel": "npx tsx server/src/tests/customerBookingCancelFailClosed.test.ts",
     "test:customer-payment-boundary": "npx tsx server/src/tests/customerPaymentBoundaryFailClosed.test.ts",
     "test:r1-admin-security": "npx tsx server/src/tests/adminAuthSecurityR1.test.ts",
+    "test:p9-1-customer-notifications": "npx tsx server/src/tests/p91CustomerNotifications.test.ts",
     "check": "npx tsc --noEmit"
   },
   "dependencies": {

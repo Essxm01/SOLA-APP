@@ -2566,7 +2566,79 @@ async function queryViaSupabaseRest(text: string, params: any[] | undefined, url
     return { rows: [], command: 'UPDATE', rowCount: Array.isArray(raw) ? raw.length : 0, oid: 0, fields: [] };
   }
 
-  // 17A. konfrm_add_customer_favorite RPC (P2.2)
+  // 17A. Customer notification RPCs (P9.1). These match only the exact
+  // qualified SQL emitted by customerNotificationDb; unrelated SQL must not
+  // fall through to a permissive generic RPC parser.
+  const notificationSql = sql.replace(/\s+/g, ' ').trim();
+  const notificationUuid = (value: any) => typeof value === 'string' && BOOKING_REQUEST_RPC_UUID_PATTERN.test(value);
+  const notificationIso = (value: any) => typeof value === 'string' && value.trim().length > 0 && !Number.isNaN(Date.parse(value));
+  const notificationEvents = new Set(['BOOKING_APPROVED_PENDING_PAYMENT', 'BOOKING_REJECTED']);
+
+  if (/^SELECT \* FROM public\.konfrm_list_customer_notifications\(\$1, \$2, \$3, \$4\)$/i.test(notificationSql)) {
+    const [customerId, limit, cursorCreatedAt, cursorId] = params || [];
+    const res = await fetch(`${url}/rest/v1/rpc/konfrm_list_customer_notifications`, {
+      method: 'POST', headers,
+      body: JSON.stringify({ p_customer_id: customerId, p_limit: limit, p_cursor_created_at: cursorCreatedAt, p_cursor_id: cursorId }),
+    });
+    const raw: any = await authJson(res, 'REST_CUSTOMER_NOTIFICATIONS_LIST_FAILED');
+    const rows = authArray(raw, 'REST_CUSTOMER_NOTIFICATIONS_LIST_MALFORMED');
+    const mapped = rows.map((row: any) => {
+      if (!row || typeof row !== 'object' ||
+          !notificationUuid(row.notification_id) ||
+          !notificationEvents.has(row.event_type) ||
+          !notificationUuid(row.booking_id) ||
+          !(row.property_title_snapshot === null || (typeof row.property_title_snapshot === 'string' && row.property_title_snapshot.length <= 200)) ||
+          !notificationIso(row.created_at) ||
+          !(row.read_at === null || notificationIso(row.read_at)) ||
+          typeof row.is_read !== 'boolean' || typeof row.action_required !== 'boolean') {
+        throw new Error('REST_CUSTOMER_NOTIFICATIONS_LIST_MALFORMED: Required fields invalid');
+      }
+      return {
+        notification_id: row.notification_id,
+        event_type: row.event_type,
+        booking_id: row.booking_id,
+        property_title_snapshot: row.property_title_snapshot,
+        created_at: row.created_at,
+        read_at: row.read_at,
+        is_read: row.is_read,
+        action_required: row.action_required,
+      };
+    });
+    return { rows: mapped, command: 'SELECT', rowCount: mapped.length, oid: 0, fields: [] };
+  }
+
+  if (/^SELECT \* FROM public\.konfrm_count_customer_unread_notifications\(\$1\)$/i.test(notificationSql)) {
+    const customerId = params?.[0];
+    const res = await fetch(`${url}/rest/v1/rpc/konfrm_count_customer_unread_notifications`, {
+      method: 'POST', headers, body: JSON.stringify({ p_customer_id: customerId }),
+    });
+    const raw: any = await authJson(res, 'REST_CUSTOMER_NOTIFICATIONS_COUNT_FAILED');
+    const rows = authArray(raw, 'REST_CUSTOMER_NOTIFICATIONS_COUNT_MALFORMED');
+    if (rows.length !== 1 || !rows[0] || !/^(?:0|[1-9]\d*)$/.test(String(rows[0].unread_count))) {
+      throw new Error('REST_CUSTOMER_NOTIFICATIONS_COUNT_MALFORMED: Expected one non-negative count');
+    }
+    const count = Number(rows[0].unread_count);
+    if (!Number.isSafeInteger(count)) throw new Error('REST_CUSTOMER_NOTIFICATIONS_COUNT_MALFORMED: Count is unsafe');
+    return { rows: [{ unread_count: count }], command: 'SELECT', rowCount: 1, oid: 0, fields: [] };
+  }
+
+  if (/^SELECT \* FROM public\.konfrm_mark_customer_notification_read\(\$1, \$2\)$/i.test(notificationSql)) {
+    const [customerId, notificationId] = params || [];
+    const res = await fetch(`${url}/rest/v1/rpc/konfrm_mark_customer_notification_read`, {
+      method: 'POST', headers, body: JSON.stringify({ p_customer_id: customerId, p_notification_id: notificationId }),
+    });
+    const raw: any = await authJson(res, 'REST_CUSTOMER_NOTIFICATION_MARK_READ_FAILED');
+    const rows = authArray(raw, 'REST_CUSTOMER_NOTIFICATION_MARK_READ_MALFORMED');
+    if (rows.length > 1) throw new Error('REST_CUSTOMER_NOTIFICATION_MARK_READ_CARDINALITY_INVALID');
+    if (rows.length === 0) return { rows: [], command: 'SELECT', rowCount: 0, oid: 0, fields: [] };
+    const row = rows[0];
+    if (!row || !notificationUuid(row.notification_id) || row.notification_id !== notificationId || !notificationIso(row.read_at)) {
+      throw new Error('REST_CUSTOMER_NOTIFICATION_MARK_READ_MALFORMED: Required fields invalid');
+    }
+    return { rows: [{ notification_id: row.notification_id, read_at: row.read_at }], command: 'SELECT', rowCount: 1, oid: 0, fields: [] };
+  }
+
+  // 17B. konfrm_add_customer_favorite RPC (P2.2)
   // Exact matcher: SELECT * FROM konfrm_add_customer_favorite($1, $2)
   const canonicalAddFavMatch = sql
     .replace(/\s+/g, ' ')
